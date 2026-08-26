@@ -9,8 +9,9 @@
 (function () {
   var App = window.App = window.App || {};
 
-  // --- Census API key (removes ~500 req/day rate limit) ---
-  App.CENSUS_API_KEY = "84dd46873ff2d6d2d41d42c6e9cebfa41214fd14";
+  // Census API key now lives in js/core/config.js (loaded before this file),
+  // alongside the CARTO basemap key — see that file's header for why those
+  // values are public by design.
 
   // Sequential color palette for new lines + routes (shared sequence, 18 distinct colors)
   App.FEATURE_COLORS = [

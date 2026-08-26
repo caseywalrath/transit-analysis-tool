@@ -1,7 +1,9 @@
 # CARTO Basemap API Key — Implementation Plan
 
-**Status:** Approved, not yet implemented
-**Branch:** to be created off `main`
+**Status:** Implemented on `claude/carto-api-key` — except the final step, pasting the real
+key into `js/core/config.js` (see §9 step 4). Shipped with `CARTO_API_KEY = ""`, which runs
+the keyless-fallback path.
+**Branch:** `claude/carto-api-key`
 **Trigger:** CARTO now requires an API key for `basemaps.cartocdn.com`. Unkeyed requests
 are served with an "API KEY REQUIRED" watermark. Three of this app's seven basemaps —
 including the default — are CARTO, so the default map experience is currently degraded.
@@ -252,10 +254,24 @@ for the new host, or CARTO tiles will start failing if enforcement is real.
 | `js/core/config.js` | **New.** `App.CARTO_API_KEY`, `App.CENSUS_API_KEY`, localStorage override, prominent "everything here is public" header. |
 | `index.html` | Add `<script src="js/core/config.js">` immediately before `js/core/utils.js` (~line 366). |
 | `js/core/utils.js` | Delete the `App.CENSUS_API_KEY` line (13) and its comment. |
-| `js/core/map.js` | Key-map the `BASEMAPS` tile URLs at init; drop CARTO entries and default to `esri-light-gray` when no key is present. |
+| `js/core/map.js` | Key-map the `BASEMAPS` tile URLs at init; drop CARTO entries and default to `esri-light-gray` when no key is present; export `getThemeBasemapId`. |
+| `js/app.js` | Dark-mode toggle: resolve via `getThemeBasemapId()` instead of hardcoded CARTO ids (see below). |
 | `CLAUDE.md` | Document `config.js` in File Structure and Script Load Order; note the public-by-design constraint. |
 
-No other module changes. Nothing outside `map.js` reads basemap URLs.
+Nothing outside `map.js` reads basemap URLs.
+
+### Found during implementation: `app.js` hardcoded the CARTO ids
+
+Not anticipated when this plan was written. `js/app.js` called
+`App.switchBasemap("carto-dark")` / `("carto-light")` at two sites — the dark-mode toggle
+and the restore-on-load path. `switchBasemap` returns early on an unknown id, so in the
+keyless path both calls would have **silently no-opped**, leaving dark mode showing a light
+basemap with no error.
+
+Fixed by adding `App.getThemeBasemapId(isDark)` to `map.js` — it returns the CARTO pair when
+keyed and the Esri Canvas pair when not — and calling that from `app.js`. This keeps
+knowledge of which basemaps actually exist inside `map.js`, where the registry lives. Any
+future caller that wants "the light/dark basemap" should use it rather than naming ids.
 
 ---
 

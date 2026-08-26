@@ -737,14 +737,19 @@
         var isDark = document.body.classList.toggle("dark-mode");
         _darkBtn.setAttribute("aria-pressed", isDark ? "true" : "false");
         localStorage.setItem(_DARK_KEY, isDark ? "1" : "0");
-        if (typeof App.switchBasemap === "function") {
-          App.switchBasemap(isDark ? "carto-dark" : "carto-light");
+        // Resolve via the map's registry rather than hardcoding the CARTO
+        // ids — those basemaps are absent when no CARTO key is configured.
+        if (typeof App.switchBasemap === "function" &&
+            typeof App.getThemeBasemapId === "function") {
+          App.switchBasemap(App.getThemeBasemapId(isDark));
         }
       });
     }
     // Restore basemap to match dark mode preference (class set by the first script in <body>).
-    if (document.body.classList.contains("dark-mode") && typeof App.switchBasemap === "function") {
-      App.switchBasemap("carto-dark");
+    if (document.body.classList.contains("dark-mode") &&
+        typeof App.switchBasemap === "function" &&
+        typeof App.getThemeBasemapId === "function") {
+      App.switchBasemap(App.getThemeBasemapId(true));
     }
 
     // Present mode
