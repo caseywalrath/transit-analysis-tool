@@ -37,7 +37,7 @@
   // three CARTO basemaps are withdrawn from the switcher and the map falls
   // back to a keyless basemap, so a fork, an exhausted quota, or local
   // development never renders a watermarked map. See js/core/map.js.
-  App.CARTO_API_KEY = "";
+  App.CARTO_API_KEY = "cb1_2916_1_c306e086b30dd31ae0a6ade6";
 
   // --- Census API key ---
   // Removes the ~500 requests/day anonymous rate limit. The Census API works
