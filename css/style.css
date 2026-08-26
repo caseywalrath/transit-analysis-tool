@@ -1594,10 +1594,16 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   position: absolute;
   right: 24px;
   z-index: 1;
-  background: inherit;
+  /* Solid backdrop (not "inherit") — this icon floats over the row's own
+     text when a feature name is long enough to run underneath it, and a
+     transparent/inherited background let that text show through and blend
+     with the icon. A real chip fully covers it instead. */
+  background: var(--bg);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--border);
   pointer-events: none;
 }
-.fp-item:hover .fp-gear-btn { opacity: 0.7; pointer-events: auto; }
+.fp-item:hover .fp-gear-btn { opacity: 0.92; pointer-events: auto; }
 .fp-gear-btn:hover { opacity: 1 !important; color: var(--accent); }
 
 /* Floating attributes popup */
@@ -2064,13 +2070,18 @@ input.fp-attr-input[type="number"] {
   position: absolute;
   right: 0;
   z-index: 1;
-  background: inherit;
+  /* Same reasoning as .fp-gear-btn above — a solid chip so a long feature
+     name never bleeds through and blends with the icon or the row's
+     hover/selected highlight. */
+  background: var(--bg);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--border);
   pointer-events: none;
 }
-.fp-item:hover > .fp-del-btn { opacity: 0.7; pointer-events: auto; }
+.fp-item:hover > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 .fp-del-btn:hover { opacity: 1 !important; color: var(--danger); }
 .fp-item:focus-within .fp-gear-btn,
-.fp-item:focus-within > .fp-del-btn { opacity: 0.7; pointer-events: auto; }
+.fp-item:focus-within > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 .fp-group-header:hover .fp-del-btn { opacity: 0.7; }
 
 /* Row-level delete confirmation strip */
