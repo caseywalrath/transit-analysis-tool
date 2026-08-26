@@ -421,7 +421,8 @@ button { cursor: pointer; }
 .fp-tabs {
   display: flex;
   gap: 2px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 .fp-tab-btn {
   flex: 1;
@@ -441,6 +442,21 @@ button { cursor: pointer; }
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+/* --- Features list sort button (header, Features tab only) --- */
+.fp-sort-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 3px;
+  margin-left: 4px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.fp-sort-btn:hover { color: var(--accent); background: var(--accent-soft); }
 /* --- Layers panel (#fp-tab-layers) --- */
 .lp-band { margin-bottom: 12px; }
 .lp-band-title {
@@ -2105,6 +2121,37 @@ input.fp-attr-input[type="number"] {
   color: var(--text-primary);
 }
 #fp-context-menu button:hover { background: #f0f4f8; }
+
+/* Checkable rows (Features list sort menu) — reserve a checkmark gutter on
+   every checkable row so checked/unchecked rows stay aligned. */
+#fp-context-menu button.fp-ctx-checkable { position: relative; padding-left: 30px; }
+#fp-context-menu button.fp-ctx-checkable::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--text-sm);
+  color: var(--accent);
+}
+#fp-context-menu button.fp-ctx-checked::before { content: "\2713"; }
+
+/* Divider rows — a plain hairline separator, or (with a label) a
+   non-clickable section heading. Neither responds to hover/click. */
+#fp-context-menu .fp-ctx-divider {
+  margin: 4px 0;
+  border-top: 1px solid var(--border);
+}
+#fp-context-menu .fp-ctx-divider.fp-ctx-divider-label {
+  margin: 2px 0 2px;
+  padding: 2px 14px;
+  border-top: none;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-sm);
+  color: var(--muted);
+}
 
 /* Inline group name editor */
 .fp-group-name-edit {

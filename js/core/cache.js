@@ -59,6 +59,7 @@
   //       "full"  (for file export — includes geos for choropleth restore)
 
   function collectState(mode) {
+    var _fss = (typeof App.getFeatureSortState === "function") ? App.getFeatureSortState() : null;
     var state = {
       version: SCHEMA_VERSION,
       points: App.points.slice(),
@@ -80,6 +81,9 @@
       routeOpacity:      (App.featureSettings && App.featureSettings.routeOpacity      != null) ? App.featureSettings.routeOpacity      : 100,
       polygonOpacity:    (App.featureSettings && App.featureSettings.polygonOpacity    != null) ? App.featureSettings.polygonOpacity    : 50,
       bufferOpacity:     (App.featureSettings && App.featureSettings.bufferOpacity     != null) ? App.featureSettings.bufferOpacity     : 50,
+      featureSortMode:   _fss ? _fss.mode       : "name",
+      featureSortAsc:    _fss ? _fss.asc        : true,
+      featureShowGroups: _fss ? _fss.showGroups : true,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -162,6 +166,17 @@
       fs.routeOpacity   = (state.routeOpacity    != null) ? state.routeOpacity   : 100;
       fs.polygonOpacity = (state.polygonOpacity  != null) ? state.polygonOpacity : 50;
       fs.bufferOpacity  = (state.bufferOpacity   != null) ? state.bufferOpacity  : 50;
+    }
+
+    // 3a. Restore Features list sort state (additive fields — the setter
+    // no-ops on anything absent, so an old session without them keeps the
+    // module's own defaults).
+    if (typeof App.restoreFeatureSortState === "function") {
+      App.restoreFeatureSortState({
+        mode: state.featureSortMode,
+        asc: state.featureSortAsc,
+        showGroups: state.featureShowGroups
+      });
     }
 
     // 3b. Restore offset toggle (actual offset computed after render via auto-recompute hook)
