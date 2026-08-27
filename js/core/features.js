@@ -20,6 +20,21 @@
   var UNIVERSAL_GROUP_KEY = "group";
   var LABEL_GROUP_KEY = "labelGroup";
 
+  // ---- Features list sort state (Tier 1: Name / Type / Date added / Group) ----
+  // Display-only — never reorders App.points/lines/routes/polygons. Applies to
+  // the main unified Features list only; the Labels and Text section (built by
+  // populateLabelGroupedList) is out of scope and always sorts by name.
+  var TYPE_RANK = { point: 0, line: 1, route: 2, polygon: 3 };
+  var SORT_MODES = [
+    { id: "name",  label: "Name" },
+    { id: "type",  label: "Type" },
+    { id: "added", label: "Date added" },
+    { id: "group", label: "Group" }
+  ];
+  var _sortMode   = "name";
+  var _sortAsc    = true;
+  var _showGroups = true;
+
   var TYPE_LABELS_LOCAL = {
     point: "Point", line: "Line",
     route: "Route", polygon: "Polygon", label: "Label"
@@ -291,7 +306,24 @@
     var menu = document.createElement("div");
     menu.id = "fp-context-menu";
     options.forEach(function (opt) {
+      // Divider: a plain hairline separator, or (with a label) a section
+      // heading row. Neither is clickable.
+      if (opt.divider) {
+        var div = document.createElement("div");
+        div.className = "fp-ctx-divider" + (opt.label ? " fp-ctx-divider-label" : "");
+        if (opt.label) div.textContent = opt.label;
+        menu.appendChild(div);
+        return;
+      }
       var btn = document.createElement("button");
+      // "checked" is a tri-state concept: only options that explicitly pass
+      // a boolean get the checkmark gutter, so plain {label, action} callers
+      // (the per-feature context menu, the Layers panel's ⋯ menu) render
+      // exactly as before.
+      if (typeof opt.checked === "boolean") {
+        btn.classList.add("fp-ctx-checkable");
+        if (opt.checked) btn.classList.add("fp-ctx-checked");
+      }
       btn.textContent = opt.label;
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -917,12 +949,33 @@
 
   /* ---- Collect all non-label features into unified list ---- */
 
+  // Monotonic cross-type creation counter backing the "Date added" sort key.
+  // Stamped lazily here (not at each of the four creation sites) so every
+  // add path \u2014 which already calls refreshFeaturePanel() \u2014 picks it up for
+  // free, and a session restored from before this field existed gets a
+  // sensible legacy fallback (collect order) instead of an error.
+  var _featureSeq = 0;
+
   function collectAllFeatures() {
     var all = [];
     (App.points || []).forEach(function (f, i) { all.push({ feature: f, type: "point", index: i }); });
     (App.lines    || []).forEach(function (f, i) { all.push({ feature: f, type: "line",    index: i }); });
     (App.routes   || []).forEach(function (f, i) { all.push({ feature: f, type: "route",   index: i }); });
     (App.polygons || []).forEach(function (f, i) { all.push({ feature: f, type: "polygon", index: i }); });
+
+    // Seed the counter above the highest seq already present, then stamp
+    // anything still missing one. Two passes so a restored session never
+    // hands out a duplicate seq to a freshly-stamped feature.
+    var i;
+    for (i = 0; i < all.length; i++) {
+      var p = all[i].feature.properties;
+      if (typeof p.seq === "number" && p.seq >= _featureSeq) _featureSeq = p.seq + 1;
+    }
+    for (i = 0; i < all.length; i++) {
+      var q = all[i].feature.properties;
+      if (typeof q.seq !== "number") q.seq = _featureSeq++;
+    }
+
     return all;
   }
 
@@ -932,10 +985,57 @@
     return name ? name : "\uffff" + item.type + item.index;
   }
 
+  // Name-only sort, unchanged from before the sort feature existed. Used by
+  // the Labels and Text section (out of scope for user-selectable sorting)
+  // and as the internal tiebreaker below.
   function sortItems(arr) {
     arr.sort(function (a, b) {
       return naturalSort(featureSortKey(a), featureSortKey(b));
     });
+  }
+
+  // ---- Mode-aware sort for the main Features list only ----
+  // Rules: missing values for the active key always sink to the bottom in
+  // both directions; name is always the final tiebreaker; descending
+  // reverses the primary key only (never the tiebreaker, never the
+  // missing-values rule).
+
+  function sortValueForMode(item, modeId) {
+    if (modeId === "type") {
+      var r = TYPE_RANK[item.type];
+      return { has: true, val: (r != null ? r : 99) };
+    }
+    if (modeId === "added") {
+      var seq = item.feature.properties.seq;
+      return (typeof seq === "number") ? { has: true, val: seq } : { has: false, val: null };
+    }
+    if (modeId === "group") {
+      var g = item.feature.properties.attributes && item.feature.properties.attributes[UNIVERSAL_GROUP_KEY];
+      return g ? { has: true, val: g } : { has: false, val: null };
+    }
+    // "name" (default/fallback)
+    var name = item.feature.properties.name;
+    return name ? { has: true, val: name } : { has: false, val: null };
+  }
+
+  function compareFeatureItems(a, b) {
+    var av = sortValueForMode(a, _sortMode);
+    var bv = sortValueForMode(b, _sortMode);
+    if (av.has !== bv.has) return av.has ? -1 : 1;
+    if (av.has) {
+      var primary = (_sortMode === "added")
+        ? (av.val - bv.val)
+        : naturalSort(String(av.val), String(bv.val));
+      if (!_sortAsc) primary = -primary;
+      if (primary !== 0) return primary;
+    }
+    return naturalSort(featureSortKey(a), featureSortKey(b));
+  }
+
+  // Sorts `arr` in place by the current user-selected sort mode. Only used
+  // by the main unified Features list \u2014 labels always use sortItems().
+  function sortFeatureItems(arr) {
+    arr.sort(compareFeatureItems);
   }
 
   /* ---- Build item wrapper with delete wiring ---- */
@@ -968,6 +1068,15 @@
     var all = collectAllFeatures();
     if (!all.length) return;
 
+    if (!_showGroups) {
+      // Flattened view: no group headers, one continuous sorted list. This
+      // is what makes a non-name sort (Type, Date added) read as a single
+      // ranking instead of restarting inside every group.
+      sortFeatureItems(all);
+      all.forEach(function (it) { el.appendChild(buildItemWrapperUnified(it, false)); });
+      return;
+    }
+
     // Separate into groups and ungrouped
     var groups = {};
     var ungrouped = [];
@@ -985,9 +1094,9 @@
     var groupNames = Object.keys(groups);
     groupNames.sort(naturalSort);
 
-    // Sort items within each group and ungrouped alphabetically
-    groupNames.forEach(function (gn) { sortItems(groups[gn]); });
-    sortItems(ungrouped);
+    // Sort items within each group and ungrouped by the active sort mode
+    groupNames.forEach(function (gn) { sortFeatureItems(groups[gn]); });
+    sortFeatureItems(ungrouped);
 
     // Render groups
     groupNames.forEach(function (groupName) {
@@ -1194,6 +1303,57 @@
     header.addEventListener("click", toggle);
   }
 
+  /* ---- Features list sort control (button + right-click menu) ---- */
+
+  function saveFeatureSortState() {
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+  }
+
+  function setSortMode(id) {
+    // Re-selecting the active key is a no-op — direction has its own
+    // explicit toggle, so a repeat click must not silently flip it.
+    if (_sortMode === id) return;
+    _sortMode = id;
+    saveFeatureSortState();
+    refreshFeaturePanel();
+  }
+
+  function setSortAsc(asc) {
+    _sortAsc = asc;
+    saveFeatureSortState();
+    refreshFeaturePanel();
+  }
+
+  function setShowGroups(show) {
+    _showGroups = show;
+    saveFeatureSortState();
+    refreshFeaturePanel();
+  }
+
+  function buildSortMenuOptions() {
+    var options = [];
+    options.push({ divider: true, label: "Sort by" });
+    SORT_MODES.forEach(function (m) {
+      options.push({
+        label: m.label,
+        checked: _sortMode === m.id,
+        action: function () { setSortMode(m.id); }
+      });
+    });
+    options.push({ divider: true });
+    options.push({
+      label: "Ascending",
+      checked: _sortAsc,
+      action: function () { setSortAsc(!_sortAsc); }
+    });
+    options.push({
+      label: "Show groups",
+      checked: _showGroups,
+      action: function () { setShowGroups(!_showGroups); }
+    });
+    return options;
+  }
+
   App.refreshFeaturePanel = refreshFeaturePanel;
   App.getTypeDefaultColor = getTypeDefaultColor;
   App.showContextMenu     = showContextMenu;
@@ -1203,10 +1363,25 @@
   App.collectDrawnFeatures = collectAllFeatures;
   App.UNIVERSAL_GROUP_KEY  = UNIVERSAL_GROUP_KEY;
 
+  // Session-cache read/write hooks for the Features list sort state
+  // (mirrors the featureSettings pattern — see js/core/cache.js).
+  App.getFeatureSortState = function () {
+    return { mode: _sortMode, asc: _sortAsc, showGroups: _showGroups };
+  };
+  App.restoreFeatureSortState = function (s) {
+    if (!s) return;
+    if (typeof s.mode === "string" && SORT_MODES.some(function (m) { return m.id === s.mode; })) {
+      _sortMode = s.mode;
+    }
+    if (typeof s.asc === "boolean") _sortAsc = s.asc;
+    if (typeof s.showGroups === "boolean") _showGroups = s.showGroups;
+  };
+
   // Wire the Features | Layers tab bar
   (function () {
     var tabBtns = document.querySelectorAll(".fp-tab-btn");
     if (!tabBtns.length) return;
+    var sortBtn = document.getElementById("fp-sort-btn");
     function show(tab) {
       tabBtns.forEach(function (b) {
         var selected = b.getAttribute("data-fptab") === tab;
@@ -1217,6 +1392,8 @@
       var lEl = document.getElementById("fp-tab-layers");
       if (fEl) fEl.style.display = tab === "features" ? "" : "none";
       if (lEl) lEl.style.display = tab === "layers" ? "" : "none";
+      // Sorting only applies to the Features list, not the Layers tab.
+      if (sortBtn) sortBtn.style.display = tab === "features" ? "" : "none";
       if (tab === "layers" && typeof App.refreshLayersPanel === "function") {
         App.refreshLayersPanel();
       }
@@ -1224,6 +1401,28 @@
     tabBtns.forEach(function (b) {
       b.addEventListener("click", function () { show(b.getAttribute("data-fptab")); });
     });
+  })();
+
+  // Wire the Features list sort control: the header icon button, and a
+  // right-click on the header as a second path to the same menu.
+  (function () {
+    var btn = document.getElementById("fp-sort-btn");
+    var header = document.querySelector(".fp-header");
+    if (!btn && !header) return;
+    if (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var rect = btn.getBoundingClientRect();
+        showContextMenu(rect.left, rect.bottom + 4, buildSortMenuOptions());
+      });
+    }
+    if (header) {
+      header.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showContextMenu(e.clientX, e.clientY, buildSortMenuOptions());
+      });
+    }
   })();
 
   // Wire feature panel collapse toggle
