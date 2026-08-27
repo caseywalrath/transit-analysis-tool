@@ -672,12 +672,29 @@ module's `panelWidths`, resets any drag offset by default, and preserves the 90v
 maximum. Input expand/collapse passes its optional preservation flag so a user's drag
 position is retained while the panel width changes. Panels at 620px or less are marked
 narrow so `.rf-section-row` stacks vertically. Use it only
-for active single-step tools. Current choices are: Walkshed 460/460; Feature Area
-Analysis 520/900; Transit Propensity 520/520; Corridor Scoring 520/760; FTA Ratings
-520 with its Data Inputs workspace at 1000; Transit Coverage 540/760; and Transit
-Travelshed 540/640. Route Costing and Trip Builder intentionally retain their existing
-wide layouts; Ridership Forecasting, Title VI, GTFS, system modules, and the dormant
-Mitigation Needs prototype are not part of this pattern.
+for active single-step tools.
+
+**Every module in this pattern keeps BOTH widths at or under the 620px breakpoint, and
+keeps them EQUAL**, so the panel is a narrow, vertically stacked task panel in every
+state — inputs collapse to a one-line bar on a successful run and the results sit below
+them, never beside them — and the panel never resizes when you run it. A `results` width
+above 620 un-stacks the panel after a run, which is not the intent: that is a bug, not a
+per-module choice. Unequal widths are also a bug — they make the panel jump on run and on
+every inputs expand/collapse.
+
+Current choices: Walkshed 460; Transit Propensity 520; FTA Ratings 520 (plus its Data
+Inputs **workspace** at 1000 — the one deliberate wide mode, a file-upload +
+column-mapping surface rather than a results view); and Feature Area Analysis, Corridor
+Scoring, Transit Coverage, and Transit Travelshed all at **600**. Those four sit at 600
+rather than their settings columns' natural ~520 because each renders a multi-column
+results table: Feature Area Analysis's five columns need ~556px of content width, and at
+520 the table overflowed and forced the popup body to scroll sideways. 600 is simply the
+most room available without crossing the stacking breakpoint. Prefer widening toward 600
+over restyling a table when a results table does not fit.
+
+Route Costing and Trip Builder intentionally retain their existing wide layouts and are
+not part of this pattern; Ridership Forecasting, Title VI, GTFS, system modules, and the
+dormant Mitigation Needs prototype are not either.
 
 **Analysis input order:** Where controls exist, analysis popup inputs are ordered as
 selection, Census geography, buffer/study-area parameters (including apportionment),

@@ -902,17 +902,7 @@
       summary: inputsSummary(),
       onToggle: function (isCollapsed) {
         if (!App.popup || !App.popup.setLayoutMode) return;
-        // Panel width tracks whether there ARE results, not whether the user
-        // just collapsed or expanded the inputs — expanding after a run must
-        // keep the wide side-by-side layout (collapsed still gets the wide
-        // stacked "full-width bar above results" treatment via the
-        // .module-inputs-collapsed CSS rule; only pre-run has no results to
-        // show wide). Previously this read `isCollapsed && _hasResults`, which
-        // shrank the panel back to the narrow "setup" width on re-expand —
-        // narrow enough to trip the @container(max-width:620px) stacking rule
-        // even with a visible, expanded Inputs column, so results rendered
-        // below the Calculate Summary button instead of beside it.
-        App.popup.setLayoutMode(_hasResults ? "results" : "setup", true);
+        App.popup.setLayoutMode(isCollapsed && _hasResults ? "results" : "setup", true);
       }
     });
   }
@@ -959,7 +949,14 @@
     name: "Feature Area Analysis",
     enabled: true,
     popupWidth: 1000,
-    panelWidths: { setup: 520, results: 900 },
+    // ONE width for both modes, at 600 — under the 620px @container breakpoint,
+    // so the panel is a narrow, vertically stacked task panel in every state
+    // (inputs collapse to a one-line bar on a run; results sit below them) and
+    // it never resizes when you run it. 600 rather than the settings column's
+    // natural ~520 because the 5-column results table needs ~556px of content
+    // width; at 520 it overflowed and forced the popup body to scroll sideways.
+    // 600 is simply the most room available without un-stacking.
+    panelWidths: { setup: 600, results: 600 },
     popupHTML: "projects/buffer-summary-popup.html",
 
     init: function (core) {

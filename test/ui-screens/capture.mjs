@@ -116,15 +116,41 @@ const MODULE_IDS = [
 // panels, then widen only after a completed run or when FTA opens its upload
 // workspace. Values are deliberately asserted against the actual dialog,
 // rather than inferred from registration metadata.
+// Mirrors each module's own panelWidths declaration. Two invariants hold for
+// every entry (asserted below, and in CLAUDE.md's "Adaptive single-step panel
+// widths"): setup === results, and both <= 620 (the @container stacking
+// breakpoint). Together those keep each panel a narrow, vertically stacked task
+// panel that never resizes on run. `workspace` is exempt — FTA's Data Inputs is
+// a deliberately wide file-upload surface, not a results view.
 const ADAPTIVE_PANEL_WIDTHS = {
-  "buffer-summary": { setup: 520, results: 900 },
+  "buffer-summary": { setup: 600, results: 600 },
   "transit-propensity": { setup: 520, results: 520 },
-  "corridor-scoring": { setup: 520, results: 760 },
+  "corridor-scoring": { setup: 600, results: 600 },
   "fta-small-starts": { setup: 520, results: 520, workspace: 1000 },
   "walkshed": { setup: 460, results: 460 },
-  "transit-coverage": { setup: 540, results: 760 },
-  "transit-travelshed": { setup: 540, results: 640 }
+  "transit-coverage": { setup: 600, results: 600 },
+  "transit-travelshed": { setup: 600, results: 600 }
 };
+
+// Guard the invariants at load time, so a future width edit that would un-stack
+// a panel (results > 620) or make it jump on run (setup !== results) fails here
+// rather than silently shipping — that exact regression is what put the results
+// table beside the inputs instead of below them.
+const STACK_BREAKPOINT_PX = 620;
+for (const [id, w] of Object.entries(ADAPTIVE_PANEL_WIDTHS)) {
+  if (w.setup !== w.results) {
+    throw new Error(
+      "ADAPTIVE_PANEL_WIDTHS." + id + ": setup (" + w.setup + ") must equal results (" +
+      w.results + ") — unequal widths make the panel resize on run."
+    );
+  }
+  if (w.setup > STACK_BREAKPOINT_PX) {
+    throw new Error(
+      "ADAPTIVE_PANEL_WIDTHS." + id + ": " + w.setup + "px exceeds the " +
+      STACK_BREAKPOINT_PX + "px stacking breakpoint — the panel would un-stack."
+    );
+  }
+}
 const COLLAPSIBLE_INPUT_MODULE_IDS = new Set(Object.keys(ADAPTIVE_PANEL_WIDTHS));
 const DISPLAY_BUFFER_CONTROL_IDS = {
   "buffer-summary": ["#basUseDisplayBuffers", "#basBufferMiles"],

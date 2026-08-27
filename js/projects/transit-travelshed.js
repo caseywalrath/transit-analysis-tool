@@ -1348,7 +1348,11 @@
     name:       "Transit Travelshed",
     enabled:    true,
     popupWidth: 940,
-    panelWidths: { setup: 540, results: 640 },
+    // One width for both modes, under the 620px @container breakpoint — narrow,
+    // stacked task panel in every state, never resizes on run (see the fuller
+    // note in buffer-summary.js). The old results width of 640 cleared that
+    // breakpoint by 20px, which un-stacked the panel after a run.
+    panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/transit-travelshed-popup.html",
 
     init:    function (core) { init(core); },

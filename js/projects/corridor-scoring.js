@@ -1107,7 +1107,11 @@
     name:       "Corridor Scoring",
     enabled:    true,
     popupWidth: 1000,
-    panelWidths: { setup: 520, results: 760 },
+    // One width for both modes, under the 620px @container breakpoint — narrow,
+    // stacked task panel in every state, never resizes on run (see the fuller
+    // note in buffer-summary.js). 600 gives the ranked results table the most
+    // room available without un-stacking.
+    panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/corridor-scoring-popup.html",
 
     init:    function (core) { init(core); },
