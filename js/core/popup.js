@@ -14,6 +14,7 @@
   var _loadedModules = {};        // { moduleId: slotDOMNode } — per-module persistent body slot
   var _container = null;          // cached #module-popup element
   var _floatingWidgets = {};      // { widgetId: DOM element }
+  var _widgetPositions = {};      // { widgetId: {top, left} } — remembered drag position, survives remove+recreate
 
   // ---- Drag state ----
   var _dragging = false;
@@ -211,6 +212,59 @@
   // ---- Floating widgets ----
 
   /**
+   * Make a floating widget's header a drag handle, repositioning the widget
+   * (top/left, absolute within #map) as the pointer moves. Clamped to stay
+   * fully inside the map viewport. The final position is remembered by
+   * widgetId so a later removeFloatingWidget + showFloatingWidget (e.g. a
+   * module's Clear then re-run) restores where the user left it.
+   */
+  function _makeWidgetDraggable(widget, header, widgetId) {
+    var drag = null;
+
+    header.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      if (e.target.closest(".floating-widget-close")) return;
+      var mapEl = document.getElementById("map");
+      if (!mapEl) return;
+      var mapRect = mapEl.getBoundingClientRect();
+      var widgetRect = widget.getBoundingClientRect();
+      drag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startLeft: widgetRect.left - mapRect.left,
+        startTop: widgetRect.top - mapRect.top
+      };
+      header.setPointerCapture(e.pointerId);
+      header.classList.add("dragging");
+    });
+
+    header.addEventListener("pointermove", function (e) {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      var mapEl = document.getElementById("map");
+      if (!mapEl) return;
+      var mapRect = mapEl.getBoundingClientRect();
+      var maxLeft = Math.max(0, mapRect.width - widget.offsetWidth);
+      var maxTop = Math.max(0, mapRect.height - widget.offsetHeight);
+      var nl = Math.max(0, Math.min(maxLeft, drag.startLeft + (e.clientX - drag.startX)));
+      var nt = Math.max(0, Math.min(maxTop, drag.startTop + (e.clientY - drag.startY)));
+      widget.style.left = nl + "px";
+      widget.style.top = nt + "px";
+      widget.style.right = "auto";
+      widget.style.bottom = "auto";
+    });
+
+    function endDrag(e) {
+      if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+      header.classList.remove("dragging");
+      _widgetPositions[widgetId] = { top: widget.style.top, left: widget.style.left };
+      drag = null;
+    }
+    header.addEventListener("pointerup", endDrag);
+    header.addEventListener("pointercancel", endDrag);
+  }
+
+  /**
    * Show a floating widget over the map.
    * @param {string} widgetId — unique ID for this widget
    * @param {string} htmlFile — path to HTML fragment (fetched on first show)
@@ -230,20 +284,27 @@
     widget.className = "floating-widget";
     widget.setAttribute("data-widget-id", widgetId);
 
-    // Position
-    var pos = options.position || "bottom-left";
-    if (pos === "bottom-left") {
-      widget.style.bottom = "36px";
-      widget.style.left = "10px";
-    } else if (pos === "bottom-right") {
-      widget.style.bottom = "36px";
-      widget.style.right = "10px";
-    } else if (pos === "top-left") {
-      widget.style.top = "10px";
-      widget.style.left = "10px";
-    } else if (pos === "top-right") {
-      widget.style.top = "10px";
-      widget.style.right = "10px";
+    // Position — restore a remembered drag position for this widget id,
+    // else fall back to the requested anchor corner.
+    var saved = _widgetPositions[widgetId];
+    if (saved) {
+      widget.style.top = saved.top;
+      widget.style.left = saved.left;
+    } else {
+      var pos = options.position || "bottom-left";
+      if (pos === "bottom-left") {
+        widget.style.bottom = "36px";
+        widget.style.left = "10px";
+      } else if (pos === "bottom-right") {
+        widget.style.bottom = "36px";
+        widget.style.right = "10px";
+      } else if (pos === "top-left") {
+        widget.style.top = "10px";
+        widget.style.left = "10px";
+      } else if (pos === "top-right") {
+        widget.style.top = "10px";
+        widget.style.right = "10px";
+      }
     }
 
     if (options.width) widget.style.width = options.width + "px";
@@ -275,6 +336,12 @@
       closeBtn.addEventListener("click", function () {
         widget.style.display = "none";
       });
+    }
+
+    // Drag-to-reposition by the header, if one was built (requires a title)
+    var header = widget.querySelector(".floating-widget-header");
+    if (header) {
+      _makeWidgetDraggable(widget, header, widgetId);
     }
 
     // Append to map container (positioned absolutely within it)

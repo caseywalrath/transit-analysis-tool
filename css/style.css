@@ -2750,6 +2750,12 @@ code { font-family: var(--font-mono); }
   justify-content: space-between;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.floating-widget-header.dragging {
+  cursor: grabbing;
 }
 .floating-widget-title {
   font-weight: var(--weight-semibold);
