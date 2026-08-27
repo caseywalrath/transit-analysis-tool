@@ -22,6 +22,27 @@
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
 
+  // Per-geography detail retained from the last successful run (null until
+  // then). Populated during runSummary()'s existing fetch/aggregate loop —
+  // no additional fetches. Consumed by the choropleth map (Step 1.4) and its
+  // hover popup. Shape:
+  //   {
+  //     geoLevel, year, apportionByArea,
+  //     geos,            // full TIGERweb features (bg or tract per geoLevel)
+  //     clippedGeos,     // clipped-for-display set when apportioned, else null
+  //     fractions,       // Map<GEOID, frac> from App.computeGeoOverlapFractions
+  //     tractGeos,       // tractGeosForFallback, or null if no tract-fallback var was fetched
+  //     tractFractions,  // Map for tractGeos, or null
+  //     displayVars,     // user-checked codes, table order
+  //     perGeo,          // varCode -> { level: "geo"|"tract", values: Map<GEOID, number> }
+  //                      // (mandatory denominator vars are included too, keyed by code,
+  //                      // even though they get no table row)
+  //     perGeoParts,     // ratio varCode -> { num: Map, den: Map } (numerator/denominator
+  //                      // maps, for a hover popup showing the parts of a ratio)
+  //     denomVars        // varCode -> App.getDenominator(varCode) result, for hover %
+  //   }
+  var _lastGeoData = null;
+
   // Reusable warning icon for median variables.
   var WARN_ICON = '<span class="var-warn-icon" title="Median estimate \u2014 displayed as an area-weighted average of overlapping geographies\u2019 values. This is not a true median for the buffer area. Use with caution.">\u26A0</span>';
 
@@ -228,6 +249,8 @@
   // ---- Summary runner ----
 
   async function runSummary() {
+    _lastGeoData = null;
+
     var selectedVars = expandGroups(App.getSelectedVars());
     if (selectedVars.length === 0) {
       App.setStatus("No variables selected");
@@ -331,6 +354,17 @@
       return;
     }
 
+    // Retain per-geography detail for this run (choropleth map, Step 1.4).
+    // Populated below as the existing fetch/aggregate loop runs — no
+    // additional fetches happen anywhere in this function because of it.
+    _lastGeoData = {
+      geoLevel: geoLevel, year: year, apportionByArea: apportionByArea,
+      geos: null, clippedGeos: null, fractions: null,
+      tractGeos: null, tractFractions: null,
+      displayVars: displayVars.slice(),
+      perGeo: {}, perGeoParts: {}, denomVars: {}
+    };
+
     // Deduplicate ACS vars so each unique code is only fetched once
     var acsVarsUniq = [];
     var seenAcs = {};
@@ -378,10 +412,20 @@
     // Shared TIGERweb geometry fetch for all ACS variables
     var geos = null;
     var tractGeosForFallback = null;
+    var clippedGeos = null;
+    var fractions = null;
+    var tractFractions = null;
     if (acsVarsUniq.length > 0) {
       App.setStatus("Querying TIGERweb\u2026");
       progressEl.textContent = "Fetching census geometries\u2026";
       geos = await App.fetchTigerwebGeos(geoLevel, unionFeat);
+      _lastGeoData.geos = geos;
+
+      // Overlap fractions computed once per run (not per variable, as the
+      // inline version below this step did) \u2014 also needed by the
+      // choropleth hover popup's apportioned-share display (Step 1.4).
+      fractions = App.computeGeoOverlapFractions(unionFeat, geos, apportionByArea);
+      _lastGeoData.fractions = fractions;
 
       // When apportioning by area, clip each geo to the union so the map
       // display matches the math (same pattern as TPI's computeAreaFractions).
@@ -397,7 +441,9 @@
             });
           } catch (_) {}
         });
-        App.renderCensusOverlay(clippedForDisplay.length ? clippedForDisplay : geos);
+        clippedGeos = clippedForDisplay.length ? clippedForDisplay : geos;
+        _lastGeoData.clippedGeos = clippedGeos;
+        App.renderCensusOverlay(clippedGeos);
       } else {
         App.renderCensusOverlay(geos);
       }
@@ -426,6 +472,9 @@
               if (!tractGeosForFallback) {
                 progressEl.textContent = "Fetching tract geometries for tract-level variables\u2026";
                 tractGeosForFallback = await App.fetchTigerwebGeos("tract", unionFeat);
+                tractFractions = App.computeGeoOverlapFractions(unionFeat, tractGeosForFallback, apportionByArea);
+                _lastGeoData.tractGeos = tractGeosForFallback;
+                _lastGeoData.tractFractions = tractFractions;
               }
               fetchGeoLevel = "tract";
               fetchGeos = tractGeosForFallback;
@@ -436,14 +485,27 @@
               fetchGeoids = geoids;
             }
 
+            var fracsToUse = useTractFallback ? tractFractions : fractions;
+            var geoDataLevel = useTractFallback ? "tract" : "geo";
+
             var result;
             if (varMeta.agg === "ratio") {
               var numMap = await App.fetchACSValues(fetchGeoLevel, year, varMeta.numerator, fetchGeoids);
               var denMap = await App.fetchACSValues(fetchGeoLevel, year, varMeta.denominator, fetchGeoids);
-              var numAgg = App.aggregateWithinUnion(unionFeat, fetchGeos, numMap, "sum", { apportionByArea: apportionByArea });
-              var denAgg = App.aggregateWithinUnion(unionFeat, fetchGeos, denMap, "sum", { apportionByArea: apportionByArea });
+              var numAgg = App.aggregateWithinUnion(unionFeat, fetchGeos, numMap, "sum", { apportionByArea: apportionByArea, fractions: fracsToUse });
+              var denAgg = App.aggregateWithinUnion(unionFeat, fetchGeos, denMap, "sum", { apportionByArea: apportionByArea, fractions: fracsToUse });
               var ratioVal = (denAgg.value > 0) ? (numAgg.value / denAgg.value) : NaN;
               result = { value: ratioVal, used: numAgg.used };
+
+              // Per-geo derived ratio (num/den where den > 0), plus the raw
+              // parts, for the choropleth hover popup (Step 1.4).
+              var ratioMap = new Map();
+              numMap.forEach(function (nv, geoid) {
+                var dv = denMap.get(geoid);
+                if (dv != null && dv > 0) ratioMap.set(geoid, nv / dv);
+              });
+              _lastGeoData.perGeo[varCode] = { level: geoDataLevel, values: ratioMap };
+              _lastGeoData.perGeoParts[varCode] = { num: numMap, den: denMap };
             } else {
               var valueMap;
               if (varMeta.codes && varMeta.codes.length > 0) {
@@ -451,7 +513,8 @@
               } else {
                 valueMap = await App.fetchACSValues(fetchGeoLevel, year, varCode, fetchGeoids);
               }
-              result = App.aggregateWithinUnion(unionFeat, fetchGeos, valueMap, varMeta.agg, { apportionByArea: apportionByArea });
+              result = App.aggregateWithinUnion(unionFeat, fetchGeos, valueMap, varMeta.agg, { apportionByArea: apportionByArea, fractions: fracsToUse });
+              _lastGeoData.perGeo[varCode] = { level: geoDataLevel, values: valueMap };
             }
             updateRows(varCode, result, varMeta, useTractFallback);
           } catch (e) {
@@ -499,6 +562,7 @@
     for (var pi = 0; pi < allPctCodes.length; pi++) {
       var pCode = allPctCodes[pi];
       var pDenom = App.getDenominator(pCode);
+      if (pDenom) _lastGeoData.denomVars[pCode] = pDenom;
       var pRows = codeToRows[pCode] || [];
       var pct = null;
       if (pDenom && Number.isFinite(resultsMap[pCode])) {
