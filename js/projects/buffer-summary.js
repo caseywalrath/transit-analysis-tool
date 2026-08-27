@@ -21,10 +21,12 @@
   };
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
+  var _stale = false; // true when features/walksheds changed since the last run
 
-  // Currently selected #basMapVar value ("" = none / gray outline). Not part
-  // of _state yet (session persistence lands in Step 1.5) — kept so the
-  // choropleth selection survives a re-run within the same session.
+  // Currently selected #basMapVar value ("" = none / gray outline). Persisted
+  // via the cache collect/apply handlers below (Step 1.5) — geometry is not
+  // persisted, so the selection is only re-applied once a fresh run repopulates
+  // the dropdown (see populateBasMapVarDropdown()).
   var _mapVar = "";
 
   // Per-geography detail retained from the last successful run (null until
@@ -259,7 +261,7 @@
     var selectedVars = expandGroups(App.getSelectedVars());
     if (selectedVars.length === 0) {
       App.setStatus("No variables selected");
-      App.renderModuleState({ emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
+      App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
       return;
     }
 
@@ -284,7 +286,7 @@
       featureFilter.pointIndices.length + featureFilter.polygonIndices.length;
     if (!selectedCount) {
       App.setStatus("No features selected");
-      App.renderModuleState({ emptyEl: "basEmptyState", empty: true,
+      App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true,
         hint: { need: "Select at least one feature to analyze.", action: "Choose a point, line, route, or polygon above." } });
       return;
     }
@@ -319,7 +321,7 @@
     tbody.innerHTML = "";
     var tableEl = document.getElementById("basResultsTable");
     tableEl.style.display = "";
-    App.renderModuleState({ emptyEl: "basEmptyState" });   // hide onboarding hint
+    App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState" });   // hide onboarding hint + any prior pill
     var progressEl = document.getElementById("basResultsProgress");
     var notesEl = document.getElementById("basResultsNotes");
     notesEl.textContent = "";
@@ -356,6 +358,7 @@
       }
       progressEl.textContent = "";
       App.setStatus("No buffers");
+      setStatus(errMsg, "error");
       return;
     }
 
@@ -618,6 +621,11 @@
 
     App.setStatus("Done");
     if (typeof App.notifyProject === "function") await App.notifyProject();
+    // This run's own results didn't change — re-assert good state after the
+    // broadcast (notifyProject's update() pass would otherwise mark us stale
+    // again; same fix as walkshed.js's useAsStudyAreas()).
+    _stale = false;
+    setStatus("Done", "done");
   }
 
   // ---- Choropleth (Step 1.4) ----
@@ -851,6 +859,27 @@
     return codes;
   }
 
+  // ---- Status + stale helpers ----
+
+  function isPopupVisible() {
+    return !!(App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "buffer-summary");
+  }
+
+  // Local #basStatus pill — distinct from the global App.setStatus(...) toolbar
+  // line used throughout runSummary() for fetch-progress messages.
+  function setStatus(msg, kind) {
+    App.renderModuleState({
+      statusEl: "basStatus",
+      status: msg ? { kind: kind || "", message: msg } : null
+    });
+  }
+
+  function showStale() {
+    _stale = true;
+    if (!isPopupVisible()) return;
+    App.renderModuleState({ statusEl: "basStatus", stale: true, onRerun: runSummary });
+  }
+
   // ---- Collapsible inputs (shared helper) ----
 
   function inputsSummary() {
@@ -878,6 +907,41 @@
     });
   }
 
+  // ---- Clear (Clear / Reset Session lifecycle hook) ----
+
+  // Tears down every trace of a run: the choropleth layers/source, the
+  // legend widget, and the gray census overlay all live on the map and must
+  // be removed regardless of whether this popup is currently open. Popup-DOM
+  // resets (results table, map row, status pill) only run while visible —
+  // onOpen() rebuilds that DOM state correctly the next time the popup opens.
+  function clearAll() {
+    App.choropleth.remove("bas");
+    if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("bas-legend");
+    if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
+    _lastGeoData = null;
+    _hasResults = false;
+    _stale = false;
+    _mapVar = "";
+    if (!isPopupVisible()) return;
+    if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
+    renderInputs(false);
+    var tableEl = document.getElementById("basResultsTable");
+    if (tableEl) tableEl.style.display = "none";
+    var tbodyEl = document.getElementById("basResultsTbody");
+    if (tbodyEl) tbodyEl.innerHTML = "";
+    var notesEl = document.getElementById("basResultsNotes");
+    if (notesEl) notesEl.textContent = "";
+    var progressEl = document.getElementById("basResultsProgress");
+    if (progressEl) progressEl.textContent = "";
+    var mapRowEl = document.getElementById("basMapRow");
+    if (mapRowEl) mapRowEl.style.display = "none";
+    var mapVarEl = document.getElementById("basMapVar");
+    if (mapVarEl) mapVarEl.innerHTML = "";
+    var hideCb = document.getElementById("basHideChoropleth");
+    if (hideCb) hideCb.checked = false;
+    App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
+  }
+
   // ---- Module registration ----
 
   App.registerModule({
@@ -902,7 +966,9 @@
         try {
           await runSummary();
         } catch (e) {
-          App.setStatus("Error: " + (e && e.message ? e.message : e));
+          var msg = "Error: " + (e && e.message ? e.message : e);
+          App.setStatus(msg);
+          setStatus(msg, "error");
         }
       });
 
@@ -956,6 +1022,7 @@
       var mapVarEl = document.getElementById("basMapVar");
       if (mapVarEl) mapVarEl.addEventListener("change", function () {
         renderBasChoropleth(mapVarEl.value);
+        if (App.cache) App.cache.save();
       });
       var hideChoroplethEl = document.getElementById("basHideChoropleth");
       if (hideChoroplethEl) hideChoroplethEl.addEventListener("change", function () {
@@ -997,9 +1064,10 @@
         if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
         tableEl.style.display = "";
         App.renderModuleState({ emptyEl: "basEmptyState" });   // hide hint
+        if (_stale) showStale(); else setStatus("Done", "done");
       } else {
         if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
-        App.renderModuleState({ emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
+        App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
       }
     },
 
@@ -1011,11 +1079,14 @@
       if (document.getElementById("basFeatureChecklist")) _state.featureFilter = getFeatureFilter();
     },
 
+    clear: function () { clearAll(); },
+
     update: function (core) {
-      if (App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "buffer-summary") {
-        buildFeatureChecklist();
-      }
-      // no-op — summary is on-demand, not auto-updating
+      // Features/walksheds changed (this hook only fires via App.notifyProject()).
+      // Stale-but-visible with a Re-run banner is the suite convention — the
+      // choropleth and results table are left on the map/screen as-is.
+      if (isPopupVisible()) buildFeatureChecklist();
+      if (_hasResults) showStale();
     }
   });
 
@@ -1033,7 +1104,8 @@
           checkedVars: vars,
           featureFilter: document.getElementById("basFeatureChecklist") ? getFeatureFilter() : _state.featureFilter,
           bufferMiles: _state.bufferMiles,
-          useDisplayBuffers: _state.useDisplayBuffers
+          useDisplayBuffers: _state.useDisplayBuffers,
+          mapVar: _mapVar
         };
       },
       apply: function (data) {
@@ -1044,6 +1116,10 @@
         if (data.featureFilter) _state.featureFilter = data.featureFilter;
         if (Number.isFinite(data.bufferMiles)) _state.bufferMiles = data.bufferMiles;
         if (typeof data.useDisplayBuffers === "boolean") _state.useDisplayBuffers = data.useDisplayBuffers;
+        // Geometry/results are not persisted (see clearAll()/_lastGeoData) — this
+        // only restores which variable the dropdown will re-select on the next
+        // successful run (populateBasMapVarDropdown() reads _mapVar as "keep").
+        if (typeof data.mapVar === "string") _mapVar = data.mapVar;
         // DOM may not exist yet; applyStateToDOM() is called in onOpen()
       }
     });

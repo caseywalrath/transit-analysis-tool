@@ -47,6 +47,8 @@
       clear: callIf("clearOsmPois") }
   ];
   var ANALYSIS = [
+    { id: "bas-choropleth-fill", label: "Feature Area Analysis", moduleId: "buffer-summary",
+      layers: [{ id: "bas-choropleth-fill", op: "fill-opacity" }, { id: "bas-choropleth-line", op: "line-opacity" }] },
     { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity",
       layers: [{ id: "tpi-choropleth-fill", op: "fill-opacity" }, { id: "tpi-choropleth-line", op: "line-opacity" }] },
     { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring",
