@@ -71,9 +71,10 @@ css/
 js/
   app.js                    Startup, module registry, event wiring. Variable checkbox UI is built at runtime by buffer-summary.js from VAR_META in utils.js (no sidebar Data Inputs panel).
   core/
+    config.js               Third-party API keys (`App.CARTO_API_KEY`, `App.CENSUS_API_KEY`) + a `localStorage` per-browser CARTO override (`mat-carto-key`). Loads FIRST, before utils.js. **Everything in this file is public** — static site, no build step, public repo, GitHub Pages: values here are served verbatim to the browser and cannot be hidden. Only ever put public, rate-limited, read-only credentials here. See `docs/carto-api-key-plan.md`.
     utils.js                CSV parsing, number formatting, GEOID normalization, VAR_META (single source of truth — label, category, group, displayInChecklist, denominator), GROUP_INFO, getCheckboxGroups, getDenominator, getSelectedVars
     sidebar.js              Dormant legacy sidebar manager: addPanel, removePanel, toggle, render. `#sidebar-wrap` ships hidden and `App.sidebar.render()` is not called; current Data/Analysis entry points are toolbar menus and module popups.
-    map.js                  MapLibre GL map instance, basemap registry + switcher control, cursor management
+    map.js                  MapLibre GL map instance, basemap registry + switcher control, cursor management. CARTO basemaps require `App.CARTO_API_KEY` (appended as `?key=` to every `basemaps.cartocdn.com` tile URL once at init, so the initial style and `switchBasemap()` both read already-keyed URLs). With no key the three CARTO entries are filtered out of `BASEMAPS` and the default falls back to `esri-light-gray`, so a fork / exhausted quota / domain-locked local dev never renders a watermarked map.
     travelshed.js           Transit Travelshed pure calculation engine (`window.Travelshed`, same engine-namespace convention as `window.TPI`). No turf/DOM/Map/App state — plain JSON in/out so the golden harness loads it directly. `parseHHMMtoMin`, `selectActiveBand` (wrap-aware), `initialWait`/`transferWait` (capped-initial/uncapped-transfer wait model — see `docs/transit-travelshed-plan.md` Appendix A), `rideMinAtDistance` (runTime-priority), `sampleStopPositions`, `propagateRide` (both/forward/loop-wrap), `bandNodeSets` (cumulative per-budget node sets), and the core `computeArrivalTimes` (layered-flood arrival-time propagation: initial boardings from an origin flood, egress-merge into a shared node-time map, one generalized transfer round). `computeArrivalTimes` takes three OPTIONAL walk-leg cap inputs in minutes — `accessMaxMin` (origin-flood seed + round-0 walk), `transferMaxMin` (round ≥1 walk), `egressMaxMin` (the egress-merge walk) — null/undefined = uncapped, backward compatible (see `docs/transit-travelshed-v2-walk-caps-plan.md` §2.2); it also returns `alightings: [{stopKey, alightMin}]`, the best (minimum) alighting time per stopKey across all rounds, consumed by the module's cluster-union polygonization (§2.4). Everything needing turf or the road graph lives in `road-network.js` or `js/projects/transit-travelshed.js`.
     points.js               Points, user-defined buffers (default 0.5 mi), union polygon, point drag support
     lines.js                Line drawing (polylines with snap-to-close), line buffers (default 0.5 mi), rubber-band preview, vertex editing
@@ -157,9 +158,10 @@ Ridership_Forecast_Readme.md    User-facing documentation for the Ridership Fore
 Order matters because modules depend on earlier ones:
 
 ```
+config.js   (no deps — API keys; MUST be first so map.js/census.js see the keys at init)
 utils.js    (no deps)
 sidebar.js  (needs App namespace from utils.js)
-map.js      (creates App.map, basemap switcher, cursor handlers)
+map.js      (creates App.map, basemap switcher, cursor handlers; reads App.CARTO_API_KEY)
 travelshed.js (core block, no deps — turf/DOM/Map/App-free; defines window.Travelshed)
 points.js (needs App.map, turf)
 lines.js    (needs App.map, turf)
@@ -212,9 +214,15 @@ present-overlays.js     (needs App namespace and App.cache; loaded after modules
 Dormant compatibility API; current startup does not call `render()`. Panel config remains `{ id, title, html, collapsed (default false), order (default 100) }` if the sidebar is deliberately revived later.
 
 ### map.js
-`map` (MapLibre instance), `switchBasemap(basemapId)`, `getBasemaps()` (returns `[{id, name}]`), `getCurrentBasemapId()`
+`map` (MapLibre instance), `switchBasemap(basemapId)`, `getBasemaps()` (returns `[{id, name}]`), `getCurrentBasemapId()`, `getThemeBasemapId(isDark)`
 
 Basemap IDs: `"carto-light"` (default), `"carto-dark"`, `"carto-voyager"`, `"osm"`, `"satellite"`, `"esri-dark-gray"`, `"esri-light-gray"` (the last two are Esri Canvas raster basemaps — muted background, streets emphasized, minimal labels)
+
+**CARTO key + keyless fallback.** CARTO requires an API key on `basemaps.cartocdn.com` (unkeyed tiles are stamped "API KEY REQUIRED"). `App.CARTO_API_KEY` comes from `js/core/config.js` and is applied once at init to every CARTO tile URL, so both consumers — the initial style and `switchBasemap()` — read already-keyed URLs. Note those are **separate code paths**: the initial style is built directly from the registry, not via `switchBasemap`, so a key applied in only one place leaves the default basemap broken on load. When the key is empty the three CARTO entries are removed from `BASEMAPS` and the default becomes `"esri-light-gray"`; that is a supported state (fork, exhausted quota, or domain-locked local dev), not an error.
+
+**`getThemeBasemapId(isDark)`** returns the light/dark basemap for the active family — CARTO when keyed, Esri Canvas when not. Dark-mode callers in `app.js` **must** use it rather than hardcoding `"carto-light"`/`"carto-dark"`: those ids do not exist in the keyless path and `switchBasemap` silently returns on an unknown id, which would strand the map on the wrong-theme basemap.
+
+CARTO and OpenStreetMap attribution must stay visible on the CARTO basemaps — it is a license condition of the free tier.
 
 ### points.js
 `points` (Point array), `buffers` (Polygon array), `addPoint(lon, lat)`, `addPointWithOpts(lon, lat, opts)`, `rebuildBuffers(radiusMiles)`, `refreshBuffers()` (rebuild at the current radius — used by the Walkshed module), `movePoint(index, lng, lat)`, `removePoint(index)`, `clearPoints()`, `undoLastPoint()`, `duplicatePoint(index)`, `renderPointLayers()`, `bufferUnionPolygon()`, `getUnion()` (alias), `bboxStringFromFeature(feat)`

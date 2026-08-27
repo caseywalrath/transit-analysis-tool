@@ -1,7 +1,8 @@
 // js/core/map.js
 // Map initialization: basemap via MapLibre GL JS, basemap switcher control.
-// Depends on: maplibregl (loaded via CDN).
-// Exports: map, switchBasemap
+// Depends on: maplibregl (loaded via CDN), App.CARTO_API_KEY (config.js).
+// Exports: map, switchBasemap, getBasemaps, getCurrentBasemapId,
+//          getThemeBasemapId
 
 (function () {
   var App = window.App = window.App || {};
@@ -88,7 +89,68 @@
     }
   ];
 
-  var currentBasemapId = "carto-light";
+  // ---- CARTO API key ----
+  // CARTO requires a key on basemaps.cartocdn.com; unkeyed tiles come back
+  // stamped "API KEY REQUIRED". The key is applied to every CARTO tile URL
+  // once, here at init, so both consumers below — the initial style and
+  // switchBasemap() — read already-keyed URLs and neither has to remember.
+  //
+  // With no key we withdraw the CARTO basemaps entirely rather than render
+  // watermarked tiles. That is the state a fork, an exhausted quota, or (if
+  // the key turns out to be domain-locked) local development sees, so the
+  // remaining keyless basemaps have to carry the app on their own.
+  // See js/core/config.js and docs/carto-api-key-plan.md.
+
+  var CARTO_TILE_HOST = "basemaps.cartocdn.com";
+
+  // Themed pairs: CARTO when keyed, Esri Canvas when not. Esri Light/Dark
+  // Gray are the closest visual match among the keyless options.
+  var THEME_BASEMAPS = {
+    carto: { light: "carto-light",      dark: "carto-dark" },
+    esri:  { light: "esri-light-gray",  dark: "esri-dark-gray" }
+  };
+
+  function usesCartoTiles(basemap) {
+    for (var i = 0; i < basemap.tiles.length; i++) {
+      if (basemap.tiles[i].indexOf(CARTO_TILE_HOST) !== -1) return true;
+    }
+    return false;
+  }
+
+  function withCartoKey(tiles, key) {
+    return tiles.map(function (url) {
+      if (url.indexOf(CARTO_TILE_HOST) === -1) return url;
+      return url + (url.indexOf("?") === -1 ? "?" : "&") +
+             "key=" + encodeURIComponent(key);
+    });
+  }
+
+  var cartoKey = (App.CARTO_API_KEY || "").trim();
+  var cartoEnabled = !!cartoKey;
+
+  if (cartoEnabled) {
+    BASEMAPS.forEach(function (bm) {
+      if (usesCartoTiles(bm)) bm.tiles = withCartoKey(bm.tiles, cartoKey);
+    });
+  } else {
+    BASEMAPS = BASEMAPS.filter(function (bm) { return !usesCartoTiles(bm); });
+    console.info(
+      "[map] No CARTO API key set — CARTO basemaps disabled, using Esri. " +
+      "Set one in js/core/config.js, or run " +
+      'localStorage.setItem("mat-carto-key", "…") for this browser only.'
+    );
+  }
+
+  var THEME_FAMILY = cartoEnabled ? THEME_BASEMAPS.carto : THEME_BASEMAPS.esri;
+
+  function findBasemap(id) {
+    for (var i = 0; i < BASEMAPS.length; i++) {
+      if (BASEMAPS[i].id === id) return BASEMAPS[i];
+    }
+    return null;
+  }
+
+  var currentBasemapId = THEME_FAMILY.light;
 
   // ---- Municipal boundaries overlay state ----
 
@@ -97,9 +159,11 @@
   var MUNI_SOURCE = "muni-boundaries";
   var MUNI_LAYER  = "muni-boundaries-line";
 
-  // ---- Initial map style (Carto Light) ----
+  // ---- Initial map style ----
+  // Resolved by id, not BASEMAPS[0] — with no CARTO key the array no longer
+  // starts with the intended default.
 
-  var initialBasemap = BASEMAPS[0];
+  var initialBasemap = findBasemap(currentBasemapId) || BASEMAPS[0];
   var rasterStyle = {
     version: 8,
     sources: {
@@ -142,10 +206,7 @@
   function switchBasemap(basemapId) {
     if (basemapId === currentBasemapId) return;
 
-    var basemap = null;
-    for (var i = 0; i < BASEMAPS.length; i++) {
-      if (BASEMAPS[i].id === basemapId) { basemap = BASEMAPS[i]; break; }
-    }
+    var basemap = findBasemap(basemapId);
     if (!basemap) return;
 
     // Find the first data layer (the layer right above "carto")
@@ -369,6 +430,13 @@
     return BASEMAPS.map(function (b) { return { id: b.id, name: b.name }; });
   };
   App.getCurrentBasemapId = function () { return currentBasemapId; };
+  // Light/dark basemap for the current theme. Callers (the dark-mode toggle
+  // in app.js) must not hardcode "carto-light"/"carto-dark" — those ids do
+  // not exist when there is no CARTO key, and switchBasemap would silently
+  // no-op, stranding the map on the wrong-theme basemap.
+  App.getThemeBasemapId = function (isDark) {
+    return isDark ? THEME_FAMILY.dark : THEME_FAMILY.light;
+  };
   App.toggleMuniBoundaries = toggleMuniBoundaries;
   App.setMuniBoundariesLayerVisible = function (visible) {
     var LAYER = "muni-boundaries-line";
