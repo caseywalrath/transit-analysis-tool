@@ -22,6 +22,11 @@
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
 
+  // Currently selected #basMapVar value ("" = none / gray outline). Not part
+  // of _state yet (session persistence lands in Step 1.5) — kept so the
+  // choropleth selection survives a re-run within the same session.
+  var _mapVar = "";
+
   // Per-geography detail retained from the last successful run (null until
   // then). Populated during runSummary()'s existing fetch/aggregate loop —
   // no additional fetches. Consumed by the choropleth map (Step 1.4) and its
@@ -609,8 +614,213 @@
     renderInputs(true);
     if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
 
+    populateBasMapVarDropdown();
+
     App.setStatus("Done");
     if (typeof App.notifyProject === "function") await App.notifyProject();
+  }
+
+  // ---- Choropleth (Step 1.4) ----
+
+  // Per-geography percent, mirroring the aggregate percent-column pass
+  // (above) but evaluated at a single GEOID using the retained perGeo maps.
+  // Returns null whenever the denominator doesn't resolve at this GEOID —
+  // including the case where a tract-only variable's own per-geo map (tract
+  // GEOIDs) is checked against a non-tract-only denominator's map (bg
+  // GEOIDs): the key lookup simply misses, which is the correct "doesn't
+  // resolve per-geo" outcome rather than a special case to detect.
+  function perGeoPctValue(varCode, geoid) {
+    var pDenom = _lastGeoData.denomVars[varCode];
+    if (!pDenom) return null;
+    var numEntry = _lastGeoData.perGeo[varCode];
+    if (!numEntry) return null;
+    var numVal = numEntry.values.get(geoid);
+    if (typeof numVal !== "number" || !Number.isFinite(numVal)) return null;
+
+    var denVal;
+    if (pDenom.type === "var") {
+      var denEntry = _lastGeoData.perGeo[pDenom.code];
+      if (!denEntry) return null;
+      denVal = denEntry.values.get(geoid);
+    } else {
+      denVal = 0;
+      for (var i = 0; i < pDenom.codes.length; i++) {
+        var ge = _lastGeoData.perGeo[pDenom.codes[i]];
+        if (!ge) return null;
+        var gv = ge.values.get(geoid);
+        if (typeof gv !== "number" || !Number.isFinite(gv)) return null;
+        denVal += gv;
+      }
+    }
+    if (typeof denVal !== "number" || !Number.isFinite(denVal) || denVal <= 0) return null;
+    return (numVal / denVal) * 100;
+  }
+
+  // Hover popup for the "bas" choropleth. `props.payload` is a JSON string
+  // built in renderBasChoropleth() (TPI's stringify-a-nested-object pattern,
+  // transit-propensity.js:693) so the source-of-truth formatting lives in one
+  // place rather than being re-derived on every mousemove.
+  function basHoverHTML(props) {
+    if (!props || !props.payload) return null;
+    var payload;
+    try { payload = JSON.parse(props.payload); } catch (_) { return null; }
+    if (!payload) return null;
+
+    var html = '<div style="font-size:12px;line-height:1.4;">';
+    html += "<b>GEOID:</b> " + escapeHtml(props.GEOID || "—") + "<br>";
+    html += "<b>" + escapeHtml(payload.varLabel) + ":</b> " + escapeHtml(payload.valueFmt);
+    var extras = [];
+    if (payload.pctFmt) extras.push(escapeHtml(payload.pctFmt));
+    if (payload.apportionedFmt) extras.push("apportioned share: " + escapeHtml(payload.apportionedFmt));
+    if (extras.length) html += " · " + extras.join(" · ");
+    html += "<br>";
+
+    if (payload.others && payload.others.length) {
+      html += '<span style="color:#666;font-size:11px;">';
+      for (var i = 0; i < payload.others.length; i++) {
+        html += escapeHtml(payload.others[i].label) + ": " + escapeHtml(payload.others[i].valueFmt) + "<br>";
+      }
+      if (payload.moreCount) html += "… " + payload.moreCount + " more<br>";
+      html += "</span>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  // varCode === "" removes the choropleth and falls back to the plain gray
+  // "geographies analyzed" overlay. Otherwise builds one feature per
+  // geography (whole-geography values from _lastGeoData.perGeo — clipped
+  // geometry, uncut values, the settled design decision) and renders through
+  // the shared App.choropleth engine.
+  function renderBasChoropleth(varCode) {
+    _mapVar = varCode || "";
+    var sel = document.getElementById("basMapVar");
+    if (sel && sel.value !== _mapVar) sel.value = _mapVar;
+
+    if (!_mapVar) {
+      App.choropleth.remove("bas");
+      if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("bas-legend");
+      if (_lastGeoData) {
+        var overlayGeos = _lastGeoData.apportionByArea
+          ? (_lastGeoData.clippedGeos || _lastGeoData.geos)
+          : _lastGeoData.geos;
+        if (overlayGeos) App.renderCensusOverlay(overlayGeos);
+      }
+      return;
+    }
+
+    if (!_lastGeoData) return;
+    var entry = _lastGeoData.perGeo[_mapVar];
+    if (!entry) return;
+    var meta = App.getMeta(_mapVar);
+
+    var geomSet = (entry.level === "tract")
+      ? _lastGeoData.tractGeos
+      : (_lastGeoData.apportionByArea ? (_lastGeoData.clippedGeos || _lastGeoData.geos) : _lastGeoData.geos);
+    var fracSet = (entry.level === "tract") ? _lastGeoData.tractFractions : _lastGeoData.fractions;
+    if (!geomSet) return;
+
+    var features = [];
+    for (var gi = 0; gi < geomSet.length; gi++) {
+      var geo = geomSet[gi];
+      var geoid = geo.properties && geo.properties.GEOID;
+      if (!geoid) continue;
+      var raw = entry.values.get(geoid);
+      var value = (typeof raw === "number" && Number.isFinite(raw)) ? raw : null;
+
+      var payload = { varLabel: meta.label || _mapVar, valueFmt: App.formatValue(value, meta) };
+
+      var frac = fracSet ? fracSet.get(geoid) : null;
+      if (typeof frac === "number" && Number.isFinite(frac)) {
+        if (_lastGeoData.apportionByArea && value !== null) {
+          payload.apportionedFmt = App.formatValue(value * frac, meta);
+        }
+      }
+
+      var pctVal = perGeoPctValue(_mapVar, geoid);
+      if (pctVal !== null) payload.pctFmt = pctVal.toFixed(1) + "%";
+
+      var others = [];
+      for (var di = 0; di < _lastGeoData.displayVars.length; di++) {
+        var oCode = _lastGeoData.displayVars[di];
+        if (oCode === _mapVar) continue;
+        var oEntry = _lastGeoData.perGeo[oCode];
+        if (!oEntry) continue;
+        var oRaw = oEntry.values.get(geoid);
+        if (typeof oRaw !== "number" || !Number.isFinite(oRaw)) continue;
+        var oMeta = App.getMeta(oCode);
+        others.push({ label: oMeta.label || oCode, valueFmt: App.formatValue(oRaw, oMeta) });
+      }
+      if (others.length > 10) {
+        payload.moreCount = others.length - 10;
+        others = others.slice(0, 10);
+      }
+      payload.others = others;
+
+      features.push({
+        type: "Feature",
+        properties: { GEOID: geoid, value: value, payload: JSON.stringify(payload) },
+        geometry: geo.geometry
+      });
+    }
+
+    var renderResult = App.choropleth.render({
+      id: "bas", method: "quantile", classes: 5, ramp: "blues",
+      valueProp: "value", features: features, hoverHTML: basHoverHTML, beforeLayer: "buffers-fill"
+    });
+    if (!renderResult) return;
+
+    // The gray overlay would otherwise sit under the choropleth.
+    if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
+
+    var hideCb = document.getElementById("basHideChoropleth");
+    if (hideCb) hideCb.checked = false;
+    App.choropleth.setVisible("bas", true);
+
+    if (App.popup && App.popup.showFloatingWidget) {
+      App.popup.showFloatingWidget("bas-legend", "projects/choropleth-legend.html", {
+        position: "bottom-left", width: 190, title: "Map Legend"
+      }).then(function () {
+        var widgetEl = document.querySelector('.floating-widget[data-widget-id="bas-legend"]');
+        if (!widgetEl) return;
+        var labels = App.choropleth.formatBreakLabels(renderResult.breaks, renderResult.min, renderResult.max,
+          function (v) { return App.formatValue(v, meta); });
+        App.choropleth.fillLegend(widgetEl, {
+          title: meta.label,
+          labels: labels,
+          colors: renderResult.colors,
+          note: "Classes: quantile (5). Values are whole-geography estimates."
+        });
+      });
+    }
+  }
+
+  // Populates #basMapVar from _lastGeoData.displayVars after a successful
+  // run. LODES codes are skipped in Phase 1 (Step 2.3 adds them). The
+  // previous selection is kept when the variable is still present in this
+  // run's results; otherwise falls back to "None".
+  function populateBasMapVarDropdown() {
+    var sel = document.getElementById("basMapVar");
+    var rowEl = document.getElementById("basMapRow");
+    if (!sel || !rowEl || !_lastGeoData) return;
+
+    var options = ['<option value="">— None (gray outline) —</option>'];
+    var validCodes = {};
+    for (var i = 0; i < _lastGeoData.displayVars.length; i++) {
+      var code = _lastGeoData.displayVars[i];
+      var meta = App.getMeta(code);
+      if (meta.source === "LODES") continue;
+      var entry = _lastGeoData.perGeo[code];
+      if (!entry) continue;
+      validCodes[code] = true;
+      var label = meta.label + (entry.level === "tract" ? " (tract level)" : "");
+      options.push('<option value="' + escapeHtml(code) + '">' + escapeHtml(label) + '</option>');
+    }
+    sel.innerHTML = options.join("");
+    rowEl.style.display = "";
+
+    var keep = validCodes[_mapVar] ? _mapVar : "";
+    renderBasChoropleth(keep);
   }
 
   // ---- Apply state to popup DOM ----
@@ -741,6 +951,23 @@
         syncBufferControl();
         if (App.cache) App.cache.save();
         renderInputs();
+      });
+
+      var mapVarEl = document.getElementById("basMapVar");
+      if (mapVarEl) mapVarEl.addEventListener("change", function () {
+        renderBasChoropleth(mapVarEl.value);
+      });
+      var hideChoroplethEl = document.getElementById("basHideChoropleth");
+      if (hideChoroplethEl) hideChoroplethEl.addEventListener("change", function () {
+        App.choropleth.setVisible("bas", !hideChoroplethEl.checked);
+        if (hideChoroplethEl.checked) {
+          if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("bas-legend");
+        } else if (_mapVar) {
+          if (App.popup && App.popup.showFloatingWidget) {
+            App.popup.showFloatingWidget("bas-legend", "projects/choropleth-legend.html",
+              { position: "bottom-left", width: 190, title: "Map Legend" });
+          }
+        }
       });
 
       // Auto-save on checkbox change
