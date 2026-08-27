@@ -693,11 +693,15 @@
       if (options.length) showContextMenu(e.clientX, e.clientY, options);
     });
 
-    // DOM order: [eye] [type-icon] [name] [dup?] [gear] [trash]
-    div.appendChild(eyeBtn);
+    // DOM order: [type-icon] [name] [dup?] [eye] [gear] [trash]
+    // eye/gear/trash are all position:absolute overlay chips (see .fp-item
+    // > .fp-visibility-btn / .fp-gear-btn / .fp-del-btn in style.css) so none
+    // of them reserve flow space — the type icon and name get the full row
+    // width until hover reveals the cluster on the right.
     div.appendChild(typeIcon);
     div.appendChild(input);
     if (dupBtn) div.appendChild(dupBtn);
+    div.appendChild(eyeBtn);
     div.appendChild(gearBtn);
     div.appendChild(trashBtn);
     return div;
@@ -798,7 +802,9 @@
     toggle.setAttribute("aria-expanded", "false");
     header.appendChild(toggle);
 
-    // Group-level visibility eye
+    // Group-level visibility eye — appended later (after the name), as a
+    // position:absolute overlay chip alongside the trash button, so it
+    // doesn't reserve flow space and the swatch/name can shift left.
     var allHidden = items.every(function (it) { return !!it.feature.properties.hidden; });
     var groupEye = document.createElement("button");
     groupEye.className = "fp-visibility-btn" + (allHidden ? " fp-eye-off" : "");
@@ -817,7 +823,6 @@
       if (App.cache && typeof App.cache.save === "function") App.cache.save();
       Object.keys(typesChanged).forEach(function (t) { rerenderForType(t); });
     });
-    header.appendChild(groupEye);
 
     // Color swatch — applies color to all features in the group
     var firstColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
@@ -882,6 +887,8 @@
       });
     });
     header.appendChild(nameSpan);
+
+    header.appendChild(groupEye);
 
     // Group delete button
     var groupTrashBtn = document.createElement("button");

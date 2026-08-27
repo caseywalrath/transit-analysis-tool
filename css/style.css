@@ -1991,6 +1991,7 @@ input.fp-attr-input[type="number"] {
 .fp-group-header {
   display: flex;
   align-items: center;
+  position: relative;
   padding: 2px 0;
   gap: 2px;
   cursor: pointer;
@@ -2039,17 +2040,32 @@ input.fp-attr-input[type="number"] {
   opacity: 0;
   transition: opacity 0.15s;
 }
-.fp-item:hover .fp-visibility-btn { opacity: 0.7; }
-.fp-visibility-btn:hover { opacity: 1 !important; }
+/* Row + group-header eye buttons float as overlay chips, same reasoning as
+   .fp-gear-btn / .fp-del-btn above — out of flow so they don't reserve
+   space while hidden, letting the swatch/color icon and name shift left
+   and use the full row width. Sits left of the gear icon on rows (which
+   have no gear icon, groups just use the same right offset as .fp-del-btn
+   plus one icon-width). */
+.fp-item > .fp-visibility-btn,
+.fp-group-header > .fp-visibility-btn {
+  position: absolute;
+  right: 48px;
+  z-index: 1;
+  background: var(--bg);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+.fp-group-header > .fp-visibility-btn { right: 24px; }
+.fp-item:hover .fp-visibility-btn,
+.fp-group-header:hover .fp-visibility-btn { opacity: 0.92; pointer-events: auto; }
+.fp-visibility-btn:hover { opacity: 1 !important; pointer-events: auto; }
 .fp-visibility-btn:focus-visible,
 .fp-dup-btn:focus-visible,
 .fp-gear-btn:focus-visible,
-.fp-del-btn:focus-visible { opacity: 1; }
-.fp-visibility-btn.fp-eye-off { opacity: 1; color: var(--text-disabled); }
+.fp-del-btn:focus-visible { opacity: 1; pointer-events: auto; }
+.fp-visibility-btn.fp-eye-off { opacity: 1; color: var(--text-disabled); pointer-events: auto; }
 .fp-item.fp-item-hidden { opacity: 0.5; }
-.fp-group-header .fp-visibility-btn { opacity: 0; }
-.fp-group-header:hover .fp-visibility-btn { opacity: 0.7; }
-.fp-group-header .fp-visibility-btn.fp-eye-off { opacity: 1; }
 
 /* Row-level delete button */
 .fp-del-btn {
@@ -2066,7 +2082,8 @@ input.fp-attr-input[type="number"] {
   opacity: 0;
   transition: opacity 0.15s, color 0.15s;
 }
-.fp-item > .fp-del-btn {
+.fp-item > .fp-del-btn,
+.fp-group-header > .fp-del-btn {
   position: absolute;
   right: 0;
   z-index: 1;
@@ -2078,11 +2095,11 @@ input.fp-attr-input[type="number"] {
   box-shadow: 0 0 0 1px var(--border);
   pointer-events: none;
 }
-.fp-item:hover > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
+.fp-item:hover > .fp-del-btn,
+.fp-group-header:hover .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 .fp-del-btn:hover { opacity: 1 !important; color: var(--danger); }
 .fp-item:focus-within .fp-gear-btn,
 .fp-item:focus-within > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
-.fp-group-header:hover .fp-del-btn { opacity: 0.7; }
 
 /* Row-level delete confirmation strip */
 .fp-delete-confirm {
