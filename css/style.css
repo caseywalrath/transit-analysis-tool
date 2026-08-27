@@ -2577,9 +2577,22 @@ code { font-family: var(--font-mono); }
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding-right: 24px;
+  /* #module-popup overlays the whole viewport (it is a sibling of #main-content,
+     not of #feature-panel, so it can't just dock inside the map column) —
+     clear the 208px feature panel + its 1px border plus the original 24px
+     gutter so a freshly opened/re-docked panel doesn't rest underneath it. */
+  padding-right: 233px;
   box-sizing: border-box;
   pointer-events: none;
+}
+/* The feature panel collapses to a 24px rail; give the popup back the
+   original close-to-the-edge gutter rather than leaving a large empty gap. */
+#app:has(#feature-panel.fp-collapsed) .module-popup {
+  padding-right: 24px;
+}
+/* Present mode hides the feature panel outright — same gutter reset. */
+body.present-mode .module-popup {
+  padding-right: 24px;
 }
 .module-popup-dialog {
   position: relative;
