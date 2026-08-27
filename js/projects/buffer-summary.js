@@ -902,7 +902,17 @@
       summary: inputsSummary(),
       onToggle: function (isCollapsed) {
         if (!App.popup || !App.popup.setLayoutMode) return;
-        App.popup.setLayoutMode(isCollapsed && _hasResults ? "results" : "setup", true);
+        // Panel width tracks whether there ARE results, not whether the user
+        // just collapsed or expanded the inputs — expanding after a run must
+        // keep the wide side-by-side layout (collapsed still gets the wide
+        // stacked "full-width bar above results" treatment via the
+        // .module-inputs-collapsed CSS rule; only pre-run has no results to
+        // show wide). Previously this read `isCollapsed && _hasResults`, which
+        // shrank the panel back to the narrow "setup" width on re-expand —
+        // narrow enough to trip the @container(max-width:620px) stacking rule
+        // even with a visible, expanded Inputs column, so results rendered
+        // below the Calculate Summary button instead of beside it.
+        App.popup.setLayoutMode(_hasResults ? "results" : "setup", true);
       }
     });
   }
