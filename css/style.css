@@ -2064,7 +2064,12 @@ input.fp-attr-input[type="number"] {
 .fp-dup-btn:focus-visible,
 .fp-gear-btn:focus-visible,
 .fp-del-btn:focus-visible { opacity: 1; pointer-events: auto; }
-.fp-visibility-btn.fp-eye-off { opacity: 1; color: var(--text-disabled); pointer-events: auto; }
+/* Muted "off" color only — no permanent opacity/pointer-events override,
+   so a hidden feature's eye stays hover-only just like Settings/Delete.
+   The dimmed row (.fp-item-hidden below) is what signals hidden state at
+   rest; a hardcoded-visible icon here would otherwise sit permanently on
+   top of the name text now that this button is an absolute overlay. */
+.fp-visibility-btn.fp-eye-off { color: var(--text-disabled); }
 .fp-item.fp-item-hidden { opacity: 0.5; }
 
 /* Row-level delete button */
