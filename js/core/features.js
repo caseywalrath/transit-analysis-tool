@@ -34,6 +34,7 @@
   var _sortMode   = "name";
   var _sortAsc    = true;
   var _showGroups = true;
+  var _hiddenLast = false;
 
   var TYPE_LABELS_LOCAL = {
     point: "Point", line: "Line",
@@ -693,11 +694,15 @@
       if (options.length) showContextMenu(e.clientX, e.clientY, options);
     });
 
-    // DOM order: [eye] [type-icon] [name] [dup?] [gear] [trash]
-    div.appendChild(eyeBtn);
+    // DOM order: [type-icon] [name] [dup?] [eye] [gear] [trash]
+    // eye/gear/trash are all position:absolute overlay chips (see .fp-item
+    // > .fp-visibility-btn / .fp-gear-btn / .fp-del-btn in style.css) so none
+    // of them reserve flow space — the type icon and name get the full row
+    // width until hover reveals the cluster on the right.
     div.appendChild(typeIcon);
     div.appendChild(input);
     if (dupBtn) div.appendChild(dupBtn);
+    div.appendChild(eyeBtn);
     div.appendChild(gearBtn);
     div.appendChild(trashBtn);
     return div;
@@ -798,7 +803,9 @@
     toggle.setAttribute("aria-expanded", "false");
     header.appendChild(toggle);
 
-    // Group-level visibility eye
+    // Group-level visibility eye — appended later (after the name), as a
+    // position:absolute overlay chip alongside the trash button, so it
+    // doesn't reserve flow space and the swatch/name can shift left.
     var allHidden = items.every(function (it) { return !!it.feature.properties.hidden; });
     var groupEye = document.createElement("button");
     groupEye.className = "fp-visibility-btn" + (allHidden ? " fp-eye-off" : "");
@@ -817,7 +824,6 @@
       if (App.cache && typeof App.cache.save === "function") App.cache.save();
       Object.keys(typesChanged).forEach(function (t) { rerenderForType(t); });
     });
-    header.appendChild(groupEye);
 
     // Color swatch — applies color to all features in the group
     var firstColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
@@ -882,6 +888,8 @@
       });
     });
     header.appendChild(nameSpan);
+
+    header.appendChild(groupEye);
 
     // Group delete button
     var groupTrashBtn = document.createElement("button");
@@ -1019,6 +1027,14 @@
   }
 
   function compareFeatureItems(a, b) {
+    // Hidden-last sinks hidden features to the bottom ahead of everything
+    // else, and stays sunk regardless of _sortAsc — same reasoning as the
+    // missing-values rule below (a toggle for "out of the way," not a
+    // reversible sort key).
+    if (_hiddenLast) {
+      var ah = !!a.feature.properties.hidden, bh = !!b.feature.properties.hidden;
+      if (ah !== bh) return ah ? 1 : -1;
+    }
     var av = sortValueForMode(a, _sortMode);
     var bv = sortValueForMode(b, _sortMode);
     if (av.has !== bv.has) return av.has ? -1 : 1;
@@ -1092,7 +1108,18 @@
     }
 
     var groupNames = Object.keys(groups);
-    groupNames.sort(naturalSort);
+    if (_hiddenLast) {
+      // A group that's entirely hidden sinks below every other group, same
+      // "out of the way" rule compareFeatureItems applies to individual rows.
+      groupNames.sort(function (a, b) {
+        var ah = groups[a].every(function (it) { return !!it.feature.properties.hidden; });
+        var bh = groups[b].every(function (it) { return !!it.feature.properties.hidden; });
+        if (ah !== bh) return ah ? 1 : -1;
+        return naturalSort(a, b);
+      });
+    } else {
+      groupNames.sort(naturalSort);
+    }
 
     // Sort items within each group and ungrouped by the active sort mode
     groupNames.forEach(function (gn) { sortFeatureItems(groups[gn]); });
@@ -1330,6 +1357,12 @@
     refreshFeaturePanel();
   }
 
+  function setHiddenLast(v) {
+    _hiddenLast = v;
+    saveFeatureSortState();
+    refreshFeaturePanel();
+  }
+
   function buildSortMenuOptions() {
     var options = [];
     options.push({ divider: true, label: "Sort by" });
@@ -1351,6 +1384,11 @@
       checked: _showGroups,
       action: function () { setShowGroups(!_showGroups); }
     });
+    options.push({
+      label: "Hidden features to bottom",
+      checked: _hiddenLast,
+      action: function () { setHiddenLast(!_hiddenLast); }
+    });
     return options;
   }
 
@@ -1366,7 +1404,7 @@
   // Session-cache read/write hooks for the Features list sort state
   // (mirrors the featureSettings pattern — see js/core/cache.js).
   App.getFeatureSortState = function () {
-    return { mode: _sortMode, asc: _sortAsc, showGroups: _showGroups };
+    return { mode: _sortMode, asc: _sortAsc, showGroups: _showGroups, hiddenLast: _hiddenLast };
   };
   App.restoreFeatureSortState = function (s) {
     if (!s) return;
@@ -1375,6 +1413,7 @@
     }
     if (typeof s.asc === "boolean") _sortAsc = s.asc;
     if (typeof s.showGroups === "boolean") _showGroups = s.showGroups;
+    if (typeof s.hiddenLast === "boolean") _hiddenLast = s.hiddenLast;
   };
 
   // Wire the Features | Layers tab bar
