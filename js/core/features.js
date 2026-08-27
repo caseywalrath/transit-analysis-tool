@@ -34,6 +34,7 @@
   var _sortMode   = "name";
   var _sortAsc    = true;
   var _showGroups = true;
+  var _hiddenLast = false;
 
   var TYPE_LABELS_LOCAL = {
     point: "Point", line: "Line",
@@ -1026,6 +1027,14 @@
   }
 
   function compareFeatureItems(a, b) {
+    // Hidden-last sinks hidden features to the bottom ahead of everything
+    // else, and stays sunk regardless of _sortAsc — same reasoning as the
+    // missing-values rule below (a toggle for "out of the way," not a
+    // reversible sort key).
+    if (_hiddenLast) {
+      var ah = !!a.feature.properties.hidden, bh = !!b.feature.properties.hidden;
+      if (ah !== bh) return ah ? 1 : -1;
+    }
     var av = sortValueForMode(a, _sortMode);
     var bv = sortValueForMode(b, _sortMode);
     if (av.has !== bv.has) return av.has ? -1 : 1;
@@ -1099,7 +1108,18 @@
     }
 
     var groupNames = Object.keys(groups);
-    groupNames.sort(naturalSort);
+    if (_hiddenLast) {
+      // A group that's entirely hidden sinks below every other group, same
+      // "out of the way" rule compareFeatureItems applies to individual rows.
+      groupNames.sort(function (a, b) {
+        var ah = groups[a].every(function (it) { return !!it.feature.properties.hidden; });
+        var bh = groups[b].every(function (it) { return !!it.feature.properties.hidden; });
+        if (ah !== bh) return ah ? 1 : -1;
+        return naturalSort(a, b);
+      });
+    } else {
+      groupNames.sort(naturalSort);
+    }
 
     // Sort items within each group and ungrouped by the active sort mode
     groupNames.forEach(function (gn) { sortFeatureItems(groups[gn]); });
@@ -1337,6 +1357,12 @@
     refreshFeaturePanel();
   }
 
+  function setHiddenLast(v) {
+    _hiddenLast = v;
+    saveFeatureSortState();
+    refreshFeaturePanel();
+  }
+
   function buildSortMenuOptions() {
     var options = [];
     options.push({ divider: true, label: "Sort by" });
@@ -1358,6 +1384,11 @@
       checked: _showGroups,
       action: function () { setShowGroups(!_showGroups); }
     });
+    options.push({
+      label: "Hidden features to bottom",
+      checked: _hiddenLast,
+      action: function () { setHiddenLast(!_hiddenLast); }
+    });
     return options;
   }
 
@@ -1373,7 +1404,7 @@
   // Session-cache read/write hooks for the Features list sort state
   // (mirrors the featureSettings pattern — see js/core/cache.js).
   App.getFeatureSortState = function () {
-    return { mode: _sortMode, asc: _sortAsc, showGroups: _showGroups };
+    return { mode: _sortMode, asc: _sortAsc, showGroups: _showGroups, hiddenLast: _hiddenLast };
   };
   App.restoreFeatureSortState = function (s) {
     if (!s) return;
@@ -1382,6 +1413,7 @@
     }
     if (typeof s.asc === "boolean") _sortAsc = s.asc;
     if (typeof s.showGroups === "boolean") _showGroups = s.showGroups;
+    if (typeof s.hiddenLast === "boolean") _hiddenLast = s.hiddenLast;
   };
 
   // Wire the Features | Layers tab bar

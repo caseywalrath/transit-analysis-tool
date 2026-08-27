@@ -84,6 +84,7 @@
       featureSortMode:   _fss ? _fss.mode       : "name",
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
+      featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -175,7 +176,8 @@
       App.restoreFeatureSortState({
         mode: state.featureSortMode,
         asc: state.featureSortAsc,
-        showGroups: state.featureShowGroups
+        showGroups: state.featureShowGroups,
+        hiddenLast: state.featureSortHiddenLast
       });
     }
 
