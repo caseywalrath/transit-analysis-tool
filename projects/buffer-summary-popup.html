@@ -82,10 +82,17 @@
       <div id="basMapRow" class="form-field" style="display:none;">
         <label class="tiny">Map by geography</label>
         <select id="basMapVar" class="rf-select"></select>
+        <label class="tiny u-mt-2">Shade by</label>
+        <select id="basMapNorm" class="rf-select">
+          <option value="count">Count (raw value)</option>
+          <option value="percent">Percent of denominator</option>
+          <option value="density">Density (per sq mi)</option>
+        </select>
         <label class="tpi-toggle-row u-mt-2">
           <input type="checkbox" id="basHideChoropleth">
           <span class="tiny">Hide choropleth</span>
         </label>
+        <button type="button" id="basExportGeoCsv" class="rf-btn-sm u-mt-2" disabled>Export by geography (CSV)</button>
       </div>
 
       <table id="basResultsTable" class="results-table" style="display:none;">

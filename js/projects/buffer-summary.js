@@ -29,6 +29,11 @@
   // the dropdown (see populateBasMapVarDropdown()).
   var _mapVar = "";
 
+  // Currently selected #basMapNorm value: "count" (raw value, default) |
+  // "percent" (of the variable's resolved denominator) | "density" (per sq
+  // mi, whole-geography area). Persisted alongside _mapVar (Step 2.2).
+  var _mapNorm = "count";
+
   // Per-geography detail retained from the last successful run (null until
   // then). Populated during runSummary()'s existing fetch/aggregate loop —
   // no additional fetches. Consumed by the choropleth map (Step 1.4) and its
@@ -46,7 +51,9 @@
   //                      // even though they get no table row)
   //     perGeoParts,     // ratio varCode -> { num: Map, den: Map } (numerator/denominator
   //                      // maps, for a hover popup showing the parts of a ratio)
-  //     denomVars        // varCode -> App.getDenominator(varCode) result, for hover %
+  //     denomVars,       // varCode -> App.getDenominator(varCode) result, for hover %
+  //     areas            // "<level>:<GEOID>" -> whole-geography area in sq mi (Step 2.2,
+  //                      // lazy-built on first "Density" shade-by request; absent until then)
   //   }
   var _lastGeoData = null;
 
@@ -559,6 +566,24 @@
           lRows[lri].className = "";
           lRows[lri].children[2].textContent = lodesSum.toLocaleString(undefined, { maximumFractionDigits: 0 });
         }
+
+        // Per-geography rollup for the choropleth map + CSV export (Step 2.3).
+        // Reuses TPI's block-GEOID-prefix aggregator rather than new math; the
+        // union-level number above (whole-block internal-points test) and this
+        // per-geo rollup (block-prefix rollup) can differ slightly at buffer
+        // edges — disclosed in the results-notes footer below. `geoids` was
+        // already fetched above (mandatory ACS vars guarantee acsVarsUniq is
+        // always non-empty, so this is never re-fetched here).
+        if (window.TPI && typeof TPI.aggregateLodesToGeo === "function" && geoids && geoids.length) {
+          try {
+            var lodesPerGeo = TPI.aggregateLodesToGeo(App.lodesData, geoids, geoLevel);
+            _lastGeoData.perGeo[lCode] = { level: "geo", values: lodesPerGeo, source: "LODES" };
+          } catch (lodesGeoErr) {
+            console.warn("LODES per-geography rollup failed:", lodesGeoErr);
+          }
+        } else if (!window.TPI) {
+          console.warn("window.TPI not available; skipping LODES per-geography rollup for the choropleth/export.");
+        }
       } catch (e) {
         markRowsError(lCode, "Error: " + (e.message || e));
       }
@@ -603,6 +628,14 @@
     }
     if (lodesVarsUniq.length > 0 && App.lodesData) {
       notesParts.push("LODES file: " + App.lodesFileName + ".");
+      var lodesHasPerGeo = lodesVarsUniq.some(function (c) {
+        var e = _lastGeoData.perGeo[c];
+        return e && e.source === "LODES";
+      });
+      if (lodesHasPerGeo) {
+        notesParts.push("LODES per-geography map/export values use a whole-block GEOID rollup, which can differ " +
+          "slightly from the union-level total above (whole-block internal-points test) at buffer edges.");
+      }
     }
     var apportionNote = apportionByArea
       ? "counts are area-apportioned (fractional overlap)"
@@ -679,9 +712,14 @@
     html += "<b>" + escapeHtml(payload.varLabel) + ":</b> " + escapeHtml(payload.valueFmt);
     var extras = [];
     if (payload.pctFmt) extras.push(escapeHtml(payload.pctFmt));
+    if (payload.densityFmt) extras.push("density: " + escapeHtml(payload.densityFmt));
     if (payload.apportionedFmt) extras.push("apportioned share: " + escapeHtml(payload.apportionedFmt));
     if (extras.length) html += " · " + extras.join(" · ");
     html += "<br>";
+
+    if (payload.lodesNote) {
+      html += '<span style="color:#666;font-size:11px;">' + escapeHtml(payload.lodesNote) + "</span><br>";
+    }
 
     if (payload.others && payload.others.length) {
       html += '<span style="color:#666;font-size:11px;">';
@@ -695,15 +733,84 @@
     return html;
   }
 
+  // ---- Shade-by normalization (Step 2.2) ----
+
+  var SQ_MILE_IN_SQ_M = 2589988.110336;
+
+  // Whole-geography area in square miles, cached per "<level>:<GEOID>" key on
+  // _lastGeoData.areas (built lazily, once per level, the first time density
+  // shading is requested for that level).
+  function ensureAreaCache(level) {
+    if (!_lastGeoData.areas) _lastGeoData.areas = {};
+    var geomSet = (level === "tract") ? _lastGeoData.tractGeos : _lastGeoData.geos;
+    if (!geomSet) return;
+    for (var i = 0; i < geomSet.length; i++) {
+      var f = geomSet[i];
+      var geoid = f.properties && f.properties.GEOID;
+      if (!geoid) continue;
+      var key = level + ":" + geoid;
+      if (_lastGeoData.areas[key] != null) continue;
+      try { _lastGeoData.areas[key] = turf.area(f) / SQ_MILE_IN_SQ_M; }
+      catch (_) { _lastGeoData.areas[key] = null; }
+    }
+  }
+
+  function getGeoAreaMi2(level, geoid) {
+    ensureAreaCache(level);
+    var v = _lastGeoData.areas[level + ":" + geoid];
+    return (typeof v === "number" && Number.isFinite(v) && v > 0) ? v : null;
+  }
+
+  // Whether the "Percent of denominator" shade-by option can be computed for
+  // `varCode` with the data this run retained. Ratio/avg variables are
+  // already rates (getDenominator returns null for agg:"ratio"; avg-agg vars
+  // carry no `denominator` in VAR_META, so this also returns false for them).
+  // A $group denominator additionally needs every member's per-geo map to
+  // have been fetched this run (true only when that group's checkbox — which
+  // expands to all members — was checked).
+  function percentShadeAvailable(varCode) {
+    if (!_lastGeoData) return false;
+    var meta = App.getMeta(varCode);
+    if (meta.agg === "avg") return false;
+    var denom = App.getDenominator(varCode);
+    if (!denom) return false;
+    if (denom.type === "group") {
+      for (var i = 0; i < denom.codes.length; i++) {
+        if (!_lastGeoData.perGeo[denom.codes[i]]) return false;
+      }
+      return true;
+    }
+    return !!_lastGeoData.perGeo[denom.code];
+  }
+
+  // Rebuilds #basMapNorm's option availability for the currently selected
+  // #basMapVar and falls back to "count" when the active selection becomes
+  // unavailable (e.g. switching to a variable with no denominator while
+  // "Percent" was selected).
+  function updateMapNormSelect() {
+    var sel = document.getElementById("basMapNorm");
+    if (!sel) return;
+    var pctOpt = sel.querySelector('option[value="percent"]');
+    var pctOk = _mapVar ? percentShadeAvailable(_mapVar) : false;
+    if (pctOpt) {
+      pctOpt.disabled = !pctOk;
+      pctOpt.title = pctOk ? "" : "No denominator was fetched this run for this variable.";
+    }
+    if (_mapNorm === "percent" && !pctOk) _mapNorm = "count";
+    sel.value = _mapNorm;
+  }
+
   // varCode === "" removes the choropleth and falls back to the plain gray
   // "geographies analyzed" overlay. Otherwise builds one feature per
   // geography (whole-geography values from _lastGeoData.perGeo — clipped
-  // geometry, uncut values, the settled design decision) and renders through
-  // the shared App.choropleth engine.
+  // geometry, uncut values, the settled design decision), shaded by the
+  // current #basMapNorm choice (Step 2.2), and renders through the shared
+  // App.choropleth engine.
   function renderBasChoropleth(varCode) {
     _mapVar = varCode || "";
     var sel = document.getElementById("basMapVar");
     if (sel && sel.value !== _mapVar) sel.value = _mapVar;
+    updateMapNormSelect();
 
     if (!_mapVar) {
       App.choropleth.remove("bas");
@@ -721,12 +828,24 @@
     var entry = _lastGeoData.perGeo[_mapVar];
     if (!entry) return;
     var meta = App.getMeta(_mapVar);
+    var norm = _mapNorm;
+    var isLodes = entry.source === "LODES";
 
     var geomSet = (entry.level === "tract")
       ? _lastGeoData.tractGeos
       : (_lastGeoData.apportionByArea ? (_lastGeoData.clippedGeos || _lastGeoData.geos) : _lastGeoData.geos);
     var fracSet = (entry.level === "tract") ? _lastGeoData.tractFractions : _lastGeoData.fractions;
     if (!geomSet) return;
+
+    var denomLabelText = "";
+    if (norm === "percent") {
+      var pDenomForTitle = App.getDenominator(_mapVar);
+      if (pDenomForTitle) {
+        denomLabelText = (pDenomForTitle.type === "var")
+          ? (App.getMeta(pDenomForTitle.code).label || pDenomForTitle.code)
+          : ((App.GROUP_INFO[meta.group] && App.GROUP_INFO[meta.group].label) || "group total");
+      }
+    }
 
     var features = [];
     for (var gi = 0; gi < geomSet.length; gi++) {
@@ -735,6 +854,17 @@
       if (!geoid) continue;
       var raw = entry.values.get(geoid);
       var value = (typeof raw === "number" && Number.isFinite(raw)) ? raw : null;
+      var pctVal = perGeoPctValue(_mapVar, geoid);
+
+      var shadeValue = value;
+      var densityVal = null;
+      if (norm === "percent") {
+        shadeValue = pctVal;
+      } else if (norm === "density") {
+        var areaMi2 = getGeoAreaMi2(entry.level, geoid);
+        densityVal = (value !== null && areaMi2) ? (value / areaMi2) : null;
+        shadeValue = densityVal;
+      }
 
       var payload = { varLabel: meta.label || _mapVar, valueFmt: App.formatValue(value, meta) };
 
@@ -745,8 +875,9 @@
         }
       }
 
-      var pctVal = perGeoPctValue(_mapVar, geoid);
       if (pctVal !== null) payload.pctFmt = pctVal.toFixed(1) + "%";
+      if (densityVal !== null) payload.densityFmt = densityVal.toLocaleString(undefined, { maximumFractionDigits: 1 }) + " / mi²";
+      if (isLodes) payload.lodesNote = "Whole-block rollup; area apportionment not applied.";
 
       var others = [];
       for (var di = 0; di < _lastGeoData.displayVars.length; di++) {
@@ -767,7 +898,7 @@
 
       features.push({
         type: "Feature",
-        properties: { GEOID: geoid, value: value, payload: JSON.stringify(payload) },
+        properties: { GEOID: geoid, value: shadeValue, payload: JSON.stringify(payload) },
         geometry: geo.geometry
       });
     }
@@ -785,31 +916,49 @@
     if (hideCb) hideCb.checked = false;
     App.choropleth.setVisible("bas", true);
 
+    var legendTitle = meta.label;
+    var legendFmt = function (v) { return App.formatValue(v, meta); };
+    var legendNoteParts = ["Classes: quantile (5)."];
+    if (norm === "percent") {
+      legendTitle += denomLabelText ? (" — percent of " + denomLabelText) : " — percent";
+      legendFmt = function (v) { return v.toFixed(1) + "%"; };
+      legendNoteParts.push("Percent uses whole-geography values.");
+    } else if (norm === "density") {
+      legendTitle += " — density (per mi²)";
+      legendFmt = function (v) { return v.toLocaleString(undefined, { maximumFractionDigits: 1 }) + " / mi²"; };
+      legendNoteParts.push("Density divides the whole-geography value by that geography's own area.");
+    } else {
+      legendNoteParts.push("Values are whole-geography estimates.");
+    }
+    if (isLodes) legendNoteParts.push("LODES: whole-block rollup; area apportionment not applied.");
+
     if (App.popup && App.popup.showFloatingWidget) {
       App.popup.showFloatingWidget("bas-legend", "projects/choropleth-legend.html", {
         position: "bottom-left", width: 190, title: "Map Legend"
       }).then(function () {
         var widgetEl = document.querySelector('.floating-widget[data-widget-id="bas-legend"]');
         if (!widgetEl) return;
-        var labels = App.choropleth.formatBreakLabels(renderResult.breaks, renderResult.min, renderResult.max,
-          function (v) { return App.formatValue(v, meta); });
+        var labels = App.choropleth.formatBreakLabels(renderResult.breaks, renderResult.min, renderResult.max, legendFmt);
         App.choropleth.fillLegend(widgetEl, {
-          title: meta.label,
+          title: legendTitle,
           labels: labels,
           colors: renderResult.colors,
-          note: "Classes: quantile (5). Values are whole-geography estimates."
+          note: legendNoteParts.join(" ")
         });
       });
     }
   }
 
   // Populates #basMapVar from _lastGeoData.displayVars after a successful
-  // run. LODES codes are skipped in Phase 1 (Step 2.3 adds them). The
+  // run. LODES codes are included when their per-geo rollup succeeded (Step
+  // 2.3 — App.lodesData loaded + window.TPI present); otherwise they're
+  // simply absent from perGeo and skipped like any other missing entry. The
   // previous selection is kept when the variable is still present in this
   // run's results; otherwise falls back to "None".
   function populateBasMapVarDropdown() {
     var sel = document.getElementById("basMapVar");
     var rowEl = document.getElementById("basMapRow");
+    var exportBtn = document.getElementById("basExportGeoCsv");
     if (!sel || !rowEl || !_lastGeoData) return;
 
     var options = ['<option value="">— None (gray outline) —</option>'];
@@ -817,7 +966,6 @@
     for (var i = 0; i < _lastGeoData.displayVars.length; i++) {
       var code = _lastGeoData.displayVars[i];
       var meta = App.getMeta(code);
-      if (meta.source === "LODES") continue;
       var entry = _lastGeoData.perGeo[code];
       if (!entry) continue;
       validCodes[code] = true;
@@ -826,9 +974,104 @@
     }
     sel.innerHTML = options.join("");
     rowEl.style.display = "";
+    if (exportBtn) exportBtn.disabled = false;
 
     var keep = validCodes[_mapVar] ? _mapVar : "";
     renderBasChoropleth(keep);
+  }
+
+  // ---- Per-geography CSV export (Step 2.1) ----
+
+  function _dateStamp() {
+    var d = new Date();
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function _triggerDownload(content, mimeType, filename) {
+    var blob = new Blob([content], { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  function _csvField(val) {
+    if (val == null) return "";
+    var s = String(val);
+    if (s.indexOf(",") !== -1 || s.indexOf('"') !== -1 || s.indexOf("\n") !== -1) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  // One row per base-geoLevel GEOID (_lastGeoData.geos — the full, uncut
+  // TIGERweb set, never the clipped display copy). Tract-fallback variables
+  // (perGeo entry level "tract") get their own trailing "<code>_tract"
+  // columns; their value/pct/apportioned cells are looked up via the child
+  // block group's parent-tract GEOID (first 11 chars — the same slicing
+  // convention TPI's static tract fallback uses) and are therefore repeated
+  // identically across every block group sharing that tract.
+  function exportByGeographyCSV() {
+    if (!_lastGeoData || !_lastGeoData.geos) return;
+
+    var geoLabel = _lastGeoData.geoLevel;
+    var apportioned = !!_lastGeoData.apportionByArea;
+
+    var baseVars = [], tractVars = [];
+    for (var i = 0; i < _lastGeoData.displayVars.length; i++) {
+      var code = _lastGeoData.displayVars[i];
+      var entry = _lastGeoData.perGeo[code];
+      if (!entry) continue;
+      (entry.level === "tract" ? tractVars : baseVars).push(code);
+    }
+
+    var header = ["GEOID", "geoLevel", "overlap_fraction"];
+    function addVarHeaders(code, suffix) {
+      var base = code + suffix;
+      header.push(base);
+      if (App.getDenominator(code)) header.push(base + "_pct");
+      if (apportioned) header.push(base + "_apportioned");
+    }
+    baseVars.forEach(function (c) { addVarHeaders(c, ""); });
+    tractVars.forEach(function (c) { addVarHeaders(c, "_tract"); });
+
+    function appendVarCells(row, code, lookupGeoid, fracForVar) {
+      var entry = _lastGeoData.perGeo[code];
+      var raw = (entry && lookupGeoid) ? entry.values.get(lookupGeoid) : undefined;
+      var val = (typeof raw === "number" && Number.isFinite(raw)) ? raw : null;
+      row.push(val !== null ? val : "");
+      if (App.getDenominator(code)) {
+        var pct = lookupGeoid ? perGeoPctValue(code, lookupGeoid) : null;
+        row.push(pct !== null ? pct.toFixed(2) : "");
+      }
+      if (apportioned) {
+        var apportionedVal = (val !== null && typeof fracForVar === "number" && Number.isFinite(fracForVar))
+          ? (val * fracForVar) : null;
+        row.push(apportionedVal !== null ? apportionedVal : "");
+      }
+    }
+
+    var lines = [header.join(",")];
+    for (var gi = 0; gi < _lastGeoData.geos.length; gi++) {
+      var geo = _lastGeoData.geos[gi];
+      var geoid = geo.properties && geo.properties.GEOID;
+      if (!geoid) continue;
+      var frac = _lastGeoData.fractions ? _lastGeoData.fractions.get(geoid) : null;
+      var row = [geoid, geoLabel, (typeof frac === "number" && Number.isFinite(frac)) ? frac.toFixed(4) : ""];
+
+      baseVars.forEach(function (code) { appendVarCells(row, code, geoid, frac); });
+
+      var parentTract = (geoLabel === "bg") ? geoid.slice(0, 11) : null;
+      var tractFrac = (parentTract && _lastGeoData.tractFractions) ? _lastGeoData.tractFractions.get(parentTract) : null;
+      tractVars.forEach(function (code) { appendVarCells(row, code, parentTract, tractFrac); });
+
+      lines.push(row.map(_csvField).join(","));
+    }
+
+    _triggerDownload(lines.join("\n"), "text/csv", "feature-area-by-geography_" + _dateStamp() + ".csv");
   }
 
   // ---- Apply state to popup DOM ----
@@ -922,6 +1165,7 @@
     _hasResults = false;
     _stale = false;
     _mapVar = "";
+    _mapNorm = "count";
     if (!isPopupVisible()) return;
     if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
     renderInputs(false);
@@ -937,8 +1181,12 @@
     if (mapRowEl) mapRowEl.style.display = "none";
     var mapVarEl = document.getElementById("basMapVar");
     if (mapVarEl) mapVarEl.innerHTML = "";
+    var mapNormEl = document.getElementById("basMapNorm");
+    if (mapNormEl) mapNormEl.value = "count";
     var hideCb = document.getElementById("basHideChoropleth");
     if (hideCb) hideCb.checked = false;
+    var exportBtn = document.getElementById("basExportGeoCsv");
+    if (exportBtn) exportBtn.disabled = true;
     App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true, hint: emptyHint() });
   }
 
@@ -1031,6 +1279,14 @@
         renderBasChoropleth(mapVarEl.value);
         if (App.cache) App.cache.save();
       });
+      var mapNormEl = document.getElementById("basMapNorm");
+      if (mapNormEl) mapNormEl.addEventListener("change", function () {
+        _mapNorm = mapNormEl.value;
+        renderBasChoropleth(_mapVar);
+        if (App.cache) App.cache.save();
+      });
+      var exportGeoCsvEl = document.getElementById("basExportGeoCsv");
+      if (exportGeoCsvEl) exportGeoCsvEl.addEventListener("click", exportByGeographyCSV);
       var hideChoroplethEl = document.getElementById("basHideChoropleth");
       if (hideChoroplethEl) hideChoroplethEl.addEventListener("change", function () {
         App.choropleth.setVisible("bas", !hideChoroplethEl.checked);
@@ -1112,7 +1368,8 @@
           featureFilter: document.getElementById("basFeatureChecklist") ? getFeatureFilter() : _state.featureFilter,
           bufferMiles: _state.bufferMiles,
           useDisplayBuffers: _state.useDisplayBuffers,
-          mapVar: _mapVar
+          mapVar: _mapVar,
+          mapNorm: _mapNorm
         };
       },
       apply: function (data) {
@@ -1127,6 +1384,7 @@
         // only restores which variable the dropdown will re-select on the next
         // successful run (populateBasMapVarDropdown() reads _mapVar as "keep").
         if (typeof data.mapVar === "string") _mapVar = data.mapVar;
+        if (data.mapNorm === "count" || data.mapNorm === "percent" || data.mapNorm === "density") _mapNorm = data.mapNorm;
         // DOM may not exist yet; applyStateToDOM() is called in onOpen()
       }
     });
