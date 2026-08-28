@@ -88,6 +88,20 @@
           <option value="percent">Percent of denominator</option>
           <option value="density">Density (per sq mi)</option>
         </select>
+        <!-- Options mirror App.choropleth.RAMPS (js/core/choropleth.js) — keep in sync. -->
+        <label class="tiny u-mt-2">Color ramp</label>
+        <select id="basMapRamp" class="rf-select">
+          <option value="blues">Blues</option>
+          <option value="heat">Heat (Yl-Or-Rd)</option>
+          <option value="greens">Greens</option>
+          <option value="rdbu">Diverging (Rd-Bu) — best for percent/deviation</option>
+        </select>
+        <label class="tiny u-mt-2">Classes</label>
+        <select id="basMapClasses" class="rf-select">
+          <option value="quantile">5-class quantile</option>
+          <option value="equal">5-class equal interval</option>
+          <option value="continuous">Continuous</option>
+        </select>
         <label class="tpi-toggle-row u-mt-2">
           <input type="checkbox" id="basHideChoropleth">
           <span class="tiny">Hide choropleth</span>

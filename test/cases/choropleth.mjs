@@ -1,9 +1,13 @@
 // Golden cases for the shared choropleth engine (js/core/choropleth.js).
 // Only the classification math is pure/DOM-free (computeClassBreaks,
-// buildStepColorExpr, formatBreakLabels — all public directly on
-// App.choropleth, no __MAT_TEST__ hook needed). render/remove/setVisible/
-// fillLegend touch App.map/maplibregl/the DOM and are out of harness scope,
-// same rationale as every other map-facing function in this suite.
+// buildStepColorExpr, buildInterpolateColorExpr, formatBreakLabels — all
+// public directly on App.choropleth, no __MAT_TEST__ hook needed).
+// render/remove/setVisible/fillLegend touch App.map/maplibregl/the DOM and
+// are out of harness scope, same rationale as every other map-facing
+// function in this suite — this also covers render()'s "continuous" method
+// branch (Phase 3 Step 3.1 of docs/feature-area-choropleth-plan.md), which
+// only wires buildInterpolateColorExpr into that map-facing path; the pure
+// expression builder itself is what's pinned here.
 
 export default {
   scripts: ["js/core/choropleth.js"],
@@ -31,6 +35,16 @@ export default {
       args: ["pop", [100, 200], ["#x", "#y", "#z"], "#fff"] },
     { id: "stepExpr/1-class-no-breaks", call: "App.choropleth.buildStepColorExpr",
       args: ["value", [], ["#solid"]] },
+
+    // ---- buildInterpolateColorExpr (Phase 3 Step 3.1 — Continuous classes) ----
+    { id: "interp/5-color-real-range-default-noData", call: "App.choropleth.buildInterpolateColorExpr",
+      args: ["value", 0, 100, ["#a", "#b", "#c", "#d", "#e"]] },
+    { id: "interp/3-color-real-range-custom-noData", call: "App.choropleth.buildInterpolateColorExpr",
+      args: ["pop", 10, 50, ["#x", "#y", "#z"], "#fff"] },
+    { id: "interp/degenerate-min-equals-max-solid-fallback", call: "App.choropleth.buildInterpolateColorExpr",
+      args: ["value", 42, 42, ["#a", "#b", "#c", "#d", "#e"]] },
+    { id: "interp/degenerate-no-data-solid-fallback", call: "App.choropleth.buildInterpolateColorExpr",
+      args: ["value", null, null, ["#a", "#b", "#c", "#d", "#e"]] },
 
     // ---- formatBreakLabels ----
     { id: "labels/fixed-fmt-4-classes", call: "App.choropleth.formatBreakLabels",

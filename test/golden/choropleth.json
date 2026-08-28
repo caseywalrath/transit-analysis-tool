@@ -125,6 +125,104 @@
     ],
     "rgba(200,200,200,0.35)"
   ],
+  "interp/5-color-real-range-default-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "interpolate",
+      [
+        "linear"
+      ],
+      [
+        "get",
+        "value"
+      ],
+      0,
+      "#a",
+      25,
+      "#b",
+      50,
+      "#c",
+      75,
+      "#d",
+      100,
+      "#e"
+    ],
+    "rgba(200,200,200,0.35)"
+  ],
+  "interp/3-color-real-range-custom-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "pop"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "interpolate",
+      [
+        "linear"
+      ],
+      [
+        "get",
+        "pop"
+      ],
+      10,
+      "#x",
+      30,
+      "#y",
+      50,
+      "#z"
+    ],
+    "#fff"
+  ],
+  "interp/degenerate-min-equals-max-solid-fallback": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    "#c",
+    "rgba(200,200,200,0.35)"
+  ],
+  "interp/degenerate-no-data-solid-fallback": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    "#c",
+    "rgba(200,200,200,0.35)"
+  ],
   "labels/fixed-fmt-4-classes": [
     "V0 – V10",
     "V10 – V20",

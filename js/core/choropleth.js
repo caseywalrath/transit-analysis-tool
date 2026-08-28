@@ -7,7 +7,8 @@
 // formatBreakLabels) is pure — no DOM, no map — so it loads and runs fine in
 // the golden test sandbox.
 // Exports: App.choropleth.{RAMPS, computeClassBreaks, buildStepColorExpr,
-//   formatBreakLabels, render, remove, setVisible, fillLegend}
+//   buildInterpolateColorExpr, formatBreakLabels, render, remove, setVisible,
+//   fillLegend}
 
 (function () {
   var App = window.App = window.App || {};
@@ -83,6 +84,27 @@
     return ["case", ["==", ["typeof", ["get", prop]], "number"], stepExpr, noDataColor];
   }
 
+  // Builds a MapLibre "interpolate" (linear gradient) expression across
+  // `colors` evenly spaced from `min` to `max` — the ramp's endpoints plus
+  // its 3 interior stops — wrapped with the same no-data guard as
+  // buildStepColorExpr. MapLibre requires strictly ascending interpolate
+  // stops, so a degenerate range (no data, or every value identical) falls
+  // back to a single solid color instead of a 2-point gradient.
+  function buildInterpolateColorExpr(prop, min, max, colors, noDataColor) {
+    noDataColor = noDataColor || DEFAULT_NO_DATA_COLOR;
+    var typeofGuard = ["==", ["typeof", ["get", prop]], "number"];
+    if (min == null || max == null || !(max > min) || !colors || !colors.length) {
+      var solid = colors && colors.length ? colors[Math.floor((colors.length - 1) / 2)] : noDataColor;
+      return ["case", typeofGuard, solid, noDataColor];
+    }
+    var n = colors.length;
+    var interpExpr = ["interpolate", ["linear"], ["get", prop]];
+    for (var i = 0; i < n; i++) {
+      interpExpr.push(min + (max - min) * (i / (n - 1)), colors[i]);
+    }
+    return ["case", typeofGuard, interpExpr, noDataColor];
+  }
+
   // Human-readable range labels, one per class, lowest class first, e.g.
   // "1,204 – 2,410". `fmt` is a (number) => string callback.
   function formatBreakLabels(breaks, min, max, fmt) {
@@ -135,18 +157,34 @@
     var min = values.length ? Math.min.apply(null, values) : null;
     var max = values.length ? Math.max.apply(null, values) : null;
 
-    var breaksResult;
-    if (opts.breaks) {
-      breaksResult = { breaks: opts.breaks.slice(), nEffective: opts.breaks.length + 1 };
-    } else {
-      breaksResult = computeClassBreaks(values, opts.method || "quantile", opts.classes || 5);
-    }
-
     var rampDef = RAMPS[opts.ramp] || RAMPS.blues;
-    var colors = pickRampColors(rampDef.colors5, Math.max(breaksResult.nEffective, 1));
-
     var noDataColor = opts.noDataColor || DEFAULT_NO_DATA_COLOR;
-    var colorExpr = buildStepColorExpr(valueProp, breaksResult.breaks, colors, noDataColor);
+
+    var breaksResult, colors, colorExpr;
+    if (opts.method === "continuous") {
+      // No discrete classes — a linear gradient across colors5, so there are
+      // no break values to report (the legend instead shows the min/max —
+      // and, for buffer-summary's row-based legend, the evenly-spaced stop
+      // values matching the gradient below). `colors` mirrors whatever
+      // buildInterpolateColorExpr actually painted: the full ramp for a real
+      // range, or just its one solid fallback color when the range is
+      // degenerate — a caller's legend must match the map, not always show
+      // 5 swatches when only one color was ever drawn.
+      var validRange = (min != null && max != null && max > min);
+      colors = !validRange
+        ? (min == null ? [] : [rampDef.colors5[Math.floor((rampDef.colors5.length - 1) / 2)]])
+        : rampDef.colors5;
+      colorExpr = buildInterpolateColorExpr(valueProp, min, max, rampDef.colors5, noDataColor);
+      breaksResult = { breaks: [], nEffective: colors.length };
+    } else {
+      if (opts.breaks) {
+        breaksResult = { breaks: opts.breaks.slice(), nEffective: opts.breaks.length + 1 };
+      } else {
+        breaksResult = computeClassBreaks(values, opts.method || "quantile", opts.classes || 5);
+      }
+      colors = pickRampColors(rampDef.colors5, Math.max(breaksResult.nEffective, 1));
+      colorExpr = buildStepColorExpr(valueProp, breaksResult.breaks, colors, noDataColor);
+    }
 
     var fc = { type: "FeatureCollection", features: features };
 
@@ -288,6 +326,7 @@
     RAMPS: RAMPS,
     computeClassBreaks: computeClassBreaks,
     buildStepColorExpr: buildStepColorExpr,
+    buildInterpolateColorExpr: buildInterpolateColorExpr,
     formatBreakLabels: formatBreakLabels,
     render: render,
     remove: remove,

@@ -34,6 +34,12 @@
   // mi, whole-geography area). Persisted alongside _mapVar (Step 2.2).
   var _mapNorm = "count";
 
+  // Currently selected #basMapRamp (App.choropleth.RAMPS key, default
+  // "blues") and #basMapClasses ("quantile" default | "equal" | "continuous")
+  // values. Persisted alongside _mapVar/_mapNorm (Step 3.1).
+  var _mapRamp = "blues";
+  var _mapClasses = "quantile";
+
   // Per-geography detail retained from the last successful run (null until
   // then). Populated during runSummary()'s existing fetch/aggregate loop —
   // no additional fetches. Consumed by the choropleth map (Step 1.4) and its
@@ -800,6 +806,26 @@
     sel.value = _mapNorm;
   }
 
+  // Legend row labels for the "bas" choropleth. Classed methods (quantile /
+  // equal interval) use the shared range-label formatter as before.
+  // Continuous mode has no breaks to label (App.choropleth.render() returns
+  // breaks: [] for it) — instead this labels each of the gradient's own
+  // evenly-spaced color stops with its point value, so the legend rows line
+  // up exactly with the colors actually used in the interpolate expression.
+  function basLegendLabels(renderResult, fmt) {
+    if (_mapClasses !== "continuous") {
+      return App.choropleth.formatBreakLabels(renderResult.breaks, renderResult.min, renderResult.max, fmt);
+    }
+    if (renderResult.min == null) return [];
+    if (renderResult.min === renderResult.max) return [fmt(renderResult.min)];
+    var stops = renderResult.colors.length;
+    var labels = [];
+    for (var i = 0; i < stops; i++) {
+      labels.push(fmt(renderResult.min + (renderResult.max - renderResult.min) * (i / (stops - 1))));
+    }
+    return labels;
+  }
+
   // varCode === "" removes the choropleth and falls back to the plain gray
   // "geographies analyzed" overlay. Otherwise builds one feature per
   // geography (whole-geography values from _lastGeoData.perGeo — clipped
@@ -811,6 +837,10 @@
     var sel = document.getElementById("basMapVar");
     if (sel && sel.value !== _mapVar) sel.value = _mapVar;
     updateMapNormSelect();
+    var rampEl = document.getElementById("basMapRamp");
+    if (rampEl && rampEl.value !== _mapRamp) rampEl.value = _mapRamp;
+    var classesEl = document.getElementById("basMapClasses");
+    if (classesEl && classesEl.value !== _mapClasses) classesEl.value = _mapClasses;
 
     if (!_mapVar) {
       App.choropleth.remove("bas");
@@ -904,7 +934,7 @@
     }
 
     var renderResult = App.choropleth.render({
-      id: "bas", method: "quantile", classes: 5, ramp: "blues",
+      id: "bas", method: _mapClasses, classes: 5, ramp: _mapRamp,
       valueProp: "value", features: features, hoverHTML: basHoverHTML, beforeLayer: "buffers-fill"
     });
     if (!renderResult) return;
@@ -918,7 +948,10 @@
 
     var legendTitle = meta.label;
     var legendFmt = function (v) { return App.formatValue(v, meta); };
-    var legendNoteParts = ["Classes: quantile (5)."];
+    var classesLabel = (_mapClasses === "equal") ? "equal interval (5)"
+      : (_mapClasses === "continuous") ? "continuous"
+      : "quantile (5)";
+    var legendNoteParts = ["Classes: " + classesLabel + "."];
     if (norm === "percent") {
       legendTitle += denomLabelText ? (" — percent of " + denomLabelText) : " — percent";
       legendFmt = function (v) { return v.toFixed(1) + "%"; };
@@ -938,7 +971,7 @@
       }).then(function () {
         var widgetEl = document.querySelector('.floating-widget[data-widget-id="bas-legend"]');
         if (!widgetEl) return;
-        var labels = App.choropleth.formatBreakLabels(renderResult.breaks, renderResult.min, renderResult.max, legendFmt);
+        var labels = basLegendLabels(renderResult, legendFmt);
         App.choropleth.fillLegend(widgetEl, {
           title: legendTitle,
           labels: labels,
@@ -1166,6 +1199,8 @@
     _stale = false;
     _mapVar = "";
     _mapNorm = "count";
+    _mapRamp = "blues";
+    _mapClasses = "quantile";
     if (!isPopupVisible()) return;
     if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
     renderInputs(false);
@@ -1183,6 +1218,10 @@
     if (mapVarEl) mapVarEl.innerHTML = "";
     var mapNormEl = document.getElementById("basMapNorm");
     if (mapNormEl) mapNormEl.value = "count";
+    var mapRampEl = document.getElementById("basMapRamp");
+    if (mapRampEl) mapRampEl.value = "blues";
+    var mapClassesEl = document.getElementById("basMapClasses");
+    if (mapClassesEl) mapClassesEl.value = "quantile";
     var hideCb = document.getElementById("basHideChoropleth");
     if (hideCb) hideCb.checked = false;
     var exportBtn = document.getElementById("basExportGeoCsv");
@@ -1285,6 +1324,18 @@
         renderBasChoropleth(_mapVar);
         if (App.cache) App.cache.save();
       });
+      var mapRampEl = document.getElementById("basMapRamp");
+      if (mapRampEl) mapRampEl.addEventListener("change", function () {
+        _mapRamp = mapRampEl.value;
+        renderBasChoropleth(_mapVar);
+        if (App.cache) App.cache.save();
+      });
+      var mapClassesEl = document.getElementById("basMapClasses");
+      if (mapClassesEl) mapClassesEl.addEventListener("change", function () {
+        _mapClasses = mapClassesEl.value;
+        renderBasChoropleth(_mapVar);
+        if (App.cache) App.cache.save();
+      });
       var exportGeoCsvEl = document.getElementById("basExportGeoCsv");
       if (exportGeoCsvEl) exportGeoCsvEl.addEventListener("click", exportByGeographyCSV);
       var hideChoroplethEl = document.getElementById("basHideChoropleth");
@@ -1369,7 +1420,9 @@
           bufferMiles: _state.bufferMiles,
           useDisplayBuffers: _state.useDisplayBuffers,
           mapVar: _mapVar,
-          mapNorm: _mapNorm
+          mapNorm: _mapNorm,
+          mapRamp: _mapRamp,
+          mapClasses: _mapClasses
         };
       },
       apply: function (data) {
@@ -1385,6 +1438,8 @@
         // successful run (populateBasMapVarDropdown() reads _mapVar as "keep").
         if (typeof data.mapVar === "string") _mapVar = data.mapVar;
         if (data.mapNorm === "count" || data.mapNorm === "percent" || data.mapNorm === "density") _mapNorm = data.mapNorm;
+        if (App.choropleth && App.choropleth.RAMPS && App.choropleth.RAMPS[data.mapRamp]) _mapRamp = data.mapRamp;
+        if (data.mapClasses === "quantile" || data.mapClasses === "equal" || data.mapClasses === "continuous") _mapClasses = data.mapClasses;
         // DOM may not exist yet; applyStateToDOM() is called in onOpen()
       }
     });
