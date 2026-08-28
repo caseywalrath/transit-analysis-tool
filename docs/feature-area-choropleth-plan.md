@@ -1,10 +1,16 @@
 # Feature Area Analysis Choropleth & Shared Choropleth Engine — Implementation Plan
 
+**Status: Phases 1–3 complete.** The former Phase 4 (a standalone "Imported Geography
+Analysis" module for TAZ-style GeoJSON) has been rolled into `features.md` — see that
+file's "Imported Geography Analysis module" entry under Data & Analysis — since it's a
+net-new module outside this plan's actual scope (building and migrating the shared
+choropleth engine itself). This document now covers Phases 1–3 only.
+
 ## Context
 
 Feature Area Analysis (`js/projects/buffer-summary.js`) currently answers "what are the totals inside my study area?" — it fetches per-geography ACS values, then `aggregateWithinUnion()` collapses them into one number per variable and the per-geography detail is discarded. The map shows only a flat gray "geographies analyzed" overlay (`census-geos-*` layers).
 
-This plan adds GIS-style, per-geography output: a classed choropleth map colored by any selected census variable, per-geography hover popups, per-geography CSV export, normalization options (percent, density), curated color ramps, and — as a final phase — a new module for choropleth analysis of imported (TAZ-style) GeoJSON data.
+This plan adds GIS-style, per-geography output: a classed choropleth map colored by any selected census variable, per-geography hover popups, per-geography CSV export, normalization options (percent, density), and curated color ramps.
 
 The critical architectural fact: **the disaggregated data already exists on every run.** `runSummary()` fetches a `Map<GEOID, value>` for every variable before aggregating (`buffer-summary.js:441-455`). No new fetch pipeline is needed — the work is retaining those maps and building display surfaces for them.
 
@@ -20,7 +26,7 @@ The rendering machinery also has a proven in-repo precedent: TPI's choropleth (`
 - **Curated color ramp presets only.** A ramp dropdown (Phase 3) with professionally chosen ColorBrewer ramps: Blues (default), heat-style YlOrRd, Greens, and diverging RdBu. No custom gradient editor.
 - **Styling controls live in the module popup** (results column), not the Layers panel, for now. The Layers panel keeps its standard role: visibility, opacity, ordering. Phase 3 includes an *evaluation item* (not a build item) on promoting ramp/classification to a generic Layers-panel styling affordance.
 - **Choropleth colors show whole-geography values.** When "Apportion by area" is on, each geography is colored by its own full ACS value, drawn clipped to the buffer as today. The hover popup *additionally* shows the apportioned share (value × overlap fraction) so the summary-table math stays traceable. Rationale: rates, medians, and densities are only valid on whole-geography values, and a big geography barely clipped by the buffer must not read as "low population."
-- **Phase 4 (TAZ / custom geographies) is its own module** — "Imported Geography Analysis" — not an extension of Feature Area Analysis. **GeoJSON import only** (no shapefile dependency); the UI documents free conversion via mapshaper.org / QGIS.
+- **TAZ / custom geographies got their own module, tracked outside this plan** — "Imported Geography Analysis," not an extension of Feature Area Analysis. **GeoJSON import only** (no shapefile dependency); the UI documents free conversion via mapshaper.org / QGIS. See `features.md`'s entry of the same name for the full scope (it was originally drafted here as "Phase 4").
 
 ## Recommendations adopted (flagged for the record — easy to revisit)
 
@@ -283,47 +289,14 @@ CLAUDE.md: TPI/RF/CS entries note the shared renderer; choropleth.js entry gains
 
 ---
 
-# Phase 4 — Imported Geography Analysis module (TAZ etc.)
-
-Deliverable: a new **General**-group module that loads a GeoJSON of polygon zones carrying their own attributes (TAZ households/employment, model outputs…), choropleths any numeric attribute via `App.choropleth`, and summarizes attributes within a drawn study area. GeoJSON only; the empty state links mapshaper.org for shapefile conversion.
-
-### Step 4.1 — Module skeleton
-
-**Files:** create `js/projects/imported-geography.js`, `projects/imported-geography-popup.html`, edit `index.html` (script tag after other modules), edit `js/app.js` (`buildAnalysisButtonsHTML()` — add `"imported-geography"` to the General group beside Feature Area Analysis and Walkshed).
-
-Registration: `id: "imported-geography"`, name **"Imported Geography Analysis"**, `popupWidth: 960`, `panelWidths: { setup: 520, results: 760 }`, 2-column Settings | Results on the shared `.rf-*` shell. All element ids `ig`-prefixed; CSS reuses shared primitives (new `.ig-` classes only if unavoidable).
-
-### Step 4.2 — Import + validation
-
-Settings column: "Load GeoJSON" file input (`.geojson,.json`). Parse with `JSON.parse` (no new libraries); accept a `FeatureCollection` of `Polygon`/`MultiPolygon` (skip other geometry types with a count note). Validation errors are surfaced in the status pill, never thrown. On load:
-
-- **Attribute discovery:** scan `properties` across features; a field is *numeric* if ≥90% of non-null values parse as finite numbers (via `App.toNumberSafe`); collect numeric fields (choropleth-able) and all fields (zone-id candidates).
-- **Zone id select:** dropdown of all fields, `App.guessHeader`-seeded with candidates like `["taz","taz_id","id","zone","zone_id","geoid","name"]`; fallback "(row number)".
-- Each accepted feature gets stamped `properties.GEOID = String(<zone id value>)` **on an internal copy** (never mutate the user's parsed object beyond this stamped clone) — this single convention lets the module reuse `App.aggregateWithinUnion`, `App.computeGeoOverlapFractions`, and `App.choropleth` unchanged, since all three key on `properties.GEOID`.
-- Data is **not** session-persisted (LODES/GTFS precedent — too large); persist only the filename hint + settings, and show a "re-upload to restore" note on restore.
-
-### Step 4.3 — Choropleth + hover + legend
-
-"Map attribute" select (numeric fields) + the same Shade-by (count / density — percent needs a second field: implement `Percent of <field>` with a denominator-field select), ramp, and classes controls as Feature Area Analysis, all driving `App.choropleth.render({ id: "ig", ... })`. Hover: zone id + mapped attribute + up to 10 other numeric attributes. Legend: the shared `projects/choropleth-legend.html` widget (`ig-legend`). Layers panel: add the `ANALYSIS` manifest entry for `ig-choropleth-fill`/`-line`, label "Imported geography", `moduleId: "imported-geography"`.
-
-### Step 4.4 — Study-area summary (optional per run)
-
-A feature checklist + Buffer distance (mi) + Use Display Buffers, exactly the Feature Area Analysis pattern via `js/core/module-buffers.js` (`App.readAnalysisBufferMiles`, `App.buildAnalysisBufferSet` / `App.buildDisplayBufferSet`) — plus an "Entire layer" default when nothing is selected. Results table: per selected numeric attribute, Sum (area-apportioned via `computeGeoOverlapFractions` + `aggregateWithinUnion` with `"sum"`) and area-weighted average, with the standard apportion toggle. A per-zone CSV export mirrors Step 2.1 (zone id, overlap fraction, attributes, apportioned values).
-
-### Step 4.5 — Lifecycle + docs
-
-Standard suite plumbing: status pill + stale banner (`App.renderModuleState`) marking stale when drawn features change *and* a study-area summary exists; `clear` hook removing layers/legend/data; empty-state hint ("Load a GeoJSON of zones to begin — convert shapefiles free at mapshaper.org"); settings-only cache registration (schema v1). CLAUDE.md: File Structure, Script Load Order, module section, Active modules list, app.js General-group note, layers-panel manifest. ui-screens capture gains the new panel (add it to the harness's panel list). No golden case (no new pure math — all engines reused).
-
----
-
 ## Out of scope (all phases)
 
 - Custom/multi-stop color gradients and per-class color overrides (settled: curated presets only).
-- Shapefile import (GeoJSON only; conversion documented in-UI).
 - A per-geography results *table* inside the popup (hover + CSV cover it; revisit if users ask).
 - Diverging-ramp midpoint anchoring (RdBu classes are computed like any ramp; true zero-anchored diverging classification is a later refinement).
 - Layers-panel styling implementation (Step 3.5 is an evaluation memo only).
 - Changing any aggregation math, golden-pinned number, or the summary table's behavior.
+- A TAZ/custom-geography import module — scoped separately, see `features.md`'s "Imported Geography Analysis module" entry.
 
 ## Phase/commit conventions
 
@@ -331,4 +304,12 @@ One commit per step minimum, message noting the step (e.g. `Phase 1 Step 1.4: FA
 
 ## Handoff
 
-Run each phase as its own implementation session (or two for Phase 3: 3.1 alone, then 3.2–3.4 together since they share the migration mindset). Give the implementing model: this file, plus the instruction to re-verify every cited line number by searching for the quoted symbol names before editing. Phases must land in order — every phase assumes the helper API and `_lastGeoData` shape from Phase 1. Within a phase, steps are ordered by dependency; do not reorder. If a step's verification fails, fix before proceeding; golden failures are regressions unless the plan explicitly changed a number (it never does — this plan adds no numeric changes anywhere).
+All three phases in this document are complete. This section is retained for historical
+reference (how the work was actually sequenced) rather than as a live instruction set.
+Each phase ran as its own implementation session (Phase 3 split into two: 3.1 alone, then
+3.2–3.4 together since they shared the migration mindset), with the implementing model
+given this file plus the instruction to re-verify every cited line number by searching
+for the quoted symbol names before editing rather than trusting the doc's own numbers.
+The follow-on TAZ/imported-geography module (formerly drafted here as "Phase 4") is now a
+standalone `features.md` entry, to be planned and scoped fresh whenever it's picked up
+rather than inheriting this plan's phase numbering.
