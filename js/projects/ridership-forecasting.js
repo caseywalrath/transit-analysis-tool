@@ -734,13 +734,24 @@
 
   // ---- Choropleth rendering ----
 
-  var RF_SOURCE = "rf-choropleth";
-  var RF_FILL_LAYER = "rf-choropleth-fill";
-  var RF_LINE_LAYER = "rf-choropleth-line";
   var RF_CORRIDOR_SOURCE = "rf-corridor-cdi";
   var RF_CORRIDOR_LAYER = "rf-corridor-cdi-layer";
   var _corridorPopup = null; // MapLibre Popup instance for corridor CDI hover
 
+  // Hover popup for the "rf" choropleth (Phase 3 Step 3.3 of
+  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  function rfHoverHTML(props) {
+    return '<div style="font-size:12px;line-height:1.4;">' +
+      '<b>GEOID:</b> ' + (props.GEOID || "\u2014") + '<br>' +
+      '<b>CDI Score:</b> ' + (props.cdiScore != null ? Number(props.cdiScore).toFixed(2) : "N/A") + ' / 5' +
+      '</div>';
+  }
+
+  // Manual breaks [1,2,3,4] with the "blues" ramp reproduce the same 5 colors
+  // RF's old inline continuous interpolate used at integer scores, now as
+  // discrete classes (same tradeoff as TPI's Step 3.2 migration). Layer ids
+  // are exactly reproduced by the "<id>-choropleth-*" convention: id: "rf"
+  // yields rf-choropleth-fill/-line.
   function renderChoropleth(result) {
     var map = App.map;
     if (!map || !result || !result.tpiResult) return;
@@ -771,52 +782,11 @@
       });
     }
 
-    var fc = { type: "FeatureCollection", features: features };
-
-    var colorExpr = [
-      "interpolate", ["linear"], ["coalesce", ["get", "cdiScore"], 0],
-      0, "rgba(200,200,200,0.3)",
-      1, "#eff3ff",
-      2, "#bdd7e7",
-      3, "#6baed6",
-      4, "#3182bd",
-      5, "#08519c"
-    ];
-
-    if (!map.getSource(RF_SOURCE)) {
-      map.addSource(RF_SOURCE, { type: "geojson", data: fc });
-      var beforeLayer = map.getLayer("buffers-fill") ? "buffers-fill" : undefined;
-
-      map.addLayer({
-        id: RF_FILL_LAYER, type: "fill", source: RF_SOURCE,
-        paint: { "fill-color": colorExpr, "fill-opacity": 0.55 }
-      }, beforeLayer);
-
-      map.addLayer({
-        id: RF_LINE_LAYER, type: "line", source: RF_SOURCE,
-        paint: { "line-color": "#333", "line-width": 0.5, "line-opacity": 0.4 }
-      }, beforeLayer);
-
-      // Hover tooltip
-      var popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
-      map.on("mousemove", RF_FILL_LAYER, function (e) {
-        map.getCanvas().style.cursor = "pointer";
-        if (e.features && e.features.length > 0) {
-          var props = e.features[0].properties;
-          var html = '<div style="font-size:12px;line-height:1.4;">' +
-            '<b>GEOID:</b> ' + (props.GEOID || "\u2014") + '<br>' +
-            '<b>CDI Score:</b> ' + (props.cdiScore != null ? Number(props.cdiScore).toFixed(2) : "N/A") + ' / 5' +
-            '</div>';
-          popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
-        }
-      });
-      map.on("mouseleave", RF_FILL_LAYER, function () {
-        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
-        popup.remove();
-      });
-    } else {
-      map.getSource(RF_SOURCE).setData(fc);
-    }
+    App.choropleth.render({
+      id: "rf", features: features, valueProp: "cdiScore",
+      breaks: [1, 2, 3, 4], ramp: "blues", fillOpacity: 0.55,
+      hoverHTML: rfHoverHTML, beforeLayer: "buffers-fill"
+    });
   }
 
   // Render corridor route lines colored by per-route CDI score.
@@ -893,11 +863,9 @@
   }
 
   function removeChoropleth() {
+    App.choropleth.remove("rf");
     var map = App.map;
     if (!map) return;
-    if (map.getLayer(RF_FILL_LAYER)) map.removeLayer(RF_FILL_LAYER);
-    if (map.getLayer(RF_LINE_LAYER)) map.removeLayer(RF_LINE_LAYER);
-    if (map.getSource(RF_SOURCE)) map.removeSource(RF_SOURCE);
     if (map.getLayer(RF_CORRIDOR_LAYER)) map.removeLayer(RF_CORRIDOR_LAYER);
     if (map.getSource(RF_CORRIDOR_SOURCE)) map.removeSource(RF_CORRIDOR_SOURCE);
     if (_corridorPopup) { _corridorPopup.remove(); _corridorPopup = null; }
