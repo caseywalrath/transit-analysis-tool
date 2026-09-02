@@ -266,13 +266,19 @@
       var typeBadge  = svc.isGroup
         ? '<span class="rc-pill rc-pill-group">Paired</span>'
         : '<span class="rc-pill rc-pill-solo">Solo</span>';
+      // The chip and the warning tooltip both key off hasBlockingWarnings(),
+      // so a blocked row gets one signal (the chip, carrying the tooltip)
+      // instead of a redundant triangle + chip pair. Non-blocking warnings
+      // (none exist today, but service-assembly.js's `level` field leaves
+      // room for one) still get the plain triangle badge.
       var warnIcon = "";
-      if (svc.warnings.length) {
-        var tip = svc.warnings.map(function (w) { return w.msg; }).join(" \n");
-        warnIcon = ' <span class="rc-warn-badge" title="' + escapeAttr(tip) + '">&#9888;</span>';
-      }
+      var tip = svc.warnings.length
+        ? svc.warnings.map(function (w) { return w.msg; }).join(" \n")
+        : "";
       if (blocked) {
-        warnIcon += ' <span class="tb-svc-setup-chip">Needs setup</span>';
+        warnIcon = ' <span class="tb-svc-setup-chip" title="' + escapeAttr(tip) + '">Needs setup</span>';
+      } else if (svc.warnings.length) {
+        warnIcon = ' <span class="rc-warn-badge" title="' + escapeAttr(tip) + '">&#9888;</span>';
       }
 
       // Show a small color stripe based on the first pattern's color so the
