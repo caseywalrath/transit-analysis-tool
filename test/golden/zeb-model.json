@@ -1,0 +1,542 @@
+{
+  "parse-time-basic": 365,
+  "parse-time-past-midnight": 1530,
+  "parse-time-blank": null,
+  "parse-time-garbage": null,
+  "service-weekday-wins": {
+    "serviceId": "WD",
+    "tripCount": 2,
+    "reason": "weekday"
+  },
+  "service-fallback-most-trips": {
+    "serviceId": "SAT",
+    "tripCount": 3,
+    "reason": "most-trips"
+  },
+  "service-empty": {
+    "serviceId": null,
+    "tripCount": 0,
+    "reason": "no-trips"
+  },
+  "blocks-by-block-id": [
+    {
+      "blockId": "B2",
+      "serviceId": "S1",
+      "method": "block_id",
+      "tripIds": [
+        "T3"
+      ],
+      "routeIds": [
+        "R2"
+      ],
+      "revenueMiles": 4,
+      "startMin": 300,
+      "endMin": 340,
+      "spanHours": 0.6666666666666666,
+      "firstStop": [
+        -105.2,
+        40.2
+      ],
+      "lastStop": [
+        -105.3,
+        40.3
+      ],
+      "trips": [
+        {
+          "tripId": "T3",
+          "routeId": "R2",
+          "serviceId": "S1",
+          "blockId": "B2",
+          "shapeId": "SH2",
+          "startMin": 300,
+          "endMin": 340,
+          "firstStopId": "s3",
+          "lastStopId": "s4",
+          "firstStop": [
+            -105.2,
+            40.2
+          ],
+          "lastStop": [
+            -105.3,
+            40.3
+          ],
+          "miles": 4
+        }
+      ]
+    },
+    {
+      "blockId": "B1",
+      "serviceId": "S1",
+      "method": "block_id",
+      "tripIds": [
+        "T1",
+        "T2"
+      ],
+      "routeIds": [
+        "R1"
+      ],
+      "revenueMiles": 10,
+      "startMin": 360,
+      "endMin": 450,
+      "spanHours": 1.5,
+      "firstStop": [
+        -105,
+        40
+      ],
+      "lastStop": [
+        -105,
+        40
+      ],
+      "trips": [
+        {
+          "tripId": "T1",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "B1",
+          "shapeId": "SH1",
+          "startMin": 360,
+          "endMin": 400,
+          "firstStopId": "s1",
+          "lastStopId": "s2",
+          "firstStop": [
+            -105,
+            40
+          ],
+          "lastStop": [
+            -105.1,
+            40.1
+          ],
+          "miles": 5
+        },
+        {
+          "tripId": "T2",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "B1",
+          "shapeId": "SH1",
+          "startMin": 410,
+          "endMin": 450,
+          "firstStopId": "s2",
+          "lastStopId": "s1",
+          "firstStop": [
+            -105.1,
+            40.1
+          ],
+          "lastStop": [
+            -105,
+            40
+          ],
+          "miles": 5
+        }
+      ]
+    }
+  ],
+  "blocks-chained-layover-excludes": [
+    {
+      "blockId": "chainT1",
+      "serviceId": "S1",
+      "method": "chained",
+      "tripIds": [
+        "chainT1",
+        "chainT2",
+        "chainT3"
+      ],
+      "routeIds": [
+        "R1"
+      ],
+      "revenueMiles": 15,
+      "startMin": 360,
+      "endMin": 500,
+      "spanHours": 2.3333333333333335,
+      "firstStop": [
+        -105,
+        40
+      ],
+      "lastStop": [
+        -105.05,
+        40.05
+      ],
+      "trips": [
+        {
+          "tripId": "chainT1",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH1",
+          "startMin": 360,
+          "endMin": 400,
+          "firstStopId": "sA",
+          "lastStopId": "sB",
+          "firstStop": [
+            -105,
+            40
+          ],
+          "lastStop": [
+            -105.05,
+            40.05
+          ],
+          "miles": 5
+        },
+        {
+          "tripId": "chainT2",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH1",
+          "startMin": 410,
+          "endMin": 450,
+          "firstStopId": "sB",
+          "lastStopId": "sA",
+          "firstStop": [
+            -105.05,
+            40.05
+          ],
+          "lastStop": [
+            -105,
+            40
+          ],
+          "miles": 5
+        },
+        {
+          "tripId": "chainT3",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH1",
+          "startMin": 460,
+          "endMin": 500,
+          "firstStopId": "sA",
+          "lastStopId": "sB",
+          "firstStop": [
+            -105,
+            40
+          ],
+          "lastStop": [
+            -105.05,
+            40.05
+          ],
+          "miles": 5
+        }
+      ]
+    },
+    {
+      "blockId": "chainT4",
+      "serviceId": "S1",
+      "method": "chained",
+      "tripIds": [
+        "chainT4"
+      ],
+      "routeIds": [
+        "R1"
+      ],
+      "revenueMiles": 5,
+      "startMin": 546,
+      "endMin": 580,
+      "spanHours": 0.5666666666666667,
+      "firstStop": [
+        -105.05,
+        40.05
+      ],
+      "lastStop": [
+        -105,
+        40
+      ],
+      "trips": [
+        {
+          "tripId": "chainT4",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH1",
+          "startMin": 546,
+          "endMin": 580,
+          "firstStopId": "sB",
+          "lastStopId": "sA",
+          "firstStop": [
+            -105.05,
+            40.05
+          ],
+          "lastStop": [
+            -105,
+            40
+          ],
+          "miles": 5
+        }
+      ]
+    }
+  ],
+  "blocks-chained-terminal-mismatch": [
+    {
+      "blockId": "termT1",
+      "serviceId": "S1",
+      "method": "chained",
+      "tripIds": [
+        "termT1"
+      ],
+      "routeIds": [
+        "R1"
+      ],
+      "revenueMiles": 5,
+      "startMin": 360,
+      "endMin": 400,
+      "spanHours": 0.6666666666666666,
+      "firstStop": [
+        -105,
+        40
+      ],
+      "lastStop": [
+        -105.05,
+        40.05
+      ],
+      "trips": [
+        {
+          "tripId": "termT1",
+          "routeId": "R1",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH1",
+          "startMin": 360,
+          "endMin": 400,
+          "firstStopId": "sA",
+          "lastStopId": "sB",
+          "firstStop": [
+            -105,
+            40
+          ],
+          "lastStop": [
+            -105.05,
+            40.05
+          ],
+          "miles": 5
+        }
+      ]
+    },
+    {
+      "blockId": "termT2",
+      "serviceId": "S1",
+      "method": "chained",
+      "tripIds": [
+        "termT2"
+      ],
+      "routeIds": [
+        "R2"
+      ],
+      "revenueMiles": 5,
+      "startMin": 410,
+      "endMin": 450,
+      "spanHours": 0.6666666666666666,
+      "firstStop": [
+        -106,
+        41
+      ],
+      "lastStop": [
+        -106.05,
+        41.05
+      ],
+      "trips": [
+        {
+          "tripId": "termT2",
+          "routeId": "R2",
+          "serviceId": "S1",
+          "blockId": "",
+          "shapeId": "SH2",
+          "startMin": 410,
+          "endMin": 450,
+          "firstStopId": "sC",
+          "lastStopId": "sD",
+          "firstStop": [
+            -106,
+            41
+          ],
+          "lastStop": [
+            -106.05,
+            41.05
+          ],
+          "miles": 5
+        }
+      ]
+    }
+  ],
+  "blocks-empty": [],
+  "deadhead-circuity-1": {
+    "out": 5.292862689427551,
+    "back": 6.909341898553197,
+    "total": 12.202204587980749
+  },
+  "deadhead-circuity-1.3": {
+    "out": 6.880721496255816,
+    "back": 8.982144468119156,
+    "total": 15.862865964374972
+  },
+  "energy-40ft-plains-summer-tier1": {
+    "totalMiles": 66,
+    "kWhPerMi": 2.205,
+    "blockKWh": 145.53,
+    "requiredKWh": 181.9125,
+    "ratio": 0.4134375,
+    "endSoc": 0.66925,
+    "rechargeHours": 1.078,
+    "overnightHours": 12,
+    "rechargeFits": true,
+    "vehicle": {
+      "id": "bus40",
+      "label": "40-ft BEB",
+      "batteryKWh": 440,
+      "baseKWhPerMi": 2.1
+    },
+    "gradeFactor": 1,
+    "seasonFactor": 1.05,
+    "socBuffer": 0.2,
+    "chargerKW": 150,
+    "chargerEff": 0.9,
+    "deadheadMiles": {
+      "out": 3,
+      "back": 3,
+      "total": 6
+    }
+  },
+  "energy-cutaway-mountain-winter-tier5": {
+    "totalMiles": 110,
+    "kWhPerMi": 2.16775,
+    "blockKWh": 238.4525,
+    "requiredKWh": 298.06562499999995,
+    "ratio": 1.9871041666666664,
+    "endSoc": -0.5896833333333333,
+    "rechargeHours": 1.7663148148148147,
+    "overnightHours": 14,
+    "rechargeFits": true,
+    "vehicle": {
+      "id": "cutaway",
+      "label": "Cutaway BEB",
+      "batteryKWh": 150,
+      "baseKWhPerMi": 1.15
+    },
+    "gradeFactor": 1.3,
+    "seasonFactor": 1.45,
+    "socBuffer": 0.2,
+    "chargerKW": 150,
+    "chargerEff": 0.9,
+    "deadheadMiles": {
+      "out": 5,
+      "back": 5,
+      "total": 10
+    }
+  },
+  "energy-fits-recharge-does-not": {
+    "totalMiles": 160,
+    "kWhPerMi": 2.1,
+    "blockKWh": 336,
+    "requiredKWh": 420,
+    "ratio": 0.9545454545454546,
+    "endSoc": 0.23636363636363633,
+    "rechargeHours": 7.466666666666667,
+    "overnightHours": 4,
+    "rechargeFits": false,
+    "vehicle": {
+      "id": "bus40",
+      "label": "40-ft BEB",
+      "batteryKWh": 440,
+      "baseKWhPerMi": 2.1
+    },
+    "gradeFactor": 1,
+    "seasonFactor": 1,
+    "socBuffer": 0.2,
+    "chargerKW": 50,
+    "chargerEff": 0.9,
+    "deadheadMiles": {
+      "out": 5,
+      "back": 5,
+      "total": 10
+    }
+  },
+  "tier-boundary-0.75": {
+    "tier": 1,
+    "label": "Ready today",
+    "reason": "Worst block uses at most 75% of the battery after the 20% safety buffer."
+  },
+  "tier-boundary-0.9": {
+    "tier": 2,
+    "label": "Feasible with margin",
+    "reason": "Worst block fits within the buffered battery with 10-25% margin."
+  },
+  "tier-boundary-1.0": {
+    "tier": 3,
+    "label": "Marginal",
+    "reason": "Worst block only just meets the 20% buffer; small changes tip it over."
+  },
+  "tier-boundary-1.6": {
+    "tier": 4,
+    "label": "Needs midday charging",
+    "reason": "Depot-only charging fails; a single opportunity charge would close the gap."
+  },
+  "tier-boundary-1.61": {
+    "tier": 5,
+    "label": "Not feasible depot-only",
+    "reason": "Required capacity exceeds 160% of the available battery."
+  },
+  "tier-recharge-downgrade": {
+    "tier": 4,
+    "label": "Needs midday charging",
+    "reason": "Block energy fits, but it cannot be recharged at the depot charger in the overnight window."
+  },
+  "tier-5-recharge-fail-stays-5": {
+    "tier": 5,
+    "label": "Not feasible depot-only",
+    "reason": "Required capacity exceeds 160% of the available battery."
+  },
+  "score-0.5": 100,
+  "score-1.0": 50,
+  "score-1.5": 0,
+  "score-2.0": 0,
+  "score-negative": 100,
+  "route-summary-worst-governs": {
+    "routeId": "R1",
+    "blockCount": 2,
+    "governingBlockId": "B2",
+    "ratio": 1.2,
+    "tier": 4,
+    "label": "Needs midday charging",
+    "score": 30,
+    "blockKWh": 300,
+    "requiredKWh": 375,
+    "revenueMiles": 40,
+    "longestBlockMiles": 40,
+    "reason": "recharge issue"
+  },
+  "route-summary-empty": {
+    "routeId": "R2",
+    "blockCount": 0,
+    "governingBlockId": null,
+    "ratio": null,
+    "tier": null,
+    "label": null,
+    "score": null,
+    "blockKWh": null,
+    "requiredKWh": null,
+    "revenueMiles": null,
+    "longestBlockMiles": null,
+    "reason": null
+  },
+  "soc-profile-two-trip-block": [
+    {
+      "min": 352,
+      "soc": 1,
+      "label": "deadhead"
+    },
+    {
+      "min": 400,
+      "soc": 0.9,
+      "label": "R1"
+    },
+    {
+      "min": 450,
+      "soc": 0.8090909090909091,
+      "label": "R1"
+    },
+    {
+      "min": 458,
+      "soc": 0.8,
+      "label": "deadhead"
+    }
+  ]
+}
