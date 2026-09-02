@@ -46,8 +46,15 @@ are hand-entered approximations in that same file.
 ## Prerequisites
 
 1. **The two GTFS feeds must be in the repo** before Step 0 can run:
-   - `data/gtfs/allpointstransit-co-us.zip` (Avon Transit, via Trillium)
-   - `data/gtfs/greeleyevans-co-us.zip` (Greeley-Evans Transit, via Trillium)
+   - `data/gtfs/avon-co-us.zip` — **Avon Transit** (Town of Avon, Eagle County).
+     Not All Points Transit (Montrose), which is a different agency; if a file
+     named `allpointstransit-co-us.zip` turns up, it is the wrong feed. Trillium
+     publishes the Avon feed under its own slug; whatever the downloaded file is
+     called, commit it at this exact path.
+   - `data/gtfs/greeleyevans-co-us.zip` — Greeley-Evans Transit, via Trillium.
+
+   Before Step 0, open each zip's `agency.txt` and confirm `agency_name` reads
+   Avon Transit and Greeley-Evans Transit respectively. Stop and report if not.
 
    The cloud sandbox cannot reach `data.trilliumtransit.com` (proxy returns 403
    on CONNECT). If the files are absent, stop and report that; do not fabricate
@@ -116,7 +123,7 @@ Python 3, stdlib only (`zipfile`, `csv`, `io`). Usage:
 
 ```bash
 python3 tools/merge-gtfs.py \
-  --feed AVN=data/gtfs/allpointstransit-co-us.zip \
+  --feed AVN=data/gtfs/avon-co-us.zip \
   --feed GET=data/gtfs/greeleyevans-co-us.zip \
   --out data/gtfs/colorado-demo-gtfs.zip
 ```
