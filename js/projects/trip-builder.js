@@ -66,10 +66,10 @@
     var n = (App.routes || []).length + (App.lines || []).length;
     if (!n) {
       return { need: "Draw a route or line to begin.",
-               action: "Set its Direction, Time Bands, and Run time / Avg speed in Attributes." };
+               action: "Then select it here — you can set Direction, Time Bands, and Run time without leaving this panel." };
     }
-    return { need: "Select a Service from the left to view its trip schedule.",
-             action: "Services are assembled from drawn routes/lines sharing a Service id." };
+    return { need: "Select a Service from the left to view or set up its trip schedule.",
+             action: "Services marked \"Needs setup\" are missing attributes — select one to fill them in." };
   }
 
   // ---- Service assembly ----
@@ -249,7 +249,7 @@
 
     if (!services.length) {
       el.innerHTML = '<div style="padding:6px;color:var(--muted);font-size:12px;">' +
-        'No routes or lines drawn. Draw features and set their Direction, Time Bands, and Run time / Avg speed attributes.</div>';
+        'No routes or lines drawn. Draw a Route or Line on the map, then select it here to set its schedule attributes.</div>';
       return;
     }
 
@@ -270,6 +270,9 @@
       if (svc.warnings.length) {
         var tip = svc.warnings.map(function (w) { return w.msg; }).join(" \n");
         warnIcon = ' <span class="rc-warn-badge" title="' + escapeAttr(tip) + '">&#9888;</span>';
+      }
+      if (blocked) {
+        warnIcon += ' <span class="tb-svc-setup-chip">Needs setup</span>';
       }
 
       // Show a small color stripe based on the first pattern's color so the
@@ -300,7 +303,6 @@
     for (var i = 0; i < rows.length; i++) {
       (function (row) {
         row.addEventListener("click", function () {
-          if (row.classList.contains("tb-svc-blocked")) return;
           var key = row.getAttribute("data-key");
           selectService(key);
         });
@@ -313,6 +315,45 @@
     _detailsOpen = false;
     setStatus(null);
     // Re-render the left list to update the highlighted row, then the right.
+    buildServiceList();
+    renderRightSide();
+  }
+
+  // Rebuild services from current feature state, re-resolve the selection by
+  // pattern identity (the key may have changed if serviceId was edited), and
+  // re-render both columns. Called after any edit made inside the mini-popup.
+  // `anchor` is { featureType, featureIndex } of the pattern that anchors the
+  // selection — normally the first pattern of the Service being edited.
+  function refreshAfterEdit(anchor) {
+    if (App.cache) App.cache.save();
+
+    var oldKey = _selectedKey;
+    var services = App.buildTransitServices();
+    _services = services;
+
+    if (anchor) {
+      var found = null;
+      services.forEach(function (s) {
+        s.patterns.forEach(function (p) {
+          if (p.featureType === anchor.featureType &&
+              p.featureIndex === anchor.featureIndex) found = s;
+        });
+      });
+      if (found) _selectedKey = found.key;
+    }
+
+    // Drop trips belonging to a key that no longer exists (the Service was
+    // re-keyed or split) — its composition changed, so the trips are invalid.
+    if (oldKey && oldKey !== _selectedKey &&
+        !services.some(function (s) { return s.key === oldKey; })) {
+      delete _tripsByService[oldKey];
+    }
+
+    if (_selectedKey && _tripsByService[_selectedKey]) {
+      _stale = true;
+      showStale();
+    }
+    if (!isPopupVisible()) return;
     buildServiceList();
     renderRightSide();
   }
@@ -330,14 +371,16 @@
   function renderRightSide() {
     var empty   = document.getElementById("tbEmptyState");
     var hdr     = document.getElementById("tbHeader");
+    var setup   = document.getElementById("tbSetup");
     var actions = document.getElementById("tbActions");
     var results = document.getElementById("tbResults");
     var exptRow = document.getElementById("tbExportRow");
-    if (!empty || !hdr || !actions || !results || !exptRow) return;
+    if (!empty || !hdr || !setup || !actions || !results || !exptRow) return;
 
     var svc = getSelectedService();
     if (!svc) {
       hdr.style.display      = "none";
+      setup.style.display    = "none";
       actions.style.display  = "none";
       results.style.display  = "none";
       exptRow.style.display  = "none";
@@ -353,6 +396,24 @@
 
     renderServiceHeader(svc);
 
+    if (App.hasBlockingWarnings(svc)) {
+      setup.style.display   = "";
+      results.style.display = "none";
+      exptRow.style.display = "none";
+      results.innerHTML     = "";
+      setExportEnabled(false);
+      renderSetupPanel(svc);
+      var gen = document.getElementById("tbGenerateBtn");
+      if (gen) {
+        gen.disabled = true;
+        gen.title = "Fill in the missing attributes above to generate trips.";
+      }
+      return;
+    }
+    setup.style.display = "none";
+    var gen2 = document.getElementById("tbGenerateBtn");
+    if (gen2) { gen2.disabled = false; gen2.title = ""; }
+
     var stored = _tripsByService[svc.key];
     if (stored) {
       results.style.display = "";
@@ -365,6 +426,27 @@
       results.innerHTML = "";
       setExportEnabled(false);
     }
+  }
+
+  // Render the blocking warnings as an actionable checklist plus a button that
+  // opens the SAME editor the header's Edit button opens.
+  function renderSetupPanel(svc) {
+    var el = document.getElementById("tbSetup");
+    if (!el) return;
+    var items = svc.warnings
+      .filter(function (w) { return w.level === "error"; })
+      .map(function (w) { return '<li>' + escapeHTML(w.msg) + '</li>'; })
+      .join("");
+    el.innerHTML =
+      '<p><b>This Service needs a few attributes before trips can be generated.</b></p>' +
+      '<ul class="tb-setup-list">' + items + '</ul>' +
+      '<button id="tbSetupBtn" type="button" class="rf-action-primary">' +
+        'Set up this Service' +
+      '</button>' +
+      '<p class="tiny u-muted">Changes here edit the Route/Line attributes directly ' +
+      '&mdash; the same fields as the per-feature Attributes popup.</p>';
+    var btn = document.getElementById("tbSetupBtn");
+    if (btn) btn.addEventListener("click", function () { openEditPopup(svc, btn); });
   }
 
   // Resolve the underlying feature object for a Service pattern. Used by the
@@ -575,11 +657,12 @@
 
   // ---- Truncated Edit popup ----
   // Mounts inside the shared #fp-mini-popup (App.openMiniPopup). Each pattern
-  // gets its own block: Direction select, Run time, Avg speed, time-bands
-  // editor (App.buildServiceScheduleEditor). All inputs mutate
+  // gets its own block: Service id, Direction select, Run time, Avg speed,
+  // time-bands editor (App.buildServiceScheduleEditor). All inputs mutate
   // feature.properties.attributes directly. On every change, save to cache,
-  // mark stale, and re-render the header summary live. On popup close, fire
-  // App.notifyProject() so other modules pick up the changes.
+  // rebuild Services, re-resolve the selection, and re-render both columns
+  // live (see refreshAfterEdit). On popup close, fire App.notifyProject() so
+  // other modules pick up the changes.
 
   var DIRECTION_OPTIONS = [
     "Both", "NB", "SB", "EB", "WB", "Inbound", "Outbound", "Loop", "CW", "CCW"
@@ -603,7 +686,48 @@
       ' <span class="tiny" style="color:var(--muted);">(' + escapeHTML(pattern.direction) + ')</span>';
     block.appendChild(hdr);
 
+    // Service id — the pairing key. Reuses the shared autocomplete datalist
+    // created by the per-feature attributes popup (js/core/feature-attributes.js)
+    // or Attribute Summary, whichever mounted first this session.
+    var svcRow = document.createElement("div");
+    svcRow.className = "fp-attr-row";
+    var svcLabel = document.createElement("label");
+    svcLabel.className = "fp-attr-label";
+    svcLabel.textContent = "Service";
+    var svcInp = document.createElement("input");
+    svcInp.type = "text";
+    svcInp.className = "fp-attr-input";
+    svcInp.placeholder = "e.g. Blue Line";
+    svcInp.title = "Two Routes/Lines sharing a Service id are paired into one Service.";
+    svcInp.value = attrs.serviceId != null ? attrs.serviceId : "";
+    var dlId = "fp-service-datalist";
+    if (!document.getElementById(dlId)) {
+      var dl = document.createElement("datalist");
+      dl.id = dlId;
+      document.body.appendChild(dl);
+    }
+    svcInp.setAttribute("list", dlId);
+    // CHANGE only (blur / Enter), never "input" — see the note below.
+    svcInp.addEventListener("change", function () {
+      var v = svcInp.value.trim();
+      if (v === "") delete attrs.serviceId; else attrs.serviceId = v;
+    });
+    svcRow.appendChild(svcLabel);
+    svcRow.appendChild(svcInp);
+    block.appendChild(svcRow);
+
+    var svcHint = document.createElement("div");
+    svcHint.className = "tiny u-muted tb-edit-hint";
+    svcHint.textContent = "Give two features the same Service id to pair them " +
+                          "(e.g. an NB and an SB pattern). Leave blank for a standalone Service.";
+    block.appendChild(svcHint);
+
     // Direction
+    // Critical detail: the Service id field above binds on "change", not
+    // "input" like every field below — typing "Blue Line" must not re-key
+    // (and re-render) the Service on every keystroke. The container-level
+    // onAttrChange listener (set up in openEditPopup) listens for both
+    // "input" and "change", so the refresh still fires once the value lands.
     var dirRow = document.createElement("div");
     dirRow.className = "fp-attr-row";
     var dirLabel = document.createElement("label");
@@ -694,9 +818,19 @@
     return block;
   }
 
+  // Known cosmetic limitation (accepted, not fixed): if editing the Service id
+  // below re-keys or splits this Service while the popup is open, this
+  // popup's title and its set of pattern blocks go stale until reopened. The
+  // fields still bind to the correct underlying feature.properties.attributes
+  // objects, so nothing is lost or mis-written — rebuilding the popup content
+  // mid-edit would destroy whatever the user is currently typing.
   function openEditPopup(svc, anchorBtn) {
     if (!svc || !svc.patterns || !svc.patterns.length) return;
     if (typeof App.openMiniPopup !== "function") return;
+
+    var anchorPattern = svc.patterns[0]
+      ? { featureType: svc.patterns[0].featureType, featureIndex: svc.patterns[0].featureIndex }
+      : null;
 
     var content = document.createElement("div");
     content.className = "tb-edit-popup-body";
@@ -706,27 +840,10 @@
       if (block) content.appendChild(block);
     });
 
-    // Live re-render of the trip-builder summary on every input/change inside
-    // the popup. Also save to cache and mark trips stale.
-    function onAttrChange() {
-      if (App.cache) App.cache.save();
-      if (_tripsByService[svc.key]) {
-        _stale = true;
-        showStale();
-      }
-      // Re-resolve the service from current feature state so derived fields
-      // (length, color, validation) reflect the edits — patterns hold a
-      // snapshot, so a refresh is needed.
-      if (isPopupVisible()) {
-        var refreshed = App.buildTransitServices();
-        _services = refreshed;
-        var current = null;
-        for (var i = 0; i < refreshed.length; i++) {
-          if (refreshed[i].key === svc.key) { current = refreshed[i]; break; }
-        }
-        if (current) renderServiceHeader(current);
-      }
-    }
+    // Live re-render of the whole right column (and the left list, since a
+    // Service id edit can re-key or split the Service) on every input/change
+    // inside the popup.
+    function onAttrChange() { refreshAfterEdit(anchorPattern); }
     content.addEventListener("input",  onAttrChange);
     content.addEventListener("change", onAttrChange);
 

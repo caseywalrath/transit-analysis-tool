@@ -7,7 +7,7 @@
 
       <div class="rf-section-title">Services</div>
       <div class="tiny tb-service-note">
-        Click a Service to view its generated trip schedule. Routes/Lines that share a <b>Service</b> attribute appear as one paired Service.
+        Click a Service to view or set up its trip schedule. Routes/Lines that share a <b>Service id</b> are paired into one Service.
       </div>
       <div id="tbServiceList" class="rf-feature-checklist">
         <div class="rf-empty-note">No routes or lines drawn.</div>
@@ -24,6 +24,9 @@
 
       <!-- Selected-service header (filled by JS) -->
       <div id="tbHeader" style="display:none;"></div>
+
+      <!-- Blocking-warning panel, shown when the selected Service is not ready -->
+      <div id="tbSetup" class="rf-info-box tb-setup" style="display:none;"></div>
 
       <!-- Generate button (always visible when a service is selected) -->
       <div id="tbActions" style="display:none;margin-top:8px;">
@@ -48,7 +51,7 @@
         <p>Select a Service from the left to view its trip schedule.</p>
         <p class="tiny u-muted">
           Trips are generated from each Route/Line's <b>Direction</b>, <b>Time Bands</b>, <b>Frequency</b>, and <b>Run time</b> (or <b>Avg speed</b>) attributes.
-          Edit those in the per-feature Attributes popup. Bands with blank or zero Frequency mean &ldquo;no service in this band&rdquo;.
+          Select a Service and use <b>Set up this Service</b> (or <b>&#9998; Edit</b>) to set them here. Bands with blank or zero Frequency mean &ldquo;no service in this band&rdquo;.
         </p>
       </div>
 
