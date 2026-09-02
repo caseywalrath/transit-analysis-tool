@@ -1,0 +1,239 @@
+{
+  "breaks/quantile-clean-spread": {
+    "breaks": [
+      28,
+      46,
+      63.99999999999999,
+      82
+    ],
+    "nEffective": 5
+  },
+  "breaks/equal-clean-spread": {
+    "breaks": [
+      28,
+      46,
+      64,
+      82
+    ],
+    "nEffective": 5
+  },
+  "breaks/quantile-3-classes": {
+    "breaks": [
+      40,
+      70
+    ],
+    "nEffective": 3
+  },
+  "breaks/heavily-tied-dedup": {
+    "breaks": [
+      5,
+      6.999999999999997,
+      12.000000000000002
+    ],
+    "nEffective": 4
+  },
+  "breaks/all-equal": {
+    "breaks": [],
+    "nEffective": 1
+  },
+  "breaks/single-value": {
+    "breaks": [],
+    "nEffective": 1
+  },
+  "breaks/empty": {
+    "breaks": [],
+    "nEffective": 0
+  },
+  "stepExpr/5-classes-default-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "step",
+      [
+        "get",
+        "value"
+      ],
+      "#a",
+      10,
+      "#b",
+      20,
+      "#c",
+      30,
+      "#d",
+      40,
+      "#e"
+    ],
+    "rgba(200,200,200,0.35)"
+  ],
+  "stepExpr/3-classes-custom-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "pop"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "step",
+      [
+        "get",
+        "pop"
+      ],
+      "#x",
+      100,
+      "#y",
+      200,
+      "#z"
+    ],
+    "#fff"
+  ],
+  "stepExpr/1-class-no-breaks": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "step",
+      [
+        "get",
+        "value"
+      ],
+      "#solid"
+    ],
+    "rgba(200,200,200,0.35)"
+  ],
+  "interp/5-color-real-range-default-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "interpolate",
+      [
+        "linear"
+      ],
+      [
+        "get",
+        "value"
+      ],
+      0,
+      "#a",
+      25,
+      "#b",
+      50,
+      "#c",
+      75,
+      "#d",
+      100,
+      "#e"
+    ],
+    "rgba(200,200,200,0.35)"
+  ],
+  "interp/3-color-real-range-custom-noData": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "pop"
+        ]
+      ],
+      "number"
+    ],
+    [
+      "interpolate",
+      [
+        "linear"
+      ],
+      [
+        "get",
+        "pop"
+      ],
+      10,
+      "#x",
+      30,
+      "#y",
+      50,
+      "#z"
+    ],
+    "#fff"
+  ],
+  "interp/degenerate-min-equals-max-solid-fallback": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    "#c",
+    "rgba(200,200,200,0.35)"
+  ],
+  "interp/degenerate-no-data-solid-fallback": [
+    "case",
+    [
+      "==",
+      [
+        "typeof",
+        [
+          "get",
+          "value"
+        ]
+      ],
+      "number"
+    ],
+    "#c",
+    "rgba(200,200,200,0.35)"
+  ],
+  "labels/fixed-fmt-4-classes": [
+    "V0 – V10",
+    "V10 – V20",
+    "V20 – V30",
+    "V30 – V40"
+  ],
+  "labels/no-fmt-default-stringify": [
+    "0 – 5",
+    "5 – 10"
+  ],
+  "labels/single-class-min-equals-max": [
+    "V3"
+  ]
+}

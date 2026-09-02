@@ -659,10 +659,50 @@
 
   // ---- Choropleth rendering ----
 
-  var TPI_SOURCE     = "tpi-choropleth";
+  // Still referenced by the hide-toggle wiring below — App.choropleth.render()
+  // with id: "tpi" produces exactly these ids via its "<id>-choropleth-*"
+  // convention (js/core/choropleth.js), so they remain valid without a
+  // TPI_SOURCE constant (no longer used now that render()/remove() own the
+  // source directly).
   var TPI_FILL_LAYER = "tpi-choropleth-fill";
   var TPI_LINE_LAYER = "tpi-choropleth-line";
 
+  // Hover popup for the "tpi" choropleth (Phase 3 Step 3.2 of
+  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  function tpiHoverHTML(props) {
+    var score  = props.tpiScore;
+    var geoid2 = props.GEOID || "\u2014";
+
+    var html = '<div style="font-size:12px;line-height:1.4;">';
+    html += "<b>GEOID:</b> " + geoid2 + "<br>";
+    html += "<b>TPI Score:</b> " + (score != null ? Number(score).toFixed(2) : "N/A") + " / 5";
+
+    var factorsObj = null;
+    try { factorsObj = JSON.parse(props.factors); } catch (_) {}
+    if (factorsObj) {
+      html += '<br><span style="color:#666;font-size:11px;">';
+      var fNames      = TPI.FACTORS;
+      var fallbackIds = (_lastResult && _lastResult.tractFallbackFactors) ? _lastResult.tractFallbackFactors : [];
+      for (var fi = 0; fi < fNames.length; fi++) {
+        var fval = factorsObj[fNames[fi].id];
+        if (fval != null) {
+          var isFb = fallbackIds.indexOf(fNames[fi].id) !== -1;
+          html += fNames[fi].label + ": " + fval + "/5" + (isFb ? ' <span style="color:#aaa">(T)</span>' : "") + "<br>";
+        }
+      }
+      html += "</span>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  // Manual breaks [1,2,3,4] with the "blues" ramp reproduce the same 5 colors
+  // TPI's old inline continuous interpolate used at integer scores
+  // (#eff3ff/#bdd7e7/#6baed6/#3182bd/#08519c), now as discrete classes rather
+  // than a gradient \u2014 the settled Phase 3 Step 3.2 tradeoff (pixel-for-pixel
+  // parity with the old continuous ramp is not required). A null/non-numeric
+  // tpiScore renders App.choropleth's no-data gray via its typeof guard,
+  // replacing the old coalesce-to-0-then-gray hack.
   function renderChoropleth(result) {
     var map = App.map;
     if (!map || !result) return;
@@ -696,79 +736,14 @@
       });
     }
 
-    var fc = { type: "FeatureCollection", features: features };
-
-    var colorExpr = [
-      "interpolate", ["linear"], ["coalesce", ["get", "tpiScore"], 0],
-      0, "rgba(200,200,200,0.3)",
-      1, "#eff3ff",
-      2, "#bdd7e7",
-      3, "#6baed6",
-      4, "#3182bd",
-      5, "#08519c"
-    ];
-
-    if (!map.getSource(TPI_SOURCE)) {
-      map.addSource(TPI_SOURCE, { type: "geojson", data: fc });
-
-      var beforeLayer = map.getLayer("buffers-fill") ? "buffers-fill" : undefined;
-
-      map.addLayer({
-        id: TPI_FILL_LAYER,
-        type: "fill",
-        source: TPI_SOURCE,
-        paint: { "fill-color": colorExpr, "fill-opacity": 0.55 }
-      }, beforeLayer);
-
-      map.addLayer({
-        id: TPI_LINE_LAYER,
-        type: "line",
-        source: TPI_SOURCE,
-        paint: { "line-color": "#333", "line-width": 0.5, "line-opacity": 0.4 }
-      }, beforeLayer);
-
-      // Hover tooltip
-      var hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
-
-      map.on("mousemove", TPI_FILL_LAYER, function (e) {
-        map.getCanvas().style.cursor = "pointer";
-        if (e.features && e.features.length > 0) {
-          var props  = e.features[0].properties;
-          var score  = props.tpiScore;
-          var geoid2 = props.GEOID || "\u2014";
-
-          var html = '<div style="font-size:12px;line-height:1.4;">';
-          html += "<b>GEOID:</b> " + geoid2 + "<br>";
-          html += "<b>TPI Score:</b> " + (score != null ? Number(score).toFixed(2) : "N/A") + " / 5";
-
-          var factorsObj = null;
-          try { factorsObj = JSON.parse(props.factors); } catch (_) {}
-          if (factorsObj) {
-            html += '<br><span style="color:#666;font-size:11px;">';
-            var fNames     = TPI.FACTORS;
-            var fallbackIds = (_lastResult && _lastResult.tractFallbackFactors) ? _lastResult.tractFallbackFactors : [];
-            for (var fi = 0; fi < fNames.length; fi++) {
-              var fval = factorsObj[fNames[fi].id];
-              if (fval != null) {
-                var isFb = fallbackIds.indexOf(fNames[fi].id) !== -1;
-                html += fNames[fi].label + ": " + fval + "/5" + (isFb ? ' <span style="color:#aaa">(T)</span>' : "") + "<br>";
-              }
-            }
-            html += "</span>";
-          }
-          html += "</div>";
-          hoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
-        }
-      });
-
-      map.on("mouseleave", TPI_FILL_LAYER, function () {
-        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
-        hoverPopup.remove();
-      });
-
-    } else {
-      map.getSource(TPI_SOURCE).setData(fc);
-    }
+    // Layer ids are load-bearing (Layers-panel manifest, ui-screens) and are
+    // exactly reproduced by the "<id>-choropleth-*" convention: id: "tpi"
+    // yields tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
+    App.choropleth.render({
+      id: "tpi", features: features, valueProp: "tpiScore",
+      breaks: [1, 2, 3, 4], ramp: "blues", fillOpacity: 0.55,
+      hoverHTML: tpiHoverHTML, beforeLayer: "buffers-fill"
+    });
 
     // Show and reset the hide-choropleth toggle after every successful render
     var toggleRow = document.getElementById("tpiChoroplethToggleRow");
@@ -778,11 +753,7 @@
   }
 
   function removeChoropleth() {
-    var map = App.map;
-    if (!map) return;
-    if (map.getLayer(TPI_FILL_LAYER)) map.removeLayer(TPI_FILL_LAYER);
-    if (map.getLayer(TPI_LINE_LAYER)) map.removeLayer(TPI_LINE_LAYER);
-    if (map.getSource(TPI_SOURCE))    map.removeSource(TPI_SOURCE);
+    App.choropleth.remove("tpi");
   }
 
   function clearChoropleth() {

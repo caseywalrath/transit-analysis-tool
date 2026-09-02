@@ -4,7 +4,7 @@
 //             App.getMeta (utils.js), turf (CDN).
 // Exports: renderCensusOverlay, fetchAllTigerwebFeatures, fetchTigerwebGeos,
 //          parseGEOID, fetchACSValues, fetchACSCountyValues,
-//          aggregateWithinUnion, computeAcsValueOnly
+//          aggregateWithinUnion, computeGeoOverlapFractions, computeAcsValueOnly
 
 (function () {
   var App = window.App = window.App || {};
@@ -316,11 +316,54 @@
     return results;
   }
 
+  // computeGeoOverlapFractions: the per-geo union-overlap fraction math used
+  // by aggregateWithinUnion, exposed standalone so a caller can compute it
+  // once and reuse it across many variables (and, for the choropleth hover
+  // popup, show the apportioned share). apportionByArea true = fractional
+  // area overlap (turf.intersect area ratio); false = 1 for any geo that
+  // intersects the union, else the geo is simply absent from the returned
+  // map (same skip-on-failure behavior as the inlined version this replaces).
+  function computeGeoOverlapFractions(unionFeat, geos, apportionByArea) {
+    var fractions = new Map();
+
+    for (var fi = 0; fi < geos.length; fi++) {
+      var f = geos[fi];
+      var geoid = f.properties && f.properties.GEOID;
+      if (!geoid) continue;
+
+      var frac;
+      if (apportionByArea) {
+        var inter;
+        try { inter = turf.intersect(f, unionFeat); } catch (_) { continue; }
+        if (!inter) continue;
+        var aInter = turf.area(inter);
+        var aGeo = turf.area(f);
+        if (aGeo <= 0) continue;
+        frac = Math.min(1, Math.max(0, aInter / aGeo));
+      } else {
+        var intersects;
+        try { intersects = turf.booleanIntersects(f, unionFeat); } catch (_) { continue; }
+        if (!intersects) continue;
+        frac = 1;
+      }
+
+      fractions.set(geoid, frac);
+    }
+
+    return fractions;
+  }
+
   // aggregateWithinUnion: area-weighted aggregation of census values within a union polygon.
   // options.apportionByArea (default true): when false, uses full geography values for any
   // geo that intersects the union (no fractional area apportionment).
+  // options.fractions (optional): a precomputed Map<GEOID, frac> from
+  // computeGeoOverlapFractions — when present, it is used instead of
+  // recomputing the overlap per call (a geo absent from the map is skipped,
+  // same as a failed/no-overlap geo below). With no options.fractions,
+  // behavior is byte-identical to before this option existed.
   function aggregateWithinUnion(unionFeat, geos, valueMap, aggMode, options) {
     var apportionByArea = !(options && options.apportionByArea === false);
+    var precomputedFractions = options && options.fractions;
     var numerator = 0;
     var denom = 0;
     var used = 0;
@@ -333,7 +376,10 @@
       if (v == null) continue;
 
       var frac;
-      if (apportionByArea) {
+      if (precomputedFractions) {
+        if (!precomputedFractions.has(geoid)) continue;
+        frac = precomputedFractions.get(geoid);
+      } else if (apportionByArea) {
         var inter;
         try { inter = turf.intersect(f, unionFeat); } catch (_) { continue; }
         if (!inter) continue;
@@ -384,6 +430,7 @@
   App.fetchACSMultiValues = fetchACSMultiValues;
   App.fetchACSCountyValues = fetchACSCountyValues;
   App.aggregateWithinUnion = aggregateWithinUnion;
+  App.computeGeoOverlapFractions = computeGeoOverlapFractions;
   App.computeAcsValueOnly = computeAcsValueOnly;
 
   // Shared session fetch cache control (awareness + override).

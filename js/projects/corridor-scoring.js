@@ -480,14 +480,19 @@
     if (!map || !result) return;
     var fc = buildScoredFeatureCollection(result);
 
-    var colorExpr = [
-      "step", ["coalesce", ["get", "cdi"], -1],
-      "rgba(180,180,180,0.7)",
-      0,   "#C53030",
-      2.0, "#C05621",
-      3.0, "#D69E2E",
-      4.0, "#276749"
-    ];
+    // Phase 3 Step 3.4 of docs/feature-area-choropleth-plan.md: the step
+    // expression itself now comes from the shared engine so the ramp
+    // definition has one home, but CS keeps its own fixed red/orange/
+    // yellow/green corridor-quality breaks -- not one of App.choropleth's
+    // curated sequential ramps, since low/high CDI here is a quality
+    // judgment (poor -> excellent), not a plain magnitude gradient.
+    // Equivalent to the old inline expression for every real cdi value:
+    // a missing/non-numeric cdi now takes buildStepColorExpr's typeof-based
+    // noDataColor path instead of the old "coalesce to -1, add a 0 break"
+    // sentinel, which drew the same gray for the same case.
+    var colorExpr = App.choropleth.buildStepColorExpr(
+      "cdi", [2, 3, 4], ["#C53030", "#C05621", "#D69E2E", "#276749"], "rgba(180,180,180,0.7)"
+    );
 
     if (!map.getSource(CS_SOURCE)) {
       map.addSource(CS_SOURCE, { type: "geojson", data: fc });
@@ -1107,7 +1112,11 @@
     name:       "Corridor Scoring",
     enabled:    true,
     popupWidth: 1000,
-    panelWidths: { setup: 520, results: 760 },
+    // One width for both modes, under the 620px @container breakpoint — narrow,
+    // stacked task panel in every state, never resizes on run (see the fuller
+    // note in buffer-summary.js). 600 gives the ranked results table the most
+    // room available without un-stacking.
+    panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/corridor-scoring-popup.html",
 
     init:    function (core) { init(core); },
