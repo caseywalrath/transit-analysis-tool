@@ -145,6 +145,8 @@
       renderFileList();
       showSelectPrompt();
     }
+
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   // Restore GTFS feed from a previously serialized state-file payload.
@@ -181,6 +183,8 @@
       if (mc) mc.style.display = "none";
     }
     App.setStatus("GTFS feed cleared.");
+
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   // ---- Route lookup (shape_id → route info) ----
@@ -916,7 +920,9 @@
   }
 
   // ---- Expose on App namespace ----
-  App.gtfsData     = _gtfsData;   // null until loaded
+  App.gtfsData     = _gtfsData;   // null until loaded (static snapshot — see note below)
+  App.getGTFSData      = function () { return _gtfsData; };
+  App.getGTFSShapesFC  = function () { return _shapesFC; };
   App.loadGTFSFile = loadGTFSFile;
   App.clearGTFS    = clearGTFS;
   App.restoreGTFSFromData = restoreGTFSFromData;

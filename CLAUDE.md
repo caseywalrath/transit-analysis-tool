@@ -623,7 +623,11 @@ Registers module `"gtfs"` as a popup-based analysis. Opens in a 2-column popup (
 **Public API (on `App`):**
 `App.loadGTFSFile(file)` — loads a File object as a GTFS ZIP (same as the file picker flow).
 `App.clearGTFS()` — clears the feed, removes map layers, resets UI.
-`App.gtfsData` — set at module load time to `null`; note this is a static snapshot, not a live reference to the Map — check `_gtfsData` is not exported live. Future modules needing feed data should call `App.loadGTFSFile` and observe the map layers, or the approach may need revision.
+`App.gtfsData` — set once at module load time to `null`; a static snapshot, not a live reference to the `_gtfsData` Map. Kept only for backward compatibility — do not read it for current feed state.
+`App.getGTFSData()` — returns the live `_gtfsData` Map (filename → `{headers, rows}`), or `null` when no feed is loaded. The accessor future modules should call instead of the stale `App.gtfsData` snapshot.
+`App.getGTFSShapesFC()` — returns the live shapes `FeatureCollection` already built for the map layer (`route_id`/`agency_id` merged into each feature's properties), or `null` before a feed with `shapes.txt` loads. Reuse this rather than re-deriving shapes from `shapes.txt` rows.
+
+Both `loadGTFSFile`'s post-parse step (`applyGtfsData()`) and `clearGTFS()` call `App.notifyProject()` after updating state, so any module's `update(core)` hook fires when a GTFS feed loads, is restored from a session, or is cleared.
 
 ## Analysis Module System
 
