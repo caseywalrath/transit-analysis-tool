@@ -319,6 +319,37 @@ table, stat sentence, map overlay, CSV/GeoJSON export, session persistence.
 - Network walkshed option for buffers (vs. crow-fly) when a road network is loaded
 - Buffer from a route's associated stops instead of the line (stop-sparse service)
 
+### Route Electrification Feasibility — Implemented
+A demo module built for CDOT's Colorado Transit Zero-Emission Route Optimization
+RFP (Task 3): given a loaded GTFS feed, grade every route by whether it can run
+its most demanding vehicle block on a battery-electric bus charged only
+overnight at the depot. Popup module (`js/projects/zeb-feasibility.js`,
+`projects/zeb-feasibility-popup.html`), pure math in `js/core/zeb-model.js`
+(`window.ZEB`), assumptions/vehicle-class/depot/tier data in
+`data/zeb/zeb-demo-data.js`. Digests `trips.txt`/`stop_times.txt` into vehicle
+blocks (by `block_id`, or a greedy same-service/terminal-proximity chaining
+fallback), picks a representative weekday service per agency, and for each
+block computes deadhead miles to the agency's depot, grade- and
+season-adjusted energy use, the required-kWh-to-battery-kWh ratio after a 20%
+state-of-charge safety buffer, and whether the block's energy can recharge
+overnight at the depot's charger kW. Routes are classified into 5 tiers
+("Ready today" through "Not feasible depot-only") shown as a ranked table
+(expandable to a per-block breakdown with a rationale sentence and an inline
+no-library SVG state-of-charge chart), a route-colored map layer, agency depot
+markers, and CSV/GeoJSON export. Filters (agency/route/vehicle class),
+scenario controls (per-route vs. all-one-class vehicle assumption,
+summer/winter), and all cost/energy assumptions are user-adjustable. Three
+optional reference overlays for the proposal narrative — Winter Range Impact
+(illustrative climate-zone rectangles), Utility Service Territories
+(illustrative co-op/IOU boundaries), and DI (Disproportionately Impacted)
+Communities (live ACS block-group query flagging ≥40% minority share or ≥25%
+below poverty within a buffer of the loaded routes, `App.zebComputeDI()`) —
+toggle from both the popup and the toolbar Add Data menu
+(`js/projects/zeb-overlays.js`), staying in sync either direction. Ships with
+a merged demo GTFS feed combining two real Colorado agencies (Avon Transit,
+Greeley-Evans Transit; see `tools/merge-gtfs.py`), loadable from the module's
+own empty state or via the standard GTFS Feed Viewer upload.
+
 ### Cumulative-Opportunity Transit Accessibility — Not started
 What the agencies are showing is **cumulative-opportunity accessibility**,
 usually computed with schedule-based multimodal routing (Conveyal/R5: GTFS +
