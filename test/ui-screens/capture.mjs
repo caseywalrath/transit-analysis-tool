@@ -108,6 +108,7 @@ const MODULE_IDS = [
   "trip-builder",
   "title-vi",
   "gtfs",
+  "zeb-feasibility",
   "attribute-summary",
   "display-settings"
 ];
@@ -129,7 +130,8 @@ const ADAPTIVE_PANEL_WIDTHS = {
   "fta-small-starts": { setup: 520, results: 520, workspace: 1000 },
   "walkshed": { setup: 460, results: 460 },
   "transit-coverage": { setup: 600, results: 600 },
-  "transit-travelshed": { setup: 600, results: 600 }
+  "transit-travelshed": { setup: 600, results: 600 },
+  "zeb-feasibility": { setup: 600, results: 600 }
 };
 
 // Guard the invariants at load time, so a future width edit that would un-stack
