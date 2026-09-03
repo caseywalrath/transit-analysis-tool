@@ -6437,6 +6437,12 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   white-space: nowrap;
 }
 
+.zeb-soc-chart-wrap { display: flex; justify-content: center; }
+.zeb-soc-chart { max-width: 100%; height: auto; }
+.zeb-soc-axis-label { font-size: 9px; fill: var(--muted); }
+.zeb-soc-buffer-label { font-size: 9px; fill: #d73027; }
+.zeb-soc-crossing-label { font-size: 9px; fill: #d73027; font-weight: var(--weight-semibold); }
+
 .zeb-soc-summary {
   display: flex;
   gap: 10px;

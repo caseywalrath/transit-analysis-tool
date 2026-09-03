@@ -709,7 +709,109 @@
     });
   }
 
-  // ---- Block Detail (minimal in Step 5; Step 6 adds the SoC chart above this) ----
+  // ---- Block Detail: inline SoC chart ----
+
+  // Builds a 300x170 no-library SVG state-of-charge curve for one block from
+  // ZEB.socProfile(). x axis: minutes from first to last point, ticked every
+  // 3 hours; y axis: 0-100% SoC (extended below 0 only if the block actually
+  // drains past empty, so an infeasible block's dive below the axis is still
+  // visible instead of clipped).
+  function buildSocChartSVG(br) {
+    var block = br.block, energy = br.energy;
+    var points = ZEB.socProfile(block, energy, { vehicle: energy.vehicle });
+    if (!points.length) return "";
+
+    var W = 300, H = 170;
+    var marginLeft = 38, marginRight = 10, marginTop = 12, marginBottom = 26;
+    var plotW = W - marginLeft - marginRight;
+    var plotH = H - marginTop - marginBottom;
+
+    var firstMin = points[0].min;
+    var lastMin = points[points.length - 1].min;
+    var totalMin = Math.max(1, lastMin - firstMin);
+
+    var bufferPct = (energy.socBuffer || 0) * 100;
+    var minPct = bufferPct;
+    points.forEach(function (p) { minPct = Math.min(minPct, p.soc * 100); });
+    var yDomainMin = minPct < 0 ? Math.floor(minPct / 10) * 10 : 0;
+    var yDomainMax = 100;
+    var yRange = (yDomainMax - yDomainMin) || 1;
+
+    function xAt(min) { return marginLeft + (min - firstMin) / totalMin * plotW; }
+    function yAt(pct) { return marginTop + (yDomainMax - pct) / yRange * plotH; }
+
+    var chartBottom = marginTop + plotH;
+    var baselineY = yAt(0);
+    var bufferY = yAt(bufferPct);
+
+    var polyPts = points.map(function (p) {
+      return xAt(p.min).toFixed(1) + "," + yAt(p.soc * 100).toFixed(1);
+    }).join(" ");
+    var areaPts = polyPts + " " + xAt(lastMin).toFixed(1) + "," + baselineY.toFixed(1) +
+      " " + xAt(firstMin).toFixed(1) + "," + baselineY.toFixed(1);
+
+    // First downward crossing of the buffer line, linearly interpolated.
+    var crossing = null;
+    for (var i = 1; i < points.length && !crossing; i++) {
+      var pct1 = points[i - 1].soc * 100, pct2 = points[i].soc * 100;
+      if (pct1 >= bufferPct && pct2 < bufferPct) {
+        var t = (bufferPct - pct1) / (pct2 - pct1);
+        var crossMin = points[i - 1].min + t * (points[i].min - points[i - 1].min);
+        crossing = { min: crossMin, x: xAt(crossMin), y: bufferY };
+      }
+    }
+
+    var ticks = [];
+    for (var tm = Math.ceil(firstMin / 180) * 180; tm <= lastMin; tm += 180) ticks.push(tm);
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H +
+      '" class="zeb-soc-chart" role="img" aria-label="State of charge over the block">';
+
+    svg += '<rect x="' + marginLeft + '" y="' + bufferY.toFixed(1) + '" width="' + plotW +
+      '" height="' + Math.max(0, chartBottom - bufferY).toFixed(1) +
+      '" fill="#d73027" fill-opacity="0.08"></rect>';
+
+    [0, 50, 100].forEach(function (pct) {
+      if (pct < yDomainMin || pct > yDomainMax) return;
+      var y = yAt(pct);
+      svg += '<line x1="' + marginLeft + '" y1="' + y.toFixed(1) + '" x2="' + (marginLeft + plotW) +
+        '" y2="' + y.toFixed(1) + '" stroke="var(--border)" stroke-width="1"></line>';
+      svg += '<text x="' + (marginLeft - 6) + '" y="' + (y + 3).toFixed(1) +
+        '" text-anchor="end" class="zeb-soc-axis-label">' + pct + "%</text>";
+    });
+
+    svg += '<polygon points="' + areaPts + '" fill="var(--accent)" fill-opacity="0.15"></polygon>';
+
+    svg += '<line x1="' + marginLeft + '" y1="' + bufferY.toFixed(1) + '" x2="' + (marginLeft + plotW) +
+      '" y2="' + bufferY.toFixed(1) + '" stroke="#d73027" stroke-width="1.5" stroke-dasharray="4,3"></line>';
+    svg += '<text x="' + (marginLeft + plotW - 4) + '" y="' + (bufferY - 4).toFixed(1) +
+      '" text-anchor="end" class="zeb-soc-buffer-label">' + Math.round(bufferPct) + "% safety buffer</text>";
+
+    svg += '<polyline points="' + polyPts + '" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>';
+
+    ticks.forEach(function (tmv) {
+      var x = xAt(tmv);
+      svg += '<line x1="' + x.toFixed(1) + '" y1="' + chartBottom + '" x2="' + x.toFixed(1) +
+        '" y2="' + (chartBottom + 4) + '" stroke="var(--muted)" stroke-width="1"></line>';
+      svg += '<text x="' + x.toFixed(1) + '" y="' + (chartBottom + 15) +
+        '" text-anchor="middle" class="zeb-soc-axis-label">' + fmtHHMM(tmv) + "</text>";
+    });
+    svg += '<line x1="' + marginLeft + '" y1="' + chartBottom + '" x2="' + (marginLeft + plotW) +
+      '" y2="' + chartBottom + '" stroke="var(--border)" stroke-width="1"></line>';
+
+    if (crossing) {
+      var labelAnchor = (crossing.x + 90 > marginLeft + plotW) ? "end" : "start";
+      var labelX = labelAnchor === "end" ? crossing.x - 6 : crossing.x + 6;
+      svg += '<circle cx="' + crossing.x.toFixed(1) + '" cy="' + crossing.y.toFixed(1) +
+        '" r="3.5" fill="#d73027"></circle>';
+      svg += '<text x="' + labelX.toFixed(1) + '" y="' + Math.max(marginTop + 8, crossing.y - 8).toFixed(1) +
+        '" text-anchor="' + labelAnchor + '" class="zeb-soc-crossing-label">Below buffer at ' +
+        fmtHHMM(crossing.min) + "</text>";
+    }
+
+    svg += "</svg>";
+    return svg;
+  }
 
   function openBlockDetail(br, anchor) {
     var block = br.block, energy = br.energy, tier = br.tier;
@@ -717,6 +819,14 @@
 
     var wrap = document.createElement("div");
     wrap.className = "zeb-soc-popup";
+
+    var chartHTML = buildSocChartSVG(br);
+    if (chartHTML) {
+      var chartWrap = document.createElement("div");
+      chartWrap.className = "zeb-soc-chart-wrap";
+      chartWrap.innerHTML = chartHTML;
+      wrap.appendChild(chartWrap);
+    }
 
     var summary = document.createElement("div");
     summary.className = "zeb-soc-summary";
