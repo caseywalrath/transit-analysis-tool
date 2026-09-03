@@ -82,6 +82,8 @@
                { id: "tvi-gain-outline", op: "line-opacity" }] },
     { id: "lbar-sites-layer", label: "FTA land-use sites", moduleId: "fta-small-starts",
       layers: [{ id: "lbar-sites-layer", op: "circle-opacity" }] },
+    { id: "zeb-routes-layer", label: "Electrification feasibility", moduleId: "zeb-feasibility",
+      layers: [{ id: "zeb-routes-layer", op: "line-opacity" }, { id: "zeb-depots-layer", op: "circle-opacity" }] },
     // Not a module of its own — census.js renders this for whichever analysis
     // last fetched geographies, so it gets no moduleId.
     { id: "census-geos-fill", label: "Census geographies",

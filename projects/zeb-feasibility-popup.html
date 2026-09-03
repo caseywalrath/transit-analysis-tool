@@ -1,0 +1,127 @@
+<!-- Route Electrification Feasibility — 2-column popup body (Settings | Results) -->
+<div class="zeb-body">
+  <div class="rf-section-row zeb-section-row">
+
+    <!-- Left: settings column -->
+    <div class="rf-settings-col">
+
+      <div class="data-input-group" data-input-group="selection">
+        <div class="rf-section-title">Filter</div>
+
+        <label class="tiny">Agency</label>
+        <select id="zebAgency" class="rf-select">
+          <option value="all">All agencies</option>
+        </select>
+
+        <label class="tiny u-mt-2">Route</label>
+        <select id="zebRoute" class="rf-select">
+          <option value="all">All routes</option>
+        </select>
+
+        <label class="tiny u-mt-2">Vehicle class</label>
+        <select id="zebVehicleFilter" class="rf-select">
+          <option value="all">All classes</option>
+          <option value="bus40">40-ft routes</option>
+          <option value="cutaway">Cutaway routes</option>
+        </select>
+      </div>
+
+      <div class="data-input-group" data-input-group="assumptions">
+        <div class="rf-section-title form-section">Scenario</div>
+
+        <label class="tiny">Vehicle assumption</label>
+        <select id="zebVehicleAssume" class="rf-select">
+          <option value="route">Per route (assigned)</option>
+          <option value="bus40">All routes as 40-ft BEB</option>
+          <option value="cutaway">All routes as cutaway BEB</option>
+        </select>
+
+        <label class="tiny u-mt-2">Season</label>
+        <select id="zebSeason" class="rf-select">
+          <option value="summer">Summer</option>
+          <option value="winter" selected>Winter</option>
+        </select>
+
+        <details id="zebAssumptions" class="u-mt-2">
+          <summary class="tiny">Assumptions</summary>
+
+          <label class="tiny u-mt-2">40-ft battery (kWh)</label>
+          <input type="number" id="zebBat40" class="rf-number-input" value="440" min="50" max="1000" step="1">
+
+          <label class="tiny u-mt-2">40-ft base kWh/mi</label>
+          <input type="number" id="zebBase40" class="rf-number-input" value="2.10" min="0.1" max="10" step="0.01">
+
+          <label class="tiny u-mt-2">Cutaway battery (kWh)</label>
+          <input type="number" id="zebBatCut" class="rf-number-input" value="150" min="20" max="500" step="1">
+
+          <label class="tiny u-mt-2">Cutaway base kWh/mi</label>
+          <input type="number" id="zebBaseCut" class="rf-number-input" value="1.15" min="0.1" max="10" step="0.01">
+
+          <label class="tiny u-mt-2">Depot charger (kW)</label>
+          <input type="number" id="zebChargerKW" class="rf-number-input" value="150" min="10" max="500" step="1">
+
+          <label class="tiny u-mt-2">SoC safety buffer (%)</label>
+          <input type="number" id="zebSocBuffer" class="rf-number-input" value="20" min="0" max="50" step="1">
+
+          <label class="tiny u-mt-2">Max layover for chaining (min)</label>
+          <input type="number" id="zebLayover" class="rf-number-input" value="30" min="0" max="180" step="5">
+
+          <div class="u-mt-2"><a href="#" id="zebResetAssumptions">Reset to defaults</a></div>
+        </details>
+      </div>
+
+      <div class="data-input-group" data-input-group="overlays">
+        <div class="rf-section-title form-section">Map overlays</div>
+        <label class="tpi-toggle-row">
+          <input type="checkbox" id="zebOvWinter">
+          <span class="tiny">Winter range impact</span>
+        </label>
+        <label class="tpi-toggle-row">
+          <input type="checkbox" id="zebOvDI">
+          <span class="tiny">DI communities</span>
+        </label>
+        <label class="tpi-toggle-row">
+          <input type="checkbox" id="zebOvUtility">
+          <span class="tiny">Utility territories</span>
+        </label>
+      </div>
+
+      <div class="module-input-actions">
+        <button id="zebRunBtn" type="button" class="rf-action-primary">Score Routes</button>
+      </div>
+      <label id="zebHideRow" class="tpi-toggle-row" style="display:none;margin-top:10px;">
+        <input type="checkbox" id="zebHideColoring">
+        <span class="tiny">Hide route coloring</span>
+      </label>
+
+    </div>
+
+    <!-- Right: results column -->
+    <div class="rf-results-col">
+
+      <div id="zebStatus" class="rf-status" style="display:none;">
+        <span id="zebStatusText">Ready</span>
+      </div>
+
+      <div id="zebFeedBar" class="tiny u-muted zeb-feed-bar" style="display:none;"></div>
+
+      <div id="zebResults" style="display:none;">
+        <div id="zebSummaryStrip" class="zeb-summary-strip"></div>
+        <div id="zebResultsTable"></div>
+
+        <div class="btn-row u-mt-2">
+          <button id="zebExportGeoJSON" type="button" class="rf-btn-sm" disabled>Export GeoJSON</button>
+          <button id="zebExportCSV" type="button" class="rf-btn-sm" disabled>Export CSV</button>
+        </div>
+
+        <p class="tiny u-mt-2 u-muted">
+          Routes are graded by their most demanding vehicle block under depot-only charging with a 20% state-of-charge buffer.
+        </p>
+      </div>
+
+      <div id="zebEmptyState" class="rf-info-box"></div>
+
+    </div>
+
+  </div>
+</div>

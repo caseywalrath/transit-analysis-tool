@@ -6359,3 +6359,99 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 }
 .mn-detail-raw strong { color: #1a202c; }
 
+/* ---------------------------------------------------------------------
+   Route Electrification Feasibility module (.zeb- prefix)
+   --------------------------------------------------------------------- */
+
+.zeb-feed-bar { margin-top: 4px; }
+
+.zeb-summary-strip {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.zeb-tile {
+  flex: 1 1 0;
+  min-width: 54px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: center;
+  background: var(--surface-alt);
+}
+.zeb-tile-count { font-size: var(--text-base); font-weight: var(--weight-semibold); line-height: 1.2; }
+.zeb-tile-label { color: var(--muted); }
+
+.zeb-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.zeb-results-table thead th {
+  text-align: left;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+.zeb-results-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.zeb-results-table tr.zeb-row { cursor: pointer; }
+.zeb-results-table tr.zeb-row:hover { background: var(--surface-hover); }
+.zeb-results-table .zeb-toggle { width: 20px; text-align: center; }
+.zeb-name { overflow-wrap: anywhere; }
+
+.zeb-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.zeb-route-detail p { margin: 0 0 6px; }
+
+.zeb-blocks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  margin-top: 6px;
+}
+.zeb-blocks-table th {
+  text-align: left;
+  padding: 3px 5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.zeb-blocks-table td {
+  padding: 3px 5px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.zeb-soc-summary {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.zeb-soc-summary-col {
+  flex: 1;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--surface-alt);
+}
+
+body.dark-mode .zeb-tile,
+body.dark-mode .zeb-soc-summary-col { background: #1a2233; }
+body.dark-mode .zeb-results-table tr.zeb-row:hover { background: rgba(255,255,255,0.06); }
+
