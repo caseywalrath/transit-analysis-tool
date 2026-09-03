@@ -173,6 +173,47 @@
 
   // ---- DI communities (geometry supplied live by App.zebComputeDI, Step 7) ----
 
+  function diHoverHTML(props) {
+    if (!props) return "";
+    var criteriaLabel = props.criteria === "both" ? "minority + income" : (props.criteria || "");
+    var povertyPct = Math.round((props.povertyShare || 0) * 100);
+    var minorityPct = Math.round((props.minorityShare || 0) * 100);
+    return "<strong>DI community (" + criteriaLabel + ")</strong> · " +
+      povertyPct + "% below poverty · " + minorityPct + "% minority";
+  }
+
+  function onDiEnter() {
+    if (!App.drawMode) App.map.getCanvas().style.cursor = "pointer";
+  }
+  function onDiMove(e) {
+    if (!e.features || !e.features.length) return;
+    if (!_hoverPopup) {
+      _hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px" });
+    }
+    var html = diHoverHTML(e.features[0].properties);
+    if (!html) return;
+    _hoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(App.map);
+  }
+  function onDiLeave() {
+    App.map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+    if (_hoverPopup) _hoverPopup.remove();
+  }
+
+  function wireDiHover() {
+    var map = App.map;
+    map.on("mouseenter", "zeb-di-fill", onDiEnter);
+    map.on("mousemove", "zeb-di-fill", onDiMove);
+    map.on("mouseleave", "zeb-di-fill", onDiLeave);
+  }
+  function unwireDiHover() {
+    var map = App.map;
+    if (!map) return;
+    map.off("mouseenter", "zeb-di-fill", onDiEnter);
+    map.off("mousemove", "zeb-di-fill", onDiMove);
+    map.off("mouseleave", "zeb-di-fill", onDiLeave);
+    if (_hoverPopup) _hoverPopup.remove();
+  }
+
   function addDiLayers() {
     var map = App.map;
     if (map.getSource("zeb-di")) return;
@@ -190,7 +231,95 @@
       source: "zeb-di",
       paint: { "line-color": "#6b46c1", "line-width": 0.8, "line-opacity": 0.6 }
     }, before);
+    wireDiHover();
   }
+
+  // Study area: a 1-mile-buffered bbox around each agency's GTFS shapes,
+  // unioned across agencies. Agencies with no shapes in the loaded feed (or
+  // no feed loaded at all) simply contribute nothing — the union degrades to
+  // whatever agencies actually have shape geometry, down to empty.
+  function diStudyAreaUnion() {
+    var data = window.ZebDemoData;
+    if (!data || !data.agencies || !window.turf) return null;
+    var shapesFC = App.getGTFSShapesFC ? App.getGTFSShapesFC() : null;
+    var polys = [];
+    Object.keys(data.agencies).forEach(function (aid) {
+      var feats = shapesFC ? shapesFC.features.filter(function (f) {
+        return f.properties && f.properties.agency_id === aid;
+      }) : [];
+      if (!feats.length) return;
+      var bbox = turf.bbox({ type: "FeatureCollection", features: feats });
+      polys.push(turf.buffer(turf.bboxPolygon(bbox), 1, { units: "miles" }));
+    });
+    if (!polys.length) return null;
+    return (typeof App.foldAnalysisUnion === "function") ? App.foldAnalysisUnion(polys) : polys[0];
+  }
+
+  // Live ACS computation of DI (Disproportionately Impacted) block groups
+  // within the study area — reuses the same fetchTigerwebGeos/fetchACSValues
+  // primitives title-vi-engine.js's TitleVI.fetchDemographics uses, but flags
+  // each block group individually rather than aggregating one share across
+  // the whole union (this overlay renders per-geography, not a single stat).
+  async function computeDI() {
+    var data = window.ZebDemoData;
+    var diCfg = (data && data.di) || {};
+    var minorityMin = diCfg.minorityShareMin != null ? diCfg.minorityShareMin : 0.40;
+    var povertyMin = diCfg.povertyShareMin != null ? diCfg.povertyShareMin : 0.25;
+    var year = diCfg.acsYear || "2023";
+    var empty = { type: "FeatureCollection", features: [] };
+
+    var studyArea = diStudyAreaUnion();
+    if (!studyArea) return empty;
+
+    var geos = await App.fetchTigerwebGeos("bg", studyArea);
+    if (!geos || !geos.length) return empty;
+
+    var geoids = geos.map(function (g) {
+      return g.properties.GEOID || g.properties.GEOID20 || g.properties.GEOID10 || "";
+    }).filter(Boolean);
+
+    var totalPop = await App.fetchACSValues("bg", year, "B03002_001E", geoids);
+    var nhWhitePop = await App.fetchACSValues("bg", year, "B03002_003E", geoids);
+    var povDenom = await App.fetchACSValues("bg", year, "B17001_001E", geoids);
+    var povBelow = await App.fetchACSValues("bg", year, "B17001_002E", geoids);
+
+    var features = [];
+    geos.forEach(function (geo) {
+      var gid = geo.properties.GEOID || geo.properties.GEOID20 || geo.properties.GEOID10 || "";
+      if (!gid) return;
+
+      var total = totalPop.get(gid), nhWhite = nhWhitePop.get(gid);
+      var minorityShare = null;
+      if (Number.isFinite(total) && total > 0 && Number.isFinite(nhWhite)) {
+        minorityShare = Math.max(0, 1 - nhWhite / total);
+      }
+
+      var povTotal = povDenom.get(gid), povCount = povBelow.get(gid);
+      var povertyShare = null;
+      if (Number.isFinite(povTotal) && povTotal > 0 && Number.isFinite(povCount)) {
+        povertyShare = povCount / povTotal;
+      }
+
+      var flagMinority = minorityShare !== null && minorityShare >= minorityMin;
+      var flagIncome = povertyShare !== null && povertyShare >= povertyMin;
+      if (!flagMinority && !flagIncome) return;
+
+      features.push({
+        type: "Feature",
+        geometry: geo.geometry,
+        properties: {
+          GEOID: gid,
+          minorityShare: minorityShare || 0,
+          povertyShare: povertyShare || 0,
+          criteria: flagMinority && flagIncome ? "both" : (flagMinority ? "minority" : "income")
+        }
+      });
+    });
+
+    return { type: "FeatureCollection", features: features };
+  }
+
+  App.zebComputeDI = computeDI;
 
   function refreshDiData() {
     if (typeof App.zebComputeDI !== "function") return; // Step 7 not yet wired
@@ -202,7 +331,7 @@
       if (src) src.setData(fc && fc.type ? fc : { type: "FeatureCollection", features: [] });
       if (typeof App.setStatus === "function") App.setStatus("DI communities computed.");
     }).catch(function () {
-      if (typeof App.setStatus === "function") App.setStatus("DI communities computation failed.");
+      if (typeof App.setStatus === "function") App.setStatus("DI communities: Census data unavailable.");
     });
   }
 
@@ -213,6 +342,7 @@
     if (!map) return;
     var cfg = OVERLAYS[id];
     if (id === "winter") unwireWinterHover();
+    if (id === "di") unwireDiHover();
     [cfg.labelLayer, cfg.lineLayer, cfg.fillLayer].forEach(function (layerId) {
       if (layerId && map.getLayer(layerId)) map.removeLayer(layerId);
     });
