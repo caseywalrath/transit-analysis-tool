@@ -1020,8 +1020,6 @@
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
-      document.getElementById("nGeos").textContent = "0";
-      document.getElementById("summaryStatus").style.display = "none";
       App.setStatus("Cleared");
       if (typeof App.clearPresentOverlays === "function") App.clearPresentOverlays();
       clearModules();
