@@ -1306,6 +1306,45 @@
         setVisible: function (v) {
           if (typeof App.setMuniBoundariesLayerVisible === "function") App.setMuniBoundariesLayerVisible(v);
         }
+      },
+      {
+        btnId: "zeb-winter-btn",
+        isLoaded: function () { return !!(App.zebOverlays && App.zebOverlays.isActive("winter")); },
+        clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("winter", false); },
+        hasEye: true,
+        isVisible: function () {
+          return !!(App.map.getLayer("zeb-winter-fill") &&
+            App.map.getLayoutProperty("zeb-winter-fill", "visibility") !== "none");
+        },
+        setVisible: function (v) {
+          if (App.zebOverlays) App.zebOverlays.setVisible("winter", v);
+        }
+      },
+      {
+        btnId: "zeb-di-btn",
+        isLoaded: function () { return !!(App.zebOverlays && App.zebOverlays.isActive("di")); },
+        clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("di", false); },
+        hasEye: true,
+        isVisible: function () {
+          return !!(App.map.getLayer("zeb-di-fill") &&
+            App.map.getLayoutProperty("zeb-di-fill", "visibility") !== "none");
+        },
+        setVisible: function (v) {
+          if (App.zebOverlays) App.zebOverlays.setVisible("di", v);
+        }
+      },
+      {
+        btnId: "zeb-utility-btn",
+        isLoaded: function () { return !!(App.zebOverlays && App.zebOverlays.isActive("utility")); },
+        clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("utility", false); },
+        hasEye: true,
+        isVisible: function () {
+          return !!(App.map.getLayer("zeb-utility-fill") &&
+            App.map.getLayoutProperty("zeb-utility-fill", "visibility") !== "none");
+        },
+        setVisible: function (v) {
+          if (App.zebOverlays) App.zebOverlays.setVisible("utility", v);
+        }
       }
     ];
 

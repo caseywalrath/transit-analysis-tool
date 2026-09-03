@@ -44,7 +44,13 @@
     { id: "osm-lines-layer",      label: "OSM lines",            layers: [{ id: "osm-lines-layer", op: "line-opacity" }],
       clear: function () { if (typeof App.osmToggleCategory === "function") App.osmToggleCategory("transit_routes"); } },
     { id: "osm-poi-layer",        label: "OSM points of interest", layers: [{ id: "osm-poi-layer", op: "circle-opacity" }],
-      clear: callIf("clearOsmPois") }
+      clear: callIf("clearOsmPois") },
+    { id: "zeb-winter-fill",      label: "Winter range impact",  layers: [{ id: "zeb-winter-fill", op: "fill-opacity" }, { id: "zeb-winter-line", op: "line-opacity" }],
+      clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("winter", false); } },
+    { id: "zeb-di-fill",          label: "DI communities",       layers: [{ id: "zeb-di-fill", op: "fill-opacity" }, { id: "zeb-di-line", op: "line-opacity" }],
+      clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("di", false); } },
+    { id: "zeb-utility-fill",     label: "Utility territories",  layers: [{ id: "zeb-utility-fill", op: "fill-opacity" }, { id: "zeb-utility-line", op: "line-opacity" }, { id: "zeb-utility-label", op: "text-opacity" }],
+      clear: function () { if (App.zebOverlays) App.zebOverlays.toggle("utility", false); } }
   ];
   var ANALYSIS = [
     { id: "bas-choropleth-fill", label: "Feature Area Analysis", moduleId: "buffer-summary",
