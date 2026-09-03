@@ -387,6 +387,11 @@
       removeLayers(id);
       hideLegend(id);
     }
+
+    // Keep zeb-feasibility.js's own overlay checkboxes in sync when toggled
+    // from here (the Add Data dropdown buttons) rather than from the
+    // checkbox itself, so an already-open popup doesn't go stale.
+    if (typeof App.zebSyncOverlayCheckboxes === "function") App.zebSyncOverlayCheckboxes();
   }
 
   function isActive(id) {

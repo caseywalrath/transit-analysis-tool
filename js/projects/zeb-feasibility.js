@@ -411,6 +411,16 @@
     if (utility) utility.checked = App.zebOverlays ? App.zebOverlays.isActive("utility") : false;
   }
 
+  // Called by zeb-overlays.js after its own Add Data dropdown buttons toggle
+  // an overlay, so the checkbox in an already-open popup follows the button
+  // (the reverse direction — checkbox click -> button — is handled inline by
+  // wireOverlayCheckbox() below, since that's a direct DOM event on this
+  // popup's own control). A no-op while the popup is closed; onOpen() already
+  // re-syncs from current state on every open.
+  App.zebSyncOverlayCheckboxes = function () {
+    if (isPopupVisible()) syncOverlayCheckboxes();
+  };
+
   // ---- Scoring flow ----
 
   function onControlChange() {
