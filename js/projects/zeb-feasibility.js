@@ -608,6 +608,14 @@
     return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
   }
 
+  // Service hours for a block, computed from its span (first departure to
+  // last arrival) rather than shown as a clock-time range — e.g. 06:35-19:04
+  // -> "12.5". Whole-hour spans drop the trailing ".0" (e.g. 6am-9pm -> "15").
+  function fmtHours(spanHours) {
+    var rounded = Math.round((spanHours || 0) * 10) / 10;
+    return rounded.toFixed(1).replace(/\.0$/, "");
+  }
+
   function tierMetaFor(tierNum) {
     var ZebDemoData = window.ZebDemoData;
     for (var i = 0; i < ZebDemoData.tiers.length; i++) {
@@ -639,7 +647,7 @@
       html += "<tr>" +
         "<td>" + escapeHTML(blockLabel(br.block.blockId)) + "</td>" +
         "<td>" + br.block.tripIds.length + "</td>" +
-        "<td>" + fmtHHMM(br.block.startMin) + "–" + fmtHHMM(br.block.endMin) + "</td>" +
+        "<td>" + fmtHours(br.block.spanHours) + "</td>" +
         "<td>" + br.block.revenueMiles.toFixed(1) + "</td>" +
         "<td>" + Math.round(br.energy.blockKWh) + "</td>" +
         "<td>" + br.energy.ratio.toFixed(2) + "</td>" +
