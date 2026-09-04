@@ -122,7 +122,12 @@ const MODULE_IDS = [
 // widths"): setup === results, and both <= 620 (the @container stacking
 // breakpoint). Together those keep each panel a narrow, vertically stacked task
 // panel that never resizes on run. `workspace` is exempt — FTA's Data Inputs is
-// a deliberately wide file-upload surface, not a results view.
+// a deliberately wide file-upload surface, not a results view. Route
+// Electrification Feasibility is the one deliberate unequal-width exception
+// (see CLAUDE.md) — its own invariant is asserted separately below instead:
+// whenever Inputs are collapsed (the only state its wider `results` width is
+// ever shown in), `.rf-section-row` must still be column-stacked.
+const UNEQUAL_WIDTH_EXEMPT = new Set(["zeb-feasibility"]);
 const ADAPTIVE_PANEL_WIDTHS = {
   "buffer-summary": { setup: 600, results: 600 },
   "transit-propensity": { setup: 520, results: 520 },
@@ -131,16 +136,18 @@ const ADAPTIVE_PANEL_WIDTHS = {
   "walkshed": { setup: 460, results: 460 },
   "transit-coverage": { setup: 600, results: 600 },
   "transit-travelshed": { setup: 600, results: 600 },
-  "zeb-feasibility": { setup: 600, results: 600 }
+  "zeb-feasibility": { setup: 600, results: 760 }
 };
 
 // Guard the invariants at load time, so a future width edit that would un-stack
 // a panel (results > 620) or make it jump on run (setup !== results) fails here
 // rather than silently shipping — that exact regression is what put the results
-// table beside the inputs instead of below them.
+// table beside the inputs instead of below them. UNEQUAL_WIDTH_EXEMPT ids skip
+// only the equal-width check; their `setup` width still must not exceed the
+// breakpoint (it's the width shown before Inputs ever collapse).
 const STACK_BREAKPOINT_PX = 620;
 for (const [id, w] of Object.entries(ADAPTIVE_PANEL_WIDTHS)) {
-  if (w.setup !== w.results) {
+  if (w.setup !== w.results && !UNEQUAL_WIDTH_EXEMPT.has(id)) {
     throw new Error(
       "ADAPTIVE_PANEL_WIDTHS." + id + ": setup (" + w.setup + ") must equal results (" +
       w.results + ") — unequal widths make the panel resize on run."

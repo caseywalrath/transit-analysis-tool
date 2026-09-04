@@ -278,13 +278,27 @@
     var methodLabel = Object.keys(methodsSeen).length === 1 ? Object.keys(methodsSeen)[0] :
       (Object.keys(methodsSeen).length > 1 ? "mixed" : "none");
 
+    // Display-only short block ids. Real GTFS block_ids (or chained-trip
+    // fallback ids) can be arbitrarily verbose (e.g. "GET_t_5934551_b_83485_tn_1");
+    // riders/planners just need something short and stable to refer to a
+    // block by within a session. `blocks` is already sorted deterministically
+    // (agency/startMin/blockId, see buildBlocks), so numbering it in order
+    // gives a stable 4-digit id per block for the life of this prepared feed.
+    var blockLabels = {};
+    blocks.forEach(function (b, i) { blockLabels[b.blockId] = String(1000 + i); });
+
     return {
       agencies: agencies,
       routes: routeIndex,
       blocks: blocks,
+      blockLabels: blockLabels,
       shapeGeomById: shapeGeomById,
       method: methodLabel
     };
+  }
+
+  function blockLabel(blockId) {
+    return (_prepared && _prepared.blockLabels && _prepared.blockLabels[blockId]) || blockId;
   }
 
   function ensurePrepared() {
@@ -605,12 +619,9 @@
   function rationaleSentence(br) {
     var block = br.block, energy = br.energy, tier = br.tier;
     var score = ZEB.scoreFor(energy.ratio);
-    return (tier.reason || "") + " Governing block " + block.blockId + ": " +
-      block.revenueMiles.toFixed(0) + " revenue mi + " + energy.deadheadMiles.total.toFixed(0) + " mi deadhead × " +
-      energy.vehicle.baseKWhPerMi.toFixed(2) + " kWh/mi × " + energy.gradeFactor.toFixed(2) + " grade × " +
-      energy.seasonFactor.toFixed(2) + " " + _settings.season + " = " + Math.round(energy.blockKWh) + " kWh; required " +
-      Math.round(energy.requiredKWh) + " kWh vs " + Math.round(energy.vehicle.batteryKWh) + " kWh available (ratio " +
-      energy.ratio.toFixed(2) + "). Score " + score + "/100.";
+    return (tier.reason || "") + " Governing block " + blockLabel(block.blockId) + ": " +
+      Math.round(energy.requiredKWh) + " kWh required vs " + Math.round(energy.vehicle.batteryKWh) +
+      " kWh available (ratio " + energy.ratio.toFixed(2) + ", score " + score + "/100).";
   }
 
   function buildRouteDetailHTML(r) {
@@ -622,11 +633,11 @@
         governing.energy.rechargeHours.toFixed(1) + " h of " + governing.energy.overnightHours.toFixed(1) + " h available.</p>";
     }
     html += '<table class="zeb-blocks-table"><thead><tr>' +
-      "<th>Block</th><th>Trips</th><th>Span</th><th>Miles</th><th>kWh</th><th>Ratio</th><th>Tier</th><th></th>" +
+      "<th>Block</th><th>Trips</th><th>Hours</th><th>Miles</th><th>kWh</th><th>Ratio</th><th>Tier</th><th></th>" +
       "</tr></thead><tbody>";
     (r.blocks || []).slice().sort(function (a, b) { return a.block.startMin - b.block.startMin; }).forEach(function (br) {
       html += "<tr>" +
-        "<td>" + escapeHTML(br.block.blockId) + "</td>" +
+        "<td>" + escapeHTML(blockLabel(br.block.blockId)) + "</td>" +
         "<td>" + br.block.tripIds.length + "</td>" +
         "<td>" + fmtHHMM(br.block.startMin) + "–" + fmtHHMM(br.block.endMin) + "</td>" +
         "<td>" + br.block.revenueMiles.toFixed(1) + "</td>" +
@@ -853,7 +864,7 @@
     wrap.appendChild(pillRow);
 
     App.openMiniPopup({
-      title: "Block " + block.blockId + " — state of charge",
+      title: "Block " + blockLabel(block.blockId) + " — state of charge",
       content: wrap,
       anchor: anchor,
       onClose: function () {}
@@ -1055,7 +1066,7 @@
   function exportCSV() {
     if (!_lastResult || !_lastResult.shownRoutes || !_lastResult.shownRoutes.length) return;
     var header = ["agency", "route_id", "route_short_name", "route_long_name", "vehicle_class", "season",
-      "blocks", "governing_block", "revenue_miles", "deadhead_miles", "kwh_per_mile", "block_kwh", "required_kwh",
+      "blocks", "governing_block", "governing_block_gtfs_id", "revenue_miles", "deadhead_miles", "kwh_per_mile", "block_kwh", "required_kwh",
       "battery_kwh", "ratio", "tier", "tier_label", "score", "recharge_hours", "overnight_hours"];
     var lines = [header.join(",")];
     _lastResult.shownRoutes.forEach(function (r) {
@@ -1065,7 +1076,7 @@
       lines.push([
         _csvField(r.agencyLabel), _csvField(r.routeId), _csvField(meta.short || ""), _csvField(meta.long || ""),
         _csvField(r.vehicleLabel), _csvField(_settings.season),
-        r.blockCount != null ? r.blockCount : "", _csvField(r.governingBlockId),
+        r.blockCount != null ? r.blockCount : "", _csvField(blockLabel(r.governingBlockId)), _csvField(r.governingBlockId),
         Number.isFinite(r.revenueMiles) ? r.revenueMiles.toFixed(2) : "",
         energy ? energy.deadheadMiles.total.toFixed(2) : "",
         energy ? energy.kWhPerMi.toFixed(3) : "",
@@ -1265,7 +1276,7 @@
     name: "Route Electrification Feasibility",
     enabled: true,
     popupWidth: 1000,
-    panelWidths: { setup: 600, results: 600 },
+    panelWidths: { setup: 600, results: 760 },
     popupHTML: "projects/zeb-feasibility-popup.html",
 
     init:    function (core) { init(core); },

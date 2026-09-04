@@ -50,7 +50,7 @@ window.ZebDemoData = {
     { tier: 1, label: "Ready today",              maxRatio: 0.75,     color: "#1a9850", reason: "Worst block uses at most 75% of the battery after the 20% safety buffer." },
     { tier: 2, label: "Feasible with margin",     maxRatio: 0.90,     color: "#91cf60", reason: "Worst block fits within the buffered battery with 10–25% margin." },
     { tier: 3, label: "Marginal",                 maxRatio: 1.00,     color: "#fee08b", reason: "Worst block only just meets the 20% buffer; small changes tip it over." },
-    { tier: 4, label: "Needs midday charging",    maxRatio: 1.60,     color: "#fc8d59", reason: "Depot-only charging fails; a single opportunity charge would close the gap.",
+    { tier: 4, label: "Midday recharge required", maxRatio: 1.60,     color: "#fc8d59", reason: "Depot-only charging fails; a single opportunity charge would close the gap.",
       rechargeReason: "Block energy fits, but it cannot be recharged at 150 kW in the overnight window." },
     { tier: 5, label: "Not feasible depot-only",  maxRatio: Infinity, color: "#d73027", reason: "Required capacity exceeds 160% of the available battery." }
   ],
