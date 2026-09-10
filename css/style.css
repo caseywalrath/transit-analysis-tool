@@ -6169,11 +6169,6 @@ body.dark-mode .as-row:not(.as-row-header):hover { background: #22222f; }
 }
 .as-cell-swatch { justify-content: center; }
 .as-cell-badge { justify-content: flex-start; }
-.as-cell-overrides { justify-content: flex-end; }
-.as-cell-overrides .fp-attr-overrides {
-  display: flex;
-  gap: 2px;
-}
 /* Look/size come from the compact control tier (see "Form controls" block). */
 .as-input { width: 100%; }
 .as-input-num { text-align: right; }
@@ -6194,11 +6189,8 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 .as-swatch:hover { box-shadow: 0 0 0 2px rgba(66,153,225,0.3); }
 
 /* Column widths per section (CSS Grid templates).
-   The trailing override-icons column is given an EXPLICIT width (not `auto`)
-   so the header row (with an empty placeholder cell) and the data rows
-   (with N icon buttons) compute identical tracks. Otherwise the auto track
-   shrinks to 0 in the header, leaving the fr columns extra space and
-   pushing the header labels visibly right of their data inputs. */
+   Header and data rows share the same grid, so column count and order
+   must match after any edit here. */
 .as-grid-points {
   grid-template-columns:
     24px            /* swatch */
@@ -6206,8 +6198,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     96px            /* service area */
     0.8fr           /* id */
     1fr             /* routes badge */
-    24px            /* copy attributes */
-    96px;           /* overrides (4 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-routelike {
   grid-template-columns:
@@ -6220,16 +6211,14 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     68px            /* avg spd */
     68px            /* run time */
     84px            /* bands */
-    24px            /* copy attributes */
-    128px;          /* overrides (5 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-polygons {
   grid-template-columns:
     24px            /* swatch */
     1.2fr           /* name */
     2fr             /* notes */
-    24px            /* copy attributes */
-    76px;           /* overrides (3 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-marker {
   grid-template-columns:
@@ -6241,7 +6230,6 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 
 .as-col-narrow  { }
 .as-col-num     { }
-.as-col-overrides { justify-self: end; }
 .as-col-check { justify-self: center; }
 .as-col-copy  { justify-self: center; }
 
