@@ -6419,12 +6419,12 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 .zeb-rt-cell { text-align: center; }
 .zeb-rt-pill {
   display: inline-block;
-  min-width: 28px;
-  padding: 3px 10px;
+  min-width: 44px;
+  padding: 4px 12px;
   border-radius: 999px;
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .zeb-route-detail p { margin: 0 0 6px; }
@@ -6458,10 +6458,17 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   font-size: var(--text-sm);
 }
 
+.zeb-detail-more { margin-top: 10px; }
+.zeb-detail-more > summary { cursor: pointer; color: var(--muted); }
+.zeb-detail-more .zeb-detail-facts { margin-top: 6px; }
+
+/* Chart type is sized against the 640-wide viewBox: large enough that a
+   screenshot of the panel still reads when scaled down into a document. */
 .zeb-range-chart { max-width: 100%; height: auto; display: block; }
-.zeb-soc-axis-label { font-size: 9px; fill: var(--muted); }
-.zeb-soc-buffer-label { font-size: 9px; fill: #d73027; }
-.zeb-soc-crossing-label { font-size: 9px; fill: #d73027; font-weight: var(--weight-semibold); }
+.zeb-soc-axis-label { font-size: 12px; fill: var(--muted); }
+.zeb-soc-mark-label { font-size: 12px; fill: var(--muted); font-weight: var(--weight-semibold); }
+.zeb-soc-buffer-label { font-size: 12px; fill: #d73027; }
+.zeb-soc-crossing-label { font-size: 13px; fill: #d73027; font-weight: var(--weight-semibold); }
 
 body.dark-mode .zeb-tile { background: #1a2233; }
 body.dark-mode .zeb-results-table tr.zeb-row:hover { background: rgba(255,255,255,0.06); }

@@ -399,6 +399,37 @@ actually proves the redesign works.
    - the two agencies land in different color buckets (if not, retune
      `chargeBreaks` per Step 3).
 
+## Follow-up: screenshot simplification (implemented)
+
+A pass after Step 11, on PM feedback that the results needed to survive being
+screenshotted into a proposal. Where this section and the steps above disagree,
+this section is what shipped.
+
+- **Five `chargeBreaks` became three `outcomes`** (`{id, rank, min, label,
+  color}`, best first), and `ZEB.chargeBreakFor` became `ZEB.outcomeFor`. The
+  summary tiles, the results-table pill, the map and the legend now all read
+  that one array, instead of the tiles categorizing three ways while everything
+  else categorized five ways. The map colors by a numeric `outcomeRank`
+  property so it still rides `App.choropleth.buildStepColorExpr`.
+- **The bands are keyed on round trips per charge (8+ / 1–8 / under 1), not on
+  `coversDay`.** An outcome-worded scheme ("all day on one charge") was tried
+  first and put all 8 demo routes in one band: `coversDay` asks whether one
+  charge covers *the route's whole day*, which is several buses' work, so it is
+  false for essentially every real route. `chargesPerDay` still drives the
+  per-route sentence, where the precise claim belongs.
+- **The results table is 4 columns**, down from 6 — trips/day and round-trip
+  miles moved into the expansion as inputs rather than findings — the pill caps
+  at "10+", and the duplicate fractional value under it is gone.
+- **The worst route auto-expands** after a run, so the panel shows a full
+  detail and chart with no interaction.
+- **The expanded row shows 5 facts**, with the other 7 behind a `<details>`.
+- **The chart** grew to 640×220 with 12–13px type, a 3px depletion line, and
+  exactly two round-trip hairlines (last completed, first missed) instead of up
+  to 24. `xMax` now always reaches the missed mark.
+- The redundant methodology note under the export buttons is gone. The feed bar
+  and the export buttons stay: the first is provenance worth its one line, and
+  removing the second would delete a feature for cosmetics.
+
 ## Out of scope
 
 - Opportunity/on-route charging modeling. The midday-charge conclusion stays a

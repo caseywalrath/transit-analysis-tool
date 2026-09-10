@@ -19,16 +19,21 @@ window.ZebDemoData = {
   // computation (deadheadCircuity above, via ZEB.deadheadMiles) is still
   // shown as context in the expanded row but does not drive this number.
   deadheadAllowanceMi: 6,
-  // Ascending buckets for coloring routes by round trips per charge
-  // (ZEB.chargeBreakFor). Coarse and tuned by eye against the demo feed —
-  // not a rigorous feasibility threshold, just enough to separate the two
-  // demo agencies visually.
-  chargeBreaks: [
-    { min: 0, label: "Under 1 round trip", color: "#d73027" },
-    { min: 1, label: "1-2 round trips",    color: "#fc8d59" },
-    { min: 2, label: "2-4 round trips",    color: "#fee08b" },
-    { min: 4, label: "4-8 round trips",    color: "#91cf60" },
-    { min: 8, label: "8+ round trips",     color: "#1a9850" }
+  // The three bands a scored route can land in (ZEB.outcomeFor), keyed on
+  // round trips per charge. Listed best first — the legend and summary tiles
+  // render in this order; `rank` (0 worst .. 2 best) is what the map colors
+  // by, and `min` is the value a route must clear to reach the band.
+  //
+  // Three bands rather than a finer scale so the results table, the map, the
+  // legend and the summary tiles all say the same thing and a screenshot
+  // carries its own legend. Coarse and tuned by eye against the demo feed —
+  // 8 stands in for "about a duty cycle's worth of round trips", not a
+  // rigorous threshold. Re-tune here (only here) if a feed lands every route
+  // in one band, which makes the coloring useless.
+  outcomes: [
+    { id: "strong",  rank: 2, min: 8, label: "8+ round trips",     color: "#1a9850" },
+    { id: "limited", rank: 1, min: 1, label: "1-8 round trips",    color: "#fc8d59" },
+    { id: "short",   rank: 0, min: 0, label: "Under 1 round trip", color: "#d73027" }
   ],
   gradeClasses: {
     flat:     { label: "Flat",     factor: 1.00 },
@@ -64,7 +69,7 @@ window.ZebDemoData = {
     // "AVN_15142": { gradeClass: "rolling" }
   },
   // Retained for js/core/zeb-model.js's tierFor()/summarizeRoute() golden
-  // fixtures. The module no longer reads this — see chargeBreaks above.
+  // fixtures. The module no longer reads this — see outcomes above.
   tiers: [
     { tier: 1, label: "Ready today",              maxRatio: 0.75,     color: "#1a9850", reason: "Worst block uses at most 75% of the battery after the 20% safety buffer." },
     { tier: 2, label: "Feasible with margin",     maxRatio: 0.90,     color: "#91cf60", reason: "Worst block fits within the buffered battery with 10–25% margin." },

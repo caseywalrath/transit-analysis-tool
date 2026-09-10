@@ -884,33 +884,45 @@
       }
     ]
   },
-  "charge-break-bucket-0": {
-    "index": 0,
-    "label": "Under 1 round trip",
-    "color": "#d73027"
-  },
-  "charge-break-bucket-1": {
-    "index": 1,
-    "label": "1-2 round trips",
-    "color": "#fc8d59"
-  },
-  "charge-break-bucket-2": {
-    "index": 2,
-    "label": "2-4 round trips",
-    "color": "#fee08b"
-  },
-  "charge-break-bucket-3": {
-    "index": 3,
-    "label": "4-8 round trips",
-    "color": "#91cf60"
-  },
-  "charge-break-bucket-4": {
-    "index": 4,
+  "outcome-strong": {
+    "id": "strong",
+    "rank": 2,
     "label": "8+ round trips",
     "color": "#1a9850"
   },
-  "charge-break-null": {
-    "index": -1,
+  "outcome-limited": {
+    "id": "limited",
+    "rank": 1,
+    "label": "1-8 round trips",
+    "color": "#fc8d59"
+  },
+  "outcome-short": {
+    "id": "short",
+    "rank": 0,
+    "label": "Under 1 round trip",
+    "color": "#d73027"
+  },
+  "outcome-boundary-1": {
+    "id": "limited",
+    "rank": 1,
+    "label": "1-8 round trips",
+    "color": "#fc8d59"
+  },
+  "outcome-boundary-8": {
+    "id": "strong",
+    "rank": 2,
+    "label": "8+ round trips",
+    "color": "#1a9850"
+  },
+  "outcome-zero": {
+    "id": "short",
+    "rank": 0,
+    "label": "Under 1 round trip",
+    "color": "#d73027"
+  },
+  "outcome-non-finite": {
+    "id": null,
+    "rank": null,
     "label": null,
     "color": null
   }

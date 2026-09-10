@@ -11,6 +11,7 @@
 // to/from these plain shapes at the boundary.
 //
 // Exports (all on window.ZEB): parseGtfsTime, pickRepresentativeService,
+// routeRange, outcomeFor, plus the retained-but-no-longer-called-by-the-module
 // buildBlocks, deadheadMiles, energyForBlock, tierFor, scoreFor,
 // summarizeRoute, socProfile.
 
@@ -460,20 +461,25 @@
     };
   }
 
-  // breaks: ascending [{ min, label, color }] (see ZebDemoData.chargeBreaks).
-  // Returns the last break whose min the value clears; a neutral result with
-  // index -1 for null/non-finite input.
-  function chargeBreakFor(roundTripsPerCharge, breaks) {
-    breaks = Array.isArray(breaks) ? breaks : [];
+  // outcomes: [{ id, rank, min, label, color }] (see ZebDemoData.outcomes) —
+  // the bands a route's round trips per charge can fall into, in any order.
+  // Returns the highest-`min` band the value clears. Every surface that colors
+  // a route — the results table pill, the map, the legend, the summary tiles —
+  // reads this one categorization, so it lives in the engine rather than being
+  // re-derived per surface. Non-finite input (no usable round-trip distance)
+  // returns the neutral result rather than the bottom band.
+  function outcomeFor(roundTripsPerCharge, outcomes) {
+    outcomes = Array.isArray(outcomes) ? outcomes : [];
     if (!Number.isFinite(roundTripsPerCharge)) {
-      return { index: -1, label: null, color: null };
+      return { id: null, rank: null, label: null, color: null };
     }
-    var chosenIndex = -1;
-    for (var i = 0; i < breaks.length; i++) {
-      if (roundTripsPerCharge >= breaks[i].min) chosenIndex = i;
+    var chosen = null;
+    for (var i = 0; i < outcomes.length; i++) {
+      var o = outcomes[i];
+      if (roundTripsPerCharge >= o.min && (chosen === null || o.min > chosen.min)) chosen = o;
     }
-    if (chosenIndex === -1) return { index: -1, label: null, color: null };
-    return { index: chosenIndex, label: breaks[chosenIndex].label, color: breaks[chosenIndex].color };
+    if (chosen === null) return { id: null, rank: null, label: null, color: null };
+    return { id: chosen.id, rank: chosen.rank, label: chosen.label, color: chosen.color };
   }
 
   // ---- Exports ----
@@ -488,6 +494,6 @@
   ZEB.summarizeRoute = summarizeRoute;
   ZEB.socProfile = socProfile;
   ZEB.routeRange = routeRange;
-  ZEB.chargeBreakFor = chargeBreakFor;
+  ZEB.outcomeFor = outcomeFor;
 
 })();

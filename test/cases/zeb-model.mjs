@@ -22,12 +22,12 @@ var TIERS = [
     reason: "Required capacity exceeds 160% of the available battery." }
 ];
 
-var CHARGE_BREAKS = [
-  { min: 0, label: "Under 1 round trip", color: "#d73027" },
-  { min: 1, label: "1-2 round trips", color: "#fc8d59" },
-  { min: 2, label: "2-4 round trips", color: "#fee08b" },
-  { min: 4, label: "4-8 round trips", color: "#91cf60" },
-  { min: 8, label: "8+ round trips", color: "#1a9850" }
+// Display order (best first), each carrying its own rank and threshold —
+// mirrors ZebDemoData.outcomes.
+var OUTCOMES = [
+  { id: "strong", rank: 2, min: 8, label: "8+ round trips", color: "#1a9850" },
+  { id: "limited", rank: 1, min: 1, label: "1-8 round trips", color: "#fc8d59" },
+  { id: "short", rank: 0, min: 0, label: "Under 1 round trip", color: "#d73027" }
 ];
 
 export default {
@@ -328,13 +328,15 @@ export default {
       }]
     },
 
-    // --- chargeBreakFor ---------------------------------------------------
-    // One case per bucket in CHARGE_BREAKS below, plus null.
-    { id: "charge-break-bucket-0", call: "ZEB.chargeBreakFor", args: [0.5, CHARGE_BREAKS] },
-    { id: "charge-break-bucket-1", call: "ZEB.chargeBreakFor", args: [1.5, CHARGE_BREAKS] },
-    { id: "charge-break-bucket-2", call: "ZEB.chargeBreakFor", args: [3, CHARGE_BREAKS] },
-    { id: "charge-break-bucket-3", call: "ZEB.chargeBreakFor", args: [6, CHARGE_BREAKS] },
-    { id: "charge-break-bucket-4", call: "ZEB.chargeBreakFor", args: [10, CHARGE_BREAKS] },
-    { id: "charge-break-null", call: "ZEB.chargeBreakFor", args: [null, CHARGE_BREAKS] }
+    // --- outcomeFor -------------------------------------------------------
+    // One case per band, both band boundaries (min is inclusive), and the
+    // non-finite neutral path.
+    { id: "outcome-strong", call: "ZEB.outcomeFor", args: [8.657586544910487, OUTCOMES] },
+    { id: "outcome-limited", call: "ZEB.outcomeFor", args: [3.83, OUTCOMES] },
+    { id: "outcome-short", call: "ZEB.outcomeFor", args: [0.5, OUTCOMES] },
+    { id: "outcome-boundary-1", call: "ZEB.outcomeFor", args: [1, OUTCOMES] },
+    { id: "outcome-boundary-8", call: "ZEB.outcomeFor", args: [8, OUTCOMES] },
+    { id: "outcome-zero", call: "ZEB.outcomeFor", args: [0, OUTCOMES] },
+    { id: "outcome-non-finite", call: "ZEB.outcomeFor", args: [null, OUTCOMES] }
   ]
 };
