@@ -168,6 +168,7 @@
       fs.polygonOpacity = (state.polygonOpacity  != null) ? state.polygonOpacity : 50;
       fs.bufferOpacity  = (state.bufferOpacity   != null) ? state.bufferOpacity  : 50;
     }
+    if (typeof App.syncBufferInputs === "function") App.syncBufferInputs();
 
     // 3a. Restore Features list sort state (additive fields — the setter
     // no-ops on anything absent, so an old session without them keeps the

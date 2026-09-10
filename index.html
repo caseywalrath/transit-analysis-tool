@@ -283,6 +283,21 @@
             <div class="fp-section-header fp-settings-header">Feature Settings</div>
             <div class="fp-settings-body">
               <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-point">Point buffer</label>
+                <input type="number" id="fp-buf-point" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-line">Line buffer</label>
+                <input type="number" id="fp-buf-line" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-route">Route buffer</label>
+                <input type="number" id="fp-buf-route" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
                 <label class="fp-buffer-label" for="offsetOverlap">
                   <input type="checkbox" id="offsetOverlap" /> Offset overlapping Lines/Routes
                 </label>

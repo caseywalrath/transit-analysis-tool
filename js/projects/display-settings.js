@@ -1,17 +1,12 @@
 (function () {
   var App = window.App = window.App || {};
 
-  var BUFFER_STEPS = App.BUFFER_RADIUS_STEPS || [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-
   var SLIDERS = [
     { id: "ds-pointOpacity",      key: "pointOpacity",      def: 100, min: 0, max: 100, step: 1,   unit: "%",  onChange: function () { App.applyFeatureOpacity("point"); } },
     { id: "ds-lineOpacity",       key: "lineOpacity",       def: 100, min: 0, max: 100, step: 1,   unit: "%",  onChange: function () { App.applyFeatureOpacity("line"); } },
     { id: "ds-routeOpacity",      key: "routeOpacity",      def: 100, min: 0, max: 100, step: 1,   unit: "%",  onChange: function () { App.applyFeatureOpacity("route"); } },
     { id: "ds-polygonOpacity",    key: "polygonOpacity",    def: 50,  min: 0, max: 100, step: 1,   unit: "%",  onChange: function () { App.applyFeatureOpacity("polygon"); } },
     { id: "ds-bufferOpacity",     key: "bufferOpacity",     def: 50,  min: 0, max: 100, step: 1,   unit: "%",  onChange: function () { App.applyFeatureOpacity("buffer"); } },
-    { id: "ds-bufferRadius",      key: "bufferRadius",      def: 0,   values: BUFFER_STEPS, unit: "mi", onChange: function (v) { App.rebuildBuffers(v); if (typeof App.notifyProject === "function") App.notifyProject(); } },
-    { id: "ds-lineBufferRadius",  key: "lineBufferRadius",  def: 0,   values: BUFFER_STEPS, unit: "mi", onChange: function (v) { App.rebuildLineBuffers(v); if (typeof App.notifyProject === "function") App.notifyProject(); } },
-    { id: "ds-routeBufferRadius", key: "routeBufferRadius", def: 0,   values: BUFFER_STEPS, unit: "mi", onChange: function (v) { App.rebuildRouteBuffers(v); if (typeof App.notifyProject === "function") App.notifyProject(); } },
     { id: "ds-pointLineWidth",    key: "pointLineWidth",    def: 1,   min: 0, max: 5, step: 0.1, unit: "×", onChange: function () { App.applyLineWidth("point"); } },
     { id: "ds-lineLineWidth",     key: "lineLineWidth",     def: 1,   min: 0, max: 5, step: 0.1, unit: "×", onChange: function () { App.applyLineWidth("line"); } },
     { id: "ds-routeLineWidth",    key: "routeLineWidth",    def: 1,   min: 0, max: 5, step: 0.1, unit: "×", onChange: function () { App.applyLineWidth("route"); } },

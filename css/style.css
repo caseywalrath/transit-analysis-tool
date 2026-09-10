@@ -1524,6 +1524,10 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   color: var(--muted);
   flex: 1;
 }
+.fp-buffer-unit {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
 .fp-radius-input {
   width: 38px;
   padding: 2px 4px;
@@ -4799,15 +4803,6 @@ select.fp-attr-input,
   color: var(--accent);
   text-align: center;
   min-width: 32px;
-}
-.ds-empty {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  text-align: center;
-  padding-top: 28px;
-}
-.ds-empty:not(:nth-child(6n)) {
-  border-right: 1px solid var(--border);
 }
 .ds-footer {
   border-top: 1px solid var(--border);

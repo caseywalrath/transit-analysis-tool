@@ -958,6 +958,41 @@
       if (typeof App.cache !== "undefined") App.cache.save();
     });
 
+    // Feature Settings buffer-radius inputs
+    var BUFFER_INPUTS = [
+      { id: "fp-buf-point", key: "bufferRadius",      rebuild: "rebuildBuffers"      },
+      { id: "fp-buf-line",  key: "lineBufferRadius",  rebuild: "rebuildLineBuffers"  },
+      { id: "fp-buf-route", key: "routeBufferRadius", rebuild: "rebuildRouteBuffers" }
+    ];
+
+    function syncBufferInputs() {
+      BUFFER_INPUTS.forEach(function (cfg) {
+        var el = document.getElementById(cfg.id);
+        if (el) el.value = App.featureSettings[cfg.key];
+      });
+    }
+
+    BUFFER_INPUTS.forEach(function (cfg) {
+      var el = document.getElementById(cfg.id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        var v = parseFloat(el.value);
+        if (!isFinite(v)) {
+          el.value = App.featureSettings[cfg.key];
+          return;
+        }
+        v = Math.max(0, Math.min(2, v));
+        el.value = v;
+        App.featureSettings[cfg.key] = v;
+        App[cfg.rebuild](v);
+        notifyProject();
+        if (typeof App.cache !== "undefined") App.cache.save();
+      });
+    });
+
+    syncBufferInputs();
+    App.syncBufferInputs = syncBufferInputs;
+
     // Map click: dispatch based on draw mode
     App.map.on("click", function (e) {
       if (App.drawMode === "point") {
