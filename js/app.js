@@ -868,6 +868,145 @@
       return bestIdx;
     }
 
+    function _roundToStep(v, step) {
+      if (!step) return v;
+      var decimals = (String(step).split(".")[1] || "").length;
+      return parseFloat(v.toFixed(decimals));
+    }
+
+    function _fmtScrubValue(v, cfg) {
+      if (cfg.values) return parseFloat(v.toFixed(3)).toString();
+      if (cfg.step && cfg.step < 1) return parseFloat(v).toFixed(1);
+      return Math.round(v).toString();
+    }
+
+    // Compact numeric control: decrement / typed-or-dragged value / increment
+    // / unit. cfg = { min, max, step, unit, value, onChange(v) } for a
+    // continuous range, or { values: [...], unit, value, onChange(v) } for a
+    // fixed step list. Presentation-only — callers own persistence.
+    function buildScrubber(cfg) {
+      var el = document.createElement("div");
+      el.className = "fp-scrubber";
+
+      var dec = document.createElement("button");
+      dec.type = "button";
+      dec.className = "fp-scrub-btn fp-scrub-dec";
+      dec.textContent = "−";
+      dec.setAttribute("aria-label", "Decrease");
+
+      var input = document.createElement("input");
+      input.className = "fp-scrub-input";
+      input.type = cfg.values ? "text" : "number";
+      input.inputMode = "decimal";
+      if (!cfg.values) {
+        input.min  = cfg.min;
+        input.max  = cfg.max;
+        input.step = cfg.step;
+      }
+
+      var inc = document.createElement("button");
+      inc.type = "button";
+      inc.className = "fp-scrub-btn fp-scrub-inc";
+      inc.textContent = "+";
+      inc.setAttribute("aria-label", "Increase");
+
+      el.appendChild(dec);
+      el.appendChild(input);
+      el.appendChild(inc);
+
+      if (cfg.unit) {
+        var unitEl = document.createElement("span");
+        unitEl.className = "fp-scrub-unit";
+        unitEl.textContent = cfg.unit;
+        el.appendChild(unitEl);
+      }
+
+      var curVal = (cfg.value != null) ? cfg.value : (cfg.values ? cfg.values[0] : cfg.min);
+      if (cfg.values) curVal = cfg.values[_valueToIdx(curVal, cfg.values)];
+
+      function render() { input.value = _fmtScrubValue(curVal, cfg); }
+      render();
+
+      function commit(v) {
+        if (cfg.values) {
+          v = cfg.values[_valueToIdx(v, cfg.values)];
+        } else {
+          v = _roundToStep(v, cfg.step);
+          v = Math.max(cfg.min, Math.min(cfg.max, v));
+        }
+        curVal = v;
+        render();
+        cfg.onChange(v);
+      }
+
+      input.addEventListener("change", function () {
+        var parsed = parseFloat(input.value);
+        if (!isFinite(parsed)) { render(); return; }
+        commit(parsed);
+      });
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") input.blur();
+      });
+
+      dec.addEventListener("click", function () {
+        if (cfg.values) {
+          var idx = _valueToIdx(curVal, cfg.values);
+          commit(cfg.values[Math.max(0, idx - 1)]);
+        } else {
+          commit(curVal - cfg.step);
+        }
+      });
+      inc.addEventListener("click", function () {
+        if (cfg.values) {
+          var idx = _valueToIdx(curVal, cfg.values);
+          commit(cfg.values[Math.min(cfg.values.length - 1, idx + 1)]);
+        } else {
+          commit(curVal + cfg.step);
+        }
+      });
+
+      // Drag-to-scrub: only engages past a small movement threshold, so a
+      // plain click still focuses the input for typing.
+      input.style.cursor = "ew-resize";
+      input.addEventListener("mousedown", function (e) {
+        var startX = e.clientX;
+        var startVal = curVal;
+        var dragging = false;
+
+        function onMove(e2) {
+          var dx = e2.clientX - startX;
+          if (!dragging) {
+            if (Math.abs(dx) < 3) return;
+            dragging = true;
+            document.body.style.userSelect = "none";
+          }
+          e2.preventDefault();
+          if (cfg.values) {
+            var startIdx = _valueToIdx(startVal, cfg.values);
+            var steps = Math.round(dx / 8);
+            var idx = Math.max(0, Math.min(cfg.values.length - 1, startIdx + steps));
+            commit(cfg.values[idx]);
+          } else {
+            commit(startVal + Math.round(dx / 4) * cfg.step);
+          }
+        }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.body.style.userSelect = "";
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+
+      el.refresh = function (v) {
+        curVal = cfg.values ? cfg.values[_valueToIdx(v, cfg.values)] : v;
+        render();
+      };
+
+      return el;
+    }
+
     function _openFpSlider(btn, cfg) {
       // Toggle off if same button clicked again
       if (_fpActiveBtn === btn) { _closeFpSlider(); return; }
@@ -875,46 +1014,30 @@
 
       var pop = document.getElementById("fp-slider-popover");
       if (!pop) return;
-      var slider = document.getElementById("fp-slider-input");
-      var valEl  = document.getElementById("fp-slider-value");
-      var unitEl = document.getElementById("fp-slider-unit");
-      if (!slider || !valEl) return;
+      pop.innerHTML = "";
 
       var initVal = (cfg.value != null) ? cfg.value : (cfg.key ? App.featureSettings[cfg.key] : 0);
-      if (unitEl) unitEl.textContent = cfg.unit || "";
 
-      if (cfg.values) {
-        slider.min  = 0;
-        slider.max  = cfg.values.length - 1;
-        slider.step = 1;
-        var initIdx = _valueToIdx(initVal, cfg.values);
-        slider.value = initIdx;
-        valEl.textContent = _fmtSlider(cfg.values[initIdx], cfg);
-        slider.oninput = function () {
-          var v = cfg.values[parseInt(this.value)];
-          if (cfg.key) App.featureSettings[cfg.key] = v;
-          valEl.textContent = _fmtSlider(v, cfg);
+      var scrubber = buildScrubber({
+        min: cfg.min,
+        max: cfg.max,
+        step: cfg.step,
+        unit: cfg.unit,
+        values: cfg.values,
+        value: initVal,
+        onChange: function (v) {
+          if (cfg.key) {
+            App.featureSettings[cfg.key] = v;
+            if (typeof App.cache !== "undefined") App.cache.save();
+          }
           cfg.onChange(v);
-          if (cfg.key && typeof App.cache !== "undefined") App.cache.save();
-        };
-      } else {
-        slider.min   = cfg.min;
-        slider.max   = cfg.max;
-        slider.step  = cfg.step;
-        slider.value = initVal;
-        valEl.textContent = _fmtSlider(initVal, cfg);
-        slider.oninput = function () {
-          var v = parseFloat(this.value);
-          if (cfg.key) App.featureSettings[cfg.key] = v;
-          valEl.textContent = _fmtSlider(v, cfg);
-          cfg.onChange(v);
-          if (cfg.key && typeof App.cache !== "undefined") App.cache.save();
-        };
-      }
+        }
+      });
+      pop.appendChild(scrubber);
 
       // Position popover below (or above) the icon
       var rect = btn.getBoundingClientRect();
-      var popW = 44, popH = 160;
+      var popW = 150, popH = 40;
       var left = rect.left + rect.width / 2 - popW / 2;
       var top  = rect.bottom + 6;
       if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
@@ -925,12 +1048,6 @@
 
       btn.classList.add("fp-sib-active");
       _fpActiveBtn = btn;
-    }
-
-    function _fmtSlider(v, cfg) {
-      if (cfg.values) return parseFloat(v.toFixed(3)).toString();
-      if (cfg.step < 1) return parseFloat(v).toFixed(1);
-      return Math.round(v).toString();
     }
 
     // Close on outside mousedown (not click — avoids missing fast drags)
@@ -947,6 +1064,7 @@
     App._openFpSlider      = _openFpSlider;
     App._closeFpSlider     = _closeFpSlider;
     App.BUFFER_RADIUS_STEPS = BUFFER_RADIUS_STEPS;
+    App.buildScrubber      = buildScrubber;
 
     // Offset overlapping lines/routes toggle
     document.getElementById("offsetOverlap").addEventListener("change", function () {

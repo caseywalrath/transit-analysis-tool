@@ -14,63 +14,30 @@
     { id: "ds-bufferLineWidth",   key: "bufferLineWidth",   def: 1,   min: 0, max: 5, step: 0.1, unit: "×", onChange: function () { App.applyBufferLineWidth(); } }
   ];
 
-  function valueToIdx(val, values) {
-    var best = 0, dist = Infinity;
-    for (var i = 0; i < values.length; i++) {
-      var d = Math.abs(values[i] - val);
-      if (d < dist) { dist = d; best = i; }
-    }
-    return best;
-  }
-
-  function fmt(v, cfg) {
-    if (cfg.values) return parseFloat(v.toFixed(3)) + " " + cfg.unit;
-    if (cfg.unit === "%") return Math.round(v) + "%";
-    if (cfg.step < 1) return parseFloat(v).toFixed(1) + cfg.unit;
-    return Math.round(v) + cfg.unit;
-  }
-
   function syncSliders() {
     SLIDERS.forEach(function (cfg) {
-      if (!cfg._el) return;
-      var v = App.featureSettings[cfg.key];
-      cfg._el.value = cfg.values ? valueToIdx(v, cfg.values) : v;
-      if (cfg._valEl) cfg._valEl.textContent = fmt(v, cfg);
+      if (cfg._scrubber) cfg._scrubber.refresh(App.featureSettings[cfg.key]);
     });
   }
 
   function wireSliders() {
     SLIDERS.forEach(function (cfg) {
-      var el = document.getElementById(cfg.id);
-      if (!el) return;
-      cfg._el = el;
-      cfg._valEl = el.parentNode.querySelector(".ds-val");
+      var host = document.getElementById(cfg.id);
+      if (!host || cfg._scrubber) return;
 
-      if (cfg.values) {
-        el.min = 0;
-        el.max = cfg.values.length - 1;
-        el.step = 1;
-      } else {
-        el.min = cfg.min;
-        el.max = cfg.max;
-        el.step = cfg.step;
-      }
-
-      el.addEventListener("input", function () {
-        var v = cfg.values ? cfg.values[parseInt(el.value)] : parseFloat(el.value);
-        App.featureSettings[cfg.key] = v;
-        if (cfg._valEl) cfg._valEl.textContent = fmt(v, cfg);
-        cfg.onChange(v);
-        if (typeof App.cache !== "undefined") App.cache.save();
+      cfg._scrubber = App.buildScrubber({
+        min: cfg.min,
+        max: cfg.max,
+        step: cfg.step,
+        unit: cfg.unit,
+        value: App.featureSettings[cfg.key],
+        onChange: function (v) {
+          App.featureSettings[cfg.key] = v;
+          cfg.onChange(v);
+          if (typeof App.cache !== "undefined") App.cache.save();
+        }
       });
-
-      el.addEventListener("dblclick", function () {
-        App.featureSettings[cfg.key] = cfg.def;
-        el.value = cfg.values ? valueToIdx(cfg.def, cfg.values) : cfg.def;
-        if (cfg._valEl) cfg._valEl.textContent = fmt(cfg.def, cfg);
-        cfg.onChange(cfg.def);
-        if (typeof App.cache !== "undefined") App.cache.save();
-      });
+      host.appendChild(cfg._scrubber);
     });
 
     var resetBtn = document.getElementById("ds-reset-all");
@@ -93,7 +60,7 @@
     name: "Display Settings",
     enabled: true,
     system: true,
-    popupWidth: 520,
+    popupWidth: 860,
     popupHTML: "projects/display-settings-popup.html",
     init: function () { wireSliders(); syncSliders(); },
     onOpen: function () { syncSliders(); }
