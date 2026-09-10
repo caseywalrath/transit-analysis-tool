@@ -5390,6 +5390,18 @@ body.dark-mode .result-error td { color: #fc8181; }
   max-width: 260px;
 }
 
+/* ---- Drawn-feature name tooltip (points/lines/routes/polygons) ---- */
+
+.feature-hover-tooltip {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---- Click detail popup ---- */
 
 .gtfs-detail {

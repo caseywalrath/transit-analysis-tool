@@ -409,7 +409,7 @@
         var sIdx = findPointIndex(pointHits[0]);
         var isSelPoint = App._selected && App._selected.type === "point" && App._selected.index === sIdx;
         map.getCanvas().style.cursor = isSelPoint ? "move" : "pointer";
-        if (sIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("point", sIdx);
+        if (sIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("point", sIdx, e.lngLat);
         return;
       }
 
@@ -421,13 +421,13 @@
         var lid = hit.layer.id;
         if (lid === "lines-layer") {
           var lIdx = findLineIndex(hit);
-          if (lIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("line", lIdx);
+          if (lIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("line", lIdx, e.lngLat);
         } else if (lid === "routes-layer") {
           var rIdx = findRouteIndex(hit);
-          if (rIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("route", rIdx);
+          if (rIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("route", rIdx, e.lngLat);
         } else if (lid === "polygons-fill") {
           var pIdx = findPolygonIndex(hit);
-          if (pIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("polygon", pIdx);
+          if (pIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("polygon", pIdx, e.lngLat);
         }
         return;
       }
@@ -441,13 +441,13 @@
         var bProps = bHit.properties || {};
         if (bLid === "buffers-fill" && bProps.pointIdx != null) {
           var bsIdx = findPointIndexByProp(bProps.pointIdx);
-          if (bsIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("point", bsIdx);
+          if (bsIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("point", bsIdx, e.lngLat);
         } else if (bLid === "line-buffers-fill" && bProps.lineIdx != null) {
           var blIdx = findLineIndexByProp(bProps.lineIdx);
-          if (blIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("line", blIdx);
+          if (blIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("line", blIdx, e.lngLat);
         } else if (bLid === "route-buffers-fill" && bProps.routeIdx != null) {
           var brIdx = findRouteIndexByProp(bProps.routeIdx);
-          if (brIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("route", brIdx);
+          if (brIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("route", brIdx, e.lngLat);
         }
         return;
       }
