@@ -1,12 +1,13 @@
 // js/projects/zeb-feasibility.js
 // Route Electrification Feasibility: registers as an analysis module, opens
-// in a 2-column popup, digests a loaded GTFS feed into vehicle blocks and
-// scores every route's most demanding block against a depot-only BEB
-// charging scenario using the pure engine in js/core/zeb-model.js (window.ZEB)
-// and the constants in data/zeb/zeb-demo-data.js (window.ZebDemoData).
+// in a 2-column popup, digests a loaded GTFS feed into a per-route round-trip
+// profile and scores each route's round trips per charge under a depot-only
+// BEB charging scenario using the pure engine in js/core/zeb-model.js
+// (window.ZEB) and the constants in data/zeb/zeb-demo-data.js
+// (window.ZebDemoData). See docs/zeb-route-range-redesign-plan.md.
 // Depends on: App namespace, App.popup, App.choropleth, App.getGTFSData,
 //   App.getGTFSShapesFC, App.zebOverlays (optional), window.ZEB, window.ZebDemoData,
-//   turf (CDN, shape-length + fallback distance only).
+//   turf (CDN, shape-length, terminal-distance loop test, and fallback distance).
 // No public API.
 
 (function () {
@@ -28,7 +29,6 @@
 
   var _prepared = null;        // digest of the loaded feed (see prepareFeed)
   var _preparedFeedRef = null; // App.getGTFSData() identity _prepared was built from
-  var _preparedLayover = null; // blockChaining.maxLayoverMin _prepared was built with
   var _lastResult = null;      // { allRoutes, shownRoutes, vehicleClassesLocal }
   var _stale = false;
   var _running = false;
@@ -40,15 +40,15 @@
 
   function defaultAssumptions() {
     var d = window.ZebDemoData;
-    if (!d) return { bat40: 440, base40: 2.10, batCut: 150, baseCut: 1.15, chargerKW: 150, socBuffer: 20, layover: 30 };
+    if (!d) return { bat40: 440, base40: 2.10, batCut: 150, baseCut: 1.15, chargerKW: 150, socBuffer: 20, deadheadMi: 6 };
     return {
-      bat40:     d.vehicleClasses.bus40.batteryKWh,
-      base40:    d.vehicleClasses.bus40.baseKWhPerMi,
-      batCut:    d.vehicleClasses.cutaway.batteryKWh,
-      baseCut:   d.vehicleClasses.cutaway.baseKWhPerMi,
-      chargerKW: d.charger.kW,
-      socBuffer: Math.round(d.socBuffer * 100),
-      layover:   d.blockChaining.maxLayoverMin
+      bat40:      d.vehicleClasses.bus40.batteryKWh,
+      base40:     d.vehicleClasses.bus40.baseKWhPerMi,
+      batCut:     d.vehicleClasses.cutaway.batteryKWh,
+      baseCut:    d.vehicleClasses.cutaway.baseKWhPerMi,
+      chargerKW:  d.charger.kW,
+      socBuffer:  Math.round(d.socBuffer * 100),
+      deadheadMi: d.deadheadAllowanceMi
     };
   }
 
@@ -84,7 +84,7 @@
       emptyEl: "zebEmptyState",
       empty: true,
       hint: hasFeed
-        ? { need: "Click Score Routes.", action: "Each route is graded by its most demanding vehicle block under depot-only charging." }
+        ? { need: "Click Score Routes.", action: "Each route is measured by how far one charge goes, in round trips, under depot-only charging." }
         : { need: "Load a GTFS feed to begin." }
     });
     if (!hasFeed && emptyEl) {
@@ -142,10 +142,88 @@
 
   // ---- Feed digest ----
 
-  // trips.txt group-by-block/chain, per Step 5.3 of docs/zeb-feasibility-demo-plan.md.
+  // ---- Round-trip-miles helpers (docs/zeb-route-range-redesign-plan.md Section 1) ----
+
+  function meanOf(arr) {
+    if (!arr.length) return 0;
+    var sum = 0;
+    for (var i = 0; i < arr.length; i++) sum += arr[i];
+    return sum / arr.length;
+  }
+
+  function medianOf(sortedArr) {
+    var n = sortedArr.length;
+    if (!n) return 0;
+    var mid = Math.floor(n / 2);
+    return n % 2 ? sortedArr[mid] : (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+  }
+
+  // trips: digested trips for one route on its agency's representative
+  // service day (see prepareFeed). Determines round-trip miles + basis per
+  // the loop/directions/doubled test table in the plan.
+  function buildRouteDigest(routeId, agencyId, trips, depotCoords, terminalToleranceMi, deadheadCircuity) {
+    var sorted = trips.slice().sort(function (a, b) { return a.startMin - b.startMin; });
+    var tripCount = sorted.length;
+    var milesSorted = sorted.map(function (t) { return t.miles; }).sort(function (a, b) { return a - b; });
+    var oneWayMiles = {
+      min: milesSorted.length ? milesSorted[0] : 0,
+      max: milesSorted.length ? milesSorted[milesSorted.length - 1] : 0,
+      median: medianOf(milesSorted),
+      mean: meanOf(milesSorted)
+    };
+
+    var loopCount = 0;
+    sorted.forEach(function (t) {
+      if (t.firstStop && t.lastStop) {
+        var d = 0;
+        try { d = turf.distance(t.firstStop, t.lastStop, { units: "miles" }); } catch (e) { d = Infinity; }
+        if (d <= terminalToleranceMi) loopCount++;
+      }
+    });
+    var isLoop = tripCount > 0 && (loopCount / tripCount) > 0.5;
+
+    var dir0 = sorted.filter(function (t) { return t.directionId === "0"; });
+    var dir1 = sorted.filter(function (t) { return t.directionId === "1"; });
+
+    var roundTripMiles, roundTripBasis, roundTripsPerDay;
+    if (isLoop) {
+      roundTripMiles = oneWayMiles.mean;
+      roundTripBasis = "loop";
+      roundTripsPerDay = tripCount;
+    } else if (dir0.length > 0 && dir1.length > 0) {
+      roundTripMiles = meanOf(dir0.map(function (t) { return t.miles; })) +
+        meanOf(dir1.map(function (t) { return t.miles; }));
+      roundTripBasis = "directions";
+      roundTripsPerDay = tripCount / 2;
+    } else {
+      roundTripMiles = 2 * oneWayMiles.mean;
+      roundTripBasis = "doubled";
+      roundTripsPerDay = tripCount / 2;
+    }
+
+    var depotMiles = null;
+    if (depotCoords && sorted.length) {
+      var dh = ZEB.deadheadMiles(depotCoords,
+        { firstStop: sorted[0].firstStop, lastStop: sorted[sorted.length - 1].lastStop },
+        deadheadCircuity);
+      depotMiles = dh.total;
+    }
+
+    return {
+      routeId: routeId, agencyId: agencyId, tripCount: tripCount,
+      oneWayMiles: oneWayMiles,
+      roundTripMiles: roundTripMiles, roundTripBasis: roundTripBasis,
+      roundTripsPerDay: roundTripsPerDay,
+      firstDepartMin: sorted.length ? sorted[0].startMin : null,
+      lastArriveMin: sorted.length ? sorted[sorted.length - 1].endMin : null,
+      depotMiles: depotMiles
+    };
+  }
+
+  // trips.txt digest, per Step 4/5 of docs/zeb-route-range-redesign-plan.md.
   // The only turf use in this module: shape length + a straight-line stop-to-stop
-  // fallback when a trip has no known shape_id.
-  function prepareFeed(data, chainingOpts) {
+  // fallback when a trip has no known shape_id, plus a loop-terminal distance check.
+  function prepareFeed(data) {
     if (!data || !data.has("trips.txt") || !data.has("stop_times.txt") || !data.has("routes.txt")) {
       return null;
     }
@@ -241,7 +319,7 @@
       var routeId = tripRow.route_id;
       digestedTrips.push({
         tripId: tid, routeId: routeId, serviceId: tripRow.service_id, blockId: tripRow.block_id,
-        shapeId: tripRow.shape_id, startMin: startMin, endMin: endMin,
+        shapeId: tripRow.shape_id, directionId: tripRow.direction_id, startMin: startMin, endMin: endMin,
         firstStopId: first.stop_id, lastStopId: last.stop_id,
         firstStop: firstStop, lastStop: lastStop, miles: miles
       });
@@ -252,7 +330,8 @@
       }
     });
 
-    // Group trips by agency (via route), pick a representative service, build blocks
+    // Group trips by agency (via route), pick a representative service,
+    // then digest per route within that agency's representative day.
     var tripsByAgency = {};
     digestedTrips.forEach(function (t) {
       var route = routeIndex[t.routeId];
@@ -264,55 +343,43 @@
     var calendarRows = data.has("calendar.txt") ? data.get("calendar.txt").rows : [];
     var calendarDateRows = data.has("calendar_dates.txt") ? data.get("calendar_dates.txt").rows : [];
 
-    var blocks = [];
-    var methodsSeen = {};
+    var terminalToleranceMi = ZebDemoData ? ZebDemoData.blockChaining.terminalToleranceMi : 0.3;
+    var deadheadCircuity = ZebDemoData ? ZebDemoData.deadheadCircuity : 1.3;
+
+    var routeDigests = {};
     Object.keys(tripsByAgency).forEach(function (aid) {
       var agencyTrips = tripsByAgency[aid];
       var sel = ZEB.pickRepresentativeService(calendarRows, calendarDateRows, agencyTrips);
       var serviceTrips = agencyTrips.filter(function (t) { return t.serviceId === sel.serviceId; });
-      var agencyBlocks = ZEB.buildBlocks(serviceTrips, chainingOpts);
-      agencyBlocks.forEach(function (b) { b.agencyId = aid; methodsSeen[b.method] = true; });
-      blocks = blocks.concat(agencyBlocks);
+
+      var tripsByRoute = {};
+      serviceTrips.forEach(function (t) {
+        if (!tripsByRoute[t.routeId]) tripsByRoute[t.routeId] = [];
+        tripsByRoute[t.routeId].push(t);
+      });
+
+      var agencyMeta = ZebDemoData && ZebDemoData.agencies[aid];
+      var depotCoords = agencyMeta && agencyMeta.depot ? agencyMeta.depot.coords : null;
+
+      Object.keys(tripsByRoute).forEach(function (rid) {
+        routeDigests[rid] = buildRouteDigest(rid, aid, tripsByRoute[rid], depotCoords, terminalToleranceMi, deadheadCircuity);
+      });
     });
-
-    var methodLabel = Object.keys(methodsSeen).length === 1 ? Object.keys(methodsSeen)[0] :
-      (Object.keys(methodsSeen).length > 1 ? "mixed" : "none");
-
-    // Display-only short block ids. Real GTFS block_ids (or chained-trip
-    // fallback ids) can be arbitrarily verbose (e.g. "GET_t_5934551_b_83485_tn_1");
-    // riders/planners just need something short and stable to refer to a
-    // block by within a session. `blocks` is already sorted deterministically
-    // (agency/startMin/blockId, see buildBlocks), so numbering it in order
-    // gives a stable 4-digit id per block for the life of this prepared feed.
-    var blockLabels = {};
-    blocks.forEach(function (b, i) { blockLabels[b.blockId] = String(1000 + i); });
 
     return {
       agencies: agencies,
       routes: routeIndex,
-      blocks: blocks,
-      blockLabels: blockLabels,
-      shapeGeomById: shapeGeomById,
-      method: methodLabel
+      routeDigests: routeDigests,
+      shapeGeomById: shapeGeomById
     };
-  }
-
-  function blockLabel(blockId) {
-    return (_prepared && _prepared.blockLabels && _prepared.blockLabels[blockId]) || blockId;
   }
 
   function ensurePrepared() {
     var data = App.getGTFSData ? App.getGTFSData() : null;
-    if (!data) { _prepared = null; _preparedFeedRef = null; _preparedLayover = null; return null; }
-    var layover = _settings.assumptions.layover;
-    if (_prepared && _preparedFeedRef === data && _preparedLayover === layover) return _prepared;
-    var d = window.ZebDemoData;
-    _prepared = prepareFeed(data, {
-      maxLayoverMin: layover,
-      terminalToleranceMi: d ? d.blockChaining.terminalToleranceMi : 0.3
-    });
+    if (!data) { _prepared = null; _preparedFeedRef = null; return null; }
+    if (_prepared && _preparedFeedRef === data) return _prepared;
+    _prepared = prepareFeed(data);
     _preparedFeedRef = data;
-    _preparedLayover = layover;
     return _prepared;
   }
 
@@ -386,9 +453,9 @@
     a.base40    = numOf("zebBase40", a.base40);
     a.batCut    = numOf("zebBatCut", a.batCut);
     a.baseCut   = numOf("zebBaseCut", a.baseCut);
-    a.chargerKW = numOf("zebChargerKW", a.chargerKW);
-    a.socBuffer = numOf("zebSocBuffer", a.socBuffer);
-    a.layover   = numOf("zebLayover", a.layover);
+    a.chargerKW  = numOf("zebChargerKW", a.chargerKW);
+    a.socBuffer  = numOf("zebSocBuffer", a.socBuffer);
+    a.deadheadMi = numOf("zebDeadheadMi", a.deadheadMi);
   }
 
   function syncControlsFromSettings() {
@@ -408,7 +475,7 @@
     var a = _settings.assumptions;
     var map = {
       zebBat40: a.bat40, zebBase40: a.base40, zebBatCut: a.batCut, zebBaseCut: a.baseCut,
-      zebChargerKW: a.chargerKW, zebSocBuffer: a.socBuffer, zebLayover: a.layover
+      zebChargerKW: a.chargerKW, zebSocBuffer: a.socBuffer, zebDeadheadMi: a.deadheadMi
     };
     Object.keys(map).forEach(function (id) {
       var el = document.getElementById(id);
@@ -449,8 +516,8 @@
       if (_settings.vehicleFilter !== "all" && r.vehicleClassId !== _settings.vehicleFilter) return false;
       return true;
     }).sort(function (a, b) {
-      var av = Number.isFinite(a.ratio) ? a.ratio : Infinity;
-      var bv = Number.isFinite(b.ratio) ? b.ratio : Infinity;
+      var av = Number.isFinite(a.range.roundTripsPerCharge) ? a.range.roundTripsPerCharge : Infinity;
+      var bv = Number.isFinite(b.range.roundTripsPerCharge) ? b.range.roundTripsPerCharge : Infinity;
       return av - bv;
     });
   }
@@ -473,12 +540,13 @@
         cutaway: { id: "cutaway", label: ZebDemoData.vehicleClasses.cutaway.label, batteryKWh: assumptions.batCut, baseKWhPerMi: assumptions.baseCut }
       };
 
-      var blocksByRoute = {};
-      prepared.blocks.forEach(function (block) {
-        var agency = ZebDemoData.agencies[block.agencyId];
+      var routeSummaries = [];
+      Object.keys(prepared.routeDigests).forEach(function (rid) {
+        var digest = prepared.routeDigests[rid];
+        var agency = ZebDemoData.agencies[digest.agencyId];
         if (!agency) return;
-        var firstRouteId = block.routeIds[0];
-        var override = ZebDemoData.routeOverrides[firstRouteId] || {};
+        var meta = prepared.routes[rid];
+        var override = ZebDemoData.routeOverrides[rid] || {};
 
         var vehicleClassId = _settings.vehicleAssume === "route"
           ? (override.vehicleClass || agency.defaultVehicleClass)
@@ -490,35 +558,30 @@
         var seasonFactor = (ZebDemoData.climateZones[agency.climateZone] || { factors: {} }).factors[_settings.season];
         if (typeof seasonFactor !== "number") seasonFactor = 1;
 
-        var deadhead = ZEB.deadheadMiles(agency.depot.coords, block, ZebDemoData.deadheadCircuity);
-        var energy = ZEB.energyForBlock(block, {
-          vehicle: vehicle, gradeFactor: gradeFactor, seasonFactor: seasonFactor,
-          socBuffer: assumptions.socBuffer / 100, chargerKW: assumptions.chargerKW,
-          chargerEff: ZebDemoData.charger.efficiency, deadheadMiles: deadhead
+        var range = ZEB.routeRange({
+          batteryKWh: vehicle.batteryKWh, baseKWhPerMi: vehicle.baseKWhPerMi,
+          gradeFactor: gradeFactor, seasonFactor: seasonFactor,
+          socBuffer: assumptions.socBuffer / 100,
+          deadheadMiles: assumptions.deadheadMi,
+          roundTripMiles: digest.roundTripMiles,
+          roundTripsPerDay: digest.roundTripsPerDay
         });
-        var tier = ZEB.tierFor(energy.ratio, energy.rechargeFits, ZebDemoData.tiers);
+        var bucket = ZEB.chargeBreakFor(range.roundTripsPerCharge, ZebDemoData.chargeBreaks);
 
-        var br = { block: block, energy: energy, tier: tier, agencyId: block.agencyId, vehicleClassId: vehicleClassId };
-        block.routeIds.forEach(function (rid) {
-          if (!blocksByRoute[rid]) blocksByRoute[rid] = [];
-          blocksByRoute[rid].push(br);
+        routeSummaries.push({
+          routeId: rid,
+          name: meta ? (meta.short || meta.long || rid) : rid,
+          longName: meta ? meta.long : "",
+          agencyId: digest.agencyId,
+          agencyLabel: agencyLabelFor(digest.agencyId),
+          vehicleClassId: vehicleClassId,
+          vehicleLabel: vehicle.label,
+          gradeFactor: gradeFactor,
+          seasonFactor: seasonFactor,
+          digest: digest,
+          range: range,
+          bucket: bucket
         });
-      });
-
-      var routeSummaries = [];
-      Object.keys(blocksByRoute).forEach(function (rid) {
-        var brs = blocksByRoute[rid];
-        var summary = ZEB.summarizeRoute(rid, brs);
-        var meta = prepared.routes[rid];
-        summary.name = meta ? (meta.short || meta.long || rid) : rid;
-        summary.longName = meta ? meta.long : "";
-        summary.agencyId = meta ? meta.agency_id : ((brs[0] && brs[0].agencyId) || "");
-        summary.agencyLabel = agencyLabelFor(summary.agencyId);
-        summary.vehicleClassId = brs[0] ? brs[0].vehicleClassId : null;
-        summary.vehicleLabel = vehicleClassesLocal[summary.vehicleClassId] ? vehicleClassesLocal[summary.vehicleClassId].label : "";
-        summary.batteryKWh = vehicleClassesLocal[summary.vehicleClassId] ? vehicleClassesLocal[summary.vehicleClassId].batteryKWh : null;
-        summary.blocks = brs;
-        routeSummaries.push(summary);
       });
 
       _lastResult = { allRoutes: routeSummaries, shownRoutes: [], vehicleClassesLocal: vehicleClassesLocal };
@@ -572,24 +635,31 @@
     var agencyCount = _prepared.agencies.length;
     el.textContent = feedName + " · " + agencyCount + " agenc" + (agencyCount === 1 ? "y" : "ies") +
       " · " + routeCount + " route" + (routeCount === 1 ? "" : "s") +
-      (version ? " · feed version " + version : "") +
-      " · blocks: " + _prepared.method;
+      (version ? " · feed version " + version : "");
     el.style.display = "";
   }
 
   function renderSummaryStrip(shown) {
     var el = document.getElementById("zebSummaryStrip");
     if (!el) return;
-    var ZebDemoData = window.ZebDemoData;
-    var counts = {};
-    ZebDemoData.tiers.forEach(function (t) { counts[t.tier] = 0; });
-    shown.forEach(function (r) { if (r.tier != null && counts[r.tier] != null) counts[r.tier]++; });
-
+    var coversDay = 0, needsMidday = 0, cantFinish = 0;
+    shown.forEach(function (r) {
+      var range = r.range;
+      if (range.coversDay) coversDay++;
+      else if (Number.isFinite(range.roundTripsPerCharge) && range.roundTripsPerCharge >= 1) needsMidday++;
+      else cantFinish++;
+    });
+    var tiles = [
+      { count: shown.length, label: "Routes scored", color: "var(--accent)" },
+      { count: coversDay, label: "One charge covers the day", color: "#1a9850" },
+      { count: needsMidday, label: "Needs a midday charge", color: "#fc8d59" },
+      { count: cantFinish, label: "Can't finish a round trip", color: "#d73027" }
+    ];
     var html = "";
-    ZebDemoData.tiers.forEach(function (t) {
+    tiles.forEach(function (t) {
       html += '<div class="zeb-tile" style="border-left-color:' + t.color + ';">' +
-        '<div class="zeb-tile-count" style="color:' + t.color + ';">' + counts[t.tier] + '</div>' +
-        '<div class="zeb-tile-label tiny">Tier ' + t.tier + '</div></div>';
+        '<div class="zeb-tile-count" style="color:' + t.color + ';">' + t.count + '</div>' +
+        '<div class="zeb-tile-label tiny">' + escapeHTML(t.label) + '</div></div>';
     });
     el.innerHTML = html;
   }
@@ -608,56 +678,71 @@
     return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
   }
 
-  // Service hours for a block, computed from its span (first departure to
-  // last arrival) rather than shown as a clock-time range — e.g. 06:35-19:04
-  // -> "12.5". Whole-hour spans drop the trailing ".0" (e.g. 6am-9pm -> "15").
-  function fmtHours(spanHours) {
-    var rounded = Math.round((spanHours || 0) * 10) / 10;
-    return rounded.toFixed(1).replace(/\.0$/, "");
+  // One decimal place, trailing ".0" dropped (e.g. 8.657 -> "8.7", 9 -> "9").
+  function fmtNum1(v) {
+    if (!Number.isFinite(v)) return "—";
+    var r = Math.round(v * 10) / 10;
+    return r.toFixed(1).replace(/\.0$/, "");
   }
 
-  function tierMetaFor(tierNum) {
-    var ZebDemoData = window.ZebDemoData;
-    for (var i = 0; i < ZebDemoData.tiers.length; i++) {
-      if (ZebDemoData.tiers[i].tier === tierNum) return ZebDemoData.tiers[i];
+  function basisLabel(basis) {
+    if (basis === "loop") return "loop";
+    if (basis === "directions") return "paired directions";
+    return "doubled one-way";
+  }
+
+  function rangeSentence(r) {
+    var range = r.range;
+    var whole = range.roundTripsWhole != null ? range.roundTripsWhole : 0;
+    var miles = Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : null;
+    var lead = "<strong>" + whole + " round trip" + (whole === 1 ? "" : "s") +
+      (miles != null ? " (" + miles + " mi)" : "") + " per charge.</strong>";
+    var tripsPerDayStr = fmtNum1(range.roundTripsPerDay);
+    var tail;
+    if (range.coversDay) {
+      tail = " Route runs " + tripsPerDayStr + " round trips/day — one charge covers the day.";
+    } else if (Number.isFinite(range.roundTripsPerCharge) && range.roundTripsPerCharge >= 1) {
+      var charges = Number.isFinite(range.chargesPerDay) ? range.chargesPerDay : "multiple";
+      tail = " Route runs " + tripsPerDayStr + " round trips/day — needs " + charges + " charges, or a second bus.";
+    } else {
+      tail = " Route cannot finish one round trip on a charge.";
     }
-    return null;
-  }
-
-  function rationaleSentence(br) {
-    var block = br.block, energy = br.energy, tier = br.tier;
-    var score = ZEB.scoreFor(energy.ratio);
-    return (tier.reason || "") + " Governing block " + blockLabel(block.blockId) + ": " +
-      Math.round(energy.requiredKWh) + " kWh required vs " + Math.round(energy.vehicle.batteryKWh) +
-      " kWh available (ratio " + energy.ratio.toFixed(2) + ", score " + score + "/100).";
+    return lead + tail;
   }
 
   function buildRouteDetailHTML(r) {
-    var governing = (r.blocks || []).filter(function (b) { return b.block.blockId === r.governingBlockId; })[0];
-    var html = '<div class="cs-details-body zeb-route-detail">';
-    if (governing) {
-      html += "<p>" + escapeHTML(rationaleSentence(governing)) + "</p>";
-      html += '<p class="tiny">Recharge at ' + governing.energy.chargerKW + " kW: " +
-        governing.energy.rechargeHours.toFixed(1) + " h of " + governing.energy.overnightHours.toFixed(1) + " h available.</p>";
-    }
-    html += '<table class="zeb-blocks-table"><thead><tr>' +
-      "<th>Block</th><th>Trips</th><th>Hours</th><th>Miles</th><th>kWh</th><th>Ratio</th><th>Tier</th><th></th>" +
-      "</tr></thead><tbody>";
-    (r.blocks || []).slice().sort(function (a, b) { return a.block.startMin - b.block.startMin; }).forEach(function (br) {
-      html += "<tr>" +
-        "<td>" + escapeHTML(blockLabel(br.block.blockId)) + "</td>" +
-        "<td>" + br.block.tripIds.length + "</td>" +
-        "<td>" + fmtHours(br.block.spanHours) + "</td>" +
-        "<td>" + br.block.revenueMiles.toFixed(1) + "</td>" +
-        "<td>" + Math.round(br.energy.blockKWh) + "</td>" +
-        "<td>" + br.energy.ratio.toFixed(2) + "</td>" +
-        "<td>" + escapeHTML(br.tier.label || "") + "</td>" +
-        '<td><button type="button" class="rf-btn-sm" data-soc-block="' + escapeHTML(br.block.blockId) +
-          '" data-soc-route="' + escapeHTML(r.routeId) + '">View SoC</button></td>' +
-        "</tr>";
+    var digest = r.digest, range = r.range;
+    var vehicle = (_lastResult && _lastResult.vehicleClassesLocal[r.vehicleClassId]) || {};
+    var a = _settings.assumptions;
+
+    var factsRows = [
+      ["Agency", r.agencyLabel || ""],
+      ["Vehicle", (r.vehicleLabel || "") + " · " + Math.round(vehicle.batteryKWh || 0) + " kWh"],
+      ["Energy use", range.kWhPerMi.toFixed(2) + " kWh/mi   (" + (vehicle.baseKWhPerMi || 0).toFixed(2) +
+        " base × " + r.gradeFactor.toFixed(2) + " grade × " + r.seasonFactor.toFixed(2) + " " + _settings.season + ")"],
+      ["Usable energy", Math.round(range.usableKWh) + " kWh after " + Math.round(a.socBuffer) + "% reserve"],
+      ["Deadhead allowance", fmtNum1(a.deadheadMi) + " mi/day"],
+      ["Depot distance", Number.isFinite(digest.depotMiles) ? digest.depotMiles.toFixed(1) + " mi to first stop" : "—"],
+      ["Service span", (digest.firstDepartMin != null ? fmtHHMM(digest.firstDepartMin) : "—") +
+        " – " + (digest.lastArriveMin != null ? fmtHHMM(digest.lastArriveMin) : "—")],
+      ["One-way miles", digest.oneWayMiles.min.toFixed(1) + " / " + digest.oneWayMiles.median.toFixed(1) +
+        " / " + digest.oneWayMiles.max.toFixed(1) + "   (min / median / max)"],
+      ["Round trip", digest.roundTripMiles.toFixed(1) + " mi (" + basisLabel(digest.roundTripBasis) + ")"]
+    ];
+
+    var factsHTML = '<dl class="zeb-detail-facts">';
+    factsRows.forEach(function (row) {
+      factsHTML += "<dt>" + escapeHTML(row[0]) + "</dt><dd>" + escapeHTML(row[1]) + "</dd>";
     });
-    html += "</tbody></table></div>";
-    return html;
+    factsHTML += "</dl>";
+
+    return '<div class="cs-details-body zeb-route-detail">' +
+      '<div class="zeb-detail-grid">' +
+        '<div class="zeb-detail-facts-col">' + factsHTML + '</div>' +
+        '<div class="zeb-detail-chart-col">' + buildRangeChartSVG(r) + '</div>' +
+      '</div>' +
+      '<p class="zeb-detail-sentence">' + rangeSentence(r) + '</p>' +
+    '</div>';
   }
 
   function renderResultsTable(shown) {
@@ -680,32 +765,30 @@
 
     var html = '<table class="zeb-results-table"><thead><tr>' +
       '<th class="zeb-col-route">Route</th>' +
-      "<th>Class</th>" +
-      "<th>Blocks</th>" +
-      "<th>Worst block mi</th>" +
-      "<th>Block kWh</th>" +
-      "<th>Req. kWh</th>" +
-      "<th>Tier</th>" +
+      "<th>Trips/day</th>" +
+      "<th>Round-trip mi</th>" +
+      "<th>Miles per charge</th>" +
+      "<th>Round trips per charge</th>" +
       '<th class="zeb-toggle" aria-label="Expand"></th>' +
       "</tr></thead><tbody>";
 
     shown.forEach(function (r, i) {
-      var tierMeta = tierMetaFor(r.tier);
-      var pillStyle = tierMeta ? ("background:" + tierMeta.color + ";color:#fff;") : "";
+      var range = r.range, digest = r.digest, bucket = r.bucket;
+      var whole = range.roundTripsWhole != null ? range.roundTripsWhole : "—";
+      var frac = Number.isFinite(range.roundTripsPerCharge) ? range.roundTripsPerCharge.toFixed(1) : "—";
+      var pillColor = (bucket && bucket.color) ? bucket.color : "#999";
       html += '<tr class="zeb-row" data-index="' + i + '">' +
           '<td class="zeb-name">' + escapeHTML(r.name) +
             (r.longName ? '<div class="tiny u-muted">' + escapeHTML(r.longName) + "</div>" : "") +
             ' <span class="cs-feature-badge">' + escapeHTML(r.agencyLabel || "") + "</span></td>" +
-          "<td>" + escapeHTML(r.vehicleLabel || "") + "</td>" +
-          "<td>" + (r.blockCount != null ? r.blockCount : "—") + "</td>" +
-          "<td>" + (Number.isFinite(r.revenueMiles) ? r.revenueMiles.toFixed(1) : "—") + "</td>" +
-          "<td>" + (Number.isFinite(r.blockKWh) ? Math.round(r.blockKWh) : "—") + "</td>" +
-          "<td>" + (Number.isFinite(r.requiredKWh) ? Math.round(r.requiredKWh) : "—") + "</td>" +
-          '<td><span class="zeb-pill zeb-tier-' + (r.tier != null ? r.tier : "na") + '" style="' + pillStyle + '">' +
-            (tierMeta ? escapeHTML(tierMeta.label) : "N/A") + "</span></td>" +
+          "<td>" + fmtNum1(digest.roundTripsPerDay) + "</td>" +
+          "<td>" + (Number.isFinite(digest.roundTripMiles) ? digest.roundTripMiles.toFixed(1) : "—") + "</td>" +
+          "<td>" + (Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : "—") + "</td>" +
+          '<td class="zeb-rt-cell"><span class="zeb-rt-pill" style="background:' + pillColor + ';color:#fff;">' +
+            whole + '</span><div class="tiny u-muted">' + frac + '</div></td>' +
           '<td class="zeb-toggle"><span class="cs-caret">&#9656;</span></td>' +
         "</tr>" +
-        '<tr class="zeb-row-details cs-row-details" data-index="' + i + '" style="display:none;"><td colspan="8">' +
+        '<tr class="zeb-row-details cs-row-details" data-index="' + i + '" style="display:none;"><td colspan="6">' +
           buildRouteDetailHTML(r) +
         "</td></tr>";
     });
@@ -714,8 +797,7 @@
 
     var rowEls = container.querySelectorAll("tr.zeb-row");
     rowEls.forEach(function (rowEl) {
-      rowEl.addEventListener("click", function (e) {
-        if (e.target.closest("button")) return;
+      rowEl.addEventListener("click", function () {
         var idx = rowEl.getAttribute("data-index");
         var details = container.querySelector('tr.zeb-row-details[data-index="' + idx + '"]');
         if (!details) return;
@@ -724,159 +806,116 @@
         rowEl.classList.toggle("cs-row-open", !open);
       });
     });
-
-    container.querySelectorAll("[data-soc-block]").forEach(function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var blockId = btn.getAttribute("data-soc-block");
-        var routeId = btn.getAttribute("data-soc-route");
-        var r = shown.filter(function (x) { return x.routeId === routeId; })[0];
-        if (!r) return;
-        var br = (r.blocks || []).filter(function (b) { return b.block.blockId === blockId; })[0];
-        if (br) openBlockDetail(br, btn);
-      });
-    });
   }
 
-  // ---- Block Detail: inline SoC chart ----
+  // ---- Inline state-of-charge-by-mile chart ----
 
-  // Builds a 300x170 no-library SVG state-of-charge curve for one block from
-  // ZEB.socProfile(). x axis: minutes from first to last point, ticked every
-  // 3 hours; y axis: 0-100% SoC (extended below 0 only if the block actually
-  // drains past empty, so an infeasible block's dive below the axis is still
-  // visible instead of clipped).
-  function buildSocChartSVG(br) {
-    var block = br.block, energy = br.energy;
-    var points = ZEB.socProfile(block, energy, { vehicle: energy.vehicle });
-    if (!points.length) return "";
+  // Dependency-free inline SVG. x axis: miles travelled (0 -> a rounded xMax);
+  // y axis: 0-100% SoC. Distance-based SoC is linear and monotone, so this is
+  // a single depletion segment rather than a per-leg polyline.
+  function buildRangeChartSVG(r) {
+    var range = r.range;
+    var points = range.points;
+    if (!points || points.length < 2) return "";
 
-    var W = 300, H = 170;
-    var marginLeft = 38, marginRight = 10, marginTop = 12, marginBottom = 26;
+    var usableMiles = range.usableMiles;
+    var deadhead = range.deadheadMiles;
+    var roundTripMiles = range.roundTripMiles;
+    var bufferFrac = points[1].soc;
+
+    var rawXMax = Math.max(usableMiles, deadhead + (isFinite(roundTripMiles) && roundTripMiles > 0 ? roundTripMiles * 1.15 : 0));
+    var xMax = Math.ceil((rawXMax || 10) / 10) * 10;
+    if (xMax <= 0) xMax = 10;
+
+    var W = 640, H = 200;
+    var marginLeft = 44, marginRight = 16, marginTop = 20, marginBottom = 34;
     var plotW = W - marginLeft - marginRight;
     var plotH = H - marginTop - marginBottom;
 
-    var firstMin = points[0].min;
-    var lastMin = points[points.length - 1].min;
-    var totalMin = Math.max(1, lastMin - firstMin);
-
-    var bufferPct = (energy.socBuffer || 0) * 100;
-    var minPct = bufferPct;
-    points.forEach(function (p) { minPct = Math.min(minPct, p.soc * 100); });
-    var yDomainMin = minPct < 0 ? Math.floor(minPct / 10) * 10 : 0;
-    var yDomainMax = 100;
-    var yRange = (yDomainMax - yDomainMin) || 1;
-
-    function xAt(min) { return marginLeft + (min - firstMin) / totalMin * plotW; }
-    function yAt(pct) { return marginTop + (yDomainMax - pct) / yRange * plotH; }
+    function xAt(mile) { return marginLeft + (mile / xMax) * plotW; }
+    function yAt(frac) { return marginTop + (1 - frac) * plotH; }
 
     var chartBottom = marginTop + plotH;
-    var baselineY = yAt(0);
-    var bufferY = yAt(bufferPct);
+    var bufferY = yAt(bufferFrac);
 
-    var polyPts = points.map(function (p) {
-      return xAt(p.min).toFixed(1) + "," + yAt(p.soc * 100).toFixed(1);
-    }).join(" ");
-    var areaPts = polyPts + " " + xAt(lastMin).toFixed(1) + "," + baselineY.toFixed(1) +
-      " " + xAt(firstMin).toFixed(1) + "," + baselineY.toFixed(1);
+    var niceSteps = [5, 10, 20, 25, 50, 100, 200];
+    var chosenStep = niceSteps[niceSteps.length - 1];
+    for (var s = 0; s < niceSteps.length; s++) {
+      if (xMax / niceSteps[s] <= 8) { chosenStep = niceSteps[s]; break; }
+    }
+    var ticks = [];
+    for (var tx = 0; tx <= xMax; tx += chosenStep) ticks.push(tx);
 
-    // First downward crossing of the buffer line, linearly interpolated.
-    var crossing = null;
-    for (var i = 1; i < points.length && !crossing; i++) {
-      var pct1 = points[i - 1].soc * 100, pct2 = points[i].soc * 100;
-      if (pct1 >= bufferPct && pct2 < bufferPct) {
-        var t = (bufferPct - pct1) / (pct2 - pct1);
-        var crossMin = points[i - 1].min + t * (points[i].min - points[i - 1].min);
-        crossing = { min: crossMin, x: xAt(crossMin), y: bufferY };
-      }
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" class="zeb-range-chart" ' +
+      'role="img" aria-label="State of charge by mile travelled">';
+
+    // Reserve band (from the buffer line down to 0%).
+    svg += '<rect x="' + marginLeft + '" y="' + bufferY.toFixed(1) + '" width="' + plotW +
+      '" height="' + Math.max(0, chartBottom - bufferY).toFixed(1) + '" fill="rgba(215,48,39,0.10)"></rect>';
+
+    // Deadhead band.
+    if (deadhead > 0) {
+      var deadheadX = xAt(Math.min(deadhead, xMax));
+      svg += '<rect x="' + marginLeft + '" y="' + marginTop + '" width="' + Math.max(0, deadheadX - marginLeft).toFixed(1) +
+        '" height="' + plotH + '" fill="var(--border)" fill-opacity="0.4"></rect>';
+      svg += '<text x="' + ((marginLeft + deadheadX) / 2).toFixed(1) + '" y="' + (marginTop + 12) +
+        '" text-anchor="middle" class="zeb-soc-axis-label">deadhead</text>';
     }
 
-    var ticks = [];
-    for (var tm = Math.ceil(firstMin / 180) * 180; tm <= lastMin; tm += 180) ticks.push(tm);
-
-    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H +
-      '" class="zeb-soc-chart" role="img" aria-label="State of charge over the block">';
-
-    svg += '<rect x="' + marginLeft + '" y="' + bufferY.toFixed(1) + '" width="' + plotW +
-      '" height="' + Math.max(0, chartBottom - bufferY).toFixed(1) +
-      '" fill="#d73027" fill-opacity="0.08"></rect>';
-
-    [0, 50, 100].forEach(function (pct) {
-      if (pct < yDomainMin || pct > yDomainMax) return;
-      var y = yAt(pct);
+    // Y gridlines + labels.
+    [0, 25, 50, 75, 100].forEach(function (pct) {
+      var y = yAt(pct / 100);
       svg += '<line x1="' + marginLeft + '" y1="' + y.toFixed(1) + '" x2="' + (marginLeft + plotW) +
-        '" y2="' + y.toFixed(1) + '" stroke="var(--border)" stroke-width="1"></line>';
+        '" y2="' + y.toFixed(1) + '" stroke="var(--border)" stroke-width="1" stroke-opacity="0.5"></line>';
       svg += '<text x="' + (marginLeft - 6) + '" y="' + (y + 3).toFixed(1) +
         '" text-anchor="end" class="zeb-soc-axis-label">' + pct + "%</text>";
     });
 
-    svg += '<polygon points="' + areaPts + '" fill="var(--accent)" fill-opacity="0.15"></polygon>';
-
+    // Reserve dashed line + label.
     svg += '<line x1="' + marginLeft + '" y1="' + bufferY.toFixed(1) + '" x2="' + (marginLeft + plotW) +
       '" y2="' + bufferY.toFixed(1) + '" stroke="#d73027" stroke-width="1.5" stroke-dasharray="4,3"></line>';
     svg += '<text x="' + (marginLeft + plotW - 4) + '" y="' + (bufferY - 4).toFixed(1) +
-      '" text-anchor="end" class="zeb-soc-buffer-label">' + Math.round(bufferPct) + "% safety buffer</text>";
+      '" text-anchor="end" class="zeb-soc-buffer-label">' + Math.round(bufferFrac * 100) + "% reserve</text>";
 
-    svg += '<polyline points="' + polyPts + '" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>';
+    // Depletion line: (0, 100%) -> (usableMiles, buffer%).
+    var x0 = xAt(0), y0 = yAt(1.0);
+    var x1 = xAt(Math.min(usableMiles, xMax)), y1 = yAt(bufferFrac);
+    svg += '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + x1.toFixed(1) +
+      '" y2="' + y1.toFixed(1) + '" stroke="var(--accent)" stroke-width="2"></line>';
 
-    ticks.forEach(function (tmv) {
-      var x = xAt(tmv);
+    // Round-trip completion marks.
+    (range.marks || []).forEach(function (m) {
+      if (m.mile > xMax) return;
+      var mx = xAt(m.mile);
+      var opacity = m.complete ? 1 : 0.35;
+      svg += '<line x1="' + mx.toFixed(1) + '" y1="' + marginTop + '" x2="' + mx.toFixed(1) +
+        '" y2="' + chartBottom + '" stroke="var(--muted)" stroke-width="1" stroke-opacity="' + opacity + '"></line>';
+      svg += '<text x="' + mx.toFixed(1) + '" y="' + (marginTop - 6) +
+        '" text-anchor="middle" class="zeb-soc-axis-label" opacity="' + opacity + '">' + m.tripNo + "</text>";
+    });
+
+    // X ticks + axis label.
+    ticks.forEach(function (tx) {
+      var x = xAt(tx);
       svg += '<line x1="' + x.toFixed(1) + '" y1="' + chartBottom + '" x2="' + x.toFixed(1) +
         '" y2="' + (chartBottom + 4) + '" stroke="var(--muted)" stroke-width="1"></line>';
       svg += '<text x="' + x.toFixed(1) + '" y="' + (chartBottom + 15) +
-        '" text-anchor="middle" class="zeb-soc-axis-label">' + fmtHHMM(tmv) + "</text>";
+        '" text-anchor="middle" class="zeb-soc-axis-label">' + tx + "</text>";
     });
     svg += '<line x1="' + marginLeft + '" y1="' + chartBottom + '" x2="' + (marginLeft + plotW) +
       '" y2="' + chartBottom + '" stroke="var(--border)" stroke-width="1"></line>';
+    svg += '<text x="' + (marginLeft + plotW / 2) + '" y="' + (H - 4) +
+      '" text-anchor="middle" class="zeb-soc-axis-label">miles travelled</text>';
 
-    if (crossing) {
-      var labelAnchor = (crossing.x + 90 > marginLeft + plotW) ? "end" : "start";
-      var labelX = labelAnchor === "end" ? crossing.x - 6 : crossing.x + 6;
-      svg += '<circle cx="' + crossing.x.toFixed(1) + '" cy="' + crossing.y.toFixed(1) +
-        '" r="3.5" fill="#d73027"></circle>';
-      svg += '<text x="' + labelX.toFixed(1) + '" y="' + Math.max(marginTop + 8, crossing.y - 8).toFixed(1) +
-        '" text-anchor="' + labelAnchor + '" class="zeb-soc-crossing-label">Below buffer at ' +
-        fmtHHMM(crossing.min) + "</text>";
-    }
+    // Crossing dot + mileage label.
+    svg += '<circle cx="' + x1.toFixed(1) + '" cy="' + y1.toFixed(1) + '" r="3.5" fill="#d73027"></circle>';
+    var labelAnchor = (x1 + 90 > marginLeft + plotW) ? "end" : "start";
+    var labelX = labelAnchor === "end" ? x1 - 6 : x1 + 6;
+    svg += '<text x="' + labelX.toFixed(1) + '" y="' + Math.max(marginTop + 8, y1 - 8).toFixed(1) +
+      '" text-anchor="' + labelAnchor + '" class="zeb-soc-crossing-label">' + usableMiles.toFixed(1) + " mi</text>";
 
     svg += "</svg>";
     return svg;
-  }
-
-  function openBlockDetail(br, anchor) {
-    var block = br.block, energy = br.energy, tier = br.tier;
-    var tierMeta = tierMetaFor(tier.tier);
-
-    var wrap = document.createElement("div");
-    wrap.className = "zeb-soc-popup";
-
-    var chartHTML = buildSocChartSVG(br);
-    if (chartHTML) {
-      var chartWrap = document.createElement("div");
-      chartWrap.className = "zeb-soc-chart-wrap";
-      chartWrap.innerHTML = chartHTML;
-      wrap.appendChild(chartWrap);
-    }
-
-    var summary = document.createElement("div");
-    summary.className = "zeb-soc-summary";
-    summary.innerHTML =
-      '<div class="zeb-soc-summary-col"><div class="tiny u-muted">Block kWh</div><div>' + Math.round(energy.blockKWh) + "</div></div>" +
-      '<div class="zeb-soc-summary-col"><div class="tiny u-muted">Required kWh</div><div>' + Math.round(energy.requiredKWh) + "</div></div>" +
-      '<div class="zeb-soc-summary-col"><div class="tiny u-muted">Available kWh</div><div>' + Math.round(energy.vehicle.batteryKWh) + "</div></div>";
-    wrap.appendChild(summary);
-
-    var pillRow = document.createElement("div");
-    pillRow.className = "u-mt-2";
-    pillRow.innerHTML = '<span class="zeb-pill" style="background:' + (tierMeta ? tierMeta.color : "#999") +
-      ';color:#fff;">' + escapeHTML(tier.label || "") + "</span>";
-    wrap.appendChild(pillRow);
-
-    App.openMiniPopup({
-      title: "Block " + blockLabel(block.blockId) + " — state of charge",
-      content: wrap,
-      anchor: anchor,
-      onClose: function () {}
-    });
   }
 
   // ---- Map ----
@@ -895,10 +934,10 @@
     return _hoverPopup;
   }
 
-  function tierColorExpr() {
+  function chargeColorExpr() {
     var ZebDemoData = window.ZebDemoData;
-    var colors = ZebDemoData.tiers.map(function (t) { return t.color; });
-    return App.choropleth.buildStepColorExpr("tier", [1.5, 2.5, 3.5, 4.5], colors, "rgba(160,160,160,0.6)");
+    var colors = ZebDemoData.chargeBreaks.map(function (b) { return b.color; });
+    return App.choropleth.buildStepColorExpr("roundTrips", [1, 2, 4, 8], colors, "rgba(160,160,160,0.6)");
   }
 
   function buildRoutesFC(shown) {
@@ -906,7 +945,7 @@
     shown.forEach(function (r) {
       var meta = _prepared.routes[r.routeId];
       if (!meta) return;
-      var tierMeta = tierMetaFor(r.tier);
+      var range = r.range, digest = r.digest, bucket = r.bucket;
       meta.shapeIds.forEach(function (sid) {
         var geom = _prepared.shapeGeomById[sid];
         if (!geom) return;
@@ -914,10 +953,12 @@
           type: "Feature", geometry: geom,
           properties: {
             route_id: r.routeId, name: r.name, agency: r.agencyLabel, vehicle: r.vehicleLabel,
-            tier: r.tier, tierLabel: tierMeta ? tierMeta.label : "", score: r.score,
-            blockKWh: Number.isFinite(r.blockKWh) ? Math.round(r.blockKWh) : null,
-            requiredKWh: Number.isFinite(r.requiredKWh) ? Math.round(r.requiredKWh) : null,
-            battery: r.batteryKWh || null
+            roundTrips: Number.isFinite(range.roundTripsPerCharge) ? range.roundTripsPerCharge : null,
+            roundTripsWhole: range.roundTripsWhole,
+            roundTripMiles: Number.isFinite(digest.roundTripMiles) ? Math.round(digest.roundTripMiles * 10) / 10 : null,
+            milesPerCharge: Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : null,
+            tripsPerDay: Number.isFinite(digest.roundTripsPerDay) ? Math.round(digest.roundTripsPerDay * 10) / 10 : null,
+            bucketLabel: bucket ? bucket.label : ""
           }
         });
       });
@@ -937,7 +978,7 @@
       map.addLayer({
         id: ZEB_LAYER, type: "line", source: ZEB_SOURCE,
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": tierColorExpr(), "line-width": 4, "line-opacity": 0.95 }
+        paint: { "line-color": chargeColorExpr(), "line-width": 4, "line-opacity": 0.95 }
       }, before);
 
       var popup = ensureHoverPopup();
@@ -945,11 +986,11 @@
         map.getCanvas().style.cursor = "pointer";
         if (!e.features || !e.features.length) return;
         var p = e.features[0].properties;
+        var rtLabel = p.roundTrips != null ? (Math.round(p.roundTrips * 10) / 10) : "—";
         var html = '<div style="font-size:12px;line-height:1.4;">' +
           "<b>" + escapeHTML(p.name) + "</b> (" + escapeHTML(p.agency || "") + ")<br>" +
           escapeHTML(p.vehicle || "") + "<br>" +
-          "<b>Tier " + p.tier + " — " + escapeHTML(p.tierLabel || "") + " (score " + p.score + ")</b><br>" +
-          "Worst block " + p.blockKWh + " kWh · requires " + p.requiredKWh + " kWh of " + p.battery +
+          "<b>" + rtLabel + " round trips per charge</b>" +
           "</div>";
         popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
@@ -1026,16 +1067,16 @@
   async function showLegend() {
     if (!App.popup || !App.popup.showFloatingWidget) return;
     await App.popup.showFloatingWidget("zeb-legend", "projects/zeb-feasibility-legend.html", {
-      position: "bottom-left", width: 210, title: "Electrification feasibility"
+      position: "bottom-left", width: 210, title: "Round trips per charge"
     });
     var ZebDemoData = window.ZebDemoData;
     for (var i = 0; i < 5; i++) {
       var swatch = document.getElementById("zebLegendSwatch" + i);
       var label = document.getElementById("zebLegendLabel" + i);
-      var t = ZebDemoData.tiers[i];
-      if (!swatch || !t) continue;
-      swatch.style.background = t.color;
-      if (label) label.textContent = "Tier " + t.tier + " — " + t.label;
+      var b = ZebDemoData.chargeBreaks[i];
+      if (!swatch || !b) continue;
+      swatch.style.background = b.color;
+      if (label) label.textContent = b.label;
     }
   }
 
@@ -1074,29 +1115,29 @@
   function exportCSV() {
     if (!_lastResult || !_lastResult.shownRoutes || !_lastResult.shownRoutes.length) return;
     var header = ["agency", "route_id", "route_short_name", "route_long_name", "vehicle_class", "season",
-      "blocks", "governing_block", "governing_block_gtfs_id", "revenue_miles", "deadhead_miles", "kwh_per_mile", "block_kwh", "required_kwh",
-      "battery_kwh", "ratio", "tier", "tier_label", "score", "recharge_hours", "overnight_hours"];
+      "trips_per_day", "round_trip_miles", "round_trip_basis", "one_way_median_mi", "kwh_per_mile",
+      "battery_kwh", "usable_kwh", "deadhead_mi", "miles_per_charge", "round_trips_per_charge",
+      "charges_per_day", "covers_day"];
     var lines = [header.join(",")];
     _lastResult.shownRoutes.forEach(function (r) {
-      var governing = (r.blocks || []).filter(function (b) { return b.block.blockId === r.governingBlockId; })[0];
-      var energy = governing ? governing.energy : null;
       var meta = (_prepared && _prepared.routes[r.routeId]) || {};
+      var digest = r.digest, range = r.range;
+      var vehicle = _lastResult.vehicleClassesLocal[r.vehicleClassId] || {};
       lines.push([
         _csvField(r.agencyLabel), _csvField(r.routeId), _csvField(meta.short || ""), _csvField(meta.long || ""),
         _csvField(r.vehicleLabel), _csvField(_settings.season),
-        r.blockCount != null ? r.blockCount : "", _csvField(blockLabel(r.governingBlockId)), _csvField(r.governingBlockId),
-        Number.isFinite(r.revenueMiles) ? r.revenueMiles.toFixed(2) : "",
-        energy ? energy.deadheadMiles.total.toFixed(2) : "",
-        energy ? energy.kWhPerMi.toFixed(3) : "",
-        Number.isFinite(r.blockKWh) ? r.blockKWh.toFixed(1) : "",
-        Number.isFinite(r.requiredKWh) ? r.requiredKWh.toFixed(1) : "",
-        energy ? energy.vehicle.batteryKWh : "",
-        Number.isFinite(r.ratio) ? r.ratio.toFixed(3) : "",
-        r.tier != null ? r.tier : "",
-        _csvField(r.label || ""),
-        r.score != null ? r.score : "",
-        energy ? energy.rechargeHours.toFixed(2) : "",
-        energy ? energy.overnightHours.toFixed(2) : ""
+        Number.isFinite(digest.roundTripsPerDay) ? digest.roundTripsPerDay.toFixed(2) : "",
+        Number.isFinite(digest.roundTripMiles) ? digest.roundTripMiles.toFixed(2) : "",
+        _csvField(digest.roundTripBasis || ""),
+        Number.isFinite(digest.oneWayMiles.median) ? digest.oneWayMiles.median.toFixed(2) : "",
+        range.kWhPerMi.toFixed(3),
+        vehicle.batteryKWh != null ? vehicle.batteryKWh : "",
+        Math.round(range.usableKWh),
+        _settings.assumptions.deadheadMi,
+        Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : "",
+        Number.isFinite(range.roundTripsPerCharge) ? range.roundTripsPerCharge.toFixed(2) : "",
+        Number.isFinite(range.chargesPerDay) ? range.chargesPerDay : "",
+        range.coversDay === true ? "yes" : (range.coversDay === false ? "no" : "")
       ].join(","));
     });
     _triggerDownload(lines.join("\n"), "text/csv", "zeb-feasibility-" + _settings.season + "-" + _dateStamp() + ".csv");
@@ -1135,7 +1176,7 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", onControlChange);
     });
-    ["zebBat40", "zebBase40", "zebBatCut", "zebBaseCut", "zebChargerKW", "zebSocBuffer", "zebLayover"].forEach(function (id) {
+    ["zebBat40", "zebBase40", "zebBatCut", "zebBaseCut", "zebChargerKW", "zebSocBuffer", "zebDeadheadMi"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", onControlChange);
     });
@@ -1242,7 +1283,6 @@
 
     _prepared = null;
     _preparedFeedRef = data;
-    _preparedLayover = null;
     _lastResult = null;
     _stale = false;
     clearMapLayers();
@@ -1263,13 +1303,16 @@
   // ---- Session persistence (settings only; geometry/results are not persisted) ----
 
   function saveZebState() {
-    return { v: 1, settings: JSON.parse(JSON.stringify(_settings)) };
+    return { v: 2, settings: JSON.parse(JSON.stringify(_settings)) };
   }
 
   function restoreZebState(data) {
     if (!data || !data.settings) return;
     _settings = data.settings;
-    if (!_settings.assumptions) _settings.assumptions = defaultAssumptions();
+    // Merge defaults underneath whatever was restored so a v1 payload (which
+    // carried assumptions.layover instead of assumptions.deadheadMi) restores
+    // cleanly with the new key defaulted; the stale layover key is ignored.
+    _settings.assumptions = Object.assign({}, defaultAssumptions(), _settings.assumptions || {});
     if (!_settings.overlays) _settings.overlays = { winter: false, di: false, utility: false };
     if (isPopupVisible()) {
       syncControlsFromSettings();
@@ -1284,7 +1327,7 @@
     name: "Route Electrification Feasibility",
     enabled: true,
     popupWidth: 1000,
-    panelWidths: { setup: 600, results: 760 },
+    panelWidths: { setup: 600, results: 1040 },
     popupHTML: "projects/zeb-feasibility-popup.html",
 
     init:    function (core) { init(core); },

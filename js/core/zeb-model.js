@@ -388,6 +388,94 @@
     return points;
   }
 
+  // ---- Route range (round trips per charge) ----
+
+  // params: { batteryKWh, baseKWhPerMi, gradeFactor, seasonFactor, socBuffer,
+  //           deadheadMiles, roundTripMiles, roundTripsPerDay }. See
+  // docs/zeb-route-range-redesign-plan.md Section 1/2 for the formulas and
+  // worked example this is hand-verified against.
+  function routeRange(params) {
+    params = params || {};
+    var batteryKWh = typeof params.batteryKWh === "number" ? params.batteryKWh : 0;
+    var baseKWhPerMi = typeof params.baseKWhPerMi === "number" ? params.baseKWhPerMi : 0;
+    var gradeFactor = typeof params.gradeFactor === "number" ? params.gradeFactor : 1;
+    var seasonFactor = typeof params.seasonFactor === "number" ? params.seasonFactor : 1;
+    var socBuffer = typeof params.socBuffer === "number" ? params.socBuffer : 0.2;
+    var deadhead = typeof params.deadheadMiles === "number" ? params.deadheadMiles : 0;
+    var roundTripMiles = typeof params.roundTripMiles === "number" ? params.roundTripMiles : NaN;
+    var roundTripsPerDay = typeof params.roundTripsPerDay === "number" ? params.roundTripsPerDay : null;
+
+    var usableKWh = batteryKWh * (1 - socBuffer);
+    var kWhPerMi = baseKWhPerMi * gradeFactor * seasonFactor;
+    var usableMiles = kWhPerMi > 0 ? usableKWh / kWhPerMi : 0;
+    var revenueMilesPerCharge = Math.max(0, usableMiles - deadhead);
+
+    var validRoundTrip = isFinite(roundTripMiles) && roundTripMiles > 0;
+    var roundTripsPerCharge = validRoundTrip ? revenueMilesPerCharge / roundTripMiles : null;
+    var roundTripsWhole = Number.isFinite(roundTripsPerCharge) ? Math.floor(roundTripsPerCharge) : null;
+
+    var chargesPerDay = null;
+    var coversDay = null;
+    if (roundTripsPerDay != null && Number.isFinite(roundTripsPerCharge)) {
+      if (roundTripsPerCharge <= 0) {
+        chargesPerDay = Infinity;
+        coversDay = false;
+      } else {
+        chargesPerDay = Math.ceil(roundTripsPerDay / roundTripsPerCharge);
+        coversDay = chargesPerDay <= 1;
+      }
+    }
+
+    var points = [
+      { mile: 0, soc: 1.0 },
+      { mile: usableMiles, soc: socBuffer }
+    ];
+
+    var marks = [];
+    if (roundTripsWhole !== null) {
+      var totalMarks = Math.min(roundTripsWhole + 1, 24);
+      for (var tripNo = 1; tripNo <= totalMarks; tripNo++) {
+        marks.push({
+          mile: deadhead + tripNo * roundTripMiles,
+          tripNo: tripNo,
+          complete: tripNo <= roundTripsWhole
+        });
+      }
+    }
+
+    return {
+      usableKWh: usableKWh,
+      kWhPerMi: kWhPerMi,
+      usableMiles: usableMiles,
+      deadheadMiles: deadhead,
+      revenueMilesPerCharge: revenueMilesPerCharge,
+      roundTripMiles: roundTripMiles,
+      roundTripsPerCharge: roundTripsPerCharge,
+      roundTripsWhole: roundTripsWhole,
+      roundTripsPerDay: roundTripsPerDay,
+      chargesPerDay: chargesPerDay,
+      coversDay: coversDay,
+      points: points,
+      marks: marks
+    };
+  }
+
+  // breaks: ascending [{ min, label, color }] (see ZebDemoData.chargeBreaks).
+  // Returns the last break whose min the value clears; a neutral result with
+  // index -1 for null/non-finite input.
+  function chargeBreakFor(roundTripsPerCharge, breaks) {
+    breaks = Array.isArray(breaks) ? breaks : [];
+    if (!Number.isFinite(roundTripsPerCharge)) {
+      return { index: -1, label: null, color: null };
+    }
+    var chosenIndex = -1;
+    for (var i = 0; i < breaks.length; i++) {
+      if (roundTripsPerCharge >= breaks[i].min) chosenIndex = i;
+    }
+    if (chosenIndex === -1) return { index: -1, label: null, color: null };
+    return { index: chosenIndex, label: breaks[chosenIndex].label, color: breaks[chosenIndex].color };
+  }
+
   // ---- Exports ----
 
   ZEB.parseGtfsTime = parseGtfsTime;
@@ -399,5 +487,7 @@
   ZEB.scoreFor = scoreFor;
   ZEB.summarizeRoute = summarizeRoute;
   ZEB.socProfile = socProfile;
+  ZEB.routeRange = routeRange;
+  ZEB.chargeBreakFor = chargeBreakFor;
 
 })();

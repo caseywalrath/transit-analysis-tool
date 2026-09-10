@@ -22,6 +22,14 @@ var TIERS = [
     reason: "Required capacity exceeds 160% of the available battery." }
 ];
 
+var CHARGE_BREAKS = [
+  { min: 0, label: "Under 1 round trip", color: "#d73027" },
+  { min: 1, label: "1-2 round trips", color: "#fc8d59" },
+  { min: 2, label: "2-4 round trips", color: "#fee08b" },
+  { min: 4, label: "4-8 round trips", color: "#91cf60" },
+  { min: 8, label: "8+ round trips", color: "#1a9850" }
+];
+
 export default {
   scripts: ["js/core/zeb-model.js"],
   cases: [
@@ -247,6 +255,86 @@ export default {
         { totalMiles: 44, blockKWh: 88, deadheadMiles: { out: 2, back: 2, total: 4 } },
         { vehicle: { batteryKWh: 440 } }
       ]
-    }
+    },
+
+    // --- routeRange -----------------------------------------------------
+    // Worked example (docs/zeb-route-range-redesign-plan.md Section 1):
+    // Greeley-Evans 40-ft, plains, winter. usableKWh=352, kWhPerMi=2.73,
+    // usableMiles=352/2.73=128.9377..., revenue=122.9377..., round trip
+    // 14.2mi -> roundTripsPerCharge=8.6streaming..., roundTripsWhole=8.
+    // roundTripsPerDay:9 -> chargesPerDay=ceil(9/8.657...)=2, coversDay:false.
+    {
+      id: "route-range-worked-example",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.30,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 14.2, roundTripsPerDay: 9
+      }]
+    },
+    // Same energy scenario, but a small roundTripsPerDay (2) that one charge
+    // comfortably covers -> chargesPerDay:1, coversDay:true.
+    {
+      id: "route-range-covers-day",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.30,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 14.2, roundTripsPerDay: 2
+      }]
+    },
+    // roundTripsPerDay omitted -> chargesPerDay/coversDay both null.
+    {
+      id: "route-range-no-trips-per-day",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.00,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 14.2
+      }]
+    },
+    // roundTripMiles <= 0 -> roundTripsPerCharge:null, marks:[].
+    {
+      id: "route-range-no-round-trip-miles",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.30,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 0, roundTripsPerDay: 9
+      }]
+    },
+    // batteryKWh 0 -> usableMiles:0, roundTripsPerCharge:0.
+    {
+      id: "route-range-zero-battery",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 0, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.30,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 14.2, roundTripsPerDay: 9
+      }]
+    },
+    // baseKWhPerMi 0 -> kWhPerMi:0 -> usableMiles:0, roundTripsPerCharge:0.
+    {
+      id: "route-range-zero-kwh-per-mile",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 0, gradeFactor: 1.00, seasonFactor: 1.30,
+        socBuffer: 0.20, deadheadMiles: 6, roundTripMiles: 14.2, roundTripsPerDay: 9
+      }]
+    },
+    // deadheadMiles >= usableMiles -> revenueMilesPerCharge:0, roundTripsPerCharge:0.
+    // usableMiles = (440*0.8) / (2.10*1*1) = 167.619...; deadhead 200 exceeds it.
+    {
+      id: "route-range-deadhead-exceeds-usable",
+      call: "ZEB.routeRange",
+      args: [{
+        batteryKWh: 440, baseKWhPerMi: 2.10, gradeFactor: 1.00, seasonFactor: 1.00,
+        socBuffer: 0.20, deadheadMiles: 200, roundTripMiles: 14.2, roundTripsPerDay: 9
+      }]
+    },
+
+    // --- chargeBreakFor ---------------------------------------------------
+    // One case per bucket in CHARGE_BREAKS below, plus null.
+    { id: "charge-break-bucket-0", call: "ZEB.chargeBreakFor", args: [0.5, CHARGE_BREAKS] },
+    { id: "charge-break-bucket-1", call: "ZEB.chargeBreakFor", args: [1.5, CHARGE_BREAKS] },
+    { id: "charge-break-bucket-2", call: "ZEB.chargeBreakFor", args: [3, CHARGE_BREAKS] },
+    { id: "charge-break-bucket-3", call: "ZEB.chargeBreakFor", args: [6, CHARGE_BREAKS] },
+    { id: "charge-break-bucket-4", call: "ZEB.chargeBreakFor", args: [10, CHARGE_BREAKS] },
+    { id: "charge-break-null", call: "ZEB.chargeBreakFor", args: [null, CHARGE_BREAKS] }
   ]
 };

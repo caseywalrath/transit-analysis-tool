@@ -13,6 +13,23 @@ window.ZebDemoData = {
   socBuffer: 0.20,
   blockChaining: { maxLayoverMin: 30, terminalToleranceMi: 0.3 },
   deadheadCircuity: 1.3,
+  // Synthetic per-day deadhead allowance for the round-trips-per-charge model
+  // (docs/zeb-route-range-redesign-plan.md Section 1). Charged once at the
+  // start of the charge, not per round trip. The real depot-distance
+  // computation (deadheadCircuity above, via ZEB.deadheadMiles) is still
+  // shown as context in the expanded row but does not drive this number.
+  deadheadAllowanceMi: 6,
+  // Ascending buckets for coloring routes by round trips per charge
+  // (ZEB.chargeBreakFor). Coarse and tuned by eye against the demo feed —
+  // not a rigorous feasibility threshold, just enough to separate the two
+  // demo agencies visually.
+  chargeBreaks: [
+    { min: 0, label: "Under 1 round trip", color: "#d73027" },
+    { min: 1, label: "1-2 round trips",    color: "#fc8d59" },
+    { min: 2, label: "2-4 round trips",    color: "#fee08b" },
+    { min: 4, label: "4-8 round trips",    color: "#91cf60" },
+    { min: 8, label: "8+ round trips",     color: "#1a9850" }
+  ],
   gradeClasses: {
     flat:     { label: "Flat",     factor: 1.00 },
     rolling:  { label: "Rolling",  factor: 1.12 },
@@ -46,6 +63,8 @@ window.ZebDemoData = {
     // "GET_74434": { vehicleClass: "cutaway" },
     // "AVN_15142": { gradeClass: "rolling" }
   },
+  // Retained for js/core/zeb-model.js's tierFor()/summarizeRoute() golden
+  // fixtures. The module no longer reads this — see chargeBreaks above.
   tiers: [
     { tier: 1, label: "Ready today",              maxRatio: 0.75,     color: "#1a9850", reason: "Worst block uses at most 75% of the battery after the 20% safety buffer." },
     { tier: 2, label: "Feasible with margin",     maxRatio: 0.90,     color: "#91cf60", reason: "Worst block fits within the buffered battery with 10–25% margin." },

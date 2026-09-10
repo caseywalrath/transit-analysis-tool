@@ -538,5 +538,380 @@
       "soc": 0.8,
       "label": "deadhead"
     }
-  ]
+  ],
+  "route-range-worked-example": {
+    "usableKWh": 352,
+    "kWhPerMi": 2.7300000000000004,
+    "usableMiles": 128.9377289377289,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 122.9377289377289,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 8.657586544910487,
+    "roundTripsWhole": 8,
+    "roundTripsPerDay": 9,
+    "chargesPerDay": 2,
+    "coversDay": false,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 128.9377289377289,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 20.2,
+        "tripNo": 1,
+        "complete": true
+      },
+      {
+        "mile": 34.4,
+        "tripNo": 2,
+        "complete": true
+      },
+      {
+        "mile": 48.599999999999994,
+        "tripNo": 3,
+        "complete": true
+      },
+      {
+        "mile": 62.8,
+        "tripNo": 4,
+        "complete": true
+      },
+      {
+        "mile": 77,
+        "tripNo": 5,
+        "complete": true
+      },
+      {
+        "mile": 91.19999999999999,
+        "tripNo": 6,
+        "complete": true
+      },
+      {
+        "mile": 105.39999999999999,
+        "tripNo": 7,
+        "complete": true
+      },
+      {
+        "mile": 119.6,
+        "tripNo": 8,
+        "complete": true
+      },
+      {
+        "mile": 133.8,
+        "tripNo": 9,
+        "complete": false
+      }
+    ]
+  },
+  "route-range-covers-day": {
+    "usableKWh": 352,
+    "kWhPerMi": 2.7300000000000004,
+    "usableMiles": 128.9377289377289,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 122.9377289377289,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 8.657586544910487,
+    "roundTripsWhole": 8,
+    "roundTripsPerDay": 2,
+    "chargesPerDay": 1,
+    "coversDay": true,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 128.9377289377289,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 20.2,
+        "tripNo": 1,
+        "complete": true
+      },
+      {
+        "mile": 34.4,
+        "tripNo": 2,
+        "complete": true
+      },
+      {
+        "mile": 48.599999999999994,
+        "tripNo": 3,
+        "complete": true
+      },
+      {
+        "mile": 62.8,
+        "tripNo": 4,
+        "complete": true
+      },
+      {
+        "mile": 77,
+        "tripNo": 5,
+        "complete": true
+      },
+      {
+        "mile": 91.19999999999999,
+        "tripNo": 6,
+        "complete": true
+      },
+      {
+        "mile": 105.39999999999999,
+        "tripNo": 7,
+        "complete": true
+      },
+      {
+        "mile": 119.6,
+        "tripNo": 8,
+        "complete": true
+      },
+      {
+        "mile": 133.8,
+        "tripNo": 9,
+        "complete": false
+      }
+    ]
+  },
+  "route-range-no-trips-per-day": {
+    "usableKWh": 352,
+    "kWhPerMi": 2.1,
+    "usableMiles": 167.61904761904762,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 161.61904761904762,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 11.381623071763917,
+    "roundTripsWhole": 11,
+    "roundTripsPerDay": null,
+    "chargesPerDay": null,
+    "coversDay": null,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 167.61904761904762,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 20.2,
+        "tripNo": 1,
+        "complete": true
+      },
+      {
+        "mile": 34.4,
+        "tripNo": 2,
+        "complete": true
+      },
+      {
+        "mile": 48.599999999999994,
+        "tripNo": 3,
+        "complete": true
+      },
+      {
+        "mile": 62.8,
+        "tripNo": 4,
+        "complete": true
+      },
+      {
+        "mile": 77,
+        "tripNo": 5,
+        "complete": true
+      },
+      {
+        "mile": 91.19999999999999,
+        "tripNo": 6,
+        "complete": true
+      },
+      {
+        "mile": 105.39999999999999,
+        "tripNo": 7,
+        "complete": true
+      },
+      {
+        "mile": 119.6,
+        "tripNo": 8,
+        "complete": true
+      },
+      {
+        "mile": 133.8,
+        "tripNo": 9,
+        "complete": true
+      },
+      {
+        "mile": 148,
+        "tripNo": 10,
+        "complete": true
+      },
+      {
+        "mile": 162.2,
+        "tripNo": 11,
+        "complete": true
+      },
+      {
+        "mile": 176.39999999999998,
+        "tripNo": 12,
+        "complete": false
+      }
+    ]
+  },
+  "route-range-no-round-trip-miles": {
+    "usableKWh": 352,
+    "kWhPerMi": 2.7300000000000004,
+    "usableMiles": 128.9377289377289,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 122.9377289377289,
+    "roundTripMiles": 0,
+    "roundTripsPerCharge": null,
+    "roundTripsWhole": null,
+    "roundTripsPerDay": 9,
+    "chargesPerDay": null,
+    "coversDay": null,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 128.9377289377289,
+        "soc": 0.2
+      }
+    ],
+    "marks": []
+  },
+  "route-range-zero-battery": {
+    "usableKWh": 0,
+    "kWhPerMi": 2.7300000000000004,
+    "usableMiles": 0,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 0,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 0,
+    "roundTripsWhole": 0,
+    "roundTripsPerDay": 9,
+    "chargesPerDay": {
+      "__num__": "Infinity"
+    },
+    "coversDay": false,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 0,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 20.2,
+        "tripNo": 1,
+        "complete": false
+      }
+    ]
+  },
+  "route-range-zero-kwh-per-mile": {
+    "usableKWh": 352,
+    "kWhPerMi": 0,
+    "usableMiles": 0,
+    "deadheadMiles": 6,
+    "revenueMilesPerCharge": 0,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 0,
+    "roundTripsWhole": 0,
+    "roundTripsPerDay": 9,
+    "chargesPerDay": {
+      "__num__": "Infinity"
+    },
+    "coversDay": false,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 0,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 20.2,
+        "tripNo": 1,
+        "complete": false
+      }
+    ]
+  },
+  "route-range-deadhead-exceeds-usable": {
+    "usableKWh": 352,
+    "kWhPerMi": 2.1,
+    "usableMiles": 167.61904761904762,
+    "deadheadMiles": 200,
+    "revenueMilesPerCharge": 0,
+    "roundTripMiles": 14.2,
+    "roundTripsPerCharge": 0,
+    "roundTripsWhole": 0,
+    "roundTripsPerDay": 9,
+    "chargesPerDay": {
+      "__num__": "Infinity"
+    },
+    "coversDay": false,
+    "points": [
+      {
+        "mile": 0,
+        "soc": 1
+      },
+      {
+        "mile": 167.61904761904762,
+        "soc": 0.2
+      }
+    ],
+    "marks": [
+      {
+        "mile": 214.2,
+        "tripNo": 1,
+        "complete": false
+      }
+    ]
+  },
+  "charge-break-bucket-0": {
+    "index": 0,
+    "label": "Under 1 round trip",
+    "color": "#d73027"
+  },
+  "charge-break-bucket-1": {
+    "index": 1,
+    "label": "1-2 round trips",
+    "color": "#fc8d59"
+  },
+  "charge-break-bucket-2": {
+    "index": 2,
+    "label": "2-4 round trips",
+    "color": "#fee08b"
+  },
+  "charge-break-bucket-3": {
+    "index": 3,
+    "label": "4-8 round trips",
+    "color": "#91cf60"
+  },
+  "charge-break-bucket-4": {
+    "index": 4,
+    "label": "8+ round trips",
+    "color": "#1a9850"
+  },
+  "charge-break-null": {
+    "index": -1,
+    "label": null,
+    "color": null
+  }
 }
