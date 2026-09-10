@@ -568,9 +568,11 @@ Phase 7 separated session/workflow actions on the left, drawing tools/actions in
 ### Command palette (Ctrl+K) — Not started
 A keyboard-triggered search overlay that lets users reach any tool, analysis module, or action by typing. Increasingly standard in modern web tools (Figma, Linear, Notion, Arc). Especially valuable as the feature set grows. Could be implemented as a simple filtered list over a flat registry of labeled actions. One possible convergent answer to the Analysis dropdown crowding above — a typed search sidesteps the grouping question entirely.
 
-### Layer panel — Not started
-A dedicated panel listing all drawn feature groups and imported reference layers, with per-layer visibility toggles, opacity sliders, and draw-order control (drag to reorder). Becomes essential once GTFS import and CSV import are added. Modeled on Felt's layers panel.
+### Layer panel — Implemented
+The Layers tab on the right feature panel (`js/core/layers-panel.js`, sibling of the Features tab) lists drawn feature groups plus Analysis and Reference/Imported bands, with per-layer visibility toggles, opacity, constrained drag-reorder, a basemap selector, and — below a "Style defaults" heading — per-type style drawers (color, opacity, weight) and per-feature override drawers. Modeled on Felt's layers panel.
 
+### Style presets — Not started
+Named bundles — for example Draft, Presentation, Analysis — that set every drawn feature type's color, opacity, and weight at once, as a faster alternative to tuning the per-type style drawers individually. Most users want a coherent look rather than a dozen properties tuned one at a time; a preset is the fastest path to a map that reads well in a deliverable. Builds on the per-type style drawers in `js/core/layers-panel.js` and the `App.featureSettings` fields they write — a preset would be a named bundle of those values plus `App.sectionColors`, applied as a batch write followed by the existing apply functions. Could pair naturally with presentation mode (`App.setPresentMode` in `js/app.js` + `js/core/present-overlays.js`), applying a Presentation preset on entry and restoring the previous values on exit. The property set this would bundle should stay settled before presets are built — presets over a moving schema mean re-recording every preset on each change.
 
 ### Keyboard shortcuts — Implemented
 `Escape` cancel/close, `Ctrl+Z`/`Ctrl+Shift+Z` undo/redo, `Delete`/`Backspace` vertex removal, single-key draw-tool toggles (`S`/`L`/`R`/`P`/`M`/`T`/`B`), `Enter` finishes drawing via `App.finishDrawing()`. Wired in `js/app.js`. Possible future polish: shortcuts for analysis modules, a help overlay.
