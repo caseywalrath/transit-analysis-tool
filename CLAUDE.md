@@ -152,6 +152,7 @@ docs/
   ridership-forecasting-plan.md  Strategic evaluation and implementation plan for the ridership forecasting tool
   route-costing-plan.md          Sequenced resume plan for the Route Costing module (design decisions + 9-step build order)
   zeb-feasibility-demo-plan.md   Step-by-step (Step 0-10) implementation plan for the Route Electrification Feasibility demo module — RFP Task 3 demo for CDOT's Colorado Transit Zero-Emission Route Optimization proposal
+  zeb-route-range-redesign-plan.md  Step-by-step (Step 1-11) plan to rework that module away from inferred vehicle blocks and 5-tier grading, toward "round trips per charge" per route with an inline state-of-charge-by-mile chart. Supersedes the block/tier UI described in the demo plan above; the engine's block/tier functions stay exported and golden-tested but stop being called.
 Ridership_Forecast_Readme.md    User-facing documentation for the Ridership Forecasting module (plain-language, transit professional audience)
 ```
 
