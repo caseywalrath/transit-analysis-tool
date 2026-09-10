@@ -1026,7 +1026,9 @@
         if (ft === "polygon") {
           curVal = (feat.properties._fillOpacity != null)
             ? _invertPolyFillOpacity(feat.properties._fillOpacity)
-            : (App.featureSettings ? App.featureSettings[ok] : 50);
+            : (App.featureSettings && App.featureSettings.polygonFillOpacity != null
+                 ? _invertPolyFillOpacity(App.featureSettings.polygonFillOpacity / 100)
+                 : 50);
         } else {
           curVal = (feat.properties._opacity != null)
             ? feat.properties._opacity * 100

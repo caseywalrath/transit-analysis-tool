@@ -72,6 +72,7 @@
       lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0,
       routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0,
       pointLineWidth:    (App.featureSettings && App.featureSettings.pointLineWidth    != null) ? App.featureSettings.pointLineWidth    : 1,
+      pointStrokeWidth:  (App.featureSettings && App.featureSettings.pointStrokeWidth  != null) ? App.featureSettings.pointStrokeWidth  : 1,
       lineLineWidth:     (App.featureSettings && App.featureSettings.lineLineWidth     != null) ? App.featureSettings.lineLineWidth     : 1,
       routeLineWidth:    (App.featureSettings && App.featureSettings.routeLineWidth    != null) ? App.featureSettings.routeLineWidth    : 1,
       polygonLineWidth:  (App.featureSettings && App.featureSettings.polygonLineWidth  != null) ? App.featureSettings.polygonLineWidth  : 1,
@@ -79,8 +80,10 @@
       pointOpacity:      (App.featureSettings && App.featureSettings.pointOpacity      != null) ? App.featureSettings.pointOpacity      : 100,
       lineOpacity:       (App.featureSettings && App.featureSettings.lineOpacity       != null) ? App.featureSettings.lineOpacity       : 100,
       routeOpacity:      (App.featureSettings && App.featureSettings.routeOpacity      != null) ? App.featureSettings.routeOpacity      : 100,
-      polygonOpacity:    (App.featureSettings && App.featureSettings.polygonOpacity    != null) ? App.featureSettings.polygonOpacity    : 50,
-      bufferOpacity:     (App.featureSettings && App.featureSettings.bufferOpacity     != null) ? App.featureSettings.bufferOpacity     : 50,
+      polygonFillOpacity: (App.featureSettings && App.featureSettings.polygonFillOpacity != null) ? App.featureSettings.polygonFillOpacity : 15,
+      polygonLineOpacity: (App.featureSettings && App.featureSettings.polygonLineOpacity != null) ? App.featureSettings.polygonLineOpacity : 80,
+      bufferFillOpacity:  (App.featureSettings && App.featureSettings.bufferFillOpacity  != null) ? App.featureSettings.bufferFillOpacity  : 8,
+      bufferLineOpacity:  (App.featureSettings && App.featureSettings.bufferLineOpacity  != null) ? App.featureSettings.bufferLineOpacity  : 40,
       featureSortMode:   _fss ? _fss.mode       : "name",
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
@@ -165,8 +168,40 @@
       fs.pointOpacity   = (state.pointOpacity   != null) ? state.pointOpacity   : 100;
       fs.lineOpacity    = (state.lineOpacity     != null) ? state.lineOpacity    : 100;
       fs.routeOpacity   = (state.routeOpacity    != null) ? state.routeOpacity   : 100;
-      fs.polygonOpacity = (state.polygonOpacity  != null) ? state.polygonOpacity : 50;
-      fs.bufferOpacity  = (state.bufferOpacity   != null) ? state.bufferOpacity  : 50;
+
+      // Point stroke width split from the combined pointLineWidth — seed from
+      // the old field for sessions saved before the split.
+      if (state.pointStrokeWidth != null) fs.pointStrokeWidth = state.pointStrokeWidth;
+      else if (state.pointLineWidth != null) fs.pointStrokeWidth = state.pointLineWidth;
+      else fs.pointStrokeWidth = 1;
+
+      // Polygon fill/outline opacity split from the single polygonOpacity
+      // curve — seed from the old value through the same curve for sessions
+      // saved before the split. Lossless: same curve, same inputs.
+      if (state.polygonFillOpacity != null && state.polygonLineOpacity != null) {
+        fs.polygonFillOpacity = state.polygonFillOpacity;
+        fs.polygonLineOpacity = state.polygonLineOpacity;
+      } else if (state.polygonOpacity != null && typeof App._polyOpacityValues === "function") {
+        var pc = App._polyOpacityValues(state.polygonOpacity);
+        fs.polygonFillOpacity = pc.fill * 100;
+        fs.polygonLineOpacity = pc.border * 100;
+      } else {
+        fs.polygonFillOpacity = 15;
+        fs.polygonLineOpacity = 80;
+      }
+
+      // Buffer fill/outline opacity — same migration as polygon, above.
+      if (state.bufferFillOpacity != null && state.bufferLineOpacity != null) {
+        fs.bufferFillOpacity = state.bufferFillOpacity;
+        fs.bufferLineOpacity = state.bufferLineOpacity;
+      } else if (state.bufferOpacity != null && typeof App._bufOpacityValues === "function") {
+        var bc = App._bufOpacityValues(state.bufferOpacity);
+        fs.bufferFillOpacity = bc.fill * 100;
+        fs.bufferLineOpacity = bc.border * 100;
+      } else {
+        fs.bufferFillOpacity = 8;
+        fs.bufferLineOpacity = 40;
+      }
     }
     if (typeof App.syncBufferInputs === "function") App.syncBufferInputs();
 
@@ -346,6 +381,7 @@
       App.featureSettings.lineBufferRadius  = 0;
       App.featureSettings.routeBufferRadius = 0;
       App.featureSettings.pointLineWidth    = 1;
+      App.featureSettings.pointStrokeWidth  = 1;
       App.featureSettings.lineLineWidth     = 1;
       App.featureSettings.routeLineWidth    = 1;
       App.featureSettings.polygonLineWidth  = 1;
@@ -353,8 +389,10 @@
       App.featureSettings.pointOpacity      = 100;
       App.featureSettings.lineOpacity       = 100;
       App.featureSettings.routeOpacity      = 100;
-      App.featureSettings.polygonOpacity    = 50;
-      App.featureSettings.bufferOpacity     = 50;
+      App.featureSettings.polygonFillOpacity = 15;
+      App.featureSettings.polygonLineOpacity = 80;
+      App.featureSettings.bufferFillOpacity  = 8;
+      App.featureSettings.bufferLineOpacity  = 40;
     }
     if (typeof App.applyLineWidth       === "function") App.applyLineWidth("all");
     if (typeof App.applyBufferLineWidth === "function") App.applyBufferLineWidth();
@@ -850,7 +888,6 @@
           }
         }
 
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         if (typeof App.notifyProject === "function") App.notifyProject();
 
         var nFeatures = App.points.length + App.lines.length +
@@ -905,7 +942,6 @@
         applyState(state);
         save(); // persist imported state to localStorage
 
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         if (typeof App.notifyProject === "function") App.notifyProject();
 
         var nFeatures = App.points.length + App.lines.length + App.routes.length + App.polygons.length + (App.labels ? App.labels.length : 0);

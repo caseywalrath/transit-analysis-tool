@@ -470,19 +470,22 @@
   // ---- Feature Settings: centralized state + apply helpers ----
 
   App.featureSettings = {
-    pointOpacity:      100,
-    lineOpacity:       100,
-    routeOpacity:      100,
-    polygonOpacity:    50,
-    bufferOpacity:     50,
-    bufferRadius:      0,
-    lineBufferRadius:  0,
-    routeBufferRadius: 0,
-    pointLineWidth:    1,
-    lineLineWidth:     1,
-    routeLineWidth:    1,
-    polygonLineWidth:  1,
-    bufferLineWidth:   1
+    pointOpacity:       100,
+    lineOpacity:        100,
+    routeOpacity:       100,
+    polygonFillOpacity: 15,
+    polygonLineOpacity: 80,
+    bufferFillOpacity:  8,
+    bufferLineOpacity:  40,
+    bufferRadius:       0,
+    lineBufferRadius:   0,
+    routeBufferRadius:  0,
+    pointLineWidth:     1,
+    pointStrokeWidth:   1,
+    lineLineWidth:      1,
+    routeLineWidth:     1,
+    polygonLineWidth:   1,
+    bufferLineWidth:    1
   };
 
   function _safeSetPaint(layerId, prop, val) {
@@ -510,6 +513,7 @@
   }
 
   App._polyOpacityValues = _polyOpacityValues;
+  App._bufOpacityValues  = _bufOpacityValues;
 
   App.applyFeatureOpacity = function (type) {
     var fs = App.featureSettings;
@@ -528,20 +532,20 @@
         ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]);
     }
     if (type === "polygon" || type === "all") {
-      var pc = _polyOpacityValues(fs.polygonOpacity);
       _safeSetPaint("polygons-fill", "fill-opacity",
-        ["case", ["has", "_fillOpacity"], ["get", "_fillOpacity"], pc.fill]);
+        ["case", ["has", "_fillOpacity"], ["get", "_fillOpacity"], fs.polygonFillOpacity / 100]);
       _safeSetPaint("polygons-outlines-layer", "line-opacity",
-        ["case", ["has", "_borderOpacity"], ["get", "_borderOpacity"], pc.border]);
+        ["case", ["has", "_borderOpacity"], ["get", "_borderOpacity"], fs.polygonLineOpacity / 100]);
     }
     if (type === "buffer" || type === "all") {
-      var bc = _bufOpacityValues(fs.bufferOpacity);
-      _safeSetPaint("buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("buffers-line", "line-opacity", bc.border);
-      _safeSetPaint("line-buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("line-buffers-line", "line-opacity", bc.border);
-      _safeSetPaint("route-buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("route-buffers-line", "line-opacity", bc.border);
+      var fillOp = fs.bufferFillOpacity / 100;
+      var lineOp = fs.bufferLineOpacity / 100;
+      _safeSetPaint("buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("buffers-line", "line-opacity", lineOp);
+      _safeSetPaint("line-buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("line-buffers-line", "line-opacity", lineOp);
+      _safeSetPaint("route-buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("route-buffers-line", "line-opacity", lineOp);
     }
   };
 
@@ -551,7 +555,7 @@
       _safeSetPaint("points-layer", "circle-radius",
         ["case", ["has", "_lineWidth"], ["*", 6, ["get", "_lineWidth"]], 6 * fs.pointLineWidth]);
       _safeSetPaint("points-layer", "circle-stroke-width",
-        ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointLineWidth]);
+        ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointStrokeWidth]);
     }
     if (type === "line" || type === "all") {
       _safeSetPaint("lines-layer", "line-width",
@@ -613,16 +617,6 @@
     if (asBtn) {
       asBtn.addEventListener("click", function () {
         if (typeof App.openAttributeSummary === "function") App.openAttributeSummary();
-      });
-    }
-
-    App.openDisplaySettings = function () {
-      App.popup.open("display-settings", _modules, buildCore);
-    };
-    var dsBtn = document.getElementById("open-display-settings");
-    if (dsBtn) {
-      dsBtn.addEventListener("click", function () {
-        if (typeof App.openDisplaySettings === "function") App.openDisplaySettings();
       });
     }
 
@@ -1311,7 +1305,6 @@
         if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
         if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
         if (typeof App.clearPresentOverlays === "function") App.clearPresentOverlays();
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         clearModules();
         notifyProject();
       });
@@ -1815,7 +1808,6 @@
       App.setStatus("Session restored");
       notifyProject();
     }
-    if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
 
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");

@@ -108,8 +108,7 @@ const MODULE_IDS = [
   "trip-builder",
   "title-vi",
   "gtfs",
-  "attribute-summary",
-  "display-settings"
+  "attribute-summary"
 ];
 
 // Phase 7b: active single-step tools start as map-friendly vertical task

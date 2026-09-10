@@ -1,13 +1,19 @@
 // js/core/layers-panel.js
 // "Layers" tab on the right feature panel. A unified manager for everything on
-// the map: drawn features (nested by user group), reference/imported layers
-// (GTFS, OSM, muni boundaries), analysis choropleths (TPI, Corridor Scoring,
-// Ridership), and the basemap. Visibility + opacity + basemap, constrained
-// drag-reorder within the Reference/Analysis bands, and a per-row ⋯ menu
-// (zoom to, open module, remove, rename group).
+// the map: drawn features (nested by user group), per-type style drawers for
+// each drawn geometry type (color, opacity, weight — the type-default half of
+// the appearance cascade) with per-feature override drawers nested under the
+// feature rows (the override half), reference/imported layers (GTFS, OSM,
+// muni boundaries), analysis choropleths (TPI, Corridor Scoring, Ridership),
+// and the basemap. Visibility + opacity + basemap, constrained drag-reorder
+// within the Reference/Analysis bands, and a per-row ⋯ menu (zoom to, open
+// module, remove, rename group).
 // Depends on: App.map, App.collectDrawnFeatures, App.UNIVERSAL_GROUP_KEY,
 //             App.rerenderForType, App.openColorPicker, App._openFpSlider,
-//             App.applyFeatureOpacity, App.getBasemaps, App.switchBasemap,
+//             App.buildScrubber, App.applyFeatureOpacity, App.applyLineWidth,
+//             App.applyBufferLineWidth, App._polyOpacityValues,
+//             App.BUFFER_RADIUS_STEPS, App.sectionColors, App.featureSettings,
+//             App.getTypeDefaultColor, App.getBasemaps, App.switchBasemap,
 //             App.cache, App.refreshFeaturePanel.
 (function () {
   var App = window.App = window.App || {};
@@ -94,12 +100,310 @@
                 .filter(function (e) { return e && entryPresent(e); });
   }
 
+  // Per-type style drawer contents. Each control is { label, kind, key, min,
+  // max, step, unit, def } — kind is "color" (no key/min/max/step/unit/def)
+  // or "number" (mounts App.buildScrubber, writes App.featureSettings[key]).
   var DRAWN_TYPES = [
-    { type: "point",   label: "Points"   },
-    { type: "line",    label: "Lines"    },
-    { type: "route",   label: "Routes"   },
-    { type: "polygon", label: "Polygons" }
+    { type: "point", label: "Points", controls: [
+        { label: "Color", kind: "color" },
+        { label: "Dot size",      kind: "number", key: "pointLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Outline width", kind: "number", key: "pointStrokeWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Opacity",       kind: "number", key: "pointOpacity",     min: 0, max: 100, step: 5,   unit: "%",      def: 100 }
+      ] },
+    { type: "line", label: "Lines", controls: [
+        { label: "Color", kind: "color" },
+        { label: "Weight",  kind: "number", key: "lineLineWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Opacity", kind: "number", key: "lineOpacity",   min: 0, max: 100, step: 5,   unit: "%",      def: 100 }
+      ] },
+    { type: "route", label: "Routes", controls: [
+        { label: "Color", kind: "color" },
+        { label: "Weight",  kind: "number", key: "routeLineWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Opacity", kind: "number", key: "routeOpacity",   min: 0, max: 100, step: 5,   unit: "%",      def: 100 }
+      ] },
+    { type: "polygon", label: "Polygons", controls: [
+        { label: "Color", kind: "color" },
+        { label: "Fill opacity",    kind: "number", key: "polygonFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 15 },
+        { label: "Outline opacity", kind: "number", key: "polygonLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 80 },
+        { label: "Outline width",   kind: "number", key: "polygonLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+      ] },
+    { type: "buffer", label: "Buffers", controls: [
+        { label: "Fill opacity",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
+        { label: "Outline opacity", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
+        { label: "Outline width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+      ] }
   ];
+
+  // Per-feature override drawer contents (buildFeatureRow). Only point/line/
+  // route/polygon carry per-feature overrides; labels/textboxes are DOM
+  // markers with none. Unlike the type drawer above, the point per-feature
+  // override is a single `_lineWidth` property shared by dot size and
+  // outline width (see App.applyLineWidth's point branch) — so there is one
+  // Size control here, not two.
+  var FEATURE_OVERRIDE_SPECS = {
+    point:   { widthLabel: "Size",           hasBuffer: true,  hasOffset: false },
+    line:    { widthLabel: "Weight",         hasBuffer: true,  hasOffset: true  },
+    route:   { widthLabel: "Weight",         hasBuffer: true,  hasOffset: true  },
+    polygon: { widthLabel: "Outline width",  hasBuffer: false, hasOffset: false }
+  };
+
+  function typeHasFeatures(type) {
+    if (type === "buffer") {
+      return !!((App.points && App.points.length) || (App.lines && App.lines.length) || (App.routes && App.routes.length));
+    }
+    var arr = App[type === "point" ? "points" : type + "s"];
+    return !!(arr && arr.length);
+  }
+
+  function applyTypeStyle(type) {
+    if (typeof App.applyFeatureOpacity === "function") App.applyFeatureOpacity(type);
+    if (type === "buffer") {
+      if (typeof App.applyBufferLineWidth === "function") App.applyBufferLineWidth();
+    } else if (typeof App.applyLineWidth === "function") {
+      App.applyLineWidth(type);
+    }
+  }
+
+  // Inverse of App._polyOpacityValues' fill component → returns S (0-100).
+  // Duplicated from feature-attributes.js's private helper of the same
+  // shape (small pure function, not worth a cross-file export).
+  function _invertPolyFill(fill) {
+    if (fill <= 0.15) return Math.round(fill * 50 / 0.15);
+    return Math.round(50 + (fill - 0.15) * 50 / 0.85);
+  }
+
+  // ---- Style preview swatch (small inline SVG, approximate — an indicator,
+  // not a simulation) ----
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function updateStylePreview(svg, type) {
+    var fs = App.featureSettings || {};
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (type === "point") {
+      var pColor = App.getTypeDefaultColor ? App.getTypeDefaultColor("point") : "#2b6cb0";
+      var r = Math.max(2, Math.min(7, 2 + (fs.pointLineWidth || 1) * 2));
+      var psw = Math.max(0.5, (fs.pointStrokeWidth != null ? fs.pointStrokeWidth : 1) * 1.5);
+      var pOp = (fs.pointOpacity != null ? fs.pointOpacity : 100) / 100;
+      var c = document.createElementNS(SVG_NS, "circle");
+      c.setAttribute("cx", "20"); c.setAttribute("cy", "8"); c.setAttribute("r", r);
+      c.setAttribute("fill", pColor); c.setAttribute("fill-opacity", pOp);
+      c.setAttribute("stroke", "#ffffff"); c.setAttribute("stroke-width", psw);
+      svg.appendChild(c);
+    } else if (type === "line" || type === "route") {
+      var lColor = App.getTypeDefaultColor ? App.getTypeDefaultColor(type) : "#e53e3e";
+      var w = Math.max(1, (fs[type + "LineWidth"] || 1) * 3);
+      var lOp = (fs[type + "Opacity"] != null ? fs[type + "Opacity"] : 100) / 100;
+      var l = document.createElementNS(SVG_NS, "line");
+      l.setAttribute("x1", "3"); l.setAttribute("y1", "8"); l.setAttribute("x2", "37"); l.setAttribute("y2", "8");
+      l.setAttribute("stroke", lColor); l.setAttribute("stroke-width", w); l.setAttribute("stroke-opacity", lOp);
+      l.setAttribute("stroke-linecap", "round");
+      svg.appendChild(l);
+    } else if (type === "polygon") {
+      var gColor = App.getTypeDefaultColor ? App.getTypeDefaultColor("polygon") : "#b0c4de";
+      var gFill = (fs.polygonFillOpacity != null ? fs.polygonFillOpacity : 15) / 100;
+      var gLine = (fs.polygonLineOpacity != null ? fs.polygonLineOpacity : 80) / 100;
+      var gw = Math.max(1, (fs.polygonLineWidth || 1) * 2);
+      var rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("x", "6"); rect.setAttribute("y", "2"); rect.setAttribute("width", "28"); rect.setAttribute("height", "12");
+      rect.setAttribute("fill", gColor); rect.setAttribute("fill-opacity", gFill);
+      rect.setAttribute("stroke", gColor); rect.setAttribute("stroke-opacity", gLine); rect.setAttribute("stroke-width", gw);
+      svg.appendChild(rect);
+    } else if (type === "buffer") {
+      var bFill = (fs.bufferFillOpacity != null ? fs.bufferFillOpacity : 8) / 100;
+      var bLine = (fs.bufferLineOpacity != null ? fs.bufferLineOpacity : 40) / 100;
+      var bw = Math.max(1, (fs.bufferLineWidth || 1) * 2);
+      var rect2 = document.createElementNS(SVG_NS, "rect");
+      rect2.setAttribute("x", "6"); rect2.setAttribute("y", "2"); rect2.setAttribute("width", "28"); rect2.setAttribute("height", "12");
+      rect2.setAttribute("fill", "#718096"); rect2.setAttribute("fill-opacity", bFill);
+      rect2.setAttribute("stroke", "#718096"); rect2.setAttribute("stroke-opacity", bLine); rect2.setAttribute("stroke-width", bw);
+      svg.appendChild(rect2);
+    }
+  }
+
+  function buildStylePreview(type) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", "40");
+    svg.setAttribute("height", "16");
+    svg.setAttribute("viewBox", "0 0 40 16");
+    svg.setAttribute("class", "lp-style-preview");
+    updateStylePreview(svg, type);
+    return svg;
+  }
+
+  // ---- Generic override-row builder (used by both the type style drawer's
+  // number controls, indirectly via App.buildScrubber, and the per-feature
+  // override drawer below, which additionally shows inherited state) ----
+  function buildOverrideRow(label, scrubCfg, api) {
+    var row = document.createElement("div");
+    row.className = "lp-style-row";
+
+    var lab = document.createElement("span");
+    lab.className = "lp-style-label";
+    lab.textContent = label;
+    row.appendChild(lab);
+
+    var controlWrap = document.createElement("div");
+    controlWrap.className = "lp-style-control";
+    row.appendChild(controlWrap);
+
+    var scrubber = App.buildScrubber({
+      min: scrubCfg.min, max: scrubCfg.max, step: scrubCfg.step,
+      values: scrubCfg.values, unit: scrubCfg.unit,
+      value: api.getValue(),
+      onChange: function (v) {
+        api.setValue(v);
+        setOverridden(true);
+      }
+    });
+    controlWrap.appendChild(scrubber);
+
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "lp-style-clear";
+    clearBtn.title = "Clear override (use default)";
+    clearBtn.textContent = "×";
+    clearBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      api.clearValue();
+      scrubber.refresh(api.getValue());
+      setOverridden(false);
+    });
+    controlWrap.appendChild(clearBtn);
+
+    function setOverridden(has) {
+      row.classList.toggle("lp-inherited", !has);
+      clearBtn.style.display = has ? "" : "none";
+    }
+    setOverridden(api.hasOverride());
+
+    return row;
+  }
+
+  // ---- Per-feature override drawer (buildFeatureRow) ----
+  // No polygon entry in OPACITY_KEYS: the polygon opacity override is handled
+  // separately below (a single input drives the fill/border pair via
+  // App._polyOpacityValues), so this map is only consulted for the other
+  // three types, whose opacity default is still one plain featureSettings field.
+  var OPACITY_KEYS = { point: "pointOpacity", line: "lineOpacity", route: "routeOpacity" };
+  var WIDTH_KEYS    = { point: "pointLineWidth", line: "lineLineWidth", route: "routeLineWidth", polygon: "polygonLineWidth" };
+  var BUFFER_KEYS   = { point: "bufferRadius", line: "lineBufferRadius", route: "routeBufferRadius" };
+  var REBUILD_FNS   = {
+    point: function (v) { if (typeof App.rebuildBuffers      === "function") App.rebuildBuffers(v); },
+    line:  function (v) { if (typeof App.rebuildLineBuffers  === "function") App.rebuildLineBuffers(v); },
+    route: function (v) { if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(v); }
+  };
+  var RENDER_FNS = { point: "renderPointLayers", line: "renderLineLayers", route: "renderRouteLayers", polygon: "renderPolygonLayers" };
+
+  function _pushFeatureLayer(ft) {
+    var fn = RENDER_FNS[ft];
+    if (fn && typeof App[fn] === "function") App[fn]();
+  }
+  function _saveCache() {
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+  }
+
+  function buildFeatureOverrideDrawer(it) {
+    var body = document.createElement("div");
+    body.className = "lp-style-drawer lp-style-drawer-feature";
+
+    var feat = it.feature, ft = it.type;
+    var spec = FEATURE_OVERRIDE_SPECS[ft];
+    if (!spec) return body;
+
+    // Opacity
+    body.appendChild(buildOverrideRow("Opacity", { min: 0, max: 100, step: 1, unit: "%" }, {
+      hasOverride: function () {
+        return ft === "polygon" ? feat.properties._fillOpacity != null : feat.properties._opacity != null;
+      },
+      getValue: function () {
+        if (ft === "polygon") {
+          if (feat.properties._fillOpacity != null) return _invertPolyFill(feat.properties._fillOpacity);
+          var defFill = (App.featureSettings && App.featureSettings.polygonFillOpacity != null) ? App.featureSettings.polygonFillOpacity : 15;
+          return _invertPolyFill(defFill / 100);
+        }
+        if (feat.properties._opacity != null) return feat.properties._opacity * 100;
+        return (App.featureSettings && App.featureSettings[OPACITY_KEYS[ft]] != null) ? App.featureSettings[OPACITY_KEYS[ft]] : 100;
+      },
+      setValue: function (v) {
+        if (ft === "polygon") {
+          var pc = App._polyOpacityValues(v);
+          feat.properties._fillOpacity   = pc.fill;
+          feat.properties._borderOpacity = pc.border;
+        } else {
+          feat.properties._opacity = v / 100;
+        }
+        _pushFeatureLayer(ft);
+        _saveCache();
+      },
+      clearValue: function () {
+        delete feat.properties._opacity;
+        delete feat.properties._fillOpacity;
+        delete feat.properties._borderOpacity;
+        _pushFeatureLayer(ft);
+        _saveCache();
+      }
+    }));
+
+    // Width (single control — see FEATURE_OVERRIDE_SPECS comment above)
+    body.appendChild(buildOverrideRow(spec.widthLabel, { min: 0, max: 5, step: 0.1, unit: "×" }, {
+      hasOverride: function () { return feat.properties._lineWidth != null; },
+      getValue: function () {
+        if (feat.properties._lineWidth != null) return feat.properties._lineWidth;
+        return (App.featureSettings && App.featureSettings[WIDTH_KEYS[ft]] != null) ? App.featureSettings[WIDTH_KEYS[ft]] : 1;
+      },
+      setValue: function (v) { feat.properties._lineWidth = v; _pushFeatureLayer(ft); _saveCache(); },
+      clearValue: function () { delete feat.properties._lineWidth; _pushFeatureLayer(ft); _saveCache(); }
+    }));
+
+    // Offset (lines and routes only)
+    if (spec.hasOffset) {
+      var OFFSET_STEPS = [-6, -3, 0, 3, 6];
+      body.appendChild(buildOverrideRow("Offset", { values: OFFSET_STEPS, unit: "px" }, {
+        hasOverride: function () { return !!feat.properties._offsetManual; },
+        getValue: function () { return (feat.properties._offset != null) ? feat.properties._offset : 0; },
+        setValue: function (v) {
+          feat.properties._offset = v;
+          feat.properties._offsetManual = true;
+          _pushFeatureLayer(ft);
+          _saveCache();
+        },
+        clearValue: function () {
+          delete feat.properties._offset;
+          delete feat.properties._offsetManual;
+          _pushFeatureLayer(ft);
+          var oCb = document.getElementById("offsetOverlap");
+          if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") App.computeOverlapOffsets();
+          _saveCache();
+        }
+      }));
+    }
+
+    // Buffer radius (points, lines, routes — not polygons). Geometry rather
+    // than appearance, but a per-feature override with no other home; last
+    // in the drawer.
+    if (spec.hasBuffer) {
+      body.appendChild(buildOverrideRow("Buffer", { values: App.BUFFER_RADIUS_STEPS || [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2], unit: "mi" }, {
+        hasOverride: function () { return feat.properties._bufferRadius != null; },
+        getValue: function () {
+          if (feat.properties._bufferRadius != null) return feat.properties._bufferRadius;
+          return (App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0;
+        },
+        setValue: function (v) {
+          feat.properties._bufferRadius = v;
+          var rb = REBUILD_FNS[ft];
+          if (rb) rb((App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0);
+          _saveCache();
+        },
+        clearValue: function () {
+          delete feat.properties._bufferRadius;
+          var rb = REBUILD_FNS[ft];
+          if (rb) rb((App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0);
+          _saveCache();
+        }
+      }));
+    }
+
+    return body;
+  }
 
   // ---- Map helpers ----
   function entryPresent(entry) {
@@ -377,9 +681,39 @@
     return all.some(function (it) { return !!it.feature.properties.hidden; });
   }
 
+  var _expandedFeatureStyle = {};
+
   function buildFeatureRow(it) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "lp-feature";
+
     var row = document.createElement("div");
     row.className = "lp-row lp-row-sub";
+
+    var featKey = it.type + ":" + it.index;
+    var featLabel = it.feature.properties.name || (it.type + " " + (it.index + 1));
+    var hasOverrides = !!FEATURE_OVERRIDE_SPECS[it.type];
+    var open = hasOverrides && !!_expandedFeatureStyle[featKey];
+
+    if (hasOverrides) {
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "lp-caret";
+      toggle.innerHTML = "&#9662;";
+      toggle.classList.toggle("open", open);
+      toggle.setAttribute("aria-label", "Toggle style overrides for " + featLabel);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var isOpen = drawer.style.display !== "none";
+        drawer.style.display = isOpen ? "none" : "";
+        toggle.classList.toggle("open", !isOpen);
+        toggle.setAttribute("aria-expanded", isOpen ? "false" : "true");
+        if (isOpen) delete _expandedFeatureStyle[featKey];
+        else _expandedFeatureStyle[featKey] = true;
+      });
+      row.appendChild(toggle);
+    }
 
     var hidden = !!it.feature.properties.hidden;
     var eye = document.createElement("button");
@@ -387,8 +721,7 @@
     eye.className = "lp-row-btn" + (hidden ? " lp-eye-off" : "");
     eye.innerHTML = hidden ? EYE_OFF_SVG : EYE_SVG;
     eye.title = hidden ? "Show" : "Hide";
-    eye.setAttribute("aria-label", (hidden ? "Show " : "Hide ") +
-      (it.feature.properties.name || (it.type + " " + (it.index + 1))));
+    eye.setAttribute("aria-label", (hidden ? "Show " : "Hide ") + featLabel);
     eye.addEventListener("click", function (e) {
       e.stopPropagation();
       setItemsHidden([it], !it.feature.properties.hidden);
@@ -402,8 +735,7 @@
     sw.className = "lp-swatch";
     sw.style.background = color;
     sw.title = "Change color";
-    sw.setAttribute("aria-label", "Change color for " +
-      (it.feature.properties.name || (it.type + " " + (it.index + 1))));
+    sw.setAttribute("aria-label", "Change color for " + featLabel);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
       App.openColorPicker(sw, it.feature.properties.color || color, function (nc) {
@@ -418,10 +750,19 @@
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
-    name.textContent = it.feature.properties.name || (it.type + " " + (it.index + 1));
+    name.textContent = featLabel;
     row.appendChild(name);
 
-    return row;
+    wrapper.appendChild(row);
+
+    var drawer;
+    if (hasOverrides) {
+      drawer = buildFeatureOverrideDrawer(it);
+      drawer.style.display = open ? "" : "none";
+      wrapper.appendChild(drawer);
+    }
+
+    return wrapper;
   }
 
   var _expandedGroups = {};
@@ -555,31 +896,126 @@
     return band;
   }
 
-  function buildTypeOpacityRow(t) {
-    var row = document.createElement("div");
-    row.className = "lp-row lp-row-sub";
-    var label = document.createElement("span");
-    label.className = "lp-row-label lp-row-label-indent";
-    label.textContent = t.label + " opacity";
-    row.appendChild(label);
+  var _expandedTypeStyle = {};
 
-    var op = document.createElement("button");
-    op.type = "button";
-    op.className = "lp-row-btn lp-row-op";
-    op.innerHTML = OPACITY_SVG;
-    op.title = t.label + " opacity";
-    op.setAttribute("aria-label", "Change " + t.label + " opacity");
-    op.addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (typeof App._openFpSlider !== "function") return;
-      App._openFpSlider(op, {
-        key: t.type + "Opacity",
-        min: 0, max: 100, step: 5, unit: "%",
-        onChange: function () { App.applyFeatureOpacity(t.type); }
-      });
+  function resetTypeStyle(t) {
+    t.controls.forEach(function (ctl) {
+      if (ctl.kind === "color") {
+        if (App.sectionColors) App.sectionColors[t.type] = null;
+        App.rerenderForType(t.type);
+      } else {
+        App.featureSettings[ctl.key] = ctl.def;
+      }
     });
-    row.appendChild(op);
-    return row;
+    applyTypeStyle(t.type);
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+  }
+
+  function buildTypeStyleRow(t) {
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-group";
+
+    var header = document.createElement("div");
+    header.className = "lp-row lp-row-sub lp-style-header";
+
+    var open = !!_expandedTypeStyle[t.type];
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "lp-caret";
+    toggle.innerHTML = "&#9662;";
+    toggle.classList.toggle("open", open);
+    toggle.setAttribute("aria-label", "Toggle " + t.label + " style");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    header.appendChild(toggle);
+
+    var preview = buildStylePreview(t.type);
+    header.appendChild(preview);
+
+    var name = document.createElement("span");
+    name.className = "lp-row-label";
+    name.textContent = t.label;
+    header.appendChild(name);
+
+    header.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var isOpen = body.style.display !== "none";
+      body.style.display = isOpen ? "none" : "";
+      toggle.classList.toggle("open", !isOpen);
+      toggle.setAttribute("aria-expanded", isOpen ? "false" : "true");
+      if (isOpen) delete _expandedTypeStyle[t.type];
+      else _expandedTypeStyle[t.type] = true;
+    });
+
+    var body = document.createElement("div");
+    body.className = "lp-style-drawer";
+    body.style.display = open ? "" : "none";
+
+    function refreshPreview() { updateStylePreview(preview, t.type); }
+
+    t.controls.forEach(function (ctl) {
+      var row = document.createElement("div");
+      row.className = "lp-style-row";
+
+      var lab = document.createElement("span");
+      lab.className = "lp-style-label";
+      lab.textContent = ctl.label;
+      row.appendChild(lab);
+
+      var controlWrap = document.createElement("div");
+      controlWrap.className = "lp-style-control";
+      row.appendChild(controlWrap);
+
+      if (ctl.kind === "color") {
+        var sw = document.createElement("button");
+        sw.type = "button";
+        sw.className = "lp-swatch";
+        sw.style.background = App.getTypeDefaultColor(t.type);
+        sw.title = "Change default color";
+        sw.setAttribute("aria-label", "Change default color for " + t.label);
+        sw.addEventListener("click", function (e) {
+          e.stopPropagation();
+          App.openColorPicker(sw, App.getTypeDefaultColor(t.type), function (nc) {
+            if (!App.sectionColors) App.sectionColors = {};
+            App.sectionColors[t.type] = nc;
+            sw.style.background = nc;
+            App.rerenderForType(t.type);
+            refreshPreview();
+            if (App.cache && typeof App.cache.save === "function") App.cache.save();
+            render();
+          });
+        });
+        controlWrap.appendChild(sw);
+      } else {
+        var scrubber = App.buildScrubber({
+          min: ctl.min, max: ctl.max, step: ctl.step, unit: ctl.unit,
+          value: App.featureSettings[ctl.key],
+          onChange: function (v) {
+            App.featureSettings[ctl.key] = v;
+            applyTypeStyle(t.type);
+            refreshPreview();
+            if (App.cache && typeof App.cache.save === "function") App.cache.save();
+          }
+        });
+        controlWrap.appendChild(scrubber);
+      }
+      body.appendChild(row);
+    });
+
+    var resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "lp-style-reset";
+    resetBtn.textContent = "Reset";
+    resetBtn.title = "Reset to defaults";
+    resetBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      resetTypeStyle(t);
+      render();
+    });
+    body.appendChild(resetBtn);
+
+    wrap.appendChild(header);
+    wrap.appendChild(body);
+    return wrap;
   }
 
   // ---- Basemap row ----
@@ -623,11 +1059,19 @@
       if (gc.ungrouped.length) {
         drawnBand.appendChild(buildGroupBlock("Ungrouped", gc.ungrouped));
       }
-      // Per-geometry-type opacity (drawn features share one layer per type)
-      DRAWN_TYPES.forEach(function (t) {
-        var arr = App[t.type === "point" ? "points" : t.type + "s"];
-        if (arr && arr.length) drawnBand.appendChild(buildTypeOpacityRow(t));
-      });
+      // Style defaults: one drawer per geometry type that currently has
+      // features (drawn features of a type share one map layer per type, so
+      // this is where the type-default half of the appearance cascade lives).
+      var stylableTypes = DRAWN_TYPES.filter(function (t) { return typeHasFeatures(t.type); });
+      if (stylableTypes.length) {
+        var styleHeading = document.createElement("div");
+        styleHeading.className = "lp-subheading";
+        styleHeading.textContent = "Style defaults";
+        drawnBand.appendChild(styleHeading);
+        stylableTypes.forEach(function (t) {
+          drawnBand.appendChild(buildTypeStyleRow(t));
+        });
+      }
     } else {
       var empty = document.createElement("div");
       empty.className = "lp-empty";
