@@ -22,7 +22,6 @@
     route: "all",
     vehicleFilter: "all",
     vehicleAssume: "route",
-    season: "winter",
     assumptions: defaultAssumptions(),
     overlays: { winter: false, di: false, utility: false }
   };
@@ -37,6 +36,17 @@
   var ZEB_SOURCE = "zeb-routes", ZEB_LAYER = "zeb-routes-layer";
   var ZEB_DEPOT_SOURCE = "zeb-depots", ZEB_DEPOT_LAYER = "zeb-depots-layer", ZEB_DEPOT_LABEL = "zeb-depots-label";
   var _hoverPopup = null;
+
+  // Both seasons are always scored and graphed together (no separate Season
+  // input) — winter is strictly the harder season in ZebDemoData's climate
+  // factors (colder = more energy/mile), so it stays the "operative" value
+  // that drives the pill/sort/outcome/map color and the summary sentence;
+  // summer is shown alongside for comparison. Data-encoding colors, exempt
+  // from the design-token rule — winter reuses --accent (the chart's
+  // pre-existing single-line color) for continuity, summer is a fixed
+  // orange chosen to stay clear of the outcome pill's amber (#fc8d59).
+  var ZEB_WINTER_COLOR = "var(--accent)";
+  var ZEB_SUMMER_COLOR = "#f97316";
 
   function defaultAssumptions() {
     var d = window.ZebDemoData;
@@ -121,8 +131,7 @@
 
   function inputsSummary() {
     var count = _lastResult && _lastResult.shownRoutes ? _lastResult.shownRoutes.length : 0;
-    return _settings.season.charAt(0).toUpperCase() + _settings.season.slice(1) + " · " +
-      (_settings.vehicleAssume === "route" ? "per-route vehicles" :
+    return (_settings.vehicleAssume === "route" ? "per-route vehicles" :
         (_settings.vehicleAssume === "bus40" ? "all 40-ft" : "all cutaway")) + " · " +
       count + " route" + (count === 1 ? "" : "s") + " shown";
   }
@@ -446,7 +455,6 @@
     _settings.route = valOf("zebRoute", _settings.route);
     _settings.vehicleFilter = valOf("zebVehicleFilter", _settings.vehicleFilter);
     _settings.vehicleAssume = valOf("zebVehicleAssume", _settings.vehicleAssume);
-    _settings.season = valOf("zebSeason", _settings.season);
     var a = _settings.assumptions;
     a.bat40     = numOf("zebBat40", a.bat40);
     a.base40    = numOf("zebBase40", a.base40);
@@ -460,8 +468,7 @@
   function syncControlsFromSettings() {
     var els = {
       zebVehicleFilter: _settings.vehicleFilter,
-      zebVehicleAssume: _settings.vehicleAssume,
-      zebSeason: _settings.season
+      zebVehicleAssume: _settings.vehicleAssume
     };
     Object.keys(els).forEach(function (id) {
       var el = document.getElementById(id);
@@ -584,17 +591,25 @@
         var gradeClassId = override.gradeClass || agency.gradeClass;
         var baseGradeFactor = (ZebDemoData.gradeClasses[gradeClassId] || { factor: 1 }).factor;
         var gradeFactor = baseGradeFactor * routeVarianceFactor(rid);
-        var seasonFactor = (ZebDemoData.climateZones[agency.climateZone] || { factors: {} }).factors[_settings.season];
-        if (typeof seasonFactor !== "number") seasonFactor = 1;
+        var climateFactors = (ZebDemoData.climateZones[agency.climateZone] || { factors: {} }).factors;
+        var seasonFactorWinter = typeof climateFactors.winter === "number" ? climateFactors.winter : 1;
+        var seasonFactorSummer = typeof climateFactors.summer === "number" ? climateFactors.summer : 1;
 
-        var range = ZEB.routeRange({
+        var commonRangeParams = {
           batteryKWh: vehicle.batteryKWh, baseKWhPerMi: vehicle.baseKWhPerMi,
-          gradeFactor: gradeFactor, seasonFactor: seasonFactor,
+          gradeFactor: gradeFactor,
           socBuffer: assumptions.socBuffer / 100,
           deadheadMiles: assumptions.deadheadMi,
           roundTripMiles: digest.roundTripMiles,
           roundTripsPerDay: digest.roundTripsPerDay
-        });
+        };
+        // Winter is strictly the harder season in this data (higher climate
+        // factor = more energy/mile), so it stays the one "operative" value
+        // driving the pill/sort/outcome/map color — the same default this
+        // module already used before the Season selector existed. Summer is
+        // computed alongside purely for the chart/facts comparison.
+        var range = ZEB.routeRange(Object.assign({}, commonRangeParams, { seasonFactor: seasonFactorWinter }));
+        var rangeSummer = ZEB.routeRange(Object.assign({}, commonRangeParams, { seasonFactor: seasonFactorSummer }));
         var outcome = ZEB.outcomeFor(range.roundTripsPerCharge, ZebDemoData.outcomes);
 
         routeSummaries.push({
@@ -607,9 +622,11 @@
           vehicleLabel: vehicle.label,
           gradeClassId: gradeClassId,
           gradeFactor: gradeFactor,
-          seasonFactor: seasonFactor,
+          seasonFactorWinter: seasonFactorWinter,
+          seasonFactorSummer: seasonFactorSummer,
           digest: digest,
           range: range,
+          rangeSummer: rangeSummer,
           outcome: outcome
         });
       });
@@ -690,8 +707,12 @@
     return n + suffix;
   }
 
+  // Winter drives the headline number, matching the table pill/sort. Summer
+  // only gets a second clause when it would actually change the answer
+  // (a different whole-round-trip count) — most routes don't need it, so
+  // most rows stay a single sentence.
   function rangeSentence(r) {
-    var range = r.range;
+    var range = r.range, rangeSummer = r.rangeSummer;
     var whole = range.roundTripsWhole != null ? range.roundTripsWhole : 0;
     var miles = Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : null;
     var lead = "<strong>" + whole + " round trip" + (whole === 1 ? "" : "s") +
@@ -706,31 +727,50 @@
     } else {
       tail = " Route cannot finish one round trip on a charge.";
     }
-    return lead + tail;
+    var summerWhole = rangeSummer && rangeSummer.roundTripsWhole != null ? rangeSummer.roundTripsWhole : 0;
+    var summerClause = "";
+    if (summerWhole !== whole) {
+      summerClause = " In summer, " + summerWhole + " round trip" + (summerWhole === 1 ? "" : "s") + " per charge.";
+    }
+    return lead + tail + summerClause;
   }
 
   function factsListHTML(rows) {
     var html = '<ul class="zeb-detail-facts">';
-    rows.forEach(function (text) {
-      html += "<li>" + escapeHTML(text) + "</li>";
+    rows.forEach(function (row) {
+      var inner = (row && typeof row === "object" && row.html != null) ? row.html : escapeHTML(row);
+      html += "<li>" + inner + "</li>";
     });
     return html + "</ul>";
+  }
+
+  // Small colored dot tying a number in the fact list back to its matching
+  // line on the chart, so the two-season pairing reads without a caption.
+  function seasonDotHTML(color) {
+    return '<span class="zeb-season-dot" style="background:' + color + ';"></span>';
   }
 
   // Each fact is a single self-contained line rather than a label + value
   // pair — no separate eyebrow caption to read, so the panel screenshots
   // clean at a glance. No expandable "assumptions" detail anymore either;
-  // what's here is everything shown.
+  // what's here is everything shown. Energy use and usable range are the
+  // two season-dependent facts — rather than add two more lines for summer,
+  // each keeps its existing line and just carries both numbers, color-dotted
+  // to match the chart, so the fact count doesn't grow.
   function buildRouteDetailHTML(r) {
-    var digest = r.digest, range = r.range;
+    var digest = r.digest, range = r.range, rangeSummer = r.rangeSummer;
     var vehicle = (_lastResult && _lastResult.vehicleClassesLocal[r.vehicleClassId]) || {};
-    var seasonLabel = _settings.season.charAt(0).toUpperCase() + _settings.season.slice(1);
+
+    var energyLine = seasonDotHTML(ZEB_WINTER_COLOR) + range.kWhPerMi.toFixed(2) + " winter · " +
+      seasonDotHTML(ZEB_SUMMER_COLOR) + rangeSummer.kWhPerMi.toFixed(2) + " summer kWh/mi";
+    var rangeLine = seasonDotHTML(ZEB_WINTER_COLOR) + fmtNum1(range.usableMiles) + " winter · " +
+      seasonDotHTML(ZEB_SUMMER_COLOR) + fmtNum1(rangeSummer.usableMiles) + " summer mile range";
 
     var facts = [
       r.agencyLabel || "",
       (r.vehicleLabel || "") + " · " + Math.round(vehicle.batteryKWh || 0) + " kWh battery",
-      range.kWhPerMi.toFixed(2) + " kWh/mi",
-      fmtNum1(range.usableMiles) + " mile range (" + seasonLabel + ")",
+      { html: energyLine },
+      { html: rangeLine },
       digest.roundTripMiles.toFixed(1) + " mi round trip",
       terrainEffectLabel(r.gradeClassId) + " terrain effect"
     ];
@@ -764,8 +804,8 @@
 
     var html = '<table class="zeb-results-table"><thead><tr>' +
       '<th class="zeb-col-route">Route</th>' +
-      '<th class="zeb-miles-cell">Miles per charge</th>' +
-      '<th class="zeb-rt-cell">Round trips per charge</th>' +
+      '<th class="zeb-miles-cell">Miles per charge (winter)</th>' +
+      '<th class="zeb-rt-cell">Round trips per charge (winter)</th>' +
       '<th class="zeb-toggle" aria-label="Expand"></th>' +
       "</tr></thead><tbody>";
 
@@ -826,22 +866,31 @@
   // ---- Inline state-of-charge-by-mile chart ----
 
   // Dependency-free inline SVG. x axis: miles travelled (0 -> a rounded xMax);
-  // y axis: 0-100% SoC. Distance-based SoC is linear and monotone, so this is
-  // a single depletion segment rather than a per-leg polyline.
+  // y axis: 0-100% SoC. Both seasons are plotted from the same route/vehicle
+  // inputs — only seasonFactor differs — as two depletion rays fanning out
+  // from a shared (0, 100%) start: winter (solid, steeper — colder means more
+  // energy/mile, so it runs out sooner) and summer (dashed, shallower, always
+  // reaching at least as far). Distance-based SoC is linear and monotone
+  // within a season, so each is a single segment rather than a polyline.
   function buildRangeChartSVG(r) {
-    var range = r.range;
+    var range = r.range, rangeSummer = r.rangeSummer;
     var points = range.points;
     if (!points || points.length < 2) return "";
 
-    var usableMiles = range.usableMiles;
-    var deadhead = range.deadheadMiles;
+    var usableMilesWinter = range.usableMiles;
+    var usableMilesSummer = rangeSummer.usableMiles;
+    var deadhead = range.deadheadMiles; // season-independent
     var roundTripMiles = range.roundTripMiles;
-    var bufferFrac = points[1].soc;
+    var bufferFrac = points[1].soc; // socBuffer is season-independent too
 
-    // Round-trip marks: only the last one the bus completes and the first one
-    // it doesn't. Drawing every completion (up to 24) turned into a picket
-    // fence of hairlines that read as noise at any reduced size, and these two
-    // are the whole story — where it gets to, and what it just misses.
+    // Round-trip marks are winter's only — the mile positions are fixed by
+    // route distance regardless of season, and winter is the "operative"
+    // scenario the pill/sentence are based on. A shorter-range summer line
+    // would just add a second full set of marks for little extra signal (the
+    // summer crossing dot below already shows how much further it reaches).
+    // Drawing every completion (up to 24) turned into a picket fence of
+    // hairlines that read as noise at any reduced size — these two are the
+    // whole story for winter: where it gets to, and what it just misses.
     var lastComplete = null, firstIncomplete = null;
     (range.marks || []).forEach(function (m) {
       if (m.complete) lastComplete = m;
@@ -850,9 +899,11 @@
 
     // The missed round trip sits just past the point the battery runs out, so
     // the axis has to reach it — otherwise the mark that shows how close the
-    // route came is clipped off the right edge.
+    // route came is clipped off the right edge. Summer's own (always >=
+    // winter's) usable range is included too so its line/dot never clips.
     var rawXMax = Math.max(
-      usableMiles,
+      usableMilesWinter,
+      usableMilesSummer,
       deadhead + (isFinite(roundTripMiles) && roundTripMiles > 0 ? roundTripMiles * 1.15 : 0),
       firstIncomplete ? firstIncomplete.mile : 0
     );
@@ -882,14 +933,14 @@
     for (var tx = 0; tx <= xMax; tx += chosenStep) ticks.push(tx);
 
     var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" class="zeb-range-chart" ' +
-      'role="img" aria-label="State of charge by mile travelled">';
+      'role="img" aria-label="State of charge by mile travelled, winter and summer">';
 
     // Reserve band (from the buffer line down to 0%).
     svg += '<rect x="' + marginLeft + '" y="' + bufferY.toFixed(1) + '" width="' + plotW +
       '" height="' + Math.max(0, chartBottom - bufferY).toFixed(1) + '" fill="rgba(215,48,39,0.10)"></rect>';
 
     // Deadhead band (unlabeled — the gray fill alone reads clearly enough
-    // against the depletion line, and one fewer label keeps the chart clean).
+    // against the depletion lines, and one fewer label keeps the chart clean).
     var deadheadX = marginLeft;
     if (deadhead > 0) {
       deadheadX = xAt(Math.min(deadhead, xMax));
@@ -909,16 +960,21 @@
     // Reserve dashed line + label.
     svg += '<line x1="' + marginLeft + '" y1="' + bufferY.toFixed(1) + '" x2="' + (marginLeft + plotW) +
       '" y2="' + bufferY.toFixed(1) + '" stroke="#d73027" stroke-width="2" stroke-dasharray="5,4"></line>';
-    // Left-anchored: the right end of this line is where the crossing dot and
-    // its mileage label land.
+    // Left-anchored: the right end of this line is where the crossing dots
+    // and their mileage labels land.
     svg += '<text x="' + (deadheadX + 8).toFixed(1) + '" y="' + (bufferY - 6).toFixed(1) +
       '" text-anchor="start" class="zeb-soc-buffer-label">' + Math.round(bufferFrac * 100) + "% reserve</text>";
 
-    // Depletion line: (0, 100%) -> (usableMiles, buffer%).
+    // Depletion lines: (0, 100%) -> (usableMiles, buffer%), one ray per
+    // season. Summer (longer, lower-contrast dashed) drawn first so winter
+    // (the operative scenario) always renders on top near the shared origin.
     var x0 = xAt(0), y0 = yAt(1.0);
-    var x1 = xAt(Math.min(usableMiles, xMax)), y1 = yAt(bufferFrac);
-    svg += '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + x1.toFixed(1) +
-      '" y2="' + y1.toFixed(1) + '" stroke="var(--accent)" stroke-width="3"></line>';
+    var xWinter = xAt(Math.min(usableMilesWinter, xMax)), yWinter = yAt(bufferFrac);
+    var xSummer = xAt(Math.min(usableMilesSummer, xMax)), ySummer = yAt(bufferFrac);
+    svg += '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + xSummer.toFixed(1) +
+      '" y2="' + ySummer.toFixed(1) + '" stroke="' + ZEB_SUMMER_COLOR + '" stroke-width="3" stroke-dasharray="7,4"></line>';
+    svg += '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + xWinter.toFixed(1) +
+      '" y2="' + yWinter.toFixed(1) + '" stroke="' + ZEB_WINTER_COLOR + '" stroke-width="3"></line>';
 
     var drawn = [lastComplete, firstIncomplete].filter(function (m) { return m && m.mile <= xMax; });
     // Both labels only fit when the marks are far enough apart; otherwise the
@@ -956,12 +1012,64 @@
     svg += '<text x="' + (marginLeft + plotW / 2) + '" y="' + (H - 5) +
       '" text-anchor="middle" class="zeb-soc-axis-label">miles travelled</text>';
 
-    // Crossing dot + mileage label.
-    svg += '<circle cx="' + x1.toFixed(1) + '" cy="' + y1.toFixed(1) + '" r="4.5" fill="#d73027"></circle>';
-    var labelAnchor = (x1 + 110 > marginLeft + plotW) ? "end" : "start";
-    var labelX = labelAnchor === "end" ? x1 - 9 : x1 + 9;
-    svg += '<text x="' + labelX.toFixed(1) + '" y="' + Math.max(marginTop + 10, y1 - 10).toFixed(1) +
-      '" text-anchor="' + labelAnchor + '" class="zeb-soc-crossing-label">' + usableMiles.toFixed(1) + " mi</text>";
+    // Crossing dots + mileage labels, colored to match their line. Labels go
+    // BELOW the reserve line by default: nothing is ever drawn there (both
+    // lines stop exactly at the reserve line, at their own dot), so that's
+    // the one region of the chart guaranteed clear of both depletion rays —
+    // placing a label above a dot risked the *other* season's line (which
+    // stays higher/further from the axis than the near dot, since it hasn't
+    // reached its own crossing yet) cutting straight through the text. Only
+    // a near-zero SoC reserve setting leaves no room below, in which case
+    // labels fall back above with the same left/right divergence.
+    var spaceBelow = chartBottom - bufferY;
+    var placeBelow = spaceBelow >= 22;
+
+    // Both dots sit on the same reserve line (same buffer %, different
+    // miles) with winter always at or left of summer, so by default winter's
+    // label grows leftward (away from summer) and summer's grows rightward
+    // (away from winter) — they diverge from each other rather than reaching
+    // toward each other, regardless of how close the two crossing points
+    // are. Each only flips to grow the other way if its preferred direction
+    // would run off this chart's own edge; if that flip ever leaves both
+    // growing the same way with the points still close, winter's label gets
+    // an extra row of clearance so the two don't stack on each other.
+    function estTextWidth(text) { return text.length * 6.5; }
+    function resolveAnchor(x, estW, preferred) {
+      if (preferred === "end" && x - estW < marginLeft) return "start";
+      if (preferred === "start" && x + estW > marginLeft + plotW) return "end";
+      return preferred;
+    }
+    var winterText = usableMilesWinter.toFixed(1) + " mi";
+    var summerText = usableMilesSummer.toFixed(1) + " mi";
+    var winterAnchor = resolveAnchor(xWinter, estTextWidth(winterText), "end");
+    var summerAnchor = resolveAnchor(xSummer, estTextWidth(summerText), "start");
+    var winterExtraRow = (winterAnchor === summerAnchor && Math.abs(xSummer - xWinter) < 130) ? 14 : 0;
+
+    function drawCrossing(x, y, text, color, anchor, extraRow) {
+      svg += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.5" fill="' + color + '"></circle>';
+      var labelX = anchor === "end" ? x - 9 : x + 9;
+      var labelY = placeBelow
+        ? Math.min(chartBottom - 4, y + 19 + extraRow)
+        : Math.max(marginTop + 10, y - 10 - extraRow);
+      svg += '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) +
+        '" text-anchor="' + anchor + '" class="zeb-soc-crossing-label" style="fill:' + color + ';">' + text + "</text>";
+    }
+    drawCrossing(xWinter, yWinter, winterText, ZEB_WINTER_COLOR, winterAnchor, winterExtraRow);
+    drawCrossing(xSummer, ySummer, summerText, ZEB_SUMMER_COLOR, summerAnchor, 0);
+
+    // Compact legend so the chart is self-explanatory on its own in a
+    // screenshot — the top-right corner of the plot is always empty (both
+    // lines terminate at or before their own crossing dot, never redrawn
+    // past it), so it never collides with either line.
+    var legendX = W - marginRight - 92;
+    svg += '<g class="zeb-chart-legend">' +
+      '<line x1="' + legendX + '" y1="' + (marginTop + 10) + '" x2="' + (legendX + 16) + '" y2="' + (marginTop + 10) +
+        '" stroke="' + ZEB_WINTER_COLOR + '" stroke-width="3"></line>' +
+      '<text x="' + (legendX + 21) + '" y="' + (marginTop + 13) + '" class="zeb-soc-axis-label">Winter</text>' +
+      '<line x1="' + legendX + '" y1="' + (marginTop + 24) + '" x2="' + (legendX + 16) + '" y2="' + (marginTop + 24) +
+        '" stroke="' + ZEB_SUMMER_COLOR + '" stroke-width="3" stroke-dasharray="6,3"></line>' +
+      '<text x="' + (legendX + 21) + '" y="' + (marginTop + 27) + '" class="zeb-soc-axis-label">Summer</text>' +
+    '</g>';
 
     svg += "</svg>";
     return svg;
@@ -1044,7 +1152,7 @@
         var html = '<div style="font-size:12px;line-height:1.4;">' +
           "<b>" + escapeHTML(p.name) + "</b> (" + escapeHTML(p.agency || "") + ")<br>" +
           "<b>" + escapeHTML(p.outcomeLabel || "") + "</b><br>" +
-          rtLabel + " round trips per charge · " + p.milesPerCharge + " mi" +
+          rtLabel + " round trips per charge (winter) · " + p.milesPerCharge + " mi" +
           "</div>";
         popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
@@ -1121,7 +1229,7 @@
   async function showLegend() {
     if (!App.popup || !App.popup.showFloatingWidget) return;
     await App.popup.showFloatingWidget("zeb-legend", "projects/zeb-feasibility-legend.html", {
-      position: "bottom-left", width: 210, title: "Round trips per charge"
+      position: "bottom-left", width: 210, title: "Round trips per charge (winter)"
     });
     var outcomes = window.ZebDemoData.outcomes;
     for (var i = 0; i < 3; i++) {
@@ -1148,7 +1256,7 @@
       if (_lastResult) runScoring();
     });
 
-    ["zebRoute", "zebVehicleFilter", "zebVehicleAssume", "zebSeason"].forEach(function (id) {
+    ["zebRoute", "zebVehicleFilter", "zebVehicleAssume"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", onControlChange);
     });

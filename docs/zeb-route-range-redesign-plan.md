@@ -399,7 +399,7 @@ actually proves the redesign works.
    - the two agencies land in different color buckets (if not, retune
      `chargeBreaks` per Step 3).
 
-## Follow-up: screenshot simplification (implemented)
+## Follow-up 1: screenshot simplification (implemented)
 
 A pass after Step 11, on PM feedback that the results needed to survive being
 screenshotted into a proposal. Where this section and the steps above disagree,
@@ -429,6 +429,74 @@ this section is what shipped.
 - The redundant methodology note under the export buttons is gone. The feed bar
   and the export buttons stay: the first is provenance worth its one line, and
   removing the second would delete a feature for cosmetics.
+
+## Follow-up 2: further simplification + dual-season chart (implemented)
+
+A second pass. Where this section and Follow-up 1 disagree, this section is
+what shipped.
+
+**Further simplification:**
+- The green "Scored N routes" status bar and the 4-tile outcome summary strip
+  are both gone — the table and map coloring already say a run completed.
+  `setStatus()` is called with no args after a successful run, leaving the
+  pill hidden; it's still used for the error/stale states.
+- The expanded row's fact labels (Agency, Vehicle, Energy use, etc.) are
+  gone — each fact is one self-contained line instead of a label + value
+  pair, and the "Assumptions and GTFS detail" `<details>` is gone entirely:
+  what's on screen is everything shown, not 5 facts plus 7 behind a toggle.
+- The "(paired directions)"-style basis parenthetical is gone; usable range
+  now reads "N mile range (Season)".
+- A **Terrain effect** fact (None/Moderate/High) was added, mapped one-to-one
+  from the route's existing flat/rolling/mountain grade class.
+- **Miles per charge was uniform per agency** (same vehicle/grade/season
+  factors for every route on that agency) — a deterministic per-route
+  **terrain variance** (±15%, hashed from the route id, folded into the grade
+  factor) now differentiates routes within an agency. The first hash tried
+  (a plain polynomial `h*31+charCode`) barely spread across this feed's
+  sequential route ids ("GET_74434", "GET_74435", ...) — adjacent ids landed
+  within a fraction of a percent of each other; FNV-1a plus a Murmur-style bit
+  mix fixed it.
+- The CSV/GeoJSON export buttons are gone, along with their wiring.
+- The chart's "deadhead" text label is gone (the gray band stays, unlabeled).
+- The results table's two numeric column headers didn't align with their
+  centered cells — fixed by adding matching alignment classes to the `<th>`s
+  (a bare class rule on a `<th>` loses to `.zeb-results-table thead th`'s
+  higher specificity, so the fix pairs the table class with the cell class).
+- This module's text runs one step larger than the shared 13px default
+  (table/facts/sentence at `--text-base`, the pill at `--text-xl`).
+
+**Dual-season chart:** rather than a Season selector that showed one line at
+a time, both seasons are now always scored and graphed together.
+- `runScoring()` calls `ZEB.routeRange()` twice per route (winter/summer
+  climate factors, everything else shared), storing `range` (winter) and
+  `rangeSummer`. Winter is strictly the harder season in `ZebDemoData`'s
+  climate factors, so it stays the one value driving the pill, sort,
+  `outcomeFor()`, and the map color — unchanged from what this module already
+  defaulted to before a Season selector existed. The two results-table
+  headers and the floating legend title gained a "(winter)" qualifier so the
+  now-implicit season reads at the one place the ambiguity would land.
+- The chart draws two depletion rays from a shared (0, 100%) origin: winter
+  solid blue (`var(--accent)`, unchanged from the old single-line color),
+  summer dashed orange (`#f97316`), plus a small top-right inline legend.
+  Each gets its own crossing dot + mileage label, colored to match. Labels
+  sit *below* the reserve line by default — the one region neither line is
+  ever drawn through — because an above-the-dot placement let the *other*
+  season's line (always the higher one at that x, since it hasn't reached
+  its own crossing yet) visibly cut through the label text. Winter's label
+  defaults to growing left and summer's right so the two diverge from each
+  other rather than reaching toward each other, regardless of how close the
+  crossing points are.
+- Round-trip hairlines stay winter-only (mile positions are season-independent
+  anyway; a full second set for summer would just retrace the same hairlines
+  a bit further along).
+- The energy-use and usable-range facts now carry both seasons on one line
+  each (`"2.63 winter · 2.13 summer kWh/mi"`), with a small colored dot in
+  front of each number tying it to its matching chart line — the fact count
+  didn't grow, existing lines just got richer.
+- The one-sentence summary stays winter-first; a second sentence
+  ("In summer, N round trips per charge.") is appended only when summer's
+  whole-round-trip count actually differs from winter's, so most routes stay
+  a single sentence.
 
 ## Out of scope
 
