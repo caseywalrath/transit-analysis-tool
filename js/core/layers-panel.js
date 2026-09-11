@@ -688,7 +688,7 @@
     wrapper.className = "lp-feature";
 
     var row = document.createElement("div");
-    row.className = "lp-row lp-row-sub";
+    row.className = "lp-row lp-row-sub" + (it.feature.properties.hidden ? " lp-row-hidden" : "");
 
     var featKey = it.type + ":" + it.index;
     var featLabel = it.feature.properties.name || (it.type + " " + (it.index + 1));
@@ -803,6 +803,7 @@
     header.appendChild(toggle);
 
     var allHidden = items.every(function (it) { return !!it.feature.properties.hidden; });
+    header.classList.toggle("lp-row-hidden", allHidden);
     var eye = document.createElement("button");
     eye.type = "button";
     eye.className = "lp-row-btn" + (allHidden ? " lp-eye-off" : "");

@@ -552,7 +552,7 @@
     var isHidden = !!feature.properties.hidden;
     if (isHidden) div.classList.add("fp-item-hidden");
     var eyeBtn = document.createElement("button");
-    eyeBtn.className = "fp-visibility-btn" + (isHidden ? " fp-eye-off" : "");
+    eyeBtn.className = "fp-visibility-btn ui-hover-chip" + (isHidden ? " fp-eye-off" : "");
     eyeBtn.title = isHidden ? "Show" : "Hide";
     eyeBtn.setAttribute("aria-label", isHidden ? "Show feature" : "Hide feature");
     eyeBtn.innerHTML = isHidden ? EYE_OFF_SVG : EYE_SVG;
@@ -611,7 +611,7 @@
 
     // Gear/attributes button
     var gearBtn = document.createElement("button");
-    gearBtn.className = "fp-gear-btn";
+    gearBtn.className = "fp-gear-btn ui-hover-chip";
     gearBtn.title = "Edit attributes";
     gearBtn.setAttribute("aria-label", "Edit feature attributes");
     gearBtn.innerHTML = GEAR_SVG;
@@ -623,7 +623,7 @@
     })(featureType, featureIndex, feature);
 
     var trashBtn = document.createElement("button");
-    trashBtn.className = "fp-del-btn";
+    trashBtn.className = "fp-del-btn ui-hover-chip";
     trashBtn.title = "Delete feature";
     trashBtn.setAttribute("aria-label", "Delete feature");
     trashBtn.innerHTML = TRASH_SVG;
@@ -818,7 +818,7 @@
     // doesn't reserve flow space and the swatch/name can shift left.
     var allHidden = items.every(function (it) { return !!it.feature.properties.hidden; });
     var groupEye = document.createElement("button");
-    groupEye.className = "fp-visibility-btn" + (allHidden ? " fp-eye-off" : "");
+    groupEye.className = "fp-visibility-btn ui-hover-chip" + (allHidden ? " fp-eye-off" : "");
     groupEye.innerHTML = allHidden ? EYE_OFF_SVG : EYE_SVG;
     groupEye.title = allHidden ? "Show all" : "Hide all";
     groupEye.setAttribute("aria-label", (allHidden ? "Show" : "Hide") + " group " + groupName);
@@ -903,7 +903,7 @@
 
     // Group delete button
     var groupTrashBtn = document.createElement("button");
-    groupTrashBtn.className = "fp-del-btn";
+    groupTrashBtn.className = "fp-del-btn ui-hover-chip";
     groupTrashBtn.title = "Delete all features in group";
     groupTrashBtn.setAttribute("aria-label", "Delete group " + groupName);
     groupTrashBtn.innerHTML = TRASH_SVG;
