@@ -35,6 +35,9 @@ window.ZebDemoData = {
     { id: "limited", rank: 1, min: 1, label: "1-8 round trips",    color: "#fc8d59" },
     { id: "short",   rank: 0, min: 0, label: "Under 1 round trip", color: "#d73027" }
   ],
+  // Also the source for the expanded row's "Terrain effect" fact
+  // (js/projects/zeb-feasibility.js's terrainEffectLabel()) — flat/rolling/
+  // mountain map one-to-one onto None/Moderate/High.
   gradeClasses: {
     flat:     { label: "Flat",     factor: 1.00 },
     rolling:  { label: "Rolling",  factor: 1.12 },

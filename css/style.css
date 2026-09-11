@@ -6365,29 +6365,13 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 
 .zeb-feed-bar { margin-top: 4px; }
 
-.zeb-summary-strip {
-  display: flex;
-  gap: 6px;
-  margin: 8px 0;
-  flex-wrap: wrap;
-}
-.zeb-tile {
-  flex: 1 1 0;
-  min-width: 54px;
-  border: 1px solid var(--border);
-  border-left-width: 3px;
-  border-radius: 6px;
-  padding: 4px 6px;
-  text-align: center;
-  background: var(--surface-alt);
-}
-.zeb-tile-count { font-size: var(--text-base); font-weight: var(--weight-semibold); line-height: 1.2; }
-.zeb-tile-label { color: var(--muted); }
-
+/* Slightly larger than the shared 13px default — this module's results are
+   built to be screenshotted, so a touch more size helps legibility once a
+   screenshot gets scaled down into a document. */
 .zeb-results-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
 .zeb-results-table thead th {
   text-align: left;
@@ -6416,13 +6400,21 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   white-space: nowrap;
 }
 
-.zeb-rt-cell { text-align: center; }
+/* Both th and td need the class (not just td) — the header's own
+   .zeb-results-table thead th rule left-aligns by default and outranks a
+   bare .zeb-rt-cell/.zeb-miles-cell rule on specificity, which is what left
+   these two numeric columns' headers out of step with their centered cells. */
+.zeb-results-table th.zeb-miles-cell,
+.zeb-results-table td.zeb-miles-cell,
+.zeb-results-table th.zeb-rt-cell,
+.zeb-results-table td.zeb-rt-cell { text-align: center; }
+
 .zeb-rt-pill {
   display: inline-block;
   min-width: 44px;
   padding: 4px 12px;
   border-radius: 999px;
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: 1.25;
 }
@@ -6439,28 +6431,24 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   .zeb-detail-grid { grid-template-columns: 1fr; }
 }
 
+/* Each fact is one self-contained line — no separate label above it — so
+   this is a plain list, not a definition list. */
 .zeb-detail-facts {
   margin: 0;
-  font-size: var(--text-sm);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-base);
 }
-.zeb-detail-facts dt {
-  color: var(--muted);
-  margin-top: 6px;
-}
-.zeb-detail-facts dt:first-child { margin-top: 0; }
-.zeb-detail-facts dd {
-  margin: 0 0 2px;
+.zeb-detail-facts li {
+  margin: 0 0 8px;
   font-weight: var(--weight-semibold);
 }
+.zeb-detail-facts li:last-child { margin-bottom: 0; }
 
 .zeb-detail-sentence {
   margin: 10px 0 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
-
-.zeb-detail-more { margin-top: 10px; }
-.zeb-detail-more > summary { cursor: pointer; color: var(--muted); }
-.zeb-detail-more .zeb-detail-facts { margin-top: 6px; }
 
 /* Chart type is sized against the 640-wide viewBox: large enough that a
    screenshot of the panel still reads when scaled down into a document. */
@@ -6470,6 +6458,5 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 .zeb-soc-buffer-label { font-size: 12px; fill: #d73027; }
 .zeb-soc-crossing-label { font-size: 13px; fill: #d73027; font-weight: var(--weight-semibold); }
 
-body.dark-mode .zeb-tile { background: #1a2233; }
 body.dark-mode .zeb-results-table tr.zeb-row:hover { background: rgba(255,255,255,0.06); }
 

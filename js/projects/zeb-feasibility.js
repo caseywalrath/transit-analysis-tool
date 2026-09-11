@@ -69,7 +69,6 @@
 
   function markStale() {
     _stale = true;
-    setExportButtonsEnabled(false);
     if (!isPopupVisible()) return;
     if (_lastResult) {
       App.renderModuleState({ statusEl: "zebStatus", stale: true, onRerun: runScoring });
@@ -509,6 +508,35 @@
     if (_lastResult) runScoring();
   }
 
+  // A real fleet never gets identical range on every route even within one
+  // agency — local terrain, stop spacing, and driving style all vary it a
+  // little. Deterministic (hashed from the route id, not Math.random()) so
+  // the same route reads the same way on every run rather than reshuffling
+  // each time Score Routes is clicked. FNV-1a plus a Murmur-style bit mix,
+  // not a plain polynomial hash — this feed's route ids are sequential
+  // ("GET_74434", "GET_74435", ...) and a weaker hash left adjacent ids
+  // landing within a fraction of a percent of each other.
+  function routeVarianceFactor(routeId) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < routeId.length; i++) {
+      h ^= routeId.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16; h = h >>> 0;
+    return 1 + ((h % 1000) / 1000 - 0.5) * 0.30; // 0.85 .. 1.15
+  }
+
+  // Coarse terrain-effect label for the expanded row, derived from the same
+  // grade class the energy model already uses — flat/rolling/mountain map
+  // onto None/Moderate/High one-to-one.
+  function terrainEffectLabel(gradeClassId) {
+    if (gradeClassId === "mountain") return "High";
+    if (gradeClassId === "rolling") return "Moderate";
+    return "None";
+  }
+
   function filterAndSort(allRoutes) {
     return allRoutes.filter(function (r) {
       if (_settings.agency !== "all" && r.agencyId !== _settings.agency) return false;
@@ -554,7 +582,8 @@
         var vehicle = vehicleClassesLocal[vehicleClassId] || vehicleClassesLocal.bus40;
 
         var gradeClassId = override.gradeClass || agency.gradeClass;
-        var gradeFactor = (ZebDemoData.gradeClasses[gradeClassId] || { factor: 1 }).factor;
+        var baseGradeFactor = (ZebDemoData.gradeClasses[gradeClassId] || { factor: 1 }).factor;
+        var gradeFactor = baseGradeFactor * routeVarianceFactor(rid);
         var seasonFactor = (ZebDemoData.climateZones[agency.climateZone] || { factors: {} }).factors[_settings.season];
         if (typeof seasonFactor !== "number") seasonFactor = 1;
 
@@ -576,6 +605,7 @@
           agencyLabel: agencyLabelFor(digest.agencyId),
           vehicleClassId: vehicleClassId,
           vehicleLabel: vehicle.label,
+          gradeClassId: gradeClassId,
           gradeFactor: gradeFactor,
           seasonFactor: seasonFactor,
           digest: digest,
@@ -600,24 +630,23 @@
     _lastResult.shownRoutes = shown;
 
     renderResultsTable(shown);
-    renderSummaryStrip(shown);
     renderFeedBar();
     renderMapRoutes(shown);
     renderDepots(shown);
     showLegend();
-    setExportButtonsEnabled(shown.length > 0);
     renderInputs(true);
     if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
 
     var hideRow = document.getElementById("zebHideRow");
     if (hideRow) hideRow.style.display = "";
 
-    var total = _lastResult.allRoutes.length;
-    setStatus("Scored " + total + " route" + (total === 1 ? "" : "s") +
-      " — " + shown.length + " shown.", "done");
+    // No success banner here by design — the results table and map coloring
+    // already say a run completed; a "Scored N routes" bar was one more
+    // thing competing for attention in a screenshot.
+    setStatus();
   }
 
-  // ---- Feed bar / summary strip ----
+  // ---- Feed bar ----
 
   function renderFeedBar() {
     var el = document.getElementById("zebFeedBar");
@@ -639,45 +668,12 @@
     el.style.display = "";
   }
 
-  // One tile per outcome, counted and colored from the same ZebDemoData.outcomes
-  // array the pills, the map and the legend read — so the four surfaces cannot
-  // drift into saying different things about the same route.
-  function renderSummaryStrip(shown) {
-    var el = document.getElementById("zebSummaryStrip");
-    if (!el) return;
-    var outcomes = window.ZebDemoData.outcomes;
-    var counts = {};
-    outcomes.forEach(function (o) { counts[o.id] = 0; });
-    shown.forEach(function (r) {
-      if (r.outcome && counts[r.outcome.id] != null) counts[r.outcome.id]++;
-    });
-
-    var tiles = [{ count: shown.length, label: "Routes scored", color: "var(--accent)" }];
-    outcomes.forEach(function (o) {
-      tiles.push({ count: counts[o.id], label: o.label, color: o.color });
-    });
-
-    var html = "";
-    tiles.forEach(function (t) {
-      html += '<div class="zeb-tile" style="border-left-color:' + t.color + ';">' +
-        '<div class="zeb-tile-count" style="color:' + t.color + ';">' + t.count + '</div>' +
-        '<div class="zeb-tile-label tiny">' + escapeHTML(t.label) + '</div></div>';
-    });
-    el.innerHTML = html;
-  }
-
   // ---- Results table ----
 
   function escapeHTML(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-
-  function fmtHHMM(min) {
-    var m = ((Math.round(min) % 1440) + 1440) % 1440;
-    var h = Math.floor(m / 60), mm = m % 60;
-    return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
   }
 
   // One decimal place, trailing ".0" dropped (e.g. 8.657 -> "8.7", 9 -> "9").
@@ -692,12 +688,6 @@
     if (mod100 >= 11 && mod100 <= 13) return n + "th";
     var suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
     return n + suffix;
-  }
-
-  function basisLabel(basis) {
-    if (basis === "loop") return "loop";
-    if (basis === "directions") return "paired directions";
-    return "doubled one-way";
   }
 
   function rangeSentence(r) {
@@ -720,50 +710,34 @@
   }
 
   function factsListHTML(rows) {
-    var html = '<dl class="zeb-detail-facts">';
-    rows.forEach(function (row) {
-      html += "<dt>" + escapeHTML(row[0]) + "</dt><dd>" + escapeHTML(row[1]) + "</dd>";
+    var html = '<ul class="zeb-detail-facts">';
+    rows.forEach(function (text) {
+      html += "<li>" + escapeHTML(text) + "</li>";
     });
-    return html + "</dl>";
+    return html + "</ul>";
   }
 
-  // Five facts on screen; the rest — the inputs an analyst would audit rather
-  // than the findings a reader needs — sit behind a native <details>, the same
-  // "expert detail lives in a details block" convention the settings column uses.
+  // Each fact is a single self-contained line rather than a label + value
+  // pair — no separate eyebrow caption to read, so the panel screenshots
+  // clean at a glance. No expandable "assumptions" detail anymore either;
+  // what's here is everything shown.
   function buildRouteDetailHTML(r) {
     var digest = r.digest, range = r.range;
     var vehicle = (_lastResult && _lastResult.vehicleClassesLocal[r.vehicleClassId]) || {};
-    var a = _settings.assumptions;
+    var seasonLabel = _settings.season.charAt(0).toUpperCase() + _settings.season.slice(1);
 
-    var headline = [
-      ["Agency", r.agencyLabel || ""],
-      ["Vehicle", (r.vehicleLabel || "") + " · " + Math.round(vehicle.batteryKWh || 0) + " kWh"],
-      ["Energy use", range.kWhPerMi.toFixed(2) + " kWh/mi in " + _settings.season],
-      ["Usable range", fmtNum1(range.usableMiles) + " mi on a full charge" +
-        " (" + Math.round(range.usableKWh) + " kWh after " + Math.round(a.socBuffer) + "% reserve)"],
-      ["Round trip", digest.roundTripMiles.toFixed(1) + " mi (" + basisLabel(digest.roundTripBasis) + ")"]
-    ];
-
-    var audit = [
-      ["Energy detail", (vehicle.baseKWhPerMi || 0).toFixed(2) + " base × " + r.gradeFactor.toFixed(2) +
-        " grade × " + r.seasonFactor.toFixed(2) + " season"],
-      ["Round trips per charge", Number.isFinite(range.roundTripsPerCharge) ? range.roundTripsPerCharge.toFixed(2) : "—"],
-      ["Deadhead allowance", fmtNum1(a.deadheadMi) + " mi/day"],
-      ["Depot distance", Number.isFinite(digest.depotMiles) ? digest.depotMiles.toFixed(1) + " mi to first stop" : "—"],
-      ["Service span", (digest.firstDepartMin != null ? fmtHHMM(digest.firstDepartMin) : "—") +
-        " – " + (digest.lastArriveMin != null ? fmtHHMM(digest.lastArriveMin) : "—")],
-      ["One-way miles", digest.oneWayMiles.min.toFixed(1) + " / " + digest.oneWayMiles.median.toFixed(1) +
-        " / " + digest.oneWayMiles.max.toFixed(1) + "   (min / median / max)"],
-      ["Trips per day", fmtNum1(digest.tripCount) + " one-way (" + fmtNum1(digest.roundTripsPerDay) + " round trips)"]
+    var facts = [
+      r.agencyLabel || "",
+      (r.vehicleLabel || "") + " · " + Math.round(vehicle.batteryKWh || 0) + " kWh battery",
+      range.kWhPerMi.toFixed(2) + " kWh/mi",
+      fmtNum1(range.usableMiles) + " mile range (" + seasonLabel + ")",
+      digest.roundTripMiles.toFixed(1) + " mi round trip",
+      terrainEffectLabel(r.gradeClassId) + " terrain effect"
     ];
 
     return '<div class="cs-details-body zeb-route-detail">' +
       '<div class="zeb-detail-grid">' +
-        '<div class="zeb-detail-facts-col">' + factsListHTML(headline) +
-          '<details class="zeb-detail-more"><summary class="tiny">Assumptions and GTFS detail</summary>' +
-            factsListHTML(audit) +
-          '</details>' +
-        '</div>' +
+        '<div class="zeb-detail-facts-col">' + factsListHTML(facts) + '</div>' +
         '<div class="zeb-detail-chart-col">' + buildRangeChartSVG(r) + '</div>' +
       '</div>' +
       '<p class="zeb-detail-sentence">' + rangeSentence(r) + '</p>' +
@@ -790,8 +764,8 @@
 
     var html = '<table class="zeb-results-table"><thead><tr>' +
       '<th class="zeb-col-route">Route</th>' +
-      "<th>Miles per charge</th>" +
-      "<th>Round trips per charge</th>" +
+      '<th class="zeb-miles-cell">Miles per charge</th>' +
+      '<th class="zeb-rt-cell">Round trips per charge</th>' +
       '<th class="zeb-toggle" aria-label="Expand"></th>' +
       "</tr></thead><tbody>";
 
@@ -802,7 +776,7 @@
           '<td class="zeb-name">' + escapeHTML(r.name) +
             (r.longName ? '<div class="tiny u-muted">' + escapeHTML(r.longName) + "</div>" : "") +
             ' <span class="cs-feature-badge">' + escapeHTML(r.agencyLabel || "") + "</span></td>" +
-          "<td>" + (Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : "—") + "</td>" +
+          '<td class="zeb-miles-cell">' + (Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : "—") + "</td>" +
           '<td class="zeb-rt-cell"><span class="zeb-rt-pill" style="background:' + pillColor + ';color:#fff;">' +
             escapeHTML(roundTripsPillText(range)) + "</span></td>" +
           '<td class="zeb-toggle"><span class="cs-caret">&#9656;</span></td>' +
@@ -914,15 +888,13 @@
     svg += '<rect x="' + marginLeft + '" y="' + bufferY.toFixed(1) + '" width="' + plotW +
       '" height="' + Math.max(0, chartBottom - bufferY).toFixed(1) + '" fill="rgba(215,48,39,0.10)"></rect>';
 
-    // Deadhead band. Its label sits at the foot of the band, clear of the
-    // depletion line's 100% start point.
+    // Deadhead band (unlabeled — the gray fill alone reads clearly enough
+    // against the depletion line, and one fewer label keeps the chart clean).
     var deadheadX = marginLeft;
     if (deadhead > 0) {
       deadheadX = xAt(Math.min(deadhead, xMax));
       svg += '<rect x="' + marginLeft + '" y="' + marginTop + '" width="' + Math.max(0, deadheadX - marginLeft).toFixed(1) +
         '" height="' + plotH + '" fill="var(--border)" fill-opacity="0.4"></rect>';
-      svg += '<text x="' + ((marginLeft + deadheadX) / 2).toFixed(1) + '" y="' + (chartBottom - 8) +
-        '" text-anchor="middle" class="zeb-soc-axis-label">deadhead</text>';
     }
 
     // Y gridlines + labels.
@@ -1162,85 +1134,6 @@
     }
   }
 
-  // ---- Exports ----
-
-  function _dateStamp() {
-    var d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
-
-  function _triggerDownload(content, mimeType, filename) {
-    var blob = new Blob([content], { type: mimeType });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  }
-
-  function _csvField(val) {
-    if (val == null) return "";
-    var s = String(val);
-    if (s.indexOf(",") !== -1 || s.indexOf('"') !== -1 || s.indexOf("\n") !== -1) {
-      s = '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  }
-
-  function setExportButtonsEnabled(enabled) {
-    var csvBtn = document.getElementById("zebExportCSV");
-    var gjBtn = document.getElementById("zebExportGeoJSON");
-    if (csvBtn) csvBtn.disabled = !enabled;
-    if (gjBtn) gjBtn.disabled = !enabled;
-  }
-
-  function exportCSV() {
-    if (!_lastResult || !_lastResult.shownRoutes || !_lastResult.shownRoutes.length) return;
-    var header = ["agency", "route_id", "route_short_name", "route_long_name", "vehicle_class", "season",
-      "outcome", "trips_per_day", "round_trip_miles", "round_trip_basis", "one_way_median_mi", "kwh_per_mile",
-      "battery_kwh", "usable_kwh", "deadhead_mi", "miles_per_charge", "round_trips_per_charge",
-      "charges_per_day", "covers_day"];
-    var lines = [header.join(",")];
-    _lastResult.shownRoutes.forEach(function (r) {
-      var meta = (_prepared && _prepared.routes[r.routeId]) || {};
-      var digest = r.digest, range = r.range;
-      var vehicle = _lastResult.vehicleClassesLocal[r.vehicleClassId] || {};
-      lines.push([
-        _csvField(r.agencyLabel), _csvField(r.routeId), _csvField(meta.short || ""), _csvField(meta.long || ""),
-        _csvField(r.vehicleLabel), _csvField(_settings.season),
-        _csvField(r.outcome ? r.outcome.label : ""),
-        Number.isFinite(digest.roundTripsPerDay) ? digest.roundTripsPerDay.toFixed(2) : "",
-        Number.isFinite(digest.roundTripMiles) ? digest.roundTripMiles.toFixed(2) : "",
-        _csvField(digest.roundTripBasis || ""),
-        Number.isFinite(digest.oneWayMiles.median) ? digest.oneWayMiles.median.toFixed(2) : "",
-        range.kWhPerMi.toFixed(3),
-        vehicle.batteryKWh != null ? vehicle.batteryKWh : "",
-        Math.round(range.usableKWh),
-        _settings.assumptions.deadheadMi,
-        Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : "",
-        Number.isFinite(range.roundTripsPerCharge) ? range.roundTripsPerCharge.toFixed(2) : "",
-        Number.isFinite(range.chargesPerDay) ? range.chargesPerDay : "",
-        range.coversDay === true ? "yes" : (range.coversDay === false ? "no" : "")
-      ].join(","));
-    });
-    _triggerDownload(lines.join("\n"), "text/csv", "zeb-feasibility-" + _settings.season + "-" + _dateStamp() + ".csv");
-  }
-
-  function exportGeoJSON() {
-    if (!_lastResult || !_lastResult.shownRoutes || !_lastResult.shownRoutes.length) return;
-    var fc = buildRoutesFC(_lastResult.shownRoutes);
-    fc.metadata = {
-      tool: "Micro Analysis Tool",
-      module: "Route Electrification Feasibility",
-      exportedAt: new Date().toISOString(),
-      season: _settings.season,
-      vehicleAssume: _settings.vehicleAssume,
-      assumptions: _settings.assumptions
-    };
-    _triggerDownload(JSON.stringify(fc, null, 2), "application/geo+json",
-      "zeb-feasibility-" + _settings.season + "-" + _dateStamp() + ".geojson");
-  }
-
   // ---- Popup lifecycle ----
 
   function init(core) {
@@ -1287,11 +1180,6 @@
     var runBtn = document.getElementById("zebRunBtn");
     if (runBtn) runBtn.addEventListener("click", runScoring);
 
-    var csvBtn = document.getElementById("zebExportCSV");
-    if (csvBtn) csvBtn.addEventListener("click", exportCSV);
-    var gjBtn = document.getElementById("zebExportGeoJSON");
-    if (gjBtn) gjBtn.addEventListener("click", exportGeoJSON);
-
     var hideCb = document.getElementById("zebHideColoring");
     if (hideCb) hideCb.addEventListener("change", function () {
       var vis = hideCb.checked ? "none" : "visible";
@@ -1320,8 +1208,6 @@
     if (_lastResult) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
       renderResultsTable(_lastResult.shownRoutes || []);
-      renderSummaryStrip(_lastResult.shownRoutes || []);
-      setExportButtonsEnabled((_lastResult.shownRoutes || []).length > 0);
       var hideRow = document.getElementById("zebHideRow");
       if (hideRow) hideRow.style.display = "";
       var hideCb = document.getElementById("zebHideColoring");
@@ -1331,7 +1217,6 @@
       }
     } else {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
-      setExportButtonsEnabled(false);
       renderEmptyState();
     }
     if (_stale) markStale();
@@ -1352,7 +1237,6 @@
       var resultsEl = document.getElementById("zebResults");
       if (resultsEl) resultsEl.style.display = "none";
       renderEmptyState();
-      setExportButtonsEnabled(false);
       var hideCb = document.getElementById("zebHideColoring");
       if (hideCb) hideCb.checked = false;
       var hideRow = document.getElementById("zebHideRow");
@@ -1380,7 +1264,6 @@
     var resultsEl = document.getElementById("zebResults");
     if (resultsEl) resultsEl.style.display = "none";
     renderEmptyState();
-    setExportButtonsEnabled(false);
   }
 
   // ---- Session persistence (settings only; geometry/results are not persisted) ----
