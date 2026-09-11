@@ -68,6 +68,13 @@
       polygons:  App.polygons.slice(),
       labels:    App.labels    ? App.labels.slice()    : [],
       textBoxes: App.textBoxes ? App.textBoxes.slice() : [],
+      sectionColors: App.sectionColors ? {
+        point:   App.sectionColors.point   || null,
+        line:    App.sectionColors.line    || null,
+        route:   App.sectionColors.route   || null,
+        polygon: App.sectionColors.polygon || null,
+        label:   App.sectionColors.label   || null
+      } : null,
       bufferRadius:      (App.featureSettings && App.featureSettings.bufferRadius      != null) ? App.featureSettings.bufferRadius      : 0,
       lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0,
       routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0,
@@ -221,6 +228,21 @@
     var offsetEl = document.getElementById("offsetOverlap");
     if (offsetEl && state.offsetOverlap) {
       offsetEl.checked = true;
+    }
+
+    // 3c. Restore per-type color defaults (additive field — a session saved
+    // before this existed has no sectionColors, so every field falls back to
+    // null, which is today's Automatic/rainbow startup state). Merge onto the
+    // existing object field-by-field rather than replacing it — other modules
+    // hold a reference to App.sectionColors. Must happen before the render
+    // calls below so restored colors paint immediately.
+    if (App.sectionColors) {
+      var sc = state.sectionColors || {};
+      App.sectionColors.point   = sc.point   || null;
+      App.sectionColors.line    = sc.line    || null;
+      App.sectionColors.route   = sc.route   || null;
+      App.sectionColors.polygon = sc.polygon || null;
+      App.sectionColors.label   = sc.label   || null;
     }
 
     // 4. Rebuild derived buffers and re-render map layers
