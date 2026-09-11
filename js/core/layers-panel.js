@@ -740,13 +740,31 @@
       e.stopPropagation();
       App.openColorPicker(sw, it.feature.properties.color || color, function (nc) {
         it.feature.properties.color = nc;
-        sw.style.background = nc;
         App.rerenderForType(it.type);
         if (App.cache && typeof App.cache.save === "function") App.cache.save();
         if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+        render();
       });
     });
     row.appendChild(sw);
+
+    if (it.feature.properties.color) {
+      var clearColorBtn = document.createElement("button");
+      clearColorBtn.type = "button";
+      clearColorBtn.className = "lp-style-clear";
+      clearColorBtn.textContent = "×";
+      clearColorBtn.title = "Clear color override (use default)";
+      clearColorBtn.setAttribute("aria-label", "Clear color override for " + featLabel);
+      clearColorBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        it.feature.properties.color = "";
+        App.rerenderForType(it.type);
+        if (App.cache && typeof App.cache.save === "function") App.cache.save();
+        if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+        render();
+      });
+      row.appendChild(clearColorBtn);
+    }
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
@@ -966,25 +984,51 @@
       row.appendChild(controlWrap);
 
       if (ctl.kind === "color") {
+        var flatColor = App.sectionColors && App.sectionColors[t.type];
         var sw = document.createElement("button");
         sw.type = "button";
         sw.className = "lp-swatch";
-        sw.style.background = App.getTypeDefaultColor(t.type);
-        sw.title = "Change default color";
         sw.setAttribute("aria-label", "Change default color for " + t.label);
+        if (flatColor) {
+          sw.style.background = flatColor;
+          sw.title = "Change default color";
+        } else if (t.type === "line" || t.type === "route") {
+          // Automatic: no single default to show, so the swatch reads as
+          // "these vary" via a gradient sampled from the rainbow palette.
+          sw.style.background = "linear-gradient(135deg, " + App.FEATURE_COLORS.slice(0, 6).join(", ") + ")";
+          sw.title = "Automatic — each feature keeps its own color. Click to set one fixed color for all.";
+        } else {
+          sw.style.background = App.getTypeDefaultColor(t.type);
+          sw.title = "Change default color";
+        }
         sw.addEventListener("click", function (e) {
           e.stopPropagation();
           App.openColorPicker(sw, App.getTypeDefaultColor(t.type), function (nc) {
             if (!App.sectionColors) App.sectionColors = {};
             App.sectionColors[t.type] = nc;
-            sw.style.background = nc;
             App.rerenderForType(t.type);
-            refreshPreview();
             if (App.cache && typeof App.cache.save === "function") App.cache.save();
             render();
           });
         });
         controlWrap.appendChild(sw);
+
+        if (flatColor) {
+          var clearColorBtn = document.createElement("button");
+          clearColorBtn.type = "button";
+          clearColorBtn.className = "lp-style-clear";
+          clearColorBtn.textContent = "×";
+          clearColorBtn.title = "Reset to Automatic";
+          clearColorBtn.setAttribute("aria-label", "Reset " + t.label + " color to Automatic");
+          clearColorBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (App.sectionColors) App.sectionColors[t.type] = null;
+            App.rerenderForType(t.type);
+            if (App.cache && typeof App.cache.save === "function") App.cache.save();
+            render();
+          });
+          controlWrap.appendChild(clearColorBtn);
+        }
       } else {
         var scrubber = App.buildScrubber({
           min: ctl.min, max: ctl.max, step: ctl.step, unit: ctl.unit,
