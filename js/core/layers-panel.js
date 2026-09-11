@@ -111,8 +111,8 @@
   var DRAWN_TYPES = [
     { type: "point", label: "Points", controls: [
         { label: "Color", kind: "color" },
-        { label: "Dot size",      kind: "number", key: "pointLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
-        { label: "Outline width", kind: "number", key: "pointStrokeWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Size",  kind: "number", key: "pointLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Width", kind: "number", key: "pointStrokeWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
         { label: "Opacity",       kind: "number", key: "pointOpacity",     min: 0, max: 100, step: 5,   unit: "%",      def: 100 }
       ] },
     { type: "line", label: "Lines", controls: [
@@ -127,14 +127,14 @@
       ] },
     { type: "polygon", label: "Polygons", controls: [
         { label: "Color", kind: "color" },
-        { label: "Fill opacity",    kind: "number", key: "polygonFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 15 },
-        { label: "Outline opacity", kind: "number", key: "polygonLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 80 },
-        { label: "Outline width",   kind: "number", key: "polygonLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+        { label: "Fill",    kind: "number", key: "polygonFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 15 },
+        { label: "Outline", kind: "number", key: "polygonLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 80 },
+        { label: "Width",   kind: "number", key: "polygonLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
       ] },
     { type: "buffer", label: "Buffers", controls: [
-        { label: "Fill opacity",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
-        { label: "Outline opacity", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
-        { label: "Outline width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+        { label: "Fill",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
+        { label: "Outline", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
+        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
       ] }
   ];
 
@@ -148,7 +148,7 @@
     point:   { widthLabel: "Size",           hasBuffer: true,  hasOffset: false },
     line:    { widthLabel: "Weight",         hasBuffer: true,  hasOffset: true  },
     route:   { widthLabel: "Weight",         hasBuffer: true,  hasOffset: true  },
-    polygon: { widthLabel: "Outline width",  hasBuffer: false, hasOffset: false }
+    polygon: { widthLabel: "Width",           hasBuffer: false, hasOffset: false }
   };
 
   function typeHasFeatures(type) {
@@ -707,8 +707,11 @@
     var wrapper = document.createElement("div");
     wrapper.className = "lp-feature";
 
+    var isSelected = typeof App.isFeatureSelected === "function" && App.isFeatureSelected(it.type, it.index);
     var row = document.createElement("div");
-    row.className = "lp-row lp-row-sub" + (it.feature.properties.hidden ? " lp-row-hidden" : "");
+    row.className = "lp-row lp-row-sub" +
+      (it.feature.properties.hidden ? " lp-row-hidden" : "") +
+      (isSelected ? " lp-row-selected" : "");
 
     var featKey = it.type + ":" + it.index;
     var featLabel = it.feature.properties.name || (it.type + " " + (it.index + 1));
@@ -776,6 +779,17 @@
     row.appendChild(name);
 
     row.appendChild(eye);
+
+    row.addEventListener("mouseenter", function () {
+      if (typeof App.setHoveredFeature === "function") App.setHoveredFeature(it.type, it.index);
+    });
+    row.addEventListener("mouseleave", function () {
+      if (typeof App.clearHover === "function") App.clearHover();
+    });
+    row.addEventListener("click", function () {
+      if (typeof App.selectFeature === "function") App.selectFeature(it.type, it.index);
+      render();
+    });
 
     row.addEventListener("contextmenu", function (e) {
       e.preventDefault();
