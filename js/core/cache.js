@@ -10,7 +10,7 @@
   var App = window.App = window.App || {};
 
   var STORAGE_KEY = "mat-session";
-  var SCHEMA_VERSION = 3;
+  var SCHEMA_VERSION = 4;
 
   // ---- Schema migration ----
   function migrateV1toV2(state) {
@@ -36,10 +36,70 @@
     return state;
   }
 
+  // v4 (docs/feature-color-system-plan.md, Phase 5): one-time conversion of
+  // stored line/route/polygon colors that were stamped at creation before
+  // the color cascade existed, so features drawn under the old system follow
+  // the type default like everything drawn since. For each line/route whose
+  // properties.color exactly matches the palette color its array position
+  // would have produced, clear it to "" (inherit) and stamp the equivalent
+  // colorSeq so it keeps rendering the same color today, and can still vary
+  // correctly if a later feature is deleted. A polygon whose color matches
+  // the built-in default is cleared the same way (no colorSeq — polygons
+  // don't vary). Any other color was a deliberate user choice and is left
+  // as a per-feature override. Runs once per stored file: migrateToCurrent
+  // only calls this when state.version === 3, and the next save/export
+  // records the file at version 4.
+  function _paletteColorAt(positionalIndex) {
+    var colors = App.FEATURE_COLORS || [];
+    var n = colors.length;
+    if (!n) return null;
+    return colors[((positionalIndex % n) + n) % n];
+  }
+
+  function migrateV3toV4(state) {
+    var linesArr = Array.isArray(state.lines) ? state.lines : [];
+    var routesArr = Array.isArray(state.routes) ? state.routes : [];
+    var polysArr = Array.isArray(state.polygons) ? state.polygons : [];
+
+    for (var i = 0; i < linesArr.length; i++) {
+      var lf = linesArr[i];
+      var lc = lf && lf.properties && lf.properties.color;
+      var lPalette = _paletteColorAt(i);
+      if (lc && lPalette && String(lc).toLowerCase() === lPalette.toLowerCase()) {
+        lf.properties.color = "";
+        lf.properties.colorSeq = i;
+      }
+    }
+
+    for (var r = 0; r < routesArr.length; r++) {
+      var rf = routesArr[r];
+      var rc = rf && rf.properties && rf.properties.color;
+      var positionalIndex = linesArr.length + r;
+      var rPalette = _paletteColorAt(positionalIndex);
+      if (rc && rPalette && String(rc).toLowerCase() === rPalette.toLowerCase()) {
+        rf.properties.color = "";
+        rf.properties.colorSeq = positionalIndex;
+      }
+    }
+
+    var polyDefault = App.POLYGON_DEFAULT_COLOR;
+    for (var p = 0; p < polysArr.length; p++) {
+      var pf = polysArr[p];
+      var pc = pf && pf.properties && pf.properties.color;
+      if (pc && polyDefault && String(pc).toLowerCase() === polyDefault.toLowerCase()) {
+        pf.properties.color = "";
+      }
+    }
+
+    state.version = 4;
+    return state;
+  }
+
   function migrateToCurrent(state) {
     if (!state) return state;
     if (state.version === 1) state = migrateV1toV2(state);
     if (state.version === 2) state = migrateV2toV3(state);
+    if (state.version === 3) state = migrateV3toV4(state);
     return state;
   }
   var _saveTimer = null;
@@ -835,7 +895,6 @@
   async function exportFullState() {
     try {
       var state = collectState("full");
-      state.version = 3;
       state.exportType = "full-state";
       state.lodesData = (typeof App.serializeLodesData === "function")
         ? App.serializeLodesData() : null;
