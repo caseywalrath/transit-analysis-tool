@@ -493,10 +493,10 @@ a time, both seasons are now always scored and graphed together.
   each (`"2.63 winter · 2.13 summer kWh/mi"`), with a small colored dot in
   front of each number tying it to its matching chart line — the fact count
   didn't grow, existing lines just got richer.
-- The one-sentence summary stays winter-first; a second sentence
-  ("In summer, N round trips per charge.") is appended only when summer's
-  whole-round-trip count actually differs from winter's, so most routes stay
-  a single sentence.
+- The one-sentence summary (`rangeSentence()` — "N round trips per charge.
+  Route runs N round trips/day — needs N charges, or a second bus.", plus a
+  conditional summer clause) was removed shortly after shipping — one more
+  thing competing for attention below an already-legible pill/chart.
 
 ## Out of scope
 

@@ -6363,8 +6363,6 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
    Route Electrification Feasibility module (.zeb- prefix)
    --------------------------------------------------------------------- */
 
-.zeb-feed-bar { margin-top: 4px; }
-
 /* Slightly larger than the shared 13px default — this module's results are
    built to be screenshotted, so a touch more size helps legibility once a
    screenshot gets scaled down into a document. */
@@ -6454,11 +6452,6 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   border-radius: 50%;
   margin-right: 4px;
   vertical-align: middle;
-}
-
-.zeb-detail-sentence {
-  margin: 10px 0 0;
-  font-size: var(--text-base);
 }
 
 /* Chart type is sized against the 640-wide viewBox: large enough that a

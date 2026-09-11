@@ -647,7 +647,6 @@
     _lastResult.shownRoutes = shown;
 
     renderResultsTable(shown);
-    renderFeedBar();
     renderMapRoutes(shown);
     renderDepots(shown);
     showLegend();
@@ -661,28 +660,6 @@
     // already say a run completed; a "Scored N routes" bar was one more
     // thing competing for attention in a screenshot.
     setStatus();
-  }
-
-  // ---- Feed bar ----
-
-  function renderFeedBar() {
-    var el = document.getElementById("zebFeedBar");
-    if (!el) return;
-    if (!_prepared) { el.style.display = "none"; el.textContent = ""; return; }
-    var data = App.getGTFSData ? App.getGTFSData() : null;
-    var feedName = "GTFS feed";
-    var version = "";
-    if (data && data.has("feed_info.txt") && data.get("feed_info.txt").rows.length) {
-      var fi = data.get("feed_info.txt").rows[0];
-      feedName = fi.feed_publisher_name || feedName;
-      version = fi.feed_version || "";
-    }
-    var routeCount = Object.keys(_prepared.routes).length;
-    var agencyCount = _prepared.agencies.length;
-    el.textContent = feedName + " · " + agencyCount + " agenc" + (agencyCount === 1 ? "y" : "ies") +
-      " · " + routeCount + " route" + (routeCount === 1 ? "" : "s") +
-      (version ? " · feed version " + version : "");
-    el.style.display = "";
   }
 
   // ---- Results table ----
@@ -705,34 +682,6 @@
     if (mod100 >= 11 && mod100 <= 13) return n + "th";
     var suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
     return n + suffix;
-  }
-
-  // Winter drives the headline number, matching the table pill/sort. Summer
-  // only gets a second clause when it would actually change the answer
-  // (a different whole-round-trip count) — most routes don't need it, so
-  // most rows stay a single sentence.
-  function rangeSentence(r) {
-    var range = r.range, rangeSummer = r.rangeSummer;
-    var whole = range.roundTripsWhole != null ? range.roundTripsWhole : 0;
-    var miles = Number.isFinite(range.revenueMilesPerCharge) ? Math.round(range.revenueMilesPerCharge) : null;
-    var lead = "<strong>" + whole + " round trip" + (whole === 1 ? "" : "s") +
-      (miles != null ? " (" + miles + " mi)" : "") + " per charge.</strong>";
-    var tripsPerDayStr = fmtNum1(range.roundTripsPerDay);
-    var tail;
-    if (range.coversDay) {
-      tail = " Route runs " + tripsPerDayStr + " round trips/day — one charge covers the day.";
-    } else if (Number.isFinite(range.roundTripsPerCharge) && range.roundTripsPerCharge >= 1) {
-      var charges = Number.isFinite(range.chargesPerDay) ? range.chargesPerDay : "multiple";
-      tail = " Route runs " + tripsPerDayStr + " round trips/day — needs " + charges + " charges, or a second bus.";
-    } else {
-      tail = " Route cannot finish one round trip on a charge.";
-    }
-    var summerWhole = rangeSummer && rangeSummer.roundTripsWhole != null ? rangeSummer.roundTripsWhole : 0;
-    var summerClause = "";
-    if (summerWhole !== whole) {
-      summerClause = " In summer, " + summerWhole + " round trip" + (summerWhole === 1 ? "" : "s") + " per charge.";
-    }
-    return lead + tail + summerClause;
   }
 
   function factsListHTML(rows) {
@@ -780,7 +729,6 @@
         '<div class="zeb-detail-facts-col">' + factsListHTML(facts) + '</div>' +
         '<div class="zeb-detail-chart-col">' + buildRangeChartSVG(r) + '</div>' +
       '</div>' +
-      '<p class="zeb-detail-sentence">' + rangeSentence(r) + '</p>' +
     '</div>';
   }
 
@@ -1311,7 +1259,6 @@
     syncControlsFromSettings();
     syncOverlayCheckboxes();
     renderInputs(_lastResult ? true : false);
-    renderFeedBar();
 
     if (_lastResult) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
@@ -1367,7 +1314,6 @@
     if (!isPopupVisible()) return;
     buildFilterDropdowns();
     renderInputs(false);
-    renderFeedBar();
     if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
     var resultsEl = document.getElementById("zebResults");
     if (resultsEl) resultsEl.style.display = "none";
