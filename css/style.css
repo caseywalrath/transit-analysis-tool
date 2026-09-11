@@ -493,7 +493,6 @@ button { cursor: pointer; }
    position — a feature row's eye sits where a group header's or layer row's
    eye does not, so each role gets its own offset instead of one shared class. */
 .lp-row-eye   { right: 0; }
-.lp-row-clear { right: 24px; }
 .lp-group-eye { right: 24px; }
 .lp-layer-eye { right: 48px; }
 .lp-row-op    { right: 24px; }
@@ -506,7 +505,6 @@ button { cursor: pointer; }
 .lp-layer-eye:hover,
 .lp-row-op:hover,
 .lp-row-menu:hover { color: var(--accent); }
-.lp-row-clear:hover { color: var(--danger); }
 .lp-eye-off { color: var(--text-disabled); }
 .lp-swatch {
   width: 24px;

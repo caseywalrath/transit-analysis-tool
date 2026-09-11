@@ -604,8 +604,7 @@
     menu.innerHTML = MENU_SVG;
     menu.title = "More";
     menu.setAttribute("aria-label", "More actions for " + entry.label);
-    menu.addEventListener("click", function (e) {
-      e.stopPropagation();
+    function layerMenuOptions() {
       var opts = [{ label: "Zoom to layer", action: function () { zoomToEntry(entry); } }];
       if (entry.moduleId) {
         opts.push({ label: "Open module", action: function () {
@@ -619,11 +618,24 @@
           render();
         } });
       }
+      return opts;
+    }
+
+    menu.addEventListener("click", function (e) {
+      e.stopPropagation();
       if (typeof App.showContextMenu === "function") {
-        App.showContextMenu(e.clientX, e.clientY, opts);
+        App.showContextMenu(e.clientX, e.clientY, layerMenuOptions());
       }
     });
     row.appendChild(menu);
+
+    row.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof App.showContextMenu === "function") {
+        App.showContextMenu(e.clientX, e.clientY, layerMenuOptions());
+      }
+    });
 
     attachDrag(row, bandKey, entry.id, order, getPresent);
     return row;
@@ -763,26 +775,32 @@
     name.textContent = featLabel;
     row.appendChild(name);
 
-    // Chips appended after the name, farthest offset first (clear 24 -> eye 0),
-    // matching the Features tab's documented DOM-order convention.
-    if (it.feature.properties.color) {
-      var clearColorBtn = document.createElement("button");
-      clearColorBtn.type = "button";
-      clearColorBtn.className = "lp-row-clear ui-hover-chip";
-      clearColorBtn.textContent = "×";
-      clearColorBtn.title = "Clear color override (use default)";
-      clearColorBtn.setAttribute("aria-label", "Clear color override for " + featLabel);
-      clearColorBtn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        it.feature.properties.color = "";
-        App.rerenderForType(it.type);
-        if (App.cache && typeof App.cache.save === "function") App.cache.save();
-        if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-        render();
-      });
-      row.appendChild(clearColorBtn);
-    }
     row.appendChild(eye);
+
+    row.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var opts = [
+        { label: "Zoom to feature", action: function () { zoomToFeatures([it]); } },
+        { label: it.feature.properties.hidden ? "Show" : "Hide", action: function () {
+          setItemsHidden([it], !it.feature.properties.hidden);
+          render();
+        } }
+      ];
+      if (it.feature.properties.color) {
+        opts.push({ label: "Clear color override", action: function () {
+          it.feature.properties.color = "";
+          App.rerenderForType(it.type);
+          if (App.cache && typeof App.cache.save === "function") App.cache.save();
+          if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+          render();
+        } });
+      }
+      opts.push({ label: "Edit attributes…", action: function () {
+        if (typeof App.openAttrPopup === "function") App.openAttrPopup(it.type, it.index, it.feature);
+      } });
+      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, opts);
+    });
 
     wrapper.appendChild(row);
 
@@ -848,6 +866,29 @@
     name.textContent = groupName + " (" + items.length + ")";
     header.appendChild(name);
 
+    function startGroupRename() {
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "fp-group-name-edit";
+      inp.value = groupName;
+      name.style.display = "none";
+      header.insertBefore(inp, name.nextSibling);
+      inp.focus();
+      inp.select();
+      function save() {
+        var newName = inp.value.trim();
+        inp.remove();
+        name.style.display = "";
+        if (newName && newName !== groupName) renameGroup(groupName, items, newName);
+      }
+      inp.addEventListener("click", function (e) { e.stopPropagation(); });
+      inp.addEventListener("blur", save);
+      inp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") inp.blur();
+        if (ev.key === "Escape") { inp.value = groupName; inp.blur(); }
+      });
+    }
+
     // Chips appended after the name, farthest offset first (eye 24 -> menu 0),
     // matching the Features tab's documented DOM-order convention.
     header.appendChild(eye);
@@ -859,8 +900,8 @@
     menu.innerHTML = MENU_SVG;
     menu.title = "More";
     menu.setAttribute("aria-label", "More actions for group " + groupName);
-    menu.addEventListener("click", function (e) {
-      e.stopPropagation();
+
+    function groupMenuOptions() {
       var opts = [
         { label: "Zoom to group", action: function () { zoomToFeatures(items); } },
         { label: "Solo (hide other features)", action: function () { soloItems(items); } },
@@ -870,11 +911,22 @@
         opts.push({ label: "Show all features", action: function () { showAllDrawn(); } });
       }
       if (!isUngrouped) {
-        opts.push({ label: "Rename group", action: function () { renameGroup(groupName, items); } });
+        opts.push({ label: "Rename group", action: function () { startGroupRename(); } });
       }
-      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, opts);
+      return opts;
+    }
+
+    menu.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, groupMenuOptions());
     });
     header.appendChild(menu);
+
+    header.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, groupMenuOptions());
+    });
 
     var body = document.createElement("div");
     body.className = "lp-group-body";
@@ -899,10 +951,8 @@
     return block;
   }
 
-  function renameGroup(oldName, items) {
-    var nn = window.prompt("Rename group", oldName);
-    if (nn == null) return;
-    nn = nn.trim();
+  function renameGroup(oldName, items, newName) {
+    var nn = (newName || "").trim();
     if (!nn || nn === oldName) return;
     var key = App.UNIVERSAL_GROUP_KEY || "group";
     items.forEach(function (it) {
