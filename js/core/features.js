@@ -1410,6 +1410,9 @@
   // without duplicating the collection + grouping logic.
   App.collectDrawnFeatures = collectAllFeatures;
   App.UNIVERSAL_GROUP_KEY  = UNIVERSAL_GROUP_KEY;
+  // Shared with the Layers panel so its feature rows can show the same
+  // type-shaped, color-tinted glyph Features uses instead of a plain swatch.
+  App.TYPE_ICON_SVGS = TYPE_ICON_SVGS;
 
   // Session-cache read/write hooks for the Features list sort state
   // (mirrors the featureSettings pattern — see js/core/cache.js).

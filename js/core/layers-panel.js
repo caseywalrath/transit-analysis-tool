@@ -32,6 +32,11 @@
     'stroke-width="2"><circle cx="12" cy="12" r="9"/>' +
     '<path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>';
 
+  var TYPE_LABELS_LOCAL = {
+    point: "Point", line: "Line",
+    route: "Route", polygon: "Polygon", label: "Label"
+  };
+
   // ---- Reference + analysis layer manifest ----
   // Each entry: { id (presence/detect key), label, layers:[{id, op}] }.
   function callIf(fn) { return function () { if (typeof App[fn] === "function") App[fn].apply(App, arguments); }; }
@@ -731,16 +736,19 @@
       render();
     });
 
-    var color = it.feature.properties.color || App.getTypeDefaultColor(it.type);
-    var sw = document.createElement("button");
-    sw.type = "button";
-    sw.className = "lp-swatch";
-    sw.style.background = color;
-    sw.title = "Change color";
-    sw.setAttribute("aria-label", "Change color for " + featLabel);
-    sw.addEventListener("click", function (e) {
+    // Type icon — same type-shaped, color-tinted glyph the Features tab uses,
+    // so a row shows both "what type" and "what color" in one 24px control.
+    var typeIcon = document.createElement("button");
+    typeIcon.type = "button";
+    typeIcon.className = "fp-type-icon";
+    typeIcon.innerHTML = (App.TYPE_ICON_SVGS || {})[it.type] || "";
+    typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[it.type] || it.type) + " color";
+    typeIcon.setAttribute("aria-label", typeIcon.title);
+    typeIcon.style.color = App.resolveFeatureColor(it.type, it.feature);
+    typeIcon.addEventListener("click", function (e) {
       e.stopPropagation();
-      App.openColorPicker(sw, it.feature.properties.color || color, function (nc) {
+      var curColor = typeIcon.style.color;
+      App.openColorPicker(typeIcon, curColor, function (nc) {
         it.feature.properties.color = nc;
         App.rerenderForType(it.type);
         if (App.cache && typeof App.cache.save === "function") App.cache.save();
@@ -748,7 +756,7 @@
         render();
       });
     });
-    row.appendChild(sw);
+    row.appendChild(typeIcon);
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
@@ -822,25 +830,18 @@
     });
 
     var firstColor = items[0].feature.properties.color || App.getTypeDefaultColor(items[0].type);
-    var sw = document.createElement("button");
-    sw.type = "button";
-    sw.className = "lp-swatch";
-    sw.style.background = firstColor;
-    sw.title = "Change color for all in group";
-    sw.setAttribute("aria-label", "Change color for group " + groupName);
-    sw.addEventListener("click", function (e) {
-      e.stopPropagation();
-      App.openColorPicker(sw, firstColor, function (nc) {
+    header.style.borderLeftColor = firstColor;
+    function changeGroupColor(anchorEl) {
+      App.openColorPicker(anchorEl, firstColor, function (nc) {
         var types = {};
         items.forEach(function (it) { it.feature.properties.color = nc; types[it.type] = true; });
-        sw.style.background = nc;
+        header.style.borderLeftColor = nc;
         Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
         if (App.cache && typeof App.cache.save === "function") App.cache.save();
         if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
         render();
       });
-    });
-    header.appendChild(sw);
+    }
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
@@ -862,7 +863,8 @@
       e.stopPropagation();
       var opts = [
         { label: "Zoom to group", action: function () { zoomToFeatures(items); } },
-        { label: "Solo (hide other features)", action: function () { soloItems(items); } }
+        { label: "Solo (hide other features)", action: function () { soloItems(items); } },
+        { label: "Change group color", action: function () { changeGroupColor(menu); } }
       ];
       if (anyDrawnHidden()) {
         opts.push({ label: "Show all features", action: function () { showAllDrawn(); } });

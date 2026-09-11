@@ -529,7 +529,11 @@ button { cursor: pointer; }
   min-height: 24px;
 }
 .lp-caret.open { transform: rotate(180deg); }
-.lp-group-header { font-weight: var(--weight-semibold); }
+.lp-group-header {
+  font-weight: var(--weight-semibold);
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
+}
 .lp-group-body { }
 .lp-empty {
   font-size: var(--text-xs);
