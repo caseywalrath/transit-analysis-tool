@@ -554,7 +554,7 @@
     var vis = entryVisible(entry);
     var eye = document.createElement("button");
     eye.type = "button";
-    eye.className = "lp-row-btn" + (vis ? "" : " lp-eye-off");
+    eye.className = "lp-layer-eye ui-hover-chip" + (vis ? "" : " lp-eye-off");
     eye.innerHTML = vis ? EYE_SVG : EYE_OFF_SVG;
     eye.title = vis ? "Hide layer" : "Show layer";
     eye.setAttribute("aria-label", (vis ? "Hide " : "Show ") + entry.label);
@@ -566,16 +566,19 @@
       if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
       else render();
     });
-    row.appendChild(eye);
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
     name.textContent = entry.label;
     row.appendChild(name);
 
+    // Chips appended after the name, farthest offset first (eye 48 -> op 24 -> menu 0),
+    // matching the Features tab's documented DOM-order convention.
+    row.appendChild(eye);
+
     var op = document.createElement("button");
     op.type = "button";
-    op.className = "lp-row-btn lp-row-op";
+    op.className = "lp-row-op ui-hover-chip";
     op.innerHTML = OPACITY_SVG;
     op.title = "Opacity";
     op.setAttribute("aria-label", "Change opacity for " + entry.label);
@@ -592,7 +595,7 @@
 
     var menu = document.createElement("button");
     menu.type = "button";
-    menu.className = "lp-row-btn lp-row-menu";
+    menu.className = "lp-row-menu ui-hover-chip";
     menu.innerHTML = MENU_SVG;
     menu.title = "More";
     menu.setAttribute("aria-label", "More actions for " + entry.label);
@@ -718,7 +721,7 @@
     var hidden = !!it.feature.properties.hidden;
     var eye = document.createElement("button");
     eye.type = "button";
-    eye.className = "lp-row-btn" + (hidden ? " lp-eye-off" : "");
+    eye.className = "lp-row-eye ui-hover-chip" + (hidden ? " lp-eye-off" : "");
     eye.innerHTML = hidden ? EYE_OFF_SVG : EYE_SVG;
     eye.title = hidden ? "Show" : "Hide";
     eye.setAttribute("aria-label", (hidden ? "Show " : "Hide ") + featLabel);
@@ -727,7 +730,6 @@
       setItemsHidden([it], !it.feature.properties.hidden);
       render();
     });
-    row.appendChild(eye);
 
     var color = it.feature.properties.color || App.getTypeDefaultColor(it.type);
     var sw = document.createElement("button");
@@ -748,10 +750,17 @@
     });
     row.appendChild(sw);
 
+    var name = document.createElement("span");
+    name.className = "lp-row-label";
+    name.textContent = featLabel;
+    row.appendChild(name);
+
+    // Chips appended after the name, farthest offset first (clear 24 -> eye 0),
+    // matching the Features tab's documented DOM-order convention.
     if (it.feature.properties.color) {
       var clearColorBtn = document.createElement("button");
       clearColorBtn.type = "button";
-      clearColorBtn.className = "lp-style-clear";
+      clearColorBtn.className = "lp-row-clear ui-hover-chip";
       clearColorBtn.textContent = "×";
       clearColorBtn.title = "Clear color override (use default)";
       clearColorBtn.setAttribute("aria-label", "Clear color override for " + featLabel);
@@ -765,11 +774,7 @@
       });
       row.appendChild(clearColorBtn);
     }
-
-    var name = document.createElement("span");
-    name.className = "lp-row-label";
-    name.textContent = featLabel;
-    row.appendChild(name);
+    row.appendChild(eye);
 
     wrapper.appendChild(row);
 
@@ -806,7 +811,7 @@
     header.classList.toggle("lp-row-hidden", allHidden);
     var eye = document.createElement("button");
     eye.type = "button";
-    eye.className = "lp-row-btn" + (allHidden ? " lp-eye-off" : "");
+    eye.className = "lp-group-eye ui-hover-chip" + (allHidden ? " lp-eye-off" : "");
     eye.innerHTML = allHidden ? EYE_OFF_SVG : EYE_SVG;
     eye.title = allHidden ? "Show all" : "Hide all";
     eye.setAttribute("aria-label", (allHidden ? "Show" : "Hide") + " group " + groupName);
@@ -815,7 +820,6 @@
       setItemsHidden(items, !allHidden);
       render();
     });
-    header.appendChild(eye);
 
     var firstColor = items[0].feature.properties.color || App.getTypeDefaultColor(items[0].type);
     var sw = document.createElement("button");
@@ -843,10 +847,14 @@
     name.textContent = groupName + " (" + items.length + ")";
     header.appendChild(name);
 
+    // Chips appended after the name, farthest offset first (eye 24 -> menu 0),
+    // matching the Features tab's documented DOM-order convention.
+    header.appendChild(eye);
+
     var isUngrouped = (groupName === "Ungrouped");
     var menu = document.createElement("button");
     menu.type = "button";
-    menu.className = "lp-row-btn lp-row-menu";
+    menu.className = "lp-row-menu ui-hover-chip";
     menu.innerHTML = MENU_SVG;
     menu.title = "More";
     menu.setAttribute("aria-label", "More actions for group " + groupName);
