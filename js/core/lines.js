@@ -269,12 +269,9 @@
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     var idx = lines.length + 1;
     var nWaypoints = currentCoords.length;
-    var colorIdx = lines.length + (App.routes ? App.routes.length : 0);
-    var color = (App.sectionColors && App.sectionColors.line) ||
-                App.FEATURE_COLORS[colorIdx % App.FEATURE_COLORS.length];
     var feature = {
       type: "Feature",
-      properties: { name: "Line " + idx, lineIdx: idx, waypoints: nWaypoints, color: color, colorSeq: App._nextColorSeq() },
+      properties: { name: "Line " + idx, lineIdx: idx, waypoints: nWaypoints, color: "", colorSeq: App._nextColorSeq() },
       geometry: { type: "LineString", coordinates: currentCoords.slice() }
     };
     lines.push(feature);
@@ -297,17 +294,13 @@
     opts = opts || {};
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     var idx = lines.length + 1;
-    var colorIdx = lines.length + (App.routes ? App.routes.length : 0);
-    var color = opts.color ||
-                (App.sectionColors && App.sectionColors.line) ||
-                App.FEATURE_COLORS[colorIdx % App.FEATURE_COLORS.length];
     var feature = {
       type: "Feature",
       properties: {
         name: opts.name || ("Line " + idx),
         lineIdx: idx,
         waypoints: coords.length,
-        color: color,
+        color: opts.color || "",
         colorSeq: App._nextColorSeq()
       },
       geometry: { type: "LineString", coordinates: coords.slice() }

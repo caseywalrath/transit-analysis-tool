@@ -478,16 +478,13 @@
 
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     var idx = routes.length + 1;
-    var colorIdx = (App.lines ? App.lines.length : 0) + routes.length;
-    var color = (App.sectionColors && App.sectionColors.route) ||
-                App.FEATURE_COLORS[colorIdx % App.FEATURE_COLORS.length];
     var feature = {
       type: "Feature",
       properties: {
         name: "Route " + idx,
         routeIdx: idx,
         waypoints: currentWaypoints.slice(),
-        color: color,
+        color: "",
         colorSeq: App._nextColorSeq()
       },
       geometry: { type: "LineString", coordinates: coords }

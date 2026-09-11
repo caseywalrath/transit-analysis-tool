@@ -241,10 +241,9 @@
     var ring = currentCoords.slice();
     ring.push(ring[0]); // close the ring
 
-    var polyColor = (App.sectionColors && App.sectionColors.polygon) || App.POLYGON_DEFAULT_COLOR || "#b0c4de";
     var feature = {
       type: "Feature",
-      properties: { name: "Polygon " + idx, polyIdx: idx, vertices: nVertices, color: polyColor },
+      properties: { name: "Polygon " + idx, polyIdx: idx, vertices: nVertices, color: "" },
       geometry: { type: "Polygon", coordinates: [ring] }
     };
     polygons.push(feature);
