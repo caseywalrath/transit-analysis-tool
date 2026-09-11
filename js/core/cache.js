@@ -160,6 +160,22 @@
       for (var ti = 0; ti < state.textBoxes.length; ti++) App.textBoxes.push(state.textBoxes[ti]);
     }
 
+    // 2b. Advance the colorSeq counter past any restored value so a newly
+    // drawn line/route never collides with a palette slot already stamped
+    // on a restored feature.
+    if (typeof App._advanceColorSeqPast === "function") {
+      var maxColorSeq = -1;
+      for (var lsi = 0; lsi < App.lines.length; lsi++) {
+        var lSeq = App.lines[lsi].properties && App.lines[lsi].properties.colorSeq;
+        if (typeof lSeq === "number" && lSeq > maxColorSeq) maxColorSeq = lSeq;
+      }
+      for (var rsi = 0; rsi < App.routes.length; rsi++) {
+        var rSeq = App.routes[rsi].properties && App.routes[rsi].properties.colorSeq;
+        if (typeof rSeq === "number" && rSeq > maxColorSeq) maxColorSeq = rSeq;
+      }
+      if (maxColorSeq >= 0) App._advanceColorSeqPast(maxColorSeq);
+    }
+
     // 3. Restore feature settings into App.featureSettings
     if (App.featureSettings) {
       var fs = App.featureSettings;

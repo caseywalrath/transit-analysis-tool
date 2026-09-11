@@ -15,16 +15,27 @@
   /* ---- GeoJSON helpers ---- */
 
   function polygonsGeoJSON() {
-    return { type: "FeatureCollection", features: polygons.filter(function (p) { return !p.properties.hidden; }) };
+    return {
+      type: "FeatureCollection",
+      features: polygons.filter(function (p) { return !p.properties.hidden; }).map(function (p) {
+        var props = {};
+        for (var k in p.properties) { if (Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
+        props.resolvedColor = App.resolveFeatureColor("polygon", p);
+        return { type: "Feature", properties: props, geometry: p.geometry };
+      })
+    };
   }
 
   function polygonOutlinesGeoJSON() {
     return {
       type: "FeatureCollection",
       features: polygons.filter(function (p) { return !p.properties.hidden; }).map(function (f) {
+        var props = {};
+        for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+        props.resolvedColor = App.resolveFeatureColor("polygon", f);
         return {
           type: "Feature",
-          properties: f.properties,
+          properties: props,
           geometry: {
             type: "LineString",
             coordinates: f.geometry.coordinates[0]
@@ -38,12 +49,13 @@
     var features = [];
     polygons.forEach(function (poly) {
       if (poly.properties.hidden) return;
+      var polyResolvedColor = App.resolveFeatureColor("polygon", poly);
       // Skip the closing coordinate (last === first)
       var ring = poly.geometry.coordinates[0];
       for (var i = 0; i < ring.length - 1; i++) {
         features.push({
           type: "Feature",
-          properties: { polyIdx: poly.properties.polyIdx, vertexIdx: i + 1, color: poly.properties.color },
+          properties: { polyIdx: poly.properties.polyIdx, vertexIdx: i + 1, resolvedColor: polyResolvedColor },
           geometry: { type: "Point", coordinates: ring[i] }
         });
       }
@@ -105,7 +117,7 @@
         id: "polygons-fill",
         type: "fill",
         source: "polygons",
-        paint: { "fill-color": ["coalesce", ["get", "color"], COLOR], "fill-opacity": 0.15 }
+        paint: { "fill-color": ["get", "resolvedColor"], "fill-opacity": 0.15 }
       });
     } else {
       map.getSource("polygons").setData(polygonsGeoJSON());
@@ -118,7 +130,7 @@
         id: "polygons-outlines-layer",
         type: "line",
         source: "polygons-outlines",
-        paint: { "line-color": ["coalesce", ["get", "color"], COLOR], "line-width": 3, "line-opacity": 0.8 }
+        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8 }
       });
     } else {
       map.getSource("polygons-outlines").setData(polygonOutlinesGeoJSON());
@@ -133,7 +145,7 @@
         source: "polygons-vertices",
         paint: {
           "circle-radius": 3,
-          "circle-color": ["coalesce", ["get", "color"], COLOR],
+          "circle-color": ["get", "resolvedColor"],
           "circle-stroke-width": 1,
           "circle-stroke-color": "#ffffff"
         }

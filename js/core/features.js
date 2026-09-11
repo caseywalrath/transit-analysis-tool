@@ -250,7 +250,17 @@
   function getTypeDefaultColor(featureType) {
     var sc = App.sectionColors && App.sectionColors[featureType];
     if (sc) return sc;
-    var defaults = { point: "#2b6cb0", line: "#e53e3e", route: "#319795", polygon: "#b0c4de", label: "#1a202c" };
+    // Automatic, with no specific feature to resolve a palette slot for —
+    // each type keeps its own established default. (Route's intentionally
+    // differs from App.FEATURE_COLORS[0], so this can't just delegate to
+    // that array wholesale.)
+    var defaults = {
+      point: "#2b6cb0",
+      line: App.FEATURE_COLORS[0],
+      route: "#319795",
+      polygon: App.POLYGON_DEFAULT_COLOR || "#b0c4de",
+      label: "#1a202c"
+    };
     return defaults[featureType] || "#999999";
   }
 

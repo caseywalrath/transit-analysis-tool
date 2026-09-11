@@ -28,7 +28,7 @@
         : radiusMiles;
       if (r > 0) {
         var buf = turf.buffer(lines[i], r, { units: "miles", steps: 64 });
-        lineBuffers[i] = { type: buf.type, geometry: buf.geometry, properties: { lineIdx: lines[i].properties.lineIdx, color: lines[i].properties.color } };
+        lineBuffers[i] = { type: buf.type, geometry: buf.geometry, properties: { lineIdx: lines[i].properties.lineIdx, resolvedColor: App.resolveFeatureColor("line", lines[i]) } };
       }
     }
     renderLineLayers();
@@ -51,7 +51,15 @@
   /* ---- GeoJSON helpers ---- */
 
   function linesGeoJSON() {
-    return { type: "FeatureCollection", features: lines.filter(function (l) { return !l.properties.hidden; }) };
+    return {
+      type: "FeatureCollection",
+      features: lines.filter(function (l) { return !l.properties.hidden; }).map(function (l) {
+        var props = {};
+        for (var k in l.properties) { if (Object.prototype.hasOwnProperty.call(l.properties, k)) props[k] = l.properties[k]; }
+        props.resolvedColor = App.resolveFeatureColor("line", l);
+        return { type: "Feature", properties: props, geometry: l.geometry };
+      })
+    };
   }
 
   function currentLineGeoJSON() {
@@ -89,10 +97,11 @@
     lines.forEach(function (line, arrayIndex) {
       if (line.properties.hidden) return;
       if (!sel || sel.type !== "line" || sel.index !== arrayIndex) return;
+      var lineResolvedColor = App.resolveFeatureColor("line", line);
       line.geometry.coordinates.forEach(function (c, i) {
         features.push({
           type: "Feature",
-          properties: { lineIdx: line.properties.lineIdx, waypointIdx: i + 1, color: line.properties.color },
+          properties: { lineIdx: line.properties.lineIdx, waypointIdx: i + 1, resolvedColor: lineResolvedColor },
           geometry: { type: "Point", coordinates: c }
         });
       });
@@ -128,13 +137,13 @@
         id: "line-buffers-fill",
         type: "fill",
         source: "line-buffers",
-        paint: { "fill-color": ["coalesce", ["get", "color"], "#e53e3e"], "fill-opacity": 0.08 }
+        paint: { "fill-color": ["get", "resolvedColor"], "fill-opacity": 0.08 }
       });
       map.addLayer({
         id: "line-buffers-line",
         type: "line",
         source: "line-buffers",
-        paint: { "line-color": ["coalesce", ["get", "color"], "#e53e3e"], "line-width": 2, "line-opacity": 0.4 }
+        paint: { "line-color": ["get", "resolvedColor"], "line-width": 2, "line-opacity": 0.4 }
       });
     } else {
       map.getSource("line-buffers").setData(lineBuffersGeoJSON());
@@ -147,7 +156,7 @@
         id: "lines-layer",
         type: "line",
         source: "lines",
-        paint: { "line-color": ["coalesce", ["get", "color"], "#e53e3e"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
+        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
       });
     } else {
       map.getSource("lines").setData(linesGeoJSON());
@@ -162,7 +171,7 @@
         source: "lines-vertices",
         paint: {
           "circle-radius": 3,
-          "circle-color": ["coalesce", ["get", "color"], "#e53e3e"],
+          "circle-color": ["get", "resolvedColor"],
           "circle-stroke-width": 1,
           "circle-stroke-color": "#ffffff"
         }
@@ -265,7 +274,7 @@
                 App.FEATURE_COLORS[colorIdx % App.FEATURE_COLORS.length];
     var feature = {
       type: "Feature",
-      properties: { name: "Line " + idx, lineIdx: idx, waypoints: nWaypoints, color: color },
+      properties: { name: "Line " + idx, lineIdx: idx, waypoints: nWaypoints, color: color, colorSeq: App._nextColorSeq() },
       geometry: { type: "LineString", coordinates: currentCoords.slice() }
     };
     lines.push(feature);
@@ -298,7 +307,8 @@
         name: opts.name || ("Line " + idx),
         lineIdx: idx,
         waypoints: coords.length,
-        color: color
+        color: color,
+        colorSeq: App._nextColorSeq()
       },
       geometry: { type: "LineString", coordinates: coords.slice() }
     };

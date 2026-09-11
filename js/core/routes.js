@@ -97,7 +97,7 @@
         : radiusMiles;
       if (r > 0) {
         var buf = turf.buffer(routes[i], r, { units: "miles", steps: 64 });
-        routeBuffers[i] = { type: buf.type, geometry: buf.geometry, properties: { routeIdx: routes[i].properties.routeIdx, color: routes[i].properties.color } };
+        routeBuffers[i] = { type: buf.type, geometry: buf.geometry, properties: { routeIdx: routes[i].properties.routeIdx, resolvedColor: App.resolveFeatureColor("route", routes[i]) } };
       }
     }
     renderRouteLayers();
@@ -120,7 +120,15 @@
   /* ---- GeoJSON helpers ---- */
 
   function routesGeoJSON() {
-    return { type: "FeatureCollection", features: routes.filter(function (r) { return !r.properties.hidden; }) };
+    return {
+      type: "FeatureCollection",
+      features: routes.filter(function (r) { return !r.properties.hidden; }).map(function (r) {
+        var props = {};
+        for (var k in r.properties) { if (Object.prototype.hasOwnProperty.call(r.properties, k)) props[k] = r.properties[k]; }
+        props.resolvedColor = App.resolveFeatureColor("route", r);
+        return { type: "Feature", properties: props, geometry: r.geometry };
+      })
+    };
   }
 
   // In-progress drawing: resolved route coords + preview segment to cursor.
@@ -181,10 +189,11 @@
     routes.forEach(function (route, arrayIndex) {
       if (route.properties.hidden) return;
       if (!sel || sel.type !== "route" || sel.index !== arrayIndex) return;
+      var routeResolvedColor = App.resolveFeatureColor("route", route);
       (route.properties.waypoints || []).forEach(function (wp, i) {
         features.push({
           type: "Feature",
-          properties: { routeIdx: route.properties.routeIdx, waypointIdx: i + 1, color: route.properties.color },
+          properties: { routeIdx: route.properties.routeIdx, waypointIdx: i + 1, resolvedColor: routeResolvedColor },
           geometry: { type: "Point", coordinates: wp }
         });
       });
@@ -204,13 +213,13 @@
         id: "route-buffers-fill",
         type: "fill",
         source: "route-buffers",
-        paint: { "fill-color": ["coalesce", ["get", "color"], "#319795"], "fill-opacity": 0.08 }
+        paint: { "fill-color": ["get", "resolvedColor"], "fill-opacity": 0.08 }
       });
       map.addLayer({
         id: "route-buffers-line",
         type: "line",
         source: "route-buffers",
-        paint: { "line-color": ["coalesce", ["get", "color"], "#319795"], "line-width": 2, "line-opacity": 0.4 }
+        paint: { "line-color": ["get", "resolvedColor"], "line-width": 2, "line-opacity": 0.4 }
       });
     } else {
       map.getSource("route-buffers").setData(routeBuffersGeoJSON());
@@ -223,7 +232,7 @@
         id: "routes-layer",
         type: "line",
         source: "routes",
-        paint: { "line-color": ["coalesce", ["get", "color"], ROUTE_COLOR], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
+        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
       });
     } else {
       map.getSource("routes").setData(routesGeoJSON());
@@ -238,7 +247,7 @@
         source: "routes-waypoints-saved",
         paint: {
           "circle-radius": 3,
-          "circle-color": ["coalesce", ["get", "color"], ROUTE_COLOR],
+          "circle-color": ["get", "resolvedColor"],
           "circle-stroke-width": 1,
           "circle-stroke-color": "#ffffff"
         }
@@ -478,7 +487,8 @@
         name: "Route " + idx,
         routeIdx: idx,
         waypoints: currentWaypoints.slice(),
-        color: color
+        color: color,
+        colorSeq: App._nextColorSeq()
       },
       geometry: { type: "LineString", coordinates: coords }
     };

@@ -27,6 +27,21 @@
   // Context menu element (singleton)
   var _ctxMenu = null;
 
+  // Live vertex-drag preview sources feed the same "*-layer" ids as the
+  // normal render path, whose paint expressions read resolvedColor directly
+  // (no coalesce fallback — see js/core/utils.js resolveFeatureColor). Since
+  // these temp FeatureCollections bypass linesGeoJSON()/routesGeoJSON()/etc.
+  // for a lightweight per-frame update, they must stamp resolvedColor
+  // themselves or the dragged feature would go colorless mid-drag.
+  function _withResolvedColor(featureType, arr) {
+    return arr.map(function (f) {
+      var props = {};
+      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      props.resolvedColor = App.resolveFeatureColor(featureType, f);
+      return { type: "Feature", properties: props, geometry: f.geometry };
+    });
+  }
+
   // ---- Edit vertex layer management ----
 
   function editVerticesGeoJSON(featureType, featureIndex) {
@@ -504,7 +519,7 @@
         // Lightweight live update (no buffer rebuild)
         App.points[editState.index].geometry.coordinates = [e.lngLat.lng, e.lngLat.lat];
         var stSrc = map.getSource("points-src");
-        if (stSrc) stSrc.setData({ type: "FeatureCollection", features: App.points });
+        if (stSrc) stSrc.setData({ type: "FeatureCollection", features: _withResolvedColor("point", App.points) });
         return;
       }
 
@@ -516,16 +531,17 @@
           if (line) {
             line.geometry.coordinates[editState.vertexIndex] = [lng, lat];
             var lineSrc = map.getSource("lines");
-            if (lineSrc) lineSrc.setData({ type: "FeatureCollection", features: App.lines });
+            if (lineSrc) lineSrc.setData({ type: "FeatureCollection", features: _withResolvedColor("line", App.lines) });
             // Also update saved line vertices
             var vertSrc = map.getSource("lines-vertices");
             if (vertSrc) {
               var vertFeatures = [];
               App.lines.forEach(function (l) {
+                var lResolvedColor = App.resolveFeatureColor("line", l);
                 l.geometry.coordinates.forEach(function (c, idx) {
                   vertFeatures.push({
                     type: "Feature",
-                    properties: { lineIdx: l.properties.lineIdx, waypointIdx: idx + 1 },
+                    properties: { lineIdx: l.properties.lineIdx, waypointIdx: idx + 1, resolvedColor: lResolvedColor },
                     geometry: { type: "Point", coordinates: c }
                   });
                 });
@@ -543,15 +559,16 @@
             // Temporarily display straight lines between waypoints while dragging
             route.geometry.coordinates = wps.slice();
             var routeSrc = map.getSource("routes");
-            if (routeSrc) routeSrc.setData({ type: "FeatureCollection", features: App.routes });
+            if (routeSrc) routeSrc.setData({ type: "FeatureCollection", features: _withResolvedColor("route", App.routes) });
             var routeWpSrc = map.getSource("routes-waypoints-saved");
             if (routeWpSrc) {
               var rwpFeatures = [];
               App.routes.forEach(function (r) {
+                var rResolvedColor = App.resolveFeatureColor("route", r);
                 (r.properties.waypoints || []).forEach(function (wp, wi) {
                   rwpFeatures.push({
                     type: "Feature",
-                    properties: { routeIdx: r.properties.routeIdx, waypointIdx: wi + 1 },
+                    properties: { routeIdx: r.properties.routeIdx, waypointIdx: wi + 1, resolvedColor: rResolvedColor },
                     geometry: { type: "Point", coordinates: wp }
                   });
                 });
@@ -566,15 +583,18 @@
             ring[editState.vertexIndex] = [lng, lat];
             if (editState.vertexIndex === 0) ring[ring.length - 1] = [lng, lat];
             var polySrc = map.getSource("polygons");
-            if (polySrc) polySrc.setData({ type: "FeatureCollection", features: App.polygons });
+            if (polySrc) polySrc.setData({ type: "FeatureCollection", features: _withResolvedColor("polygon", App.polygons) });
             var outSrc = map.getSource("polygons-outlines");
             if (outSrc) {
               outSrc.setData({
                 type: "FeatureCollection",
                 features: App.polygons.map(function (f) {
+                  var props = {};
+                  for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+                  props.resolvedColor = App.resolveFeatureColor("polygon", f);
                   return {
                     type: "Feature",
-                    properties: f.properties,
+                    properties: props,
                     geometry: { type: "LineString", coordinates: f.geometry.coordinates[0] }
                   };
                 })
@@ -584,11 +604,12 @@
             if (pvSrc) {
               var pvFeatures = [];
               App.polygons.forEach(function (p) {
+                var pResolvedColor = App.resolveFeatureColor("polygon", p);
                 var r = p.geometry.coordinates[0];
                 for (var vi = 0; vi < r.length - 1; vi++) {
                   pvFeatures.push({
                     type: "Feature",
-                    properties: { polyIdx: p.properties.polyIdx, vertexIdx: vi + 1 },
+                    properties: { polyIdx: p.properties.polyIdx, vertexIdx: vi + 1, resolvedColor: pResolvedColor },
                     geometry: { type: "Point", coordinates: r[vi] }
                   });
                 }

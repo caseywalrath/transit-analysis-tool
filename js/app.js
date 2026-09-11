@@ -448,13 +448,27 @@
     }
   };
 
+  // Shallow-copies each feature and stamps resolvedColor, matching the
+  // linesGeoJSON()/routesGeoJSON() builders in lines.js/routes.js — the
+  // "lines"/"routes" sources' paint expressions read resolvedColor directly
+  // (see App.resolveFeatureColor in utils.js), so any direct setData onto
+  // them must supply it or the feature goes colorless.
+  function _withResolvedColorForOffset(featureType, arr) {
+    return arr.filter(function (f) { return !f.properties.hidden; }).map(function (f) {
+      var props = {};
+      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      props.resolvedColor = App.resolveFeatureColor(featureType, f);
+      return { type: "Feature", properties: props, geometry: f.geometry };
+    });
+  }
+
   function _pushOffsetSources() {
     var map = App.map;
     if (!map) return;
     var ls = map.getSource("lines");
-    if (ls) ls.setData({ type: "FeatureCollection", features: (App.lines || []).filter(function (f) { return !f.properties.hidden; }) });
+    if (ls) ls.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("line", App.lines || []) });
     var rs = map.getSource("routes");
-    if (rs) rs.setData({ type: "FeatureCollection", features: (App.routes || []).filter(function (f) { return !f.properties.hidden; }) });
+    if (rs) rs.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("route", App.routes || []) });
   }
 
   // ---- Feature deletion hook ----

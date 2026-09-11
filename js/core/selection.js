@@ -175,10 +175,11 @@
         feature = App.polygons && App.polygons[active.index];
       }
 
+      var color = feature
+        ? App.resolveFeatureColor(active.type, feature)
+        : (TYPE_COLOR[active.type] || "#2b6cb0");
+
       if (feature) {
-        var color = (feature.properties && feature.properties.color) ||
-                    (App.sectionColors && App.sectionColors[active.type]) ||
-                    TYPE_COLOR[active.type] || "#2b6cb0";
         var props = {};
         var fp = feature.properties;
         if (fp) { for (var k in fp) { if (Object.prototype.hasOwnProperty.call(fp, k)) props[k] = fp[k]; } }
@@ -186,10 +187,7 @@
         featureGeos.push({ type: "Feature", geometry: feature.geometry, properties: props });
       }
       if (buffer) {
-        var bColor = (feature && feature.properties && feature.properties.color) ||
-                     (App.sectionColors && App.sectionColors[active.type]) ||
-                     TYPE_COLOR[active.type] || "#2b6cb0";
-        bufferGeos.push({ type: "Feature", geometry: buffer.geometry, properties: { hl_color: bColor } });
+        bufferGeos.push({ type: "Feature", geometry: buffer.geometry, properties: { hl_color: color } });
       }
     });
 

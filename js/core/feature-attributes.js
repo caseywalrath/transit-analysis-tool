@@ -175,7 +175,7 @@
       });
       var dot = document.createElement("span");
       dot.className = "fp-route-picker-dot";
-      dot.style.background = feature.properties.color || "#aaa";
+      dot.style.background = App.resolveFeatureColor(featureType, feature);
       lbl.appendChild(cb);
       lbl.appendChild(dot);
       lbl.appendChild(document.createTextNode("\u00a0" + name));
