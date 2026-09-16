@@ -27,6 +27,7 @@
   var _hovered = null;        // { type: "point"|"line"|"route"|"polygon"|"label", index: N }
   var _multiSelected = [];    // Array of { type, index }
   var _anchor = null;         // { type, index } | null — range-select start for Shift+click
+  var _hoverTooltip = null;   // maplibregl.Popup, lazily created (name-on-hover tooltip)
 
   var EMPTY_FC = { type: "FeatureCollection", features: [] };
 
@@ -174,10 +175,11 @@
         feature = App.polygons && App.polygons[active.index];
       }
 
+      var color = feature
+        ? App.resolveFeatureColor(active.type, feature)
+        : (TYPE_COLOR[active.type] || "#2b6cb0");
+
       if (feature) {
-        var color = (feature.properties && feature.properties.color) ||
-                    (App.sectionColors && App.sectionColors[active.type]) ||
-                    TYPE_COLOR[active.type] || "#2b6cb0";
         var props = {};
         var fp = feature.properties;
         if (fp) { for (var k in fp) { if (Object.prototype.hasOwnProperty.call(fp, k)) props[k] = fp[k]; } }
@@ -185,10 +187,7 @@
         featureGeos.push({ type: "Feature", geometry: feature.geometry, properties: props });
       }
       if (buffer) {
-        var bColor = (feature && feature.properties && feature.properties.color) ||
-                     (App.sectionColors && App.sectionColors[active.type]) ||
-                     TYPE_COLOR[active.type] || "#2b6cb0";
-        bufferGeos.push({ type: "Feature", geometry: buffer.geometry, properties: { hl_color: bColor } });
+        bufferGeos.push({ type: "Feature", geometry: buffer.geometry, properties: { hl_color: color } });
       }
     });
 
@@ -215,17 +214,54 @@
     }
   }
 
+  // ---- Hover name tooltip ----
+
+  function ensureHoverTooltip() {
+    if (!_hoverTooltip) {
+      _hoverTooltip = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        maxWidth: "220px"
+      });
+    }
+    return _hoverTooltip;
+  }
+
+  function showHoverTooltip(type, index, lngLat) {
+    if (!lngLat || !App.map) return;
+    var feature = getFeatureFromApp(type, index);
+    var name = feature && feature.properties && feature.properties.name;
+    if (!name) return;
+    ensureHoverTooltip()
+      .setLngLat(lngLat)
+      .setHTML('<div class="feature-hover-tooltip">' + escHtml(name) + "</div>")
+      .addTo(App.map);
+  }
+
+  function hideHoverTooltip() {
+    if (_hoverTooltip) _hoverTooltip.remove();
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
   // ---- Public API ----
 
-  function setHoveredFeature(type, index) {
+  function setHoveredFeature(type, index, lngLat) {
     if (_multiSelected.length) return; // locked selection takes full priority
-    if (_hovered && _hovered.type === type && _hovered.index === index) return; // no change
+    if (_hovered && _hovered.type === type && _hovered.index === index) {
+      if (lngLat) showHoverTooltip(type, index, lngLat); // keep tooltip tracking the cursor
+      return;
+    }
     _hovered = { type: type, index: index };
     updateHighlightSources();
     applyPanelHighlight();
+    showHoverTooltip(type, index, lngLat);
   }
 
   function clearHover() {
+    hideHoverTooltip();
     if (_multiSelected.length) return; // locked selection takes full priority
     if (!_hovered) return;
     _hovered = null;

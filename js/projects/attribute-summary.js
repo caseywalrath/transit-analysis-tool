@@ -745,16 +745,6 @@
     return cell;
   }
 
-  function appendOverridesCell(row, featureType, feature) {
-    var cell = document.createElement("div");
-    cell.className = "as-cell as-cell-overrides";
-    var ovr = (typeof App.buildOverrideIcons === "function")
-      ? App.buildOverrideIcons(featureType, feature)
-      : null;
-    if (ovr) cell.appendChild(ovr);
-    row.appendChild(cell);
-  }
-
   // Header row builder
   function buildHeader(columns) {
     var hdr = document.createElement("div");
@@ -781,8 +771,7 @@
       { label: "Service", title: "Service area type (Circular buffer or Walkshed)" },
       { label: "ID",     title: "Stop ID" },
       { label: "Routes", title: "Associated routes / lines" },
-      { label: "",       cls: "as-col-copy", title: "Copy attributes" },
-      { label: "",       cls: "as-col-overrides", title: "Overrides" }
+      { label: "",       cls: "as-col-copy", title: "Copy attributes" }
     ]));
     container.firstChild.classList.add("as-grid-points");
 
@@ -826,7 +815,6 @@
         : document.createTextNode("—");
       appendCell(row, badge, "as-cell-badge");
       appendCell(row, buildCopyButton("point", idx, feat), "as-col-copy");
-      appendOverridesCell(row, "point", feat);
 
       container.appendChild(row);
     });
@@ -852,8 +840,7 @@
       { label: "Avg Spd",   cls: "as-col-num", title: "Average speed (mph)" },
       { label: "RunT",      cls: "as-col-num", title: "Run time (minutes, one-way / loop)" },
       { label: "Bands",     cls: "as-col-narrow", title: "Time bands — Weekday · Saturday · Sunday counts" },
-      { label: "",          cls: "as-col-copy", title: "Copy attributes" },
-      { label: "",          cls: "as-col-overrides", title: "Overrides" }
+      { label: "",          cls: "as-col-copy", title: "Copy attributes" }
     ]);
     hdr.classList.add(gridClass);
     var selAll = makeCheckbox("as-rowcheck as-rowcheck-all");
@@ -922,7 +909,6 @@
         : document.createTextNode("—");
       appendCell(row, bandsBtn, "as-col-narrow as-cell-badge");
       appendCell(row, buildCopyButton(featureType, idx, feat), "as-col-copy");
-      appendOverridesCell(row, featureType, feat);
 
       container.appendChild(row);
     });
@@ -1006,8 +992,7 @@
       { label: "" },
       { label: "Name" },
       { label: "Notes" },
-      { label: "", cls: "as-col-copy", title: "Copy attributes" },
-      { label: "", cls: "as-col-overrides", title: "Overrides" }
+      { label: "", cls: "as-col-copy", title: "Copy attributes" }
     ]));
     container.firstChild.classList.add("as-grid-polygons");
 
@@ -1035,7 +1020,6 @@
         { placeholder: "" }
       ));
       appendCell(row, buildCopyButton("polygon", idx, feat), "as-col-copy");
-      appendOverridesCell(row, "polygon", feat);
 
       container.appendChild(row);
     });

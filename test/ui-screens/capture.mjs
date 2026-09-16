@@ -108,8 +108,7 @@ const MODULE_IDS = [
   "trip-builder",
   "title-vi",
   "gtfs",
-  "attribute-summary",
-  "display-settings"
+  "attribute-summary"
 ];
 
 // Phase 7b: active single-step tools start as map-friendly vertical task
@@ -469,7 +468,7 @@ async function captureTheme(browser, theme, port) {
     await page.locator('.fp-tab-btn[data-fptab="layers"]').click();
     await sleep(TAB_SETTLE_MS);
     const rowTargetIssues = await page.evaluate(() => Array.from(document.querySelectorAll(
-      ".fp-gear-btn,.fp-del-btn,.fp-visibility-btn,.fp-dup-btn,.fp-type-icon,.fp-section-toggle,.fp-group-toggle,.lp-row-btn,.lp-swatch,.lp-caret"
+      ".fp-gear-btn,.fp-del-btn,.fp-visibility-btn,.fp-dup-btn,.fp-type-icon,.fp-section-toggle,.fp-group-toggle,.lp-row-eye,.lp-group-eye,.lp-layer-eye,.lp-row-op,.lp-row-menu,.lp-swatch,.lp-caret"
     )).filter((el) => el.offsetParent !== null).flatMap((el) => {
       const r = el.getBoundingClientRect();
       const issues = [];

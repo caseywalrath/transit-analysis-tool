@@ -472,12 +472,17 @@ button { cursor: pointer; }
 .lp-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   padding: 3px 2px;
   font-size: var(--text-sm);
   color: var(--text-primary);
+  position: relative;
+  border-radius: 4px;
 }
-.lp-row-sub { padding-left: 16px; }
+.lp-row:hover { background: var(--accent-soft); }
+.lp-row.lp-row-hidden { opacity: 0.5; }
+.lp-row.lp-row-selected { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.lp-row-sub { padding-left: var(--space-4); }
 .lp-row-label {
   flex: 1;
   white-space: nowrap;
@@ -485,22 +490,23 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
 }
 .lp-row-label-indent { color: var(--muted); font-size: var(--text-xs); }
-.lp-row-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--muted);
-  padding: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  flex-shrink: 0;
-  min-width: 24px;
-  min-height: 24px;
-}
-.lp-row-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.lp-row-btn.lp-eye-off { color: var(--text-disabled); }
+/* Row-level hover-reveal chips (eye/clear/menu/opacity), one class per screen
+   position — a feature row's eye sits where a group header's or layer row's
+   eye does not, so each role gets its own offset instead of one shared class. */
+.lp-row-eye   { right: 0; }
+.lp-group-eye { right: 24px; }
+.lp-layer-eye { right: 48px; }
+.lp-row-op    { right: 24px; }
+.lp-row-menu  { right: 0; }
+.lp-row:hover > .ui-hover-chip,
+.lp-row:focus-within > .ui-hover-chip { opacity: 0.92; pointer-events: auto; }
+.lp-row > .ui-hover-chip:hover { opacity: 1 !important; }
+.lp-row-eye:hover,
+.lp-group-eye:hover,
+.lp-layer-eye:hover,
+.lp-row-op:hover,
+.lp-row-menu:hover { color: var(--accent); }
+.lp-eye-off { color: var(--text-disabled); }
 .lp-swatch {
   width: 24px;
   height: 24px;
@@ -522,7 +528,11 @@ button { cursor: pointer; }
   min-height: 24px;
 }
 .lp-caret.open { transform: rotate(180deg); }
-.lp-group-header { font-weight: var(--weight-semibold); }
+.lp-group-header {
+  font-weight: var(--weight-semibold);
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
+}
 .lp-group-body { }
 .lp-empty {
   font-size: var(--text-xs);
@@ -569,7 +579,77 @@ button { cursor: pointer; }
   box-shadow: inset 0 2px 0 var(--accent);
   border-radius: 3px;
 }
-.lp-row-menu { margin-left: 2px; }
+.lp-subheading {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-md);
+  color: var(--muted);
+  padding: 8px 0 4px var(--space-4);
+}
+.lp-feature { }
+.lp-style-group { }
+.lp-style-header { cursor: pointer; }
+.lp-style-preview { flex-shrink: 0; margin: 0 2px; }
+.lp-style-drawer {
+  padding: 4px 4px 8px var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lp-style-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+.lp-style-label {
+  flex: 0 1 auto;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-style-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+/* The shared .fp-scrubber is sized for wider contexts (module popups, the
+   #fp-slider-popover). Inside a style-drawer row at the 208px panel width
+   there isn't room for its default sizing plus a readable label, so this
+   scopes a more compact size to just this container rather than shrinking
+   the shared control everywhere it's used. */
+.lp-style-control .fp-scrub-btn { width: 16px; height: 16px; }
+.lp-style-control .fp-scrub-input { width: 30px; }
+.lp-style-row.lp-inherited .fp-scrub-input { color: var(--muted); font-weight: var(--weight-medium); }
+.lp-style-clear {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1;
+  padding: 1px 2px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.lp-style-clear:hover { color: var(--danger-hover); background: var(--danger-soft); }
+.lp-style-reset {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.lp-style-reset:hover { color: var(--danger); border-color: var(--danger-hover); }
 /* --- Shared census-cache status line (analysis modules) --- */
 /* A status NOTE, not a control. It previously carried a filled background, a
    full border and a radius, which — sitting directly under Corridor Scoring's
@@ -1524,6 +1604,10 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   color: var(--muted);
   flex: 1;
 }
+.fp-buffer-unit {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
 .fp-radius-input {
   width: 38px;
   padding: 2px 4px;
@@ -1578,30 +1662,36 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
 /* Feature item wrapper */
 .fp-item-wrapper { display: block; }
 
-/* Gear / attributes button (shows on row hover, same pattern as fp-del-btn) */
-.fp-gear-btn {
-  background: transparent;
+/* Hover-reveal action chip — shared by .fp-item (Features tab) and .lp-row
+   (Layers tab). Absolute so it reserves no flow width: the row's name gets
+   the full panel until the pointer arrives. The solid background is a real
+   backdrop, not `inherit` — a long name runs underneath these and would
+   otherwise blend with the icon. */
+.ui-hover-chip {
+  position: absolute;
+  z-index: 1;
+  background: var(--bg);
   border: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--border);
   cursor: pointer;
+  color: var(--muted);
   padding: 4px;
   min-width: 24px;
   min-height: 24px;
-  color: var(--muted);
   line-height: var(--leading-none);
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-  position: absolute;
-  right: 24px;
-  z-index: 1;
-  /* Solid backdrop (not "inherit") — this icon floats over the row's own
-     text when a feature name is long enough to run underneath it, and a
-     transparent/inherited background let that text show through and blend
-     with the icon. A real chip fully covers it instead. */
-  background: var(--bg);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px var(--border);
   pointer-events: none;
+  transition: opacity 0.15s, color 0.15s;
+}
+.ui-hover-chip:focus-visible { opacity: 1; pointer-events: auto; }
+
+/* Gear / attributes button (shows on row hover, same pattern as fp-del-btn) */
+.fp-gear-btn {
+  right: 24px;
 }
 .fp-item:hover .fp-gear-btn { opacity: 0.92; pointer-events: auto; }
 .fp-gear-btn:hover { opacity: 1 !important; color: var(--accent); }
@@ -2026,36 +2116,11 @@ input.fp-attr-input[type="number"] {
 .fp-pattern { padding-left: 0; }
 .fp-group-body .fp-pattern { padding-left: 16px; }
 
-/* Feature visibility toggle */
-.fp-visibility-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  min-width: 24px;
-  min-height: 24px;
-  color: var(--muted);
-  line-height: var(--leading-none);
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-/* Row + group-header eye buttons float as overlay chips, same reasoning as
-   .fp-gear-btn / .fp-del-btn above — out of flow so they don't reserve
-   space while hidden, letting the swatch/color icon and name shift left
-   and use the full row width. Sits left of the gear icon on rows (which
-   have no gear icon, groups just use the same right offset as .fp-del-btn
-   plus one icon-width). */
-.fp-item > .fp-visibility-btn,
-.fp-group-header > .fp-visibility-btn {
-  position: absolute;
-  right: 48px;
-  z-index: 1;
-  background: var(--bg);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px var(--border);
-  pointer-events: none;
-}
+/* Feature visibility toggle — overlay chip, same reasoning as .fp-gear-btn /
+   .fp-del-btn above. Sits left of the gear icon on rows (which have no gear
+   icon, groups just use the same right offset as .fp-del-btn plus one
+   icon-width). */
+.fp-item > .fp-visibility-btn { right: 48px; }
 .fp-group-header > .fp-visibility-btn { right: 24px; }
 .fp-item:hover .fp-visibility-btn,
 .fp-group-header:hover .fp-visibility-btn { opacity: 0.92; pointer-events: auto; }
@@ -2073,32 +2138,9 @@ input.fp-attr-input[type="number"] {
 .fp-item.fp-item-hidden { opacity: 0.5; }
 
 /* Row-level delete button */
-.fp-del-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  min-width: 24px;
-  min-height: 24px;
-  color: var(--muted);
-  line-height: var(--leading-none);
-  flex-shrink: 0;
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-}
 .fp-item > .fp-del-btn,
 .fp-group-header > .fp-del-btn {
-  position: absolute;
   right: 0;
-  z-index: 1;
-  /* Same reasoning as .fp-gear-btn above — a solid chip so a long feature
-     name never bleeds through and blends with the icon or the row's
-     hover/selected highlight. */
-  background: var(--bg);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px var(--border);
-  pointer-events: none;
 }
 .fp-item:hover > .fp-del-btn,
 .fp-group-header:hover .fp-del-btn { opacity: 0.92; pointer-events: auto; }
@@ -4749,84 +4791,6 @@ select.fp-attr-input,
   padding: 4px 6px 6px;
 }
 
-/* Display Settings popup grid (vertical sliders) */
-.ds-root { padding: 8px 12px 12px; }
-.ds-grid {
-  display: grid;
-  grid-template-columns: 72px repeat(5, 1fr);
-  row-gap: 8px;
-  column-gap: 0;
-  align-items: start;
-}
-.ds-corner { }
-.ds-col-hdr {
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-md);
-  color: var(--muted);
-  text-align: center;
-  padding-bottom: 2px;
-}
-.ds-col-hdr:not(:last-child) {
-  border-right: 1px solid var(--border);
-}
-.ds-row-hdr {
-  font-size: var(--text-xs);
-  color: var(--muted);
-  padding-top: 10px;
-}
-.ds-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-.ds-cell:not(:nth-child(6n)) {
-  border-right: 1px solid var(--border);
-}
-.ds-cell input[type="range"] {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  height: 80px;
-  width: 20px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-.ds-val {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--accent);
-  text-align: center;
-  min-width: 32px;
-}
-.ds-empty {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  text-align: center;
-  padding-top: 28px;
-}
-.ds-empty:not(:nth-child(6n)) {
-  border-right: 1px solid var(--border);
-}
-.ds-footer {
-  border-top: 1px solid var(--border);
-  margin-top: 10px;
-  padding-top: 12px;
-  text-align: right;
-}
-.ds-reset-btn {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 5px 12px;
-  cursor: pointer;
-}
-.ds-reset-btn:hover { color: var(--danger); border-color: #fc8181; }
-
 /* Settings icon button (always visible, not hover-gated) */
 .fp-sib {
   background: transparent;
@@ -4846,7 +4810,7 @@ select.fp-attr-input,
 .fp-sib:hover { color: var(--accent); background: rgba(43,108,176,0.08); }
 .fp-sib.fp-sib-active { color: var(--accent); background: var(--accent-soft); }
 
-/* Vertical slider popover */
+/* Numeric scrubber popover */
 #fp-slider-popover {
   position: fixed;
   z-index: 10100;
@@ -4854,39 +4818,59 @@ select.fp-attr-input,
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 6px;
   box-shadow: 0 3px 12px rgba(0,0,0,0.15);
-  padding: 8px 6px 6px;
+  padding: 6px 8px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+}
+.fp-scrubber {
+  display: flex;
   align-items: center;
   gap: 4px;
-  width: 44px;
 }
-.fp-slider-val {
+.fp-scrub-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+.fp-scrub-btn:hover { color: var(--accent); border-color: var(--accent); }
+.fp-scrub-input {
+  width: 50px;
+  text-align: center;
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--accent);
-  min-width: 24px;
-  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 2px;
+  -moz-appearance: textfield;
 }
-.fp-slider-unit {
+.fp-scrub-input::-webkit-outer-spin-button,
+.fp-scrub-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.fp-scrub-unit {
   font-size: var(--text-2xs);
   color: var(--muted);
-  text-align: center;
-}
-.fp-slider-vert {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  height: 100px;
-  width: 20px;
-  accent-color: var(--accent);
-  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Dark mode overrides */
-body.dark-mode .ds-reset-btn { color: #a0aec0; border-color: #4a5568; }
 body.dark-mode .fp-sib { color: var(--muted); }
 body.dark-mode .fp-sib:hover { background: rgba(99,179,237,0.1); }
 body.dark-mode #fp-slider-popover { background: var(--cardbg, #2a2a3d); border-color: var(--border, #374151); }
+body.dark-mode .fp-scrub-btn { background: var(--cardbg, #2a2a3d); border-color: var(--border, #374151); color: #a0aec0; }
+body.dark-mode .fp-scrub-input { background: var(--cardbg, #2a2a3d); border-color: var(--border, #374151); }
 
 /* Vertex right-click context menu */
 #vertex-ctx-menu {
@@ -5388,6 +5372,18 @@ body.dark-mode .result-error td { color: #fc8181; }
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
   max-width: 260px;
+}
+
+/* ---- Drawn-feature name tooltip (points/lines/routes/polygons) ---- */
+
+.feature-hover-tooltip {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- Click detail popup ---- */
@@ -6150,11 +6146,6 @@ body.dark-mode .as-row:not(.as-row-header):hover { background: #22222f; }
 }
 .as-cell-swatch { justify-content: center; }
 .as-cell-badge { justify-content: flex-start; }
-.as-cell-overrides { justify-content: flex-end; }
-.as-cell-overrides .fp-attr-overrides {
-  display: flex;
-  gap: 2px;
-}
 /* Look/size come from the compact control tier (see "Form controls" block). */
 .as-input { width: 100%; }
 .as-input-num { text-align: right; }
@@ -6175,11 +6166,8 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 .as-swatch:hover { box-shadow: 0 0 0 2px rgba(66,153,225,0.3); }
 
 /* Column widths per section (CSS Grid templates).
-   The trailing override-icons column is given an EXPLICIT width (not `auto`)
-   so the header row (with an empty placeholder cell) and the data rows
-   (with N icon buttons) compute identical tracks. Otherwise the auto track
-   shrinks to 0 in the header, leaving the fr columns extra space and
-   pushing the header labels visibly right of their data inputs. */
+   Header and data rows share the same grid, so column count and order
+   must match after any edit here. */
 .as-grid-points {
   grid-template-columns:
     24px            /* swatch */
@@ -6187,8 +6175,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     96px            /* service area */
     0.8fr           /* id */
     1fr             /* routes badge */
-    24px            /* copy attributes */
-    96px;           /* overrides (4 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-routelike {
   grid-template-columns:
@@ -6201,16 +6188,14 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     68px            /* avg spd */
     68px            /* run time */
     84px            /* bands */
-    24px            /* copy attributes */
-    128px;          /* overrides (5 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-polygons {
   grid-template-columns:
     24px            /* swatch */
     1.2fr           /* name */
     2fr             /* notes */
-    24px            /* copy attributes */
-    76px;           /* overrides (3 icons) */
+    24px;           /* copy attributes */
 }
 .as-grid-marker {
   grid-template-columns:
@@ -6222,7 +6207,6 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 
 .as-col-narrow  { }
 .as-col-num     { }
-.as-col-overrides { justify-self: end; }
 .as-col-check { justify-self: center; }
 .as-col-copy  { justify-self: center; }
 

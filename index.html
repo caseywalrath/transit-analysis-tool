@@ -283,12 +283,24 @@
             <div class="fp-section-header fp-settings-header">Feature Settings</div>
             <div class="fp-settings-body">
               <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-point">Point buffer</label>
+                <input type="number" id="fp-buf-point" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-line">Line buffer</label>
+                <input type="number" id="fp-buf-line" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
+                <label class="fp-buffer-label" for="fp-buf-route">Route buffer</label>
+                <input type="number" id="fp-buf-route" min="0" max="2" step="0.125" />
+                <span class="fp-buffer-unit">mi</span>
+              </div>
+              <div class="fp-buffer-row">
                 <label class="fp-buffer-label" for="offsetOverlap">
                   <input type="checkbox" id="offsetOverlap" /> Offset overlapping Lines/Routes
                 </label>
-              </div>
-              <div class="fp-buffer-row">
-                <button id="open-display-settings" class="fp-attr-summary-btn" type="button">Display Settings…</button>
               </div>
               <div class="fp-buffer-row">
                 <button id="open-attribute-summary" class="fp-attr-summary-btn" type="button">Attribute Summary…</button>
@@ -300,12 +312,8 @@
 
           <div id="fp-tab-layers" class="fp-tab-pane" style="display:none"></div>
 
-          <!-- Shared vertical slider popover for Feature Settings + Layers -->
-          <div id="fp-slider-popover" style="display:none">
-            <span id="fp-slider-value" class="fp-slider-val"></span>
-            <input id="fp-slider-input" type="range" class="fp-slider-vert" />
-            <span id="fp-slider-unit" class="fp-slider-unit"></span>
-          </div>
+          <!-- Shared numeric scrubber popover for Feature Settings + Layers -->
+          <div id="fp-slider-popover" style="display:none"></div>
         </div>
 
       </div>
@@ -419,7 +427,6 @@
     <script src="js/projects/title-vi.js"></script>
     <script src="js/projects/gtfs.js"></script>
     <script src="js/projects/attribute-summary.js"></script>
-    <script src="js/projects/display-settings.js"></script>
     <script src="js/core/present-overlays.js"></script>
   </body>
 </html>

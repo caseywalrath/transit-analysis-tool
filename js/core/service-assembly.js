@@ -38,7 +38,7 @@
       featureType:  type,
       featureIndex: idx,
       name:         name,
-      color:        (feature.properties && feature.properties.color) || "#888",
+      color:        App.resolveFeatureColor(type, feature),
       direction:    attrs.direction || "Both",
       avgSpeed:     parseFloat(attrs.avgSpeed) || 0,
       runTime:      parseFloat(attrs.runTime)  || 0,   // one-way run time in minutes (manual)

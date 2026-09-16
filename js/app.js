@@ -448,13 +448,27 @@
     }
   };
 
+  // Shallow-copies each feature and stamps resolvedColor, matching the
+  // linesGeoJSON()/routesGeoJSON() builders in lines.js/routes.js — the
+  // "lines"/"routes" sources' paint expressions read resolvedColor directly
+  // (see App.resolveFeatureColor in utils.js), so any direct setData onto
+  // them must supply it or the feature goes colorless.
+  function _withResolvedColorForOffset(featureType, arr) {
+    return arr.filter(function (f) { return !f.properties.hidden; }).map(function (f) {
+      var props = {};
+      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      props.resolvedColor = App.resolveFeatureColor(featureType, f);
+      return { type: "Feature", properties: props, geometry: f.geometry };
+    });
+  }
+
   function _pushOffsetSources() {
     var map = App.map;
     if (!map) return;
     var ls = map.getSource("lines");
-    if (ls) ls.setData({ type: "FeatureCollection", features: (App.lines || []).filter(function (f) { return !f.properties.hidden; }) });
+    if (ls) ls.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("line", App.lines || []) });
     var rs = map.getSource("routes");
-    if (rs) rs.setData({ type: "FeatureCollection", features: (App.routes || []).filter(function (f) { return !f.properties.hidden; }) });
+    if (rs) rs.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("route", App.routes || []) });
   }
 
   // ---- Feature deletion hook ----
@@ -470,19 +484,22 @@
   // ---- Feature Settings: centralized state + apply helpers ----
 
   App.featureSettings = {
-    pointOpacity:      100,
-    lineOpacity:       100,
-    routeOpacity:      100,
-    polygonOpacity:    50,
-    bufferOpacity:     50,
-    bufferRadius:      0,
-    lineBufferRadius:  0,
-    routeBufferRadius: 0,
-    pointLineWidth:    1,
-    lineLineWidth:     1,
-    routeLineWidth:    1,
-    polygonLineWidth:  1,
-    bufferLineWidth:   1
+    pointOpacity:       100,
+    lineOpacity:        100,
+    routeOpacity:       100,
+    polygonFillOpacity: 15,
+    polygonLineOpacity: 80,
+    bufferFillOpacity:  8,
+    bufferLineOpacity:  40,
+    bufferRadius:       0,
+    lineBufferRadius:   0,
+    routeBufferRadius:  0,
+    pointLineWidth:     1,
+    pointStrokeWidth:   1,
+    lineLineWidth:      1,
+    routeLineWidth:     1,
+    polygonLineWidth:   1,
+    bufferLineWidth:    1
   };
 
   function _safeSetPaint(layerId, prop, val) {
@@ -510,6 +527,7 @@
   }
 
   App._polyOpacityValues = _polyOpacityValues;
+  App._bufOpacityValues  = _bufOpacityValues;
 
   App.applyFeatureOpacity = function (type) {
     var fs = App.featureSettings;
@@ -528,20 +546,20 @@
         ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]);
     }
     if (type === "polygon" || type === "all") {
-      var pc = _polyOpacityValues(fs.polygonOpacity);
       _safeSetPaint("polygons-fill", "fill-opacity",
-        ["case", ["has", "_fillOpacity"], ["get", "_fillOpacity"], pc.fill]);
+        ["case", ["has", "_fillOpacity"], ["get", "_fillOpacity"], fs.polygonFillOpacity / 100]);
       _safeSetPaint("polygons-outlines-layer", "line-opacity",
-        ["case", ["has", "_borderOpacity"], ["get", "_borderOpacity"], pc.border]);
+        ["case", ["has", "_borderOpacity"], ["get", "_borderOpacity"], fs.polygonLineOpacity / 100]);
     }
     if (type === "buffer" || type === "all") {
-      var bc = _bufOpacityValues(fs.bufferOpacity);
-      _safeSetPaint("buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("buffers-line", "line-opacity", bc.border);
-      _safeSetPaint("line-buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("line-buffers-line", "line-opacity", bc.border);
-      _safeSetPaint("route-buffers-fill", "fill-opacity", bc.fill);
-      _safeSetPaint("route-buffers-line", "line-opacity", bc.border);
+      var fillOp = fs.bufferFillOpacity / 100;
+      var lineOp = fs.bufferLineOpacity / 100;
+      _safeSetPaint("buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("buffers-line", "line-opacity", lineOp);
+      _safeSetPaint("line-buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("line-buffers-line", "line-opacity", lineOp);
+      _safeSetPaint("route-buffers-fill", "fill-opacity", fillOp);
+      _safeSetPaint("route-buffers-line", "line-opacity", lineOp);
     }
   };
 
@@ -551,7 +569,7 @@
       _safeSetPaint("points-layer", "circle-radius",
         ["case", ["has", "_lineWidth"], ["*", 6, ["get", "_lineWidth"]], 6 * fs.pointLineWidth]);
       _safeSetPaint("points-layer", "circle-stroke-width",
-        ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointLineWidth]);
+        ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointStrokeWidth]);
     }
     if (type === "line" || type === "all") {
       _safeSetPaint("lines-layer", "line-width",
@@ -613,16 +631,6 @@
     if (asBtn) {
       asBtn.addEventListener("click", function () {
         if (typeof App.openAttributeSummary === "function") App.openAttributeSummary();
-      });
-    }
-
-    App.openDisplaySettings = function () {
-      App.popup.open("display-settings", _modules, buildCore);
-    };
-    var dsBtn = document.getElementById("open-display-settings");
-    if (dsBtn) {
-      dsBtn.addEventListener("click", function () {
-        if (typeof App.openDisplaySettings === "function") App.openDisplaySettings();
       });
     }
 
@@ -868,6 +876,145 @@
       return bestIdx;
     }
 
+    function _roundToStep(v, step) {
+      if (!step) return v;
+      var decimals = (String(step).split(".")[1] || "").length;
+      return parseFloat(v.toFixed(decimals));
+    }
+
+    function _fmtScrubValue(v, cfg) {
+      if (cfg.values) return parseFloat(v.toFixed(3)).toString();
+      if (cfg.step && cfg.step < 1) return parseFloat(v).toFixed(1);
+      return Math.round(v).toString();
+    }
+
+    // Compact numeric control: decrement / typed-or-dragged value / increment
+    // / unit. cfg = { min, max, step, unit, value, onChange(v) } for a
+    // continuous range, or { values: [...], unit, value, onChange(v) } for a
+    // fixed step list. Presentation-only — callers own persistence.
+    function buildScrubber(cfg) {
+      var el = document.createElement("div");
+      el.className = "fp-scrubber";
+
+      var dec = document.createElement("button");
+      dec.type = "button";
+      dec.className = "fp-scrub-btn fp-scrub-dec";
+      dec.textContent = "−";
+      dec.setAttribute("aria-label", "Decrease");
+
+      var input = document.createElement("input");
+      input.className = "fp-scrub-input";
+      input.type = cfg.values ? "text" : "number";
+      input.inputMode = "decimal";
+      if (!cfg.values) {
+        input.min  = cfg.min;
+        input.max  = cfg.max;
+        input.step = cfg.step;
+      }
+
+      var inc = document.createElement("button");
+      inc.type = "button";
+      inc.className = "fp-scrub-btn fp-scrub-inc";
+      inc.textContent = "+";
+      inc.setAttribute("aria-label", "Increase");
+
+      el.appendChild(dec);
+      el.appendChild(input);
+      el.appendChild(inc);
+
+      if (cfg.unit) {
+        var unitEl = document.createElement("span");
+        unitEl.className = "fp-scrub-unit";
+        unitEl.textContent = cfg.unit;
+        el.appendChild(unitEl);
+      }
+
+      var curVal = (cfg.value != null) ? cfg.value : (cfg.values ? cfg.values[0] : cfg.min);
+      if (cfg.values) curVal = cfg.values[_valueToIdx(curVal, cfg.values)];
+
+      function render() { input.value = _fmtScrubValue(curVal, cfg); }
+      render();
+
+      function commit(v) {
+        if (cfg.values) {
+          v = cfg.values[_valueToIdx(v, cfg.values)];
+        } else {
+          v = _roundToStep(v, cfg.step);
+          v = Math.max(cfg.min, Math.min(cfg.max, v));
+        }
+        curVal = v;
+        render();
+        cfg.onChange(v);
+      }
+
+      input.addEventListener("change", function () {
+        var parsed = parseFloat(input.value);
+        if (!isFinite(parsed)) { render(); return; }
+        commit(parsed);
+      });
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") input.blur();
+      });
+
+      dec.addEventListener("click", function () {
+        if (cfg.values) {
+          var idx = _valueToIdx(curVal, cfg.values);
+          commit(cfg.values[Math.max(0, idx - 1)]);
+        } else {
+          commit(curVal - cfg.step);
+        }
+      });
+      inc.addEventListener("click", function () {
+        if (cfg.values) {
+          var idx = _valueToIdx(curVal, cfg.values);
+          commit(cfg.values[Math.min(cfg.values.length - 1, idx + 1)]);
+        } else {
+          commit(curVal + cfg.step);
+        }
+      });
+
+      // Drag-to-scrub: only engages past a small movement threshold, so a
+      // plain click still focuses the input for typing.
+      input.style.cursor = "ew-resize";
+      input.addEventListener("mousedown", function (e) {
+        var startX = e.clientX;
+        var startVal = curVal;
+        var dragging = false;
+
+        function onMove(e2) {
+          var dx = e2.clientX - startX;
+          if (!dragging) {
+            if (Math.abs(dx) < 3) return;
+            dragging = true;
+            document.body.style.userSelect = "none";
+          }
+          e2.preventDefault();
+          if (cfg.values) {
+            var startIdx = _valueToIdx(startVal, cfg.values);
+            var steps = Math.round(dx / 8);
+            var idx = Math.max(0, Math.min(cfg.values.length - 1, startIdx + steps));
+            commit(cfg.values[idx]);
+          } else {
+            commit(startVal + Math.round(dx / 4) * cfg.step);
+          }
+        }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.body.style.userSelect = "";
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+
+      el.refresh = function (v) {
+        curVal = cfg.values ? cfg.values[_valueToIdx(v, cfg.values)] : v;
+        render();
+      };
+
+      return el;
+    }
+
     function _openFpSlider(btn, cfg) {
       // Toggle off if same button clicked again
       if (_fpActiveBtn === btn) { _closeFpSlider(); return; }
@@ -875,46 +1022,30 @@
 
       var pop = document.getElementById("fp-slider-popover");
       if (!pop) return;
-      var slider = document.getElementById("fp-slider-input");
-      var valEl  = document.getElementById("fp-slider-value");
-      var unitEl = document.getElementById("fp-slider-unit");
-      if (!slider || !valEl) return;
+      pop.innerHTML = "";
 
       var initVal = (cfg.value != null) ? cfg.value : (cfg.key ? App.featureSettings[cfg.key] : 0);
-      if (unitEl) unitEl.textContent = cfg.unit || "";
 
-      if (cfg.values) {
-        slider.min  = 0;
-        slider.max  = cfg.values.length - 1;
-        slider.step = 1;
-        var initIdx = _valueToIdx(initVal, cfg.values);
-        slider.value = initIdx;
-        valEl.textContent = _fmtSlider(cfg.values[initIdx], cfg);
-        slider.oninput = function () {
-          var v = cfg.values[parseInt(this.value)];
-          if (cfg.key) App.featureSettings[cfg.key] = v;
-          valEl.textContent = _fmtSlider(v, cfg);
+      var scrubber = buildScrubber({
+        min: cfg.min,
+        max: cfg.max,
+        step: cfg.step,
+        unit: cfg.unit,
+        values: cfg.values,
+        value: initVal,
+        onChange: function (v) {
+          if (cfg.key) {
+            App.featureSettings[cfg.key] = v;
+            if (typeof App.cache !== "undefined") App.cache.save();
+          }
           cfg.onChange(v);
-          if (cfg.key && typeof App.cache !== "undefined") App.cache.save();
-        };
-      } else {
-        slider.min   = cfg.min;
-        slider.max   = cfg.max;
-        slider.step  = cfg.step;
-        slider.value = initVal;
-        valEl.textContent = _fmtSlider(initVal, cfg);
-        slider.oninput = function () {
-          var v = parseFloat(this.value);
-          if (cfg.key) App.featureSettings[cfg.key] = v;
-          valEl.textContent = _fmtSlider(v, cfg);
-          cfg.onChange(v);
-          if (cfg.key && typeof App.cache !== "undefined") App.cache.save();
-        };
-      }
+        }
+      });
+      pop.appendChild(scrubber);
 
       // Position popover below (or above) the icon
       var rect = btn.getBoundingClientRect();
-      var popW = 44, popH = 160;
+      var popW = 150, popH = 40;
       var left = rect.left + rect.width / 2 - popW / 2;
       var top  = rect.bottom + 6;
       if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
@@ -925,12 +1056,6 @@
 
       btn.classList.add("fp-sib-active");
       _fpActiveBtn = btn;
-    }
-
-    function _fmtSlider(v, cfg) {
-      if (cfg.values) return parseFloat(v.toFixed(3)).toString();
-      if (cfg.step < 1) return parseFloat(v).toFixed(1);
-      return Math.round(v).toString();
     }
 
     // Close on outside mousedown (not click — avoids missing fast drags)
@@ -947,6 +1072,7 @@
     App._openFpSlider      = _openFpSlider;
     App._closeFpSlider     = _closeFpSlider;
     App.BUFFER_RADIUS_STEPS = BUFFER_RADIUS_STEPS;
+    App.buildScrubber      = buildScrubber;
 
     // Offset overlapping lines/routes toggle
     document.getElementById("offsetOverlap").addEventListener("change", function () {
@@ -957,6 +1083,41 @@
       }
       if (typeof App.cache !== "undefined") App.cache.save();
     });
+
+    // Feature Settings buffer-radius inputs
+    var BUFFER_INPUTS = [
+      { id: "fp-buf-point", key: "bufferRadius",      rebuild: "rebuildBuffers"      },
+      { id: "fp-buf-line",  key: "lineBufferRadius",  rebuild: "rebuildLineBuffers"  },
+      { id: "fp-buf-route", key: "routeBufferRadius", rebuild: "rebuildRouteBuffers" }
+    ];
+
+    function syncBufferInputs() {
+      BUFFER_INPUTS.forEach(function (cfg) {
+        var el = document.getElementById(cfg.id);
+        if (el) el.value = App.featureSettings[cfg.key];
+      });
+    }
+
+    BUFFER_INPUTS.forEach(function (cfg) {
+      var el = document.getElementById(cfg.id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        var v = parseFloat(el.value);
+        if (!isFinite(v)) {
+          el.value = App.featureSettings[cfg.key];
+          return;
+        }
+        v = Math.max(0, Math.min(2, v));
+        el.value = v;
+        App.featureSettings[cfg.key] = v;
+        App[cfg.rebuild](v);
+        notifyProject();
+        if (typeof App.cache !== "undefined") App.cache.save();
+      });
+    });
+
+    syncBufferInputs();
+    App.syncBufferInputs = syncBufferInputs;
 
     // Map click: dispatch based on draw mode
     App.map.on("click", function (e) {
@@ -1158,7 +1319,6 @@
         if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
         if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
         if (typeof App.clearPresentOverlays === "function") App.clearPresentOverlays();
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         clearModules();
         notifyProject();
       });
@@ -1662,7 +1822,6 @@
       App.setStatus("Session restored");
       notifyProject();
     }
-    if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
 
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");

@@ -26,6 +26,65 @@
   // Per-section color overrides (null = use sequential or built-in default)
   App.sectionColors = { point: null, line: null, route: null, polygon: null };
 
+  // --- Feature color resolution (docs/feature-color-system-plan.md) ---
+  // One cascade, for every drawn feature type, resolved fresh on every render:
+  //   1. feature.properties.color, when non-empty — a per-feature override.
+  //   2. App.sectionColors[type], when non-empty — a flat type-level default.
+  //   3. Automatic — line/route vary per feature via a stable palette slot
+  //      (properties.colorSeq); point/polygon/label use a fixed built-in.
+
+  var _colorSeqCounter = 0;
+
+  // Called once at creation time for every new line/route so it gets a
+  // stable palette slot that survives later deletions elsewhere in the array
+  // (an array-position lookup would recolor later features when an earlier
+  // one is removed).
+  function nextColorSeq() {
+    return _colorSeqCounter++;
+  }
+
+  // Called on session restore so a freshly-created feature never collides
+  // with a colorSeq already stamped on a restored line/route.
+  function advanceColorSeqPast(n) {
+    if (typeof n === "number" && isFinite(n) && n >= _colorSeqCounter) _colorSeqCounter = n + 1;
+  }
+
+  // Fallback for a line/route with no stamped colorSeq (every feature drawn
+  // before this cascade existed). Reproduces the array-position formula the
+  // creation sites used before colorSeq existed, so an untouched session
+  // resolves to the color it already has.
+  function _positionalColorSeq(featureType, feature) {
+    if (featureType === "route") {
+      return (App.lines ? App.lines.length : 0) + (App.routes ? App.routes.indexOf(feature) : 0);
+    }
+    return App.lines ? App.lines.indexOf(feature) : 0;
+  }
+
+  function resolveFeatureColor(featureType, feature) {
+    var props = (feature && feature.properties) || {};
+
+    // Tier 1: per-feature override.
+    if (props.color) return props.color;
+
+    // Tier 2: type-level flat default.
+    var typeDefault = App.sectionColors && App.sectionColors[featureType];
+    if (typeDefault) return typeDefault;
+
+    // Tier 3: Automatic.
+    if (featureType === "line" || featureType === "route") {
+      var seq = (typeof props.colorSeq === "number") ? props.colorSeq : _positionalColorSeq(featureType, feature);
+      var n = App.FEATURE_COLORS.length;
+      return App.FEATURE_COLORS[((seq % n) + n) % n];
+    }
+    if (featureType === "polygon") return App.POLYGON_DEFAULT_COLOR || "#b0c4de";
+    if (featureType === "label") return "#1a202c";
+    return "#2b6cb0"; // point, and any unrecognized type
+  }
+
+  App.resolveFeatureColor = resolveFeatureColor;
+  App._nextColorSeq = nextColorSeq;
+  App._advanceColorSeqPast = advanceColorSeqPast;
+
   // --- Status ---
 
   var _statusTimer = null;

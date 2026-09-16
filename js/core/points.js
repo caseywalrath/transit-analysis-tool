@@ -11,7 +11,17 @@
   var buffers = [];
   var bufferRadiusMiles = 0.5; // user-defined; 0 = no buffers
 
-  function pointsGeoJSON() { return { type: "FeatureCollection", features: points.filter(function (p) { return !p.properties.hidden; }) }; }
+  function pointsGeoJSON() {
+    return {
+      type: "FeatureCollection",
+      features: points.filter(function (p) { return !p.properties.hidden; }).map(function (p) {
+        var props = {};
+        for (var k in p.properties) { if (Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
+        props.resolvedColor = App.resolveFeatureColor("point", p);
+        return { type: "Feature", properties: props, geometry: p.geometry };
+      })
+    };
+  }
   function buffersGeoJSON() { return { type: "FeatureCollection", features: buffers.filter(Boolean) }; }
 
   function updateCoordsPanel() {
@@ -47,7 +57,6 @@
       map.setPaintProperty(bufLineLayer, "line-color", pointColor);
     }
 
-    var pointColorExpr = ["case", ["all", ["has", "color"], ["!=", ["get", "color"], ""]], ["get", "color"], pointColor];
     if (!map.getSource(ptsSrc)) {
       map.addSource(ptsSrc, { type: "geojson", data: pointsGeoJSON() });
       map.addLayer({
@@ -57,13 +66,12 @@
         paint: {
           "circle-radius": 6,
           "circle-stroke-width": 2,
-          "circle-color": pointColorExpr,
+          "circle-color": ["get", "resolvedColor"],
           "circle-stroke-color": "#ffffff"
         }
       });
     } else {
       map.getSource(ptsSrc).setData(pointsGeoJSON());
-      map.setPaintProperty(ptsLayer, "circle-color", pointColorExpr);
     }
 
     updateCoordsPanel();

@@ -175,7 +175,7 @@
       });
       var dot = document.createElement("span");
       dot.className = "fp-route-picker-dot";
-      dot.style.background = feature.properties.color || "#aaa";
+      dot.style.background = App.resolveFeatureColor(featureType, feature);
       lbl.appendChild(cb);
       lbl.appendChild(dot);
       lbl.appendChild(document.createTextNode("\u00a0" + name));
@@ -1026,7 +1026,9 @@
         if (ft === "polygon") {
           curVal = (feat.properties._fillOpacity != null)
             ? _invertPolyFillOpacity(feat.properties._fillOpacity)
-            : (App.featureSettings ? App.featureSettings[ok] : 50);
+            : (App.featureSettings && App.featureSettings.polygonFillOpacity != null
+                 ? _invertPolyFillOpacity(App.featureSettings.polygonFillOpacity / 100)
+                 : 50);
         } else {
           curVal = (feat.properties._opacity != null)
             ? feat.properties._opacity * 100

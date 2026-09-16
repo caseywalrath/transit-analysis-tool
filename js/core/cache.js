@@ -10,7 +10,7 @@
   var App = window.App = window.App || {};
 
   var STORAGE_KEY = "mat-session";
-  var SCHEMA_VERSION = 3;
+  var SCHEMA_VERSION = 4;
 
   // ---- Schema migration ----
   function migrateV1toV2(state) {
@@ -36,10 +36,70 @@
     return state;
   }
 
+  // v4 (docs/feature-color-system-plan.md, Phase 5): one-time conversion of
+  // stored line/route/polygon colors that were stamped at creation before
+  // the color cascade existed, so features drawn under the old system follow
+  // the type default like everything drawn since. For each line/route whose
+  // properties.color exactly matches the palette color its array position
+  // would have produced, clear it to "" (inherit) and stamp the equivalent
+  // colorSeq so it keeps rendering the same color today, and can still vary
+  // correctly if a later feature is deleted. A polygon whose color matches
+  // the built-in default is cleared the same way (no colorSeq — polygons
+  // don't vary). Any other color was a deliberate user choice and is left
+  // as a per-feature override. Runs once per stored file: migrateToCurrent
+  // only calls this when state.version === 3, and the next save/export
+  // records the file at version 4.
+  function _paletteColorAt(positionalIndex) {
+    var colors = App.FEATURE_COLORS || [];
+    var n = colors.length;
+    if (!n) return null;
+    return colors[((positionalIndex % n) + n) % n];
+  }
+
+  function migrateV3toV4(state) {
+    var linesArr = Array.isArray(state.lines) ? state.lines : [];
+    var routesArr = Array.isArray(state.routes) ? state.routes : [];
+    var polysArr = Array.isArray(state.polygons) ? state.polygons : [];
+
+    for (var i = 0; i < linesArr.length; i++) {
+      var lf = linesArr[i];
+      var lc = lf && lf.properties && lf.properties.color;
+      var lPalette = _paletteColorAt(i);
+      if (lc && lPalette && String(lc).toLowerCase() === lPalette.toLowerCase()) {
+        lf.properties.color = "";
+        lf.properties.colorSeq = i;
+      }
+    }
+
+    for (var r = 0; r < routesArr.length; r++) {
+      var rf = routesArr[r];
+      var rc = rf && rf.properties && rf.properties.color;
+      var positionalIndex = linesArr.length + r;
+      var rPalette = _paletteColorAt(positionalIndex);
+      if (rc && rPalette && String(rc).toLowerCase() === rPalette.toLowerCase()) {
+        rf.properties.color = "";
+        rf.properties.colorSeq = positionalIndex;
+      }
+    }
+
+    var polyDefault = App.POLYGON_DEFAULT_COLOR;
+    for (var p = 0; p < polysArr.length; p++) {
+      var pf = polysArr[p];
+      var pc = pf && pf.properties && pf.properties.color;
+      if (pc && polyDefault && String(pc).toLowerCase() === polyDefault.toLowerCase()) {
+        pf.properties.color = "";
+      }
+    }
+
+    state.version = 4;
+    return state;
+  }
+
   function migrateToCurrent(state) {
     if (!state) return state;
     if (state.version === 1) state = migrateV1toV2(state);
     if (state.version === 2) state = migrateV2toV3(state);
+    if (state.version === 3) state = migrateV3toV4(state);
     return state;
   }
   var _saveTimer = null;
@@ -68,10 +128,18 @@
       polygons:  App.polygons.slice(),
       labels:    App.labels    ? App.labels.slice()    : [],
       textBoxes: App.textBoxes ? App.textBoxes.slice() : [],
+      sectionColors: App.sectionColors ? {
+        point:   App.sectionColors.point   || null,
+        line:    App.sectionColors.line    || null,
+        route:   App.sectionColors.route   || null,
+        polygon: App.sectionColors.polygon || null,
+        label:   App.sectionColors.label   || null
+      } : null,
       bufferRadius:      (App.featureSettings && App.featureSettings.bufferRadius      != null) ? App.featureSettings.bufferRadius      : 0,
       lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0,
       routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0,
       pointLineWidth:    (App.featureSettings && App.featureSettings.pointLineWidth    != null) ? App.featureSettings.pointLineWidth    : 1,
+      pointStrokeWidth:  (App.featureSettings && App.featureSettings.pointStrokeWidth  != null) ? App.featureSettings.pointStrokeWidth  : 1,
       lineLineWidth:     (App.featureSettings && App.featureSettings.lineLineWidth     != null) ? App.featureSettings.lineLineWidth     : 1,
       routeLineWidth:    (App.featureSettings && App.featureSettings.routeLineWidth    != null) ? App.featureSettings.routeLineWidth    : 1,
       polygonLineWidth:  (App.featureSettings && App.featureSettings.polygonLineWidth  != null) ? App.featureSettings.polygonLineWidth  : 1,
@@ -79,8 +147,10 @@
       pointOpacity:      (App.featureSettings && App.featureSettings.pointOpacity      != null) ? App.featureSettings.pointOpacity      : 100,
       lineOpacity:       (App.featureSettings && App.featureSettings.lineOpacity       != null) ? App.featureSettings.lineOpacity       : 100,
       routeOpacity:      (App.featureSettings && App.featureSettings.routeOpacity      != null) ? App.featureSettings.routeOpacity      : 100,
-      polygonOpacity:    (App.featureSettings && App.featureSettings.polygonOpacity    != null) ? App.featureSettings.polygonOpacity    : 50,
-      bufferOpacity:     (App.featureSettings && App.featureSettings.bufferOpacity     != null) ? App.featureSettings.bufferOpacity     : 50,
+      polygonFillOpacity: (App.featureSettings && App.featureSettings.polygonFillOpacity != null) ? App.featureSettings.polygonFillOpacity : 15,
+      polygonLineOpacity: (App.featureSettings && App.featureSettings.polygonLineOpacity != null) ? App.featureSettings.polygonLineOpacity : 80,
+      bufferFillOpacity:  (App.featureSettings && App.featureSettings.bufferFillOpacity  != null) ? App.featureSettings.bufferFillOpacity  : 8,
+      bufferLineOpacity:  (App.featureSettings && App.featureSettings.bufferLineOpacity  != null) ? App.featureSettings.bufferLineOpacity  : 40,
       featureSortMode:   _fss ? _fss.mode       : "name",
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
@@ -150,6 +220,22 @@
       for (var ti = 0; ti < state.textBoxes.length; ti++) App.textBoxes.push(state.textBoxes[ti]);
     }
 
+    // 2b. Advance the colorSeq counter past any restored value so a newly
+    // drawn line/route never collides with a palette slot already stamped
+    // on a restored feature.
+    if (typeof App._advanceColorSeqPast === "function") {
+      var maxColorSeq = -1;
+      for (var lsi = 0; lsi < App.lines.length; lsi++) {
+        var lSeq = App.lines[lsi].properties && App.lines[lsi].properties.colorSeq;
+        if (typeof lSeq === "number" && lSeq > maxColorSeq) maxColorSeq = lSeq;
+      }
+      for (var rsi = 0; rsi < App.routes.length; rsi++) {
+        var rSeq = App.routes[rsi].properties && App.routes[rsi].properties.colorSeq;
+        if (typeof rSeq === "number" && rSeq > maxColorSeq) maxColorSeq = rSeq;
+      }
+      if (maxColorSeq >= 0) App._advanceColorSeqPast(maxColorSeq);
+    }
+
     // 3. Restore feature settings into App.featureSettings
     if (App.featureSettings) {
       var fs = App.featureSettings;
@@ -165,9 +251,42 @@
       fs.pointOpacity   = (state.pointOpacity   != null) ? state.pointOpacity   : 100;
       fs.lineOpacity    = (state.lineOpacity     != null) ? state.lineOpacity    : 100;
       fs.routeOpacity   = (state.routeOpacity    != null) ? state.routeOpacity   : 100;
-      fs.polygonOpacity = (state.polygonOpacity  != null) ? state.polygonOpacity : 50;
-      fs.bufferOpacity  = (state.bufferOpacity   != null) ? state.bufferOpacity  : 50;
+
+      // Point stroke width split from the combined pointLineWidth — seed from
+      // the old field for sessions saved before the split.
+      if (state.pointStrokeWidth != null) fs.pointStrokeWidth = state.pointStrokeWidth;
+      else if (state.pointLineWidth != null) fs.pointStrokeWidth = state.pointLineWidth;
+      else fs.pointStrokeWidth = 1;
+
+      // Polygon fill/outline opacity split from the single polygonOpacity
+      // curve — seed from the old value through the same curve for sessions
+      // saved before the split. Lossless: same curve, same inputs.
+      if (state.polygonFillOpacity != null && state.polygonLineOpacity != null) {
+        fs.polygonFillOpacity = state.polygonFillOpacity;
+        fs.polygonLineOpacity = state.polygonLineOpacity;
+      } else if (state.polygonOpacity != null && typeof App._polyOpacityValues === "function") {
+        var pc = App._polyOpacityValues(state.polygonOpacity);
+        fs.polygonFillOpacity = pc.fill * 100;
+        fs.polygonLineOpacity = pc.border * 100;
+      } else {
+        fs.polygonFillOpacity = 15;
+        fs.polygonLineOpacity = 80;
+      }
+
+      // Buffer fill/outline opacity — same migration as polygon, above.
+      if (state.bufferFillOpacity != null && state.bufferLineOpacity != null) {
+        fs.bufferFillOpacity = state.bufferFillOpacity;
+        fs.bufferLineOpacity = state.bufferLineOpacity;
+      } else if (state.bufferOpacity != null && typeof App._bufOpacityValues === "function") {
+        var bc = App._bufOpacityValues(state.bufferOpacity);
+        fs.bufferFillOpacity = bc.fill * 100;
+        fs.bufferLineOpacity = bc.border * 100;
+      } else {
+        fs.bufferFillOpacity = 8;
+        fs.bufferLineOpacity = 40;
+      }
     }
+    if (typeof App.syncBufferInputs === "function") App.syncBufferInputs();
 
     // 3a. Restore Features list sort state (additive fields — the setter
     // no-ops on anything absent, so an old session without them keeps the
@@ -185,6 +304,21 @@
     var offsetEl = document.getElementById("offsetOverlap");
     if (offsetEl && state.offsetOverlap) {
       offsetEl.checked = true;
+    }
+
+    // 3c. Restore per-type color defaults (additive field — a session saved
+    // before this existed has no sectionColors, so every field falls back to
+    // null, which is today's Automatic/rainbow startup state). Merge onto the
+    // existing object field-by-field rather than replacing it — other modules
+    // hold a reference to App.sectionColors. Must happen before the render
+    // calls below so restored colors paint immediately.
+    if (App.sectionColors) {
+      var sc = state.sectionColors || {};
+      App.sectionColors.point   = sc.point   || null;
+      App.sectionColors.line    = sc.line    || null;
+      App.sectionColors.route   = sc.route   || null;
+      App.sectionColors.polygon = sc.polygon || null;
+      App.sectionColors.label   = sc.label   || null;
     }
 
     // 4. Rebuild derived buffers and re-render map layers
@@ -345,6 +479,7 @@
       App.featureSettings.lineBufferRadius  = 0;
       App.featureSettings.routeBufferRadius = 0;
       App.featureSettings.pointLineWidth    = 1;
+      App.featureSettings.pointStrokeWidth  = 1;
       App.featureSettings.lineLineWidth     = 1;
       App.featureSettings.routeLineWidth    = 1;
       App.featureSettings.polygonLineWidth  = 1;
@@ -352,8 +487,10 @@
       App.featureSettings.pointOpacity      = 100;
       App.featureSettings.lineOpacity       = 100;
       App.featureSettings.routeOpacity      = 100;
-      App.featureSettings.polygonOpacity    = 50;
-      App.featureSettings.bufferOpacity     = 50;
+      App.featureSettings.polygonFillOpacity = 15;
+      App.featureSettings.polygonLineOpacity = 80;
+      App.featureSettings.bufferFillOpacity  = 8;
+      App.featureSettings.bufferLineOpacity  = 40;
     }
     if (typeof App.applyLineWidth       === "function") App.applyLineWidth("all");
     if (typeof App.applyBufferLineWidth === "function") App.applyBufferLineWidth();
@@ -758,7 +895,6 @@
   async function exportFullState() {
     try {
       var state = collectState("full");
-      state.version = 3;
       state.exportType = "full-state";
       state.lodesData = (typeof App.serializeLodesData === "function")
         ? App.serializeLodesData() : null;
@@ -849,7 +985,6 @@
           }
         }
 
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         if (typeof App.notifyProject === "function") App.notifyProject();
 
         var nFeatures = App.points.length + App.lines.length +
@@ -904,7 +1039,6 @@
         applyState(state);
         save(); // persist imported state to localStorage
 
-        if (typeof App._syncDisplaySliders === "function") App._syncDisplaySliders();
         if (typeof App.notifyProject === "function") App.notifyProject();
 
         var nFeatures = App.points.length + App.lines.length + App.routes.length + App.polygons.length + (App.labels ? App.labels.length : 0);
