@@ -593,6 +593,18 @@
     input.className = "fp-name";
     input.textContent = feature.properties.name || "";
 
+    // Small differentiator chip: a Line marked as a walk network connector
+    // (attributes.networkRole === "connector") is otherwise indistinguishable
+    // from a transit Line at a glance. See docs/network-connectors-plan.md §2.
+    var netChip = null;
+    if (featureType === "line" && feature.properties.attributes &&
+        feature.properties.attributes.networkRole === "connector") {
+      netChip = document.createElement("span");
+      netChip.className = "fp-net-chip";
+      netChip.title = "Walk network connector";
+      netChip.textContent = "walk";
+    }
+
     // Duplicate button (labels only)
     var dupBtn = null;
     if (featureType === "label") {
@@ -711,6 +723,7 @@
     // width until hover reveals the cluster on the right.
     div.appendChild(typeIcon);
     div.appendChild(input);
+    if (netChip) div.appendChild(netChip);
     if (dupBtn) div.appendChild(dupBtn);
     div.appendChild(eyeBtn);
     div.appendChild(gearBtn);

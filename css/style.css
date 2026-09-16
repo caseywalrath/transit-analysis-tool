@@ -1861,6 +1861,24 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   margin-bottom: 5px;
   min-height: 22px;
 }
+/* Section header row (e.g. "Transit service" / "Walk network" on Lines) —
+   visually separates field groups within one feature type's attribute set.
+   See docs/network-connectors-plan.md §2. */
+.fp-attr-section {
+  font-size: var(--text-2xs, 10px);
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.fp-attr-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
 .fp-attr-label {
   font-size: var(--text-xs);
   color: var(--muted);
@@ -2171,6 +2189,22 @@ input.fp-attr-input[type="number"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Small differentiator chip on a Line row marked as a walk network connector
+   (attributes.networkRole === "connector") — see docs/network-connectors-plan.md §2. */
+.fp-net-chip {
+  flex: 0 0 auto;
+  font-size: var(--text-2xs, 10px);
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-right: 4px;
 }
 
 /* Feature panel context menu */
@@ -6146,6 +6180,7 @@ body.dark-mode .as-row:not(.as-row-header):hover { background: #22222f; }
 }
 .as-cell-swatch { justify-content: center; }
 .as-cell-badge { justify-content: flex-start; }
+.as-cell-muted { justify-content: center; color: var(--muted); font-size: var(--text-xs, 11px); }
 /* Look/size come from the compact control tier (see "Form controls" block). */
 .as-input { width: 100%; }
 .as-input-num { text-align: right; }
@@ -6188,6 +6223,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     68px            /* avg spd */
     68px            /* run time */
     84px            /* bands */
+    84px            /* walk network role (lines only; "—" for routes) */
     24px;           /* copy attributes */
 }
 .as-grid-polygons {

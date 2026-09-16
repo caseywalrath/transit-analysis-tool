@@ -249,12 +249,13 @@
     { key: "associatedRoutes", label: "Associated Routes",   kind: "routearray" }
   ];
   var COPY_FIELDS_ROUTELIKE = [
-    { key: "group",     label: "Group",      kind: "text" },
-    { key: "direction", label: "Direction",  kind: "select" },
-    { key: "mode",      label: "Mode",       kind: "select" },
-    { key: "avgSpeed",  label: "Avg Speed",  kind: "number" },
-    { key: "runTime",   label: "Run Time",   kind: "number" },
-    { key: "service",   label: "Time Bands", kind: "bands" }
+    { key: "group",       label: "Group",        kind: "text" },
+    { key: "direction",   label: "Direction",    kind: "select" },
+    { key: "mode",        label: "Mode",         kind: "select" },
+    { key: "avgSpeed",    label: "Avg Speed",    kind: "number" },
+    { key: "runTime",     label: "Run Time",     kind: "number" },
+    { key: "service",     label: "Time Bands",   kind: "bands" },
+    { key: "networkRole", label: "Walk Network", kind: "select" }
   ];
   var COPY_FIELDS_POLYGON = [
     { key: "group", label: "Group", kind: "text" },
@@ -840,6 +841,7 @@
       { label: "Avg Spd",   cls: "as-col-num", title: "Average speed (mph)" },
       { label: "RunT",      cls: "as-col-num", title: "Run time (minutes, one-way / loop)" },
       { label: "Bands",     cls: "as-col-narrow", title: "Time bands — Weekday · Saturday · Sunday counts" },
+      { label: "Net",       cls: "as-col-narrow", title: "Walk network role (Lines only — see the Walk network section of the Attributes popup)" },
       { label: "",          cls: "as-col-copy", title: "Copy attributes" }
     ]);
     hdr.classList.add(gridClass);
@@ -908,6 +910,19 @@
         ? App.buildTimeBandsBadge(feat)
         : document.createTextNode("—");
       appendCell(row, bandsBtn, "as-col-narrow as-cell-badge");
+      if (featureType === "line") {
+        appendCell(row, buildSelectCell(["", "connector"],
+          function () { return attrs.networkRole; },
+          function (v) {
+            if (v == null) delete attrs.networkRole; else attrs.networkRole = v;
+            saveAndRefreshFeaturePanel();
+            if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+          },
+          { title: "Walk network role", labels: { "": "—", "connector": "Connector" } }
+        ), "as-col-narrow");
+      } else {
+        appendCell(row, "—", "as-col-narrow as-cell-muted");
+      }
       appendCell(row, buildCopyButton(featureType, idx, feat), "as-col-copy");
 
       container.appendChild(row);
