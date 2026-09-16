@@ -1132,6 +1132,10 @@
     rebuildNetwork();
     return _lastOverlayReport;
   };
+  // Raw accessor for the last overlay report — lets network-connectors.js stay in
+  // sync even when a base-network reload (which also re-runs applyConnectorOverlay
+  // via rebuildNetwork()) happens without going through setNetworkConnectors().
+  App.getLastConnectorOverlayReport = function () { return _lastOverlayReport; };
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 

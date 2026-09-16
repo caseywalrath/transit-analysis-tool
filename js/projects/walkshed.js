@@ -354,6 +354,24 @@
       '<table class="ws-table"><thead><tr>' +
       "<th>Point</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table>";
+
+    renderConnectionReport();
+  }
+
+  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // only rendered when at least one walk connector exists. Styled with the
+  // module's existing warning color (#b45309) when a connector end isn't
+  // joined to the network.
+  function renderConnectionReport() {
+    var el = document.getElementById("wsConnReport");
+    if (!el) return;
+    var summary = typeof App.getConnectorReportSummary === "function"
+      ? App.getConnectorReportSummary() : null;
+    if (!summary) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.style.color = summary.warn ? "#b45309" : "";
+    el.innerHTML = escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "");
   }
 
   function escapeHtml(s) {

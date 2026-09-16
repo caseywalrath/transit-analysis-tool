@@ -824,6 +824,22 @@
       "</p>" +
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
+      "</p>" +
+      connectionReportHTML();
+  }
+
+  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // only rendered when at least one walk connector exists. Styled with the
+  // module's existing warning color (#b45309) when a connector end isn't
+  // joined to the network. Shared logic with Walkshed's identical footer line.
+  function connectionReportHTML() {
+    var summary = typeof App.getConnectorReportSummary === "function"
+      ? App.getConnectorReportSummary() : null;
+    if (!summary) return "";
+    var color = summary.warn ? "#b45309" : "var(--muted)";
+    return '<p class="tiny" style="margin-top:6px;color:' + color + ';">' +
+      escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "") +
       "</p>";
   }
 
