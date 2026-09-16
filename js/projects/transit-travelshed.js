@@ -33,6 +33,9 @@
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdgeKm is
+                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
+                            // as walkSpeedMph above and the connector snap-tolerance input.
 
   var _settings     = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   var _origin        = null;   // [lng, lat] | null — probe pattern, not an App.points feature
@@ -576,7 +579,7 @@
     if (spacing && +spacing.value > 0) _settings.stopSpacingMi = +spacing.value;
 
     var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value;
+    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value / FT_PER_KM; // ft input -> km stored
 
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode && (shedMode.value === "transit" || shedMode.value === "door")) _settings.shedMode = shedMode.value;
@@ -645,7 +648,7 @@
     if (spacing) spacing.value = _settings.stopSpacingMi;
 
     var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge) maxEdge.value = _settings.maxEdgeKm;
+    if (maxEdge) maxEdge.value = Math.round(_settings.maxEdgeKm * FT_PER_KM); // km stored -> ft displayed
 
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — see
     // onSnapTolChange() above.

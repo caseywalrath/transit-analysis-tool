@@ -23,6 +23,9 @@
   var DEFAULT_SETTINGS = { minutes: 15, walkSpeedMph: 3.1, maxEdge: 0.3 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdge is
+                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
+                            // as walkSpeedMph above and the connector snap-tolerance input.
 
   var _settings      = Object.assign({}, DEFAULT_SETTINGS);
   var _walkshedCache = new Map();  // pointIdx -> entry (see computeForPoint)
@@ -588,7 +591,7 @@
     var e = document.getElementById("wsMaxEdge");
     if (m && +m.value > 0) _settings.minutes = Math.min(+m.value, MAX_MINUTES);
     if (s && +s.value > 0) _settings.walkSpeedMph = +s.value;
-    if (e && +e.value > 0) _settings.maxEdge = +e.value;
+    if (e && +e.value > 0) _settings.maxEdge = +e.value / FT_PER_KM; // ft input -> km stored
     if (App.cache && App.cache.save) App.cache.save();
   }
 
@@ -599,7 +602,7 @@
     var seg = document.getElementById("wsShowSegments");
     if (m) m.value = _settings.minutes;
     if (s) s.value = _settings.walkSpeedMph;
-    if (e) e.value = _settings.maxEdge;
+    if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
     if (seg) seg.checked = _showSegments;
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
     // shared with Transit Travelshed (docs/network-connectors-plan.md §2), so
