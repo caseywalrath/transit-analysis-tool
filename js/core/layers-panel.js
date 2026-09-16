@@ -46,6 +46,8 @@
       clear: function () { if (typeof App.toggleMuniBoundaries === "function") App.toggleMuniBoundaries(false); } },
     { id: "road-dl-area-line",    label: "Road download area",   layers: [{ id: "road-dl-area-line", op: "line-opacity" }],
       clear: callIf("clearRoadDownloadArea") },
+    { id: "walk-network-line",    label: "Walk network",         layers: [{ id: "walk-network-line", op: "line-opacity" }],
+      clear: callIf("clearRoadNetwork") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
       clear: callIf("clearGTFS") },
     { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" }],

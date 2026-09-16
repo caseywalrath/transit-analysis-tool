@@ -6,7 +6,7 @@
 //          loadRoadNetworkFromFile, exportRoadNetwork, clearRoadNetwork,
 //          computeWalkshed, computeWalkCostMap, polygonizeNodeSet,
 //          nodeKeyToCoord, snapWalk, getRoadDownloadExtent,
-//          fetchRoadNetworkForExtent
+//          fetchRoadNetworkForExtent, getWalkNetworkSegments
 
 (function () {
   "use strict";
@@ -143,6 +143,14 @@
     _segmentIndex = segments;
     _segGrid = buildSegGrid(segments, minLat, maxLat, minLng, maxLng);
     _featureCount = features.length;
+  }
+
+  // Rebuilds the graph from the current base GeoJSON and bumps the epoch exactly
+  // once. This is the single choke point every base-network load routes through
+  // (see docs/network-connectors-plan.md §3 "Rebuild orchestration") — Phase 4
+  // adds a connector overlay step between buildGraph() and the epoch bump.
+  function rebuildNetwork() {
+    if (_roadGeoJSON) buildGraph(_roadGeoJSON);
     _networkEpoch++;
   }
 
@@ -584,8 +592,10 @@
       var geojson = { type: "FeatureCollection", features: features };
 
       // Build graph (synchronous — fast for regional networks)
+      // see rebuildNetwork()
       buildGraph(geojson);
       _roadGeoJSON = geojson;
+      _networkEpoch++;
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
 
       updateUI();
@@ -632,8 +642,10 @@
           App.setStatus("No features found in file");
           return;
         }
+        // see rebuildNetwork()
         buildGraph(geojson);
         _roadGeoJSON = geojson;
+        _networkEpoch++;
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         updateUI();
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
@@ -714,6 +726,9 @@
 
     // Reconcile the on-map downloaded-area outline with current state.
     renderDownloadArea();
+
+    // Reconcile the discreet walk-network reference layer (network-connectors.js).
+    if (typeof App.refreshWalkNetworkLayer === "function") App.refreshWalkNetworkLayer();
   }
 
   // ---- Walkshed (network isochrone) ----
@@ -935,6 +950,27 @@
     };
   }
 
+  // ---- Walk network segment accessor (js/core/network-connectors.js) ----
+
+  // Plain-array (not turf FeatureCollection) view of every walkable segment in
+  // the graph, for the discreet reference layer network-connectors.js renders.
+  // Cached by _networkEpoch since a city network has tens of thousands of
+  // segments and this is called on every layer refresh.
+  var _walkSegCache = null;   // { epoch, segments }
+  function getWalkNetworkSegments() {
+    if (_walkSegCache && _walkSegCache.epoch === _networkEpoch) return _walkSegCache.segments;
+    var segments = [];
+    if (_segmentIndex) {
+      for (var i = 0; i < _segmentIndex.length; i++) {
+        var seg = _segmentIndex[i];
+        if (seg.pedBlocked) continue;
+        segments.push({ coords: [seg.startCoord, seg.endCoord], kind: "base" });
+      }
+    }
+    _walkSegCache = { epoch: _networkEpoch, segments: segments };
+    return segments;
+  }
+
   // ---- Expose on App namespace ----
 
   App.roadNetworkLoaded = function () { return !!_graph; };
@@ -947,6 +983,7 @@
   App.computeWalkshed = computeWalkshed;
   // Remove only the downloaded-area outline (leaves the road graph intact) — used by the Layers panel.
   App.clearRoadDownloadArea = function () { _downloadedBboxPolygon = null; updateUI(); };
+  App.getWalkNetworkSegments = getWalkNetworkSegments;
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
