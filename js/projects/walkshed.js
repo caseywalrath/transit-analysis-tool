@@ -583,6 +583,22 @@
     if (s) s.value = _settings.walkSpeedMph;
     if (e) e.value = _settings.maxEdge;
     if (seg) seg.checked = _showSegments;
+    // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
+    // shared with Transit Travelshed (docs/network-connectors-plan.md §2), so
+    // this module never stores its own copy of the value.
+    var tol = document.getElementById("wsSnapTol");
+    if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
+  }
+
+  // Snap tolerance is global state, not a module setting — write straight to
+  // App.networkSettings and re-run the connector overlay, per §2 "Known conflict".
+  function onSnapTolChange() {
+    var el = document.getElementById("wsSnapTol");
+    if (!el || !(+el.value > 0)) return;
+    if (App.networkSettings) App.networkSettings.snapToleranceFt = +el.value;
+    if (App.cache && App.cache.save) App.cache.save();
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+    if (_lastEntries.length) markStale();
   }
 
   // ---- Lifecycle ----
@@ -617,6 +633,9 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); if (_lastEntries.length) markStale(); });
     });
+
+    var snapEl = document.getElementById("wsSnapTol");
+    if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
   }
 
   function onOpen(core) {

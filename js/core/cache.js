@@ -155,6 +155,7 @@
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
       featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
+      networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -298,6 +299,12 @@
         showGroups: state.featureShowGroups,
         hiddenLast: state.featureSortHiddenLast
       });
+    }
+
+    // 3a-2. Restore the network-connectors global snap tolerance (additive
+    // field — absent on an old session, App.networkSettings keeps its default).
+    if (App.networkSettings && state.networkSnapToleranceFt != null) {
+      App.networkSettings.snapToleranceFt = state.networkSnapToleranceFt;
     }
 
     // 3b. Restore offset toggle (actual offset computed after render via auto-recompute hook)

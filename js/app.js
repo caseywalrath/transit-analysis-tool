@@ -284,6 +284,9 @@
     }
     // Keep the Layers tab current when features/analysis layers change.
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    // Re-apply the walk-network connector overlay if any Line's networkRole or
+    // geometry changed (cheap no-op when nothing did — see network-connectors.js).
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
   App.notifyProject = notifyProject;
 

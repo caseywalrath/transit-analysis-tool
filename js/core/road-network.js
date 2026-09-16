@@ -6,7 +6,8 @@
 //          loadRoadNetworkFromFile, exportRoadNetwork, clearRoadNetwork,
 //          computeWalkshed, computeWalkCostMap, polygonizeNodeSet,
 //          nodeKeyToCoord, snapWalk, getRoadDownloadExtent,
-//          fetchRoadNetworkForExtent, getWalkNetworkSegments
+//          fetchRoadNetworkForExtent, getWalkNetworkSegments,
+//          setNetworkConnectors (docs/network-connectors-plan.md)
 
 (function () {
   "use strict";
@@ -23,11 +24,20 @@
 
   var _roadGeoJSON = null;  // raw GeoJSON FeatureCollection (for export)
   var _graph = null;        // Map<nodeKey, [{node, weight, coords}]>
-  var _segmentIndex = null; // Array of {startKey, endKey, startCoord, endCoord, pedBlocked, carBlocked} per segment
+  var _segmentIndex = null; // Array of {startKey, endKey, startCoord, endCoord, pedBlocked, carBlocked, kind} per segment
   var _segGrid = null;      // Map<"gx,gy", int[]> of _segmentIndex indices — snap acceleration, see buildSegGrid()
   var _featureCount = 0;
   var _networkEpoch = 0;    // bumped on every (re)build/clear — lets caches (e.g. walkshed) invalidate
   var _downloadedBboxPolygon = null; // turf Polygon of the last Overpass download extent (for the on-map outline)
+
+  // ---- Network Connectors overlay state (docs/network-connectors-plan.md Phase 4) ----
+  // Plain geometry only — road-network.js never reads App.lines or any attribute;
+  // network-connectors.js owns collecting connector Lines and calls
+  // App.setNetworkConnectors() with the result. Preserved across a base-network
+  // reload so a fresh Overpass download re-applies the same overlay automatically.
+  var _connectors = [];        // [{ id, coords: [[lng,lat], ...] }]
+  var _connectorOpts = {};     // { snapToleranceKm }
+  var _lastOverlayReport = null; // last applyConnectorOverlay() result, returned by setNetworkConnectors()
 
   // ---- Byte formatting helper ----
 
@@ -77,19 +87,34 @@
 
   // ---- Graph construction ----
 
+  // Pushes a bidirectional edge into an explicit graph Map. Extracted from
+  // buildGraph() (which calls it with its local `graph`) so applyConnectorOverlay()
+  // can push connector-derived edges into the live _graph the same way.
+  function addGraphEdge(graph, fromKey, toKey, weight, coordPair, pedBlocked, carBlocked) {
+    if (!graph.has(fromKey)) graph.set(fromKey, []);
+    graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked });
+    if (!graph.has(toKey)) graph.set(toKey, []);
+    graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked });
+  }
+
+  // Removes one edge fromKey -> toKey from _graph (the first matching entry).
+  // Used when applying a connector overlay's removeSegIds — the base segment's
+  // two directed edges are removed so the split/weld replacement edges
+  // (added separately) are the only path through that point.
+  function removeGraphEdge(fromKey, toKey) {
+    var edges = _graph.get(fromKey);
+    if (!edges) return;
+    for (var i = 0; i < edges.length; i++) {
+      if (edges[i].node === toKey) { edges.splice(i, 1); break; }
+    }
+  }
+
   function buildGraph(geojson) {
     var graph = new Map();
     var segments = [];
     var features = geojson.features || [];
 
     var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-
-    function addEdge(fromKey, toKey, weight, coordPair, pedBlocked, carBlocked) {
-      if (!graph.has(fromKey)) graph.set(fromKey, []);
-      graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked });
-      if (!graph.has(toKey)) graph.set(toKey, []);
-      graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked });
-    }
 
     for (var i = 0; i < features.length; i++) {
       var f = features[i];
@@ -121,14 +146,15 @@
           var k1 = nodeKey(c1);
           var k2 = nodeKey(c2);
           var dist = turf.distance(turf.point(c1), turf.point(c2), { units: "kilometers" });
-          addEdge(k1, k2, dist, [c1, c2], pedBlocked, carBlocked);
+          addGraphEdge(graph, k1, k2, dist, [c1, c2], pedBlocked, carBlocked);
           segments.push({
             startKey: k1,
             endKey: k2,
             startCoord: c1,
             endCoord: c2,
             pedBlocked: pedBlocked,
-            carBlocked: carBlocked
+            carBlocked: carBlocked,
+            kind: "base"
           });
 
           if (c1[0] < minLng) minLng = c1[0]; if (c1[0] > maxLng) maxLng = c1[0];
@@ -145,13 +171,123 @@
     _featureCount = features.length;
   }
 
-  // Rebuilds the graph from the current base GeoJSON and bumps the epoch exactly
-  // once. This is the single choke point every base-network load routes through
-  // (see docs/network-connectors-plan.md §3 "Rebuild orchestration") — Phase 4
-  // adds a connector overlay step between buildGraph() and the epoch bump.
+  // Rebuilds the graph from the current base GeoJSON, re-applies the connector
+  // overlay, and bumps the epoch exactly once. This is the single choke point
+  // every base-network load AND every connector change routes through (see
+  // docs/network-connectors-plan.md §3 "Rebuild orchestration"), so connectors
+  // are never merged into _roadGeoJSON and always survive a wholesale base
+  // replacement (a fresh Overpass download, a file import).
   function rebuildNetwork() {
     if (_roadGeoJSON) buildGraph(_roadGeoJSON);
+    applyConnectorOverlay();
     _networkEpoch++;
+  }
+
+  // ---- Network Connectors overlay (docs/network-connectors-plan.md Phase 4) ----
+  //
+  // Welds/splits the current _connectors into the freshly-built base graph.
+  // Runs immediately after buildGraph() inside rebuildNetwork(), before the
+  // epoch bump, so every consumer keyed on _networkEpoch sees the overlaid
+  // graph as a single atomic update. Never reads App.lines or any attribute —
+  // network-connectors.js is the only caller, via App.setNetworkConnectors(),
+  // and supplies plain { id, coords } geometry.
+  function applyConnectorOverlay() {
+    if (!_graph || !_segmentIndex) {
+      _lastOverlayReport = { reason: "no-base-network" };
+      return;
+    }
+    if (!_connectors.length) {
+      _lastOverlayReport = { addEdges: 0, removeSegIds: 0, joins: [], orphans: [] };
+      return;
+    }
+
+    var candidates = collectCandidateSegments(_connectors);
+    var snapToleranceKm = (_connectorOpts && _connectorOpts.snapToleranceKm) || 0;
+    var result = window.ConnectorGraph.planarizeConnectors(_connectors, candidates, {
+      snapToleranceKm: snapToleranceKm,
+      weldVertices: true,
+      splitCrossings: false // Phase 4 ships welding only; Phase 5 flips this to true
+    });
+
+    // Remove the base segments that got split/welded — their two directed
+    // graph edges are replaced entirely by result.addEdges below.
+    var removeSet = new Set(result.removeSegIds);
+    removeSet.forEach(function (idx) {
+      var seg = _segmentIndex[idx];
+      if (!seg) return;
+      removeGraphEdge(seg.startKey, seg.endKey);
+      removeGraphEdge(seg.endKey, seg.startKey);
+    });
+
+    var newSegmentIndex = [];
+    var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    function trackBbox(c) {
+      if (c[0] < minLng) minLng = c[0]; if (c[0] > maxLng) maxLng = c[0];
+      if (c[1] < minLat) minLat = c[1]; if (c[1] > maxLat) maxLat = c[1];
+    }
+    for (var i = 0; i < _segmentIndex.length; i++) {
+      if (removeSet.has(i)) continue;
+      var kept = _segmentIndex[i];
+      newSegmentIndex.push(kept);
+      trackBbox(kept.startCoord); trackBbox(kept.endCoord);
+    }
+
+    // Connector-derived edges are walk-only: pedBlocked false so walksheds/
+    // travelsheds traverse them, carBlocked true so App.findLocalRoute (driving)
+    // never does — connectors must not affect drive routing.
+    for (var e = 0; e < result.addEdges.length; e++) {
+      var edge = result.addEdges[e];
+      var a = edge.coords[0], b = edge.coords[1];
+      var ka = nodeKey(a), kb = nodeKey(b);
+      var distKm = turf.distance(turf.point(a), turf.point(b), { units: "kilometers" });
+      addGraphEdge(_graph, ka, kb, distKm, [a, b], false, true);
+      newSegmentIndex.push({
+        startKey: ka, endKey: kb, startCoord: a, endCoord: b,
+        pedBlocked: false, carBlocked: true, kind: "connector"
+      });
+      trackBbox(a); trackBbox(b);
+    }
+
+    _segmentIndex = newSegmentIndex;
+    _segGrid = buildSegGrid(_segmentIndex, minLat, maxLat, minLng, maxLng);
+
+    _lastOverlayReport = {
+      addEdges: result.addEdges.length,
+      removeSegIds: result.removeSegIds.length,
+      joins: result.joins,
+      orphans: result.orphans
+    };
+  }
+
+  // Candidate base segments near the connectors, queried from _segGrid: for
+  // each connector sub-segment, the cell range it touches (same gxMin..gxMax /
+  // gyMin..gyMax the segment's own grid insertion in buildSegGrid used),
+  // expanded by 1 cell in every direction so a connector endpoint near a cell
+  // boundary still finds neighbors just across it. Deduped by segment index.
+  function collectCandidateSegments(connectors) {
+    var idxSet = new Set();
+    for (var ci = 0; ci < connectors.length; ci++) {
+      var coords = connectors[ci].coords;
+      for (var j = 0; j < coords.length - 1; j++) {
+        var cellA = gridCellOf(coords[j][0], coords[j][1]);
+        var cellB = gridCellOf(coords[j + 1][0], coords[j + 1][1]);
+        var gxMin = Math.min(cellA[0], cellB[0]) - 1, gxMax = Math.max(cellA[0], cellB[0]) + 1;
+        var gyMin = Math.min(cellA[1], cellB[1]) - 1, gyMax = Math.max(cellA[1], cellB[1]) + 1;
+        for (var gx = gxMin; gx <= gxMax; gx++) {
+          for (var gy = gyMin; gy <= gyMax; gy++) {
+            var bucket = _segGrid.get(gridKey(gx, gy));
+            if (!bucket) continue;
+            for (var bi = 0; bi < bucket.length; bi++) idxSet.add(bucket[bi]);
+          }
+        }
+      }
+    }
+    var candidates = [];
+    idxSet.forEach(function (idx) {
+      var seg = _segmentIndex[idx];
+      candidates.push({ segId: idx, coords: [seg.startCoord, seg.endCoord], pedBlocked: seg.pedBlocked });
+    });
+    return candidates;
   }
 
   // ---- Spatial grid over segments (snap acceleration) ----
@@ -591,11 +727,10 @@
 
       var geojson = { type: "FeatureCollection", features: features };
 
-      // Build graph (synchronous — fast for regional networks)
-      // see rebuildNetwork()
-      buildGraph(geojson);
+      // Build graph + re-apply the connector overlay (synchronous — fast for
+      // regional networks), bumping the epoch exactly once.
       _roadGeoJSON = geojson;
-      _networkEpoch++;
+      rebuildNetwork();
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
 
       updateUI();
@@ -642,10 +777,8 @@
           App.setStatus("No features found in file");
           return;
         }
-        // see rebuildNetwork()
-        buildGraph(geojson);
         _roadGeoJSON = geojson;
-        _networkEpoch++;
+        rebuildNetwork();
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         updateUI();
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
@@ -680,6 +813,7 @@
     _featureCount = 0;
     _networkEpoch++;
     _downloadedBboxPolygon = null;
+    _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
   }
 
@@ -954,8 +1088,10 @@
 
   // Plain-array (not turf FeatureCollection) view of every walkable segment in
   // the graph, for the discreet reference layer network-connectors.js renders.
-  // Cached by _networkEpoch since a city network has tens of thousands of
-  // segments and this is called on every layer refresh.
+  // kind is "base" (from the OSM download/import) or "connector" (from the
+  // Phase 4 overlay — see applyConnectorOverlay()). Cached by _networkEpoch
+  // since a city network has tens of thousands of segments and this is called
+  // on every layer refresh.
   var _walkSegCache = null;   // { epoch, segments }
   function getWalkNetworkSegments() {
     if (_walkSegCache && _walkSegCache.epoch === _networkEpoch) return _walkSegCache.segments;
@@ -964,7 +1100,7 @@
       for (var i = 0; i < _segmentIndex.length; i++) {
         var seg = _segmentIndex[i];
         if (seg.pedBlocked) continue;
-        segments.push({ coords: [seg.startCoord, seg.endCoord], kind: "base" });
+        segments.push({ coords: [seg.startCoord, seg.endCoord], kind: seg.kind || "base" });
       }
     }
     _walkSegCache = { epoch: _networkEpoch, segments: segments };
@@ -984,6 +1120,18 @@
   // Remove only the downloaded-area outline (leaves the road graph intact) — used by the Layers panel.
   App.clearRoadDownloadArea = function () { _downloadedBboxPolygon = null; updateUI(); };
   App.getWalkNetworkSegments = getWalkNetworkSegments;
+
+  // ---- Network Connectors adapter (js/core/network-connectors.js) ----
+  // Stores plain connector geometry + opts and triggers a full rebuildNetwork()
+  // (buildGraph -> applyConnectorOverlay -> one epoch bump). Returns the overlay
+  // report ({ addEdges, removeSegIds, joins, orphans } or { reason }). Never
+  // reads App.lines or attributes — network-connectors.js does that translation.
+  App.setNetworkConnectors = function (connectors, opts) {
+    _connectors = connectors || [];
+    _connectorOpts = opts || {};
+    rebuildNetwork();
+    return _lastOverlayReport;
+  };
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 

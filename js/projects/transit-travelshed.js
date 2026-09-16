@@ -595,6 +595,18 @@
     if (App.cache && App.cache.save) App.cache.save();
   }
 
+  // Snap tolerance is global state, not a module setting — write straight to
+  // App.networkSettings and re-run the connector overlay, per
+  // docs/network-connectors-plan.md §2 "Known conflict". Shared with Walkshed.
+  function onSnapTolChange() {
+    var el = document.getElementById("tsSnapTol");
+    if (!el || !(+el.value > 0)) return;
+    if (App.networkSettings) App.networkSettings.snapToleranceFt = +el.value;
+    if (App.cache && App.cache.save) App.cache.save();
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+    markStale();
+  }
+
   // The three cap inputs are only meaningful in "transit" mode — gray them
   // out (but keep their values intact) while "door" mode is selected.
   function updateWalkCapInputsEnabled() {
@@ -634,6 +646,11 @@
 
     var maxEdge = document.getElementById("tsMaxEdge");
     if (maxEdge) maxEdge.value = _settings.maxEdgeKm;
+
+    // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — see
+    // onSnapTolChange() above.
+    var snapTol = document.getElementById("tsSnapTol");
+    if (snapTol && App.networkSettings) snapTol.value = App.networkSettings.snapToleranceFt;
 
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode) shedMode.value = _settings.shedMode;
@@ -1182,6 +1199,9 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
     });
+
+    var snapEl = document.getElementById("tsSnapTol");
+    if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
 
     var waitBtn = document.getElementById("tsWaitInfoBtn");
     var waitText = document.getElementById("tsWaitInfoText");
