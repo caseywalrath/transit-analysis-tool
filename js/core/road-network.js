@@ -206,7 +206,7 @@
     var result = window.ConnectorGraph.planarizeConnectors(_connectors, candidates, {
       snapToleranceKm: snapToleranceKm,
       weldVertices: true,
-      splitCrossings: false // Phase 4 ships welding only; Phase 5 flips this to true
+      splitCrossings: true // Phase 5: mid-block crossings now join too (welding shipped in Phase 4)
     });
 
     // Remove the base segments that got split/welded — their two directed
