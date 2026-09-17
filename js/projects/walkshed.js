@@ -30,7 +30,6 @@
   var _settings      = Object.assign({}, DEFAULT_SETTINGS);
   var _walkshedCache = new Map();  // pointIdx -> entry (see computeForPoint)
   var _lastEntries   = [];         // entries (+failures) from the last Compute run, for display
-  var _showSegments  = true;
   var _stale         = false;
   var _running       = false;
   var _initialized   = false;
@@ -264,9 +263,6 @@
       });
     } else {
       map.getSource(WS_SEG_SRC).setData(segFc);
-    }
-    if (map.getLayer(WS_SEG_LAYER)) {
-      map.setLayoutProperty(WS_SEG_LAYER, "visibility", _showSegments ? "visible" : "none");
     }
   }
 
@@ -599,11 +595,9 @@
     var m = document.getElementById("wsMinutes");
     var s = document.getElementById("wsSpeed");
     var e = document.getElementById("wsMaxEdge");
-    var seg = document.getElementById("wsShowSegments");
     if (m) m.value = _settings.minutes;
     if (s) s.value = _settings.walkSpeedMph;
     if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
-    if (seg) seg.checked = _showSegments;
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
     // shared with Transit Travelshed (docs/network-connectors-plan.md §2), so
     // this module never stores its own copy of the value.
@@ -641,14 +635,6 @@
 
     var use = document.getElementById("wsUseStudyArea");
     if (use) use.addEventListener("click", useAsStudyAreas);
-
-    var seg = document.getElementById("wsShowSegments");
-    if (seg) seg.addEventListener("change", function () {
-      _showSegments = seg.checked;
-      if (App.map && App.map.getLayer(WS_SEG_LAYER)) {
-        App.map.setLayoutProperty(WS_SEG_LAYER, "visibility", _showSegments ? "visible" : "none");
-      }
-    });
 
     ["wsMinutes", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
       var el = document.getElementById(id);
@@ -727,8 +713,7 @@
       version: 2,
       minutes: _settings.minutes,
       walkSpeedMph: _settings.walkSpeedMph,
-      maxEdge: _settings.maxEdge,
-      showSegments: _showSegments
+      maxEdge: _settings.maxEdge
     };
   }
 
@@ -742,7 +727,6 @@
       _settings.walkSpeedMph = +data.walkSpeedKmh / KM_PER_MILE;
     }
     if (+data.maxEdge > 0) _settings.maxEdge = +data.maxEdge;
-    if (typeof data.showSegments === "boolean") _showSegments = data.showSegments;
   }
 
   // ---- Register ----
