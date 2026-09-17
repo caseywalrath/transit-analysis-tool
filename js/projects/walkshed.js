@@ -332,10 +332,16 @@
     }
   }
   if (typeof App.registerLayerRepainter === "function") {
-    App.registerLayerRepainter("walkshed", function () {
+    var refreshWalkshedPaintAndLegend = function () {
       repaintWalkshedLayers();
       fillWalkshedLegend(activeBudgets());
-    });
+    };
+    // Registered under both styleKeys — walkshed-fill and walkshed-seg are
+    // separate Layers-panel rows (docs/walkshed-bands-and-crossing-penalties-plan.md
+    // Phase 1) so either one's visibility toggle can refresh the legend's
+    // "Reachable streets" row (see fillWalkshedLegend below).
+    App.registerLayerRepainter("walkshed", refreshWalkshedPaintAndLegend);
+    App.registerLayerRepainter("walkshed-seg", refreshWalkshedPaintAndLegend);
   }
 
   // Smallest band (bandIdx 0) first, matching
@@ -360,6 +366,13 @@
     }
     var segSw = document.getElementById("wsLegendSwSeg");
     if (segSw) segSw.style.background = segColor();
+    var segRow = document.getElementById("wsLegendRowSeg");
+    if (segRow) {
+      var map = App.map;
+      var segLayerVisible = !map || !map.getLayer(WS_SEG_LAYER) ||
+        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none";
+      segRow.style.display = segLayerVisible ? "" : "none";
+    }
   }
 
   // Shows (or re-shows) the ws-legend widget and fills its band rows once

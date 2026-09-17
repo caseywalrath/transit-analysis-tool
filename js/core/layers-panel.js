@@ -816,6 +816,13 @@
     eye.addEventListener("click", function (e) {
       e.stopPropagation();
       setEntryVisible(entry, !entryVisible(entry));
+      // A styled layer's owning module may want to react to a visibility
+      // toggle (e.g. Walkshed hides its "Reachable streets" legend row when
+      // the walkshed-seg layer is hidden) — its repainter is a no-op paint
+      // re-apply plus a state refresh, so it's safe to call unconditionally.
+      if (entry.styleKey && typeof App.repaintStyledLayers === "function") {
+        App.repaintStyledLayers(entry.styleKey);
+      }
       // Keep the Add Data dropdown eye icons in sync (single source of truth);
       // updateAddDataClearIcons() also re-renders this panel.
       if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
