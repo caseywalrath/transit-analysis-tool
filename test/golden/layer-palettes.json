@@ -1,0 +1,113 @@
+{
+  "rampColors/blues-n3-forward": [
+    "#eff3ff",
+    "#6baed6",
+    "#08519c"
+  ],
+  "rampColors/blues-n3-reversed": [
+    "#08519c",
+    "#6baed6",
+    "#eff3ff"
+  ],
+  "rampColors/blues-n4-forward": [
+    "#eff3ff",
+    "#bdd7e7",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/blues-n5-forward": [
+    "#eff3ff",
+    "#bdd7e7",
+    "#6baed6",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/blues-n1-middle": [
+    "#6baed6"
+  ],
+  "rampColors/blues-n0-empty": [],
+  "rampColors/blues-n-greater-than-5": [
+    "#eff3ff",
+    "#bdd7e7",
+    "#6baed6",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/unknown-palette-null": null,
+  "matchExpr/3-colors": [
+    "match",
+    [
+      "get",
+      "bandIdx"
+    ],
+    0,
+    "#1e40af",
+    1,
+    "#3b82f6",
+    "#93c5fd"
+  ],
+  "matchExpr/1-color": [
+    "match",
+    [
+      "get",
+      "cdi"
+    ],
+    "#16a34a"
+  ],
+  "matchExpr/empty-colors-fallback": "#888888",
+  "familyOf/known-sequential": "sequential",
+  "familyOf/known-diverging": "diverging",
+  "familyOf/unknown-null": null,
+  "allows/absent-allow-permits-anything": true,
+  "allows/matching-family": true,
+  "allows/non-matching-family": false,
+  "list/null-allow-everything": [
+    {
+      "id": "blues",
+      "label": "Blues",
+      "family": "sequential"
+    },
+    {
+      "id": "greens",
+      "label": "Greens",
+      "family": "sequential"
+    },
+    {
+      "id": "heat",
+      "label": "Heat",
+      "family": "sequential"
+    },
+    {
+      "id": "viridis",
+      "label": "Viridis",
+      "family": "sequential"
+    },
+    {
+      "id": "gray",
+      "label": "Grayscale",
+      "family": "sequential"
+    },
+    {
+      "id": "rdbu",
+      "label": "Red–Blue",
+      "family": "diverging"
+    },
+    {
+      "id": "quality",
+      "label": "Red–Green",
+      "family": "diverging"
+    }
+  ],
+  "list/diverging-only": [
+    {
+      "id": "rdbu",
+      "label": "Red–Blue",
+      "family": "diverging"
+    },
+    {
+      "id": "quality",
+      "label": "Red–Green",
+      "family": "diverging"
+    }
+  ]
+}
