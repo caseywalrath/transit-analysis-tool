@@ -55,5 +55,39 @@ export default {
       args: [null] },
     { id: "list/diverging-only", call: "LayerPalette.list",
       args: [["diverging"]] },
+
+    // ---- gradientColors (Phase 7 custom 2-stop gradient) ----
+    // list() must keep returning exactly the seven curated presets — "custom"
+    // is deliberately not a PALETTES member, so it can never reach the global
+    // palette row (see the CUSTOM_ID comment in the engine). The two list
+    // cases above pin that.
+    { id: "gradientColors/black-to-white-n2-endpoints", call: "LayerPalette.gradientColors",
+      args: ["#000000", "#ffffff", 2] },
+    { id: "gradientColors/black-to-white-n3-midpoint", call: "LayerPalette.gradientColors",
+      args: ["#000000", "#ffffff", 3] },
+    { id: "gradientColors/red-to-blue-n5", call: "LayerPalette.gradientColors",
+      args: ["#ff0000", "#0000ff", 5] },
+    { id: "gradientColors/uneven-channels-n4-rounding", call: "LayerPalette.gradientColors",
+      args: ["#1e40af", "#93c5fd", 4] },
+    { id: "gradientColors/n1-returns-midpoint", call: "LayerPalette.gradientColors",
+      args: ["#000000", "#ffffff", 1] },
+    { id: "gradientColors/n0-empty", call: "LayerPalette.gradientColors",
+      args: ["#000000", "#ffffff", 0] },
+    { id: "gradientColors/shorthand-hex-accepted", call: "LayerPalette.gradientColors",
+      args: ["#f00", "#00f", 3] },
+    { id: "gradientColors/missing-endpoint-null", call: "LayerPalette.gradientColors",
+      args: [null, "#0000ff", 3] },
+    { id: "gradientColors/malformed-endpoint-null", call: "LayerPalette.gradientColors",
+      args: ["#gg0000", "#0000ff", 3] },
+
+    // ---- rgba (legend fills need the translucent form of a resolved color) ----
+    { id: "rgba/opaque-default-alpha", call: "LayerPalette.rgba",
+      args: ["#93c5fd"] },
+    { id: "rgba/with-alpha", call: "LayerPalette.rgba",
+      args: ["#1d4ed8", 0.35] },
+    { id: "rgba/shorthand-hex", call: "LayerPalette.rgba",
+      args: ["#abc", 0.5] },
+    { id: "rgba/malformed-null", call: "LayerPalette.rgba",
+      args: ["not-a-color", 0.35] },
   ],
 };

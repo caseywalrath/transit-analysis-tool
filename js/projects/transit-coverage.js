@@ -463,10 +463,22 @@
     return { type: "FeatureCollection", features: features };
   }
 
+  // Colors resolve through the layer style cascade (Phase 7 of
+  // docs/layer-color-customization-plan.md) — a categorical spec, one class
+  // per semantic fill. The fallback array is byte-identical to the spec's
+  // defaultColors so a missing layer-palettes.js degrades to the original
+  // hardcoded colors instead of throwing.
+  var TC_DEFAULT_COLORS = ["#93c5fd", "#1d4ed8", "#374151"];
+  function tcColors() {
+    return (typeof App.resolveLayerColors === "function" &&
+            App.resolveLayerColors("transit-coverage")) || TC_DEFAULT_COLORS;
+  }
+
   function renderMapOverlay(result) {
     var map = App.map;
     if (!map || !result) return;
     var fc = buildOverlayFeatureCollection(result);
+    var c = tcColors();
 
     if (!map.getSource(TC_SOURCE)) {
       map.addSource(TC_SOURCE, { type: "geojson", data: fc });
@@ -475,25 +487,83 @@
         type: "fill",
         source: TC_SOURCE,
         filter: ["==", ["get", "kind"], "coverage"],
-        paint: { "fill-color": "#93c5fd", "fill-opacity": 0.35 }
+        paint: { "fill-color": c[0], "fill-opacity": 0.35 }
       });
       map.addLayer({
         id: TC_THRESHOLD_LAYER,
         type: "fill",
         source: TC_SOURCE,
         filter: ["==", ["get", "kind"], "threshold"],
-        paint: { "fill-color": "#1d4ed8", "fill-opacity": 0.35 }
+        paint: { "fill-color": c[1], "fill-opacity": 0.35 }
       });
       map.addLayer({
         id: TC_AREA_LAYER,
         type: "line",
         source: TC_SOURCE,
         filter: ["==", ["get", "kind"], "area"],
-        paint: { "line-color": "#374151", "line-width": 2, "line-dasharray": [2, 2] }
+        paint: { "line-color": c[2], "line-width": 2, "line-dasharray": [2, 2] }
       });
     } else {
       map.getSource(TC_SOURCE).setData(fc);
+      // Refresh paint too — without this a palette changed while results were
+      // already on screen would survive only until the next re-run, which is
+      // the exact failure mode this whole plan exists to avoid.
+      repaintOverlay();
     }
+  }
+
+  // Paint-only refresh: re-applies resolved colors to whichever of the three
+  // layers are currently on the map, and re-fills the legend swatches. No
+  // recompute — this is what makes a palette change instant.
+  function repaintOverlay() {
+    var map = App.map;
+    if (!map) return;
+    var c = tcColors();
+    if (map.getLayer(TC_COVERAGE_LAYER))  map.setPaintProperty(TC_COVERAGE_LAYER, "fill-color", c[0]);
+    if (map.getLayer(TC_THRESHOLD_LAYER)) map.setPaintProperty(TC_THRESHOLD_LAYER, "fill-color", c[1]);
+    if (map.getLayer(TC_AREA_LAYER))      map.setPaintProperty(TC_AREA_LAYER, "line-color", c[2]);
+    fillLegendColors();
+  }
+
+  // The legend fragment paints a translucent fill plus a solid border from
+  // one source color, so each swatch needs both forms of the resolved color.
+  // The service-area row is an outline-only swatch (dashed border, no fill),
+  // matching how that layer renders on the map.
+  function fillLegendColors() {
+    if (typeof window.LayerPalette === "undefined") return;
+    var c = tcColors();
+    var fillRows = [
+      { id: "tcLegendSw0", color: c[0] },
+      { id: "tcLegendSw1", color: c[1] }
+    ];
+    fillRows.forEach(function (row) {
+      var el = document.getElementById(row.id);
+      if (!el) return;
+      var bg = window.LayerPalette.rgba(row.color, 0.35);
+      if (bg) el.style.background = bg;
+      el.style.borderColor = row.color;
+    });
+    var area = document.getElementById("tcLegendSwArea");
+    if (area) area.style.borderColor = c[2];
+  }
+
+  // showFloatingWidget resolves asynchronously only on first creation (it
+  // fetches the fragment); re-showing an existing widget returns an already
+  // resolved promise. Branching on thenable keeps every caller synchronous —
+  // the same wrapper shape the four Phase 5 legends use.
+  function showCoverageLegend() {
+    if (!App.popup || !App.popup.showFloatingWidget) return;
+    var p = App.popup.showFloatingWidget("tc-legend", "projects/transit-coverage-legend.html", {
+      position: "bottom-left",
+      width: 200,
+      title: "Transit Coverage"
+    });
+    if (p && typeof p.then === "function") p.then(fillLegendColors);
+    else fillLegendColors();
+  }
+
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("transit-coverage", repaintOverlay);
   }
 
   function clearMapOverlay() {
@@ -599,13 +669,7 @@
 
       renderResults(_lastResult);
       renderMapOverlay(_lastResult);
-      if (App.popup && App.popup.showFloatingWidget) {
-        App.popup.showFloatingWidget("tc-legend", "projects/transit-coverage-legend.html", {
-          position: "bottom-left",
-          width: 200,
-          title: "Transit Coverage"
-        });
-      }
+      showCoverageLegend();
       setExportButtonsEnabled(true);
       setStatus("Analyzed coverage — " + geos.length + " geographies.", "done");
       // Collapse only on success — an error leaves the inputs open.

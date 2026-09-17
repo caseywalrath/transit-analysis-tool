@@ -80,7 +80,7 @@
     // registered here, so their output was invisible to this panel — no
     // show/hide, no opacity, no reorder. Entries only render when the layer is
     // actually on the map (see entryPresent), so listing them all is safe.
-    { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage",
+    { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage", styleKey: "transit-coverage",
       layers: [{ id: "transit-coverage-coverage-layer", op: "fill-opacity" },
                { id: "transit-coverage-threshold-layer", op: "fill-opacity" },
                { id: "transit-coverage-area-layer", op: "line-opacity" }] },
@@ -89,7 +89,7 @@
                { id: "walkshed-line", op: "line-opacity" }] },
     { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
       layers: [{ id: "walkshed-seg", op: "line-opacity" }] },
-    { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi",
+    { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi", styleKey: "title-vi",
       layers: [{ id: "tvi-impacted-fill", op: "fill-opacity" },
                { id: "tvi-impacted-outline", op: "line-opacity" },
                { id: "tvi-gain-fill", op: "fill-opacity" },
@@ -563,6 +563,52 @@
   // never touches map.setPaintProperty itself). ----
   var _expandedLayerStyle = {};
 
+  // One "<label>  [swatch] [×]" row — shared by the solid drawer, the
+  // categorical drawer's per-class rows, and the custom gradient's two
+  // endpoint picks. `onClear` null means the row shows no × (nothing to
+  // clear), matching how the solid drawer already behaves at defaults.
+  function buildSwatchRow(label, color, onPick, onClear) {
+    var row = document.createElement("div");
+    row.className = "lp-style-row";
+
+    var lab = document.createElement("span");
+    lab.className = "lp-style-label";
+    lab.textContent = label;
+    row.appendChild(lab);
+
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-control";
+    row.appendChild(wrap);
+
+    var sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "lp-swatch";
+    sw.style.background = color;
+    sw.title = "Change color";
+    sw.setAttribute("aria-label", "Change " + label + " color");
+    sw.addEventListener("click", function (e) {
+      e.stopPropagation();
+      App.openColorPicker(sw, color, onPick);
+    });
+    wrap.appendChild(sw);
+
+    if (onClear) {
+      var clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "lp-style-clear";
+      clearBtn.textContent = "×";
+      clearBtn.title = "Clear override (use default)";
+      clearBtn.setAttribute("aria-label", "Clear " + label + " color override");
+      clearBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        onClear();
+      });
+      wrap.appendChild(clearBtn);
+    }
+
+    return row;
+  }
+
   function buildLayerStyleDrawer(styleKey, spec, rerender) {
     var body = document.createElement("div");
     body.className = "lp-style-drawer";
@@ -592,36 +638,93 @@
         o.textContent = p.label;
         sel.appendChild(o);
       });
+      // Custom is offered on every ramp layer regardless of spec.allow: it is
+      // two deliberate picks, not a preset that could be chosen by accident,
+      // and it is exactly what a colorblind user wants on the one layer whose
+      // presets are most restricted. It is per-layer only — the global
+      // palette row never lists it (see CUSTOM_ID in layer-palettes.js).
+      var customOpt = document.createElement("option");
+      customOpt.value = window.LayerPalette.CUSTOM_ID;
+      customOpt.textContent = "Custom";
+      sel.appendChild(customOpt);
+
+      var isCustom = ov.palette === window.LayerPalette.CUSTOM_ID;
       sel.value = ov.palette || "";
       sel.addEventListener("click", function (e) { e.stopPropagation(); });
       sel.addEventListener("change", function () {
-        App.setLayerStyle(styleKey, { palette: sel.value || null });
+        var patch = { palette: sel.value || null };
+        if (sel.value === window.LayerPalette.CUSTOM_ID && !ov.from && !ov.to) {
+          // Seed the two endpoints from what this layer is painting right
+          // now (resolved BEFORE the state change), so switching to Custom
+          // is a visual no-op and the swatches open where the map already is.
+          var cur = App.resolveLayerColors(styleKey) || spec.defaultColors;
+          patch.from = cur[0];
+          patch.to = cur[cur.length - 1];
+        }
+        App.setLayerStyle(styleKey, patch);
         rerender();
       });
       pWrap.appendChild(sel);
       body.appendChild(pRow);
 
-      var rRow = document.createElement("div");
-      rRow.className = "lp-style-row";
-      var rLab = document.createElement("span");
-      rLab.className = "lp-style-label";
-      rLab.textContent = "Reverse";
-      rRow.appendChild(rLab);
-      var rWrap = document.createElement("div");
-      rWrap.className = "lp-style-control";
-      rRow.appendChild(rWrap);
+      if (isCustom) {
+        // Two endpoint picks in place of the Reverse row — reversing a 2-stop
+        // gradient is just swapping these two, so a Reverse control here
+        // would be a redundant fourth row (the plan's §3 caps a drawer at
+        // three). The resolver paints From -> To literally for the same
+        // reason, so these swatches always read the way the map does.
+        var gRow = document.createElement("div");
+        gRow.className = "lp-style-row";
+        var gLab = document.createElement("span");
+        gLab.className = "lp-style-label";
+        gLab.textContent = "Colors";
+        gRow.appendChild(gLab);
+        var gWrap = document.createElement("div");
+        gWrap.className = "lp-style-control";
+        gRow.appendChild(gWrap);
 
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!((ov.reverse != null) ? ov.reverse : spec.reverseDefault);
-      cb.disabled = !ov.palette;
-      cb.addEventListener("click", function (e) { e.stopPropagation(); });
-      cb.addEventListener("change", function () {
-        App.setLayerStyle(styleKey, { reverse: cb.checked });
-        rerender();
-      });
-      rWrap.appendChild(cb);
-      body.appendChild(rRow);
+        [["from", ov.from, "start"], ["to", ov.to, "end"]].forEach(function (stop) {
+          var sw = document.createElement("button");
+          sw.type = "button";
+          sw.className = "lp-swatch";
+          sw.style.background = stop[1] || "#888888";
+          sw.title = (stop[0] === "from") ? "Gradient start" : "Gradient end";
+          sw.setAttribute("aria-label", "Change gradient " + stop[2] + " color for " + spec.label);
+          sw.addEventListener("click", function (e) {
+            e.stopPropagation();
+            App.openColorPicker(sw, stop[1] || "#888888", function (nc) {
+              var patch = {};
+              patch[stop[0]] = nc;
+              App.setLayerStyle(styleKey, patch);
+              rerender();
+            });
+          });
+          gWrap.appendChild(sw);
+        });
+        body.appendChild(gRow);
+      } else {
+        var rRow = document.createElement("div");
+        rRow.className = "lp-style-row";
+        var rLab = document.createElement("span");
+        rLab.className = "lp-style-label";
+        rLab.textContent = "Reverse";
+        rRow.appendChild(rLab);
+        var rWrap = document.createElement("div");
+        rWrap.className = "lp-style-control";
+        rRow.appendChild(rWrap);
+
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!((ov.reverse != null) ? ov.reverse : spec.reverseDefault);
+        cb.disabled = !ov.palette;
+        cb.addEventListener("click", function (e) { e.stopPropagation(); });
+        cb.addEventListener("change", function () {
+          App.setLayerStyle(styleKey, { reverse: cb.checked });
+          rerender();
+        });
+        rWrap.appendChild(cb);
+        body.appendChild(rRow);
+      }
 
       if (ov.palette || ov.reverse != null) {
         var resetBtn = document.createElement("button");
@@ -637,46 +740,27 @@
         body.appendChild(resetBtn);
       }
     } else if (spec.kind === "solid") {
-      var cRow = document.createElement("div");
-      cRow.className = "lp-style-row";
-      var cLab = document.createElement("span");
-      cLab.className = "lp-style-label";
-      cLab.textContent = "Color";
-      cRow.appendChild(cLab);
-      var cWrap = document.createElement("div");
-      cWrap.className = "lp-style-control";
-      cRow.appendChild(cWrap);
-
       var colors = (App.resolveLayerColors && App.resolveLayerColors(styleKey)) || spec.defaultColors;
-      var sw = document.createElement("button");
-      sw.type = "button";
-      sw.className = "lp-swatch";
-      sw.style.background = colors[0];
-      sw.title = "Change color";
-      sw.setAttribute("aria-label", "Change color for " + spec.label);
-      sw.addEventListener("click", function (e) {
-        e.stopPropagation();
-        App.openColorPicker(sw, colors[0], function (nc) {
-          App.setLayerStyle(styleKey, { color: nc });
-          rerender();
-        });
+      body.appendChild(buildSwatchRow(
+        "Color",
+        colors[0],
+        function (nc) { App.setLayerStyle(styleKey, { color: nc }); rerender(); },
+        ov.color ? function () { App.clearLayerStyle(styleKey); rerender(); } : null
+      ));
+    } else if (spec.kind === "categorical") {
+      // One swatch per semantic class. No palette select (these aren't a
+      // ramp) and no Reset row — each row's × already is one, the same
+      // argument the solid drawer makes.
+      var catColors = (App.resolveLayerColors && App.resolveLayerColors(styleKey)) || spec.defaultColors;
+      var ovColors = ov.colors || [];
+      (spec.classes || []).forEach(function (cls, i) {
+        body.appendChild(buildSwatchRow(
+          cls.label,
+          catColors[i],
+          function (nc) { App.setLayerClassColor(styleKey, i, nc); rerender(); },
+          ovColors[i] ? function () { App.setLayerClassColor(styleKey, i, null); rerender(); } : null
+        ));
       });
-      cWrap.appendChild(sw);
-
-      if (ov.color) {
-        var clearBtn = document.createElement("button");
-        clearBtn.type = "button";
-        clearBtn.className = "lp-style-clear";
-        clearBtn.textContent = "×";
-        clearBtn.title = "Clear override (use default)";
-        clearBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          App.clearLayerStyle(styleKey);
-          rerender();
-        });
-        cWrap.appendChild(clearBtn);
-      }
-      body.appendChild(cRow);
     }
 
     return body;

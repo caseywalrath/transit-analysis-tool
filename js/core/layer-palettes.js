@@ -33,6 +33,16 @@
     quality: { label: "Red–Green",  family: "diverging",  colors5: ["#C53030", "#C05621", "#D69E2E", "#68A357", "#276749"] }
   };
 
+  // The custom 2-stop gradient (Phase 7) is stored in the same `palette`
+  // slot as a preset id, but is deliberately NOT a member of PALETTES: it has
+  // no family, so list()/familyOf()/allows() never see it and the global
+  // palette row can never be set to it. That is the point — a custom gradient
+  // is a per-layer, deliberate two-color pick (the colorblind and
+  // agency-branding cases), while the global palette stays restricted to
+  // curated families so it can't make a semantic layer unreadable in one
+  // click. See the resolver's custom branch below.
+  var CUSTOM_ID = "custom";
+
   // Same sampling arithmetic as js/core/choropleth.js's pickRampColors(), so
   // a palette subsamples identically in both engines.
   function pickRampColors(colors5, n) {
@@ -81,6 +91,66 @@
     }
     expr.push(colors[colors.length - 1]);
     return expr;
+  }
+
+  // ---- Color primitives (Phase 7) -------------------------------------
+  // Plain sRGB math on "#rgb"/"#rrggbb" strings. No color-space cleverness:
+  // a 2-stop gradient here is a straight channel-wise lerp, which is what
+  // MapLibre's own ["interpolate", ["linear"], ...] does between two stops,
+  // so a custom gradient looks the same whether it is sampled to N discrete
+  // classes here or interpolated continuously by the map.
+
+  function hexToRgb(hex) {
+    if (typeof hex !== "string") return null;
+    var h = hex.trim().replace(/^#/, "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16)
+    };
+  }
+
+  function rgbToHex(c) {
+    function two(v) {
+      var s = Math.max(0, Math.min(255, Math.round(v))).toString(16);
+      return s.length === 1 ? "0" + s : s;
+    }
+    return "#" + two(c.r) + two(c.g) + two(c.b);
+  }
+
+  // n colors interpolated from `from` to `to` inclusive. Either endpoint
+  // unparseable -> null (callers fall back to defaults, same contract as
+  // rampColors on an unknown id). n < 1 -> []. n === 1 -> the midpoint, so a
+  // 1-class degenerate case reads as "the middle of this range" exactly the
+  // way pickRampColors treats a preset.
+  function gradientColors(from, to, n) {
+    var a = hexToRgb(from), b = hexToRgb(to);
+    if (!a || !b) return null;
+    if (n < 1) return [];
+    if (n === 1) return [rgbToHex({ r: (a.r + b.r) / 2, g: (a.g + b.g) / 2, b: (a.b + b.b) / 2 })];
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var t = i / (n - 1);
+      out.push(rgbToHex({
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t
+      }));
+    }
+    return out;
+  }
+
+  // "rgba(r, g, b, alpha)" for a hex string, or null when unparseable. The
+  // static legend fragments paint a translucent fill plus a solid border from
+  // one source color (see projects/transit-coverage-legend.html), so their
+  // fill functions need the translucent form of whatever the cascade resolved.
+  function rgba(hex, alpha) {
+    var c = hexToRgb(hex);
+    if (!c) return null;
+    var a = (typeof alpha === "number" && isFinite(alpha)) ? alpha : 1;
+    return "rgba(" + c.r + ", " + c.g + ", " + c.b + ", " + a + ")";
   }
 
   // "sequential" | "diverging" | null for an unknown id.
@@ -142,6 +212,29 @@
     "gtfs-stops": {
       label: "GTFS stops", kind: "solid",
       defaultColors: ["#718096"]
+    },
+    // kind: "categorical" (Phase 7) — independent semantic colors, not a
+    // ramp. Each class gets its own swatch; `classes` supplies the drawer's
+    // row labels (two words max, per the plan's §3) and `defaultColors` is
+    // positional against it. Categorical layers ignore App.mapPalette
+    // entirely, for the same reason solid layers do: a global sequential
+    // ramp says nothing about which color "service loss" should be.
+    "transit-coverage": {
+      label: "Transit Coverage", kind: "categorical",
+      classes: [
+        { key: "coverage",  label: "Coverage" },
+        { key: "threshold", label: "Threshold" },
+        { key: "area",      label: "Service area" }
+      ],
+      defaultColors: ["#93c5fd", "#1d4ed8", "#374151"]
+    },
+    "title-vi": {
+      label: "Title VI service change", kind: "categorical",
+      classes: [
+        { key: "loss", label: "Loss" },
+        { key: "gain", label: "Gain" }
+      ],
+      defaultColors: ["#e53e3e", "#38a169"]
     }
   };
 
@@ -152,8 +245,11 @@
   window.LayerPalette = {
     PALETTES: PALETTES,
     LAYER_STYLES: LAYER_STYLES,
+    CUSTOM_ID: CUSTOM_ID,
     list: list,
     rampColors: rampColors,
+    gradientColors: gradientColors,
+    rgba: rgba,
     matchExpr: matchExpr,
     familyOf: familyOf,
     allows: allows,
@@ -190,10 +286,32 @@
       return (ov.color) ? [ov.color] : spec.defaultColors.slice();
     }
 
+    if (spec.kind === "categorical") {
+      // Per-class overrides, positional against spec.defaultColors. Also
+      // ignores App.mapPalette (see the LAYER_STYLES comment) — these are
+      // semantic colors, so each class is overridden on its own or not at all.
+      var ovc = ov.colors || [];
+      return spec.defaultColors.map(function (def, i) {
+        return ovc[i] || def;
+      });
+    }
+
     // kind === "ramp"
     var paletteId = ov.palette ||
       (window.LayerPalette.allows(spec, App.mapPalette) ? App.mapPalette : null);
     if (!paletteId) return spec.defaultColors.slice();
+
+    if (paletteId === CUSTOM_ID) {
+      // A custom gradient is literal and WYSIWYG: `from` always paints the
+      // first class and `to` always the last, so the two swatches in the
+      // drawer read exactly as the map does. It therefore ignores both
+      // spec.reverseDefault and ov.reverse (reversing a 2-stop gradient is
+      // just swapping the two picks, and honoring a stale `reverse` left over
+      // from a preset would silently flip the map away from the swatches).
+      return window.LayerPalette.gradientColors(ov.from, ov.to, spec.n) ||
+        spec.defaultColors.slice();
+    }
+
     var reverse = (ov.reverse != null) ? ov.reverse : spec.reverseDefault;
     var colors = window.LayerPalette.rampColors(paletteId, spec.n, reverse);
     return colors || spec.defaultColors.slice(); // unknown id never paints nothing
@@ -208,9 +326,16 @@
     var next = {
       palette: (patch.palette !== undefined) ? patch.palette : cur.palette,
       reverse: (patch.reverse !== undefined) ? patch.reverse : cur.reverse,
-      color: (patch.color !== undefined) ? patch.color : cur.color
+      color: (patch.color !== undefined) ? patch.color : cur.color,
+      // Phase 7: `from`/`to` are the custom gradient's two endpoints (ramp
+      // layers); `colors` is the sparse per-class array (categorical layers).
+      from: (patch.from !== undefined) ? patch.from : cur.from,
+      to: (patch.to !== undefined) ? patch.to : cur.to,
+      colors: (patch.colors !== undefined) ? patch.colors : cur.colors
     };
-    var isEmpty = !next.palette && next.reverse == null && !next.color;
+    var anyClassColor = !!(next.colors && next.colors.some(function (c) { return !!c; }));
+    var isEmpty = !next.palette && next.reverse == null && !next.color &&
+      !next.from && !next.to && !anyClassColor;
     if (isEmpty) {
       delete App.layerStyles[styleKey];
     } else {
@@ -218,6 +343,22 @@
     }
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     App.repaintStyledLayers();
+  };
+
+  // Sets (or, with a null/empty color, clears) one class of a categorical
+  // layer. Kept here rather than in the Layers panel because the sparse-array
+  // bookkeeping — pad to the class count, null out a cleared entry, collapse
+  // an all-null array so setLayerStyle can delete the whole entry — is easy
+  // to get subtly wrong and should have exactly one implementation.
+  App.setLayerClassColor = function (styleKey, idx, color) {
+    var spec = window.LayerPalette.specFor(styleKey);
+    if (!spec || !spec.defaultColors) return;
+    var cur = (App.layerStyles[styleKey] && App.layerStyles[styleKey].colors) || [];
+    var next = spec.defaultColors.map(function (_, i) { return cur[i] || null; });
+    if (idx < 0 || idx >= next.length) return;
+    next[idx] = color || null;
+    var anySet = next.some(function (c) { return !!c; });
+    App.setLayerStyle(styleKey, { colors: anySet ? next : null });
   };
 
   App.clearLayerStyle = function (styleKey) {

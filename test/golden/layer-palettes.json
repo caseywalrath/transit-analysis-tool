@@ -109,5 +109,42 @@
       "label": "Red–Green",
       "family": "diverging"
     }
-  ]
+  ],
+  "gradientColors/black-to-white-n2-endpoints": [
+    "#000000",
+    "#ffffff"
+  ],
+  "gradientColors/black-to-white-n3-midpoint": [
+    "#000000",
+    "#808080",
+    "#ffffff"
+  ],
+  "gradientColors/red-to-blue-n5": [
+    "#ff0000",
+    "#bf0040",
+    "#800080",
+    "#4000bf",
+    "#0000ff"
+  ],
+  "gradientColors/uneven-channels-n4-rounding": [
+    "#1e40af",
+    "#456cc9",
+    "#6c99e3",
+    "#93c5fd"
+  ],
+  "gradientColors/n1-returns-midpoint": [
+    "#808080"
+  ],
+  "gradientColors/n0-empty": [],
+  "gradientColors/shorthand-hex-accepted": [
+    "#ff0000",
+    "#800080",
+    "#0000ff"
+  ],
+  "gradientColors/missing-endpoint-null": null,
+  "gradientColors/malformed-endpoint-null": null,
+  "rgba/opaque-default-alpha": "rgba(147, 197, 253, 1)",
+  "rgba/with-alpha": "rgba(29, 78, 216, 0.35)",
+  "rgba/shorthand-hex": "rgba(170, 187, 204, 0.5)",
+  "rgba/malformed-null": null
 }

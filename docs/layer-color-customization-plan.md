@@ -719,6 +719,59 @@ Do not start without asking.
   `App.choropleth.buildInterpolateColorExpr` already does N-stop interpolation, so
   this is mostly UI. Covers agency branding with two picks instead of five.
 
+### 7.1 As built
+
+This phase was deliberately underspecified above. The decisions actually taken, and
+why — read these before changing any of it:
+
+**`kind: "categorical"`.** A spec carries a `classes: [{key, label}]` array alongside
+its positional `defaultColors`; the drawer renders one `label + swatch + ×` row per
+class and no palette select. Transit Coverage is three classes (Coverage `#93c5fd` /
+Threshold `#1d4ed8` / Service area `#374151`), Title VI is two (Loss `#e53e3e` / Gain
+`#38a169`). Title VI's fill and outline share one color per class, so a class is one
+swatch, not two. Overrides persist as a **sparse positional array**,
+`App.layerStyles[key].colors = [null, "#hex", …]`, written only through
+`App.setLayerClassColor(styleKey, idx, color)` — that helper owns the pad/null/collapse
+bookkeeping so `setLayerStyle` can still delete an all-default entry outright.
+
+**Categorical ignores `App.mapPalette` entirely**, exactly as `kind: "solid"` does. A
+global sequential ramp says nothing about which color "service loss" should be. This is
+not the §1.2 family restriction (there is no family here) — it is a category that the
+global control simply does not address, so it is left alone rather than filtered.
+
+**The custom gradient is per-layer only, never global.** `"custom"` is stored in the
+same `palette` slot as a preset id but is deliberately *not* a member of `PALETTES`, so
+`list()` / `familyOf()` / `allows()` never see it and the global palette row cannot be
+set to it. That line is the point: a custom gradient is two deliberate picks on one
+layer (the colorblind and agency-branding cases, and the reason it is offered on
+Corridor Scoring despite its `allow: ["diverging"]` — a two-color pick cannot be made
+*by accident*), while the blunt global instrument stays restricted to curated families
+so it can never render a semantic layer unreadable in one click.
+
+**The gradient is literal and WYSIWYG.** `from` always paints the first class and `to`
+the last; the resolver ignores both `spec.reverseDefault` and any `ov.reverse` left
+over from a preset. Reversing a 2-stop gradient is just swapping the two picks, so the
+drawer shows a **Colors** row with two swatches *in place of* the Reverse row — keeping
+the drawer at the §3 three-row ceiling (Palette, Colors, Reset). Selecting `Custom`
+seeds the two endpoints from the layer's currently-resolved first and last colors, so
+switching to it is a visual no-op and the swatches open where the map already is.
+
+**Two new pure helpers**, golden-tested in `test/cases/layer-palettes.mjs`:
+`gradientColors(from, to, n)` (channel-wise sRGB lerp — the same thing MapLibre's own
+`["interpolate", ["linear"], …]` does between two stops, so a custom gradient looks the
+same sampled to N classes here or interpolated continuously by the map; `n === 1`
+returns the midpoint, matching `pickRampColors`; an unparseable endpoint returns `null`
+so the resolver falls back to defaults) and `rgba(hex, alpha)` (the legend fragments
+paint a translucent fill plus a solid border from one source color, so their fill
+functions need both forms).
+
+**The "legends lie" rule from Phase 5 extends past legends.** Transit Coverage's legend
+swatches are filled after mount like the other four. Title VI has no legend, but its
+`.tvi-loss-swatch` / `.tvi-gain-swatch` chips next to each alteration card's computed
+metrics are the same hazard — CSS-classed, one pair per card — so they are re-tinted
+from `renderAlterationCards()` (the single choke point every caller goes through) and
+from the repainter.
+
 ---
 
 ## Appendix — invariants to check at every phase
