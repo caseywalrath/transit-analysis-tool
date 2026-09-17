@@ -754,6 +754,7 @@
   // the analysis, so a palette change is instant. No-op when the layers
   // aren't currently on the map.
   function repaintTravelshedLayers() {
+    fillTravelshedLegendColors();
     var map = App.map;
     if (!map || !map.getLayer(TS_FILL_LAYER)) return;
     var expr = tsColorExpr();
@@ -799,6 +800,18 @@
     if (map.getSource(TS_SOURCE))    map.removeSource(TS_SOURCE);
   }
 
+  // Smallest band (band 0 = shortest budget) first, matching
+  // App.resolveLayerColors("transit-travelshed")'s array order — no
+  // reversal needed here, unlike TPI/Corridor Scoring's high-first legends.
+  function fillTravelshedLegendColors() {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("transit-travelshed")) ||
+      ["#1d4ed8", "#3b82f6", "#93c5fd"];
+    for (var i = 0; i < 3; i++) {
+      var sw = document.getElementById("tsLegendSw" + i);
+      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+    }
+  }
+
   // Widget options (position/width/title) only apply at creation, so this is
   // safe to call on every run — an already-shown widget just becomes visible
   // again and we re-fill its labels either way.
@@ -807,6 +820,7 @@
     await App.popup.showFloatingWidget("ts-legend", "projects/transit-travelshed-legend.html", {
       position: "bottom-left", width: 200, title: "Transit Travelshed"
     });
+    fillTravelshedLegendColors();
     for (var i = 0; i < 3; i++) {
       var row = document.getElementById("tsLegendRow" + i);
       var label = document.getElementById("tsLegendLabel" + i);

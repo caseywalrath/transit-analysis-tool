@@ -332,7 +332,47 @@
     }
   }
   if (typeof App.registerLayerRepainter === "function") {
-    App.registerLayerRepainter("walkshed", repaintWalkshedLayers);
+    App.registerLayerRepainter("walkshed", function () {
+      repaintWalkshedLayers();
+      fillWalkshedLegend(activeBudgets());
+    });
+  }
+
+  // Smallest band (bandIdx 0) first, matching
+  // App.resolveLayerColors("walkshed")'s array order — no reversal needed,
+  // unlike TPI/Corridor Scoring's high-first legends. Hides rows beyond the
+  // active budget count (a point may use 1-3 budgets).
+  function fillWalkshedLegend(budgets) {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("walkshed")) ||
+      ["#1e40af", "#3b82f6", "#93c5fd"];
+    for (var i = 0; i < 3; i++) {
+      var row = document.getElementById("wsLegendRow" + i);
+      var label = document.getElementById("wsLegendLabel" + i);
+      var sw = document.getElementById("wsLegendSw" + i);
+      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+      if (!row) continue;
+      if (i < budgets.length) {
+        row.style.display = "";
+        if (label) label.textContent = "≤ " + budgets[i] + " min";
+      } else {
+        row.style.display = "none";
+      }
+    }
+    var segSw = document.getElementById("wsLegendSwSeg");
+    if (segSw) segSw.style.background = segColor();
+  }
+
+  // Shows (or re-shows) the ws-legend widget and fills its band rows once
+  // the widget's DOM has actually mounted — showFloatingWidget is async on
+  // first creation but synchronous when the widget already exists, so this
+  // handles both without forcing every caller to await.
+  function showWalkshedLegend() {
+    if (!App.popup || !App.popup.showFloatingWidget) return;
+    var budgets = activeBudgets();
+    var p = App.popup.showFloatingWidget("ws-legend", "projects/walkshed-legend.html",
+      { position: "bottom-left", width: 190, title: "Walkshed" });
+    if (p && typeof p.then === "function") p.then(function () { fillWalkshedLegend(budgets); });
+    else fillWalkshedLegend(budgets);
   }
 
   function renderWalkshedLayers(entries) {
@@ -644,10 +684,7 @@
           setExportEnabled(ok > 0);
         }
 
-        if (ok && App.popup && App.popup.showFloatingWidget) {
-          App.popup.showFloatingWidget("ws-legend", "projects/walkshed-legend.html",
-            { position: "bottom-left", width: 190, title: "Walkshed" });
-        }
+        if (ok) showWalkshedLegend();
 
         if (!ok) {
           setStatus("No walksheds produced — " + bad + " point(s) skipped.", "error");
