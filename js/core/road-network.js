@@ -1012,11 +1012,23 @@
   // Compute a network walkshed (walking isochrone) from an arbitrary origin.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km (= speedKmh * minutes/60)
-  //   options  : { maxEdge } — advanced concave-hull edge length (km)
+  //   options  : { maxEdge,       — advanced concave-hull edge length (km)
+  //               budgetsKm }    — OPTIONAL ascending array of km values; when
+  //                                 present, floods once at max(budgetsKm) and
+  //                                 returns one nested polygon per entry (see
+  //                                 `polygons` below). Absent = today's behavior,
+  //                                 byte-identical — see
+  //                                 docs/walkshed-bands-and-crossing-penalties-plan.md
+  //                                 Phase 2.
   // Returns null when no network is loaded or the origin is outside coverage
   // (snap > SNAP_MAX_KM). Otherwise { polygon, reachableSegments, reachableCount,
   // snap, computeMs }. Built on top of runWalkFlood — the graph mutation stays
   // atomic there; polygon/segment assembly below never touches the graph.
+  // When options.budgetsKm is present the return additionally carries
+  // `polygons: [{budgetKm, polygon, nodeCount}]` (ascending, one entry per
+  // budgetsKm value — a degenerate/sparse band still gets an entry with
+  // polygon: null, never dropped); polygon/reachableSegments/reachableCount
+  // remain the LARGEST budget's values, unchanged in meaning.
   function computeWalkshed(lngLat, budgetKm, options) {
     options = options || {};
 
@@ -1045,7 +1057,7 @@
 
     var polygon = buildWalkshedPolygon(coords, options.maxEdge);
 
-    return {
+    var result = {
       polygon: polygon,
       reachableSegments: turf.featureCollection(segFeatures),
       reachableCount: distMap.size,
@@ -1054,6 +1066,23 @@
       snapMs: flood.snapMs,
       floodMs: flood.floodMs
     };
+
+    if (options.budgetsKm && options.budgetsKm.length) {
+      var polygons = [];
+      for (var bi = 0; bi < options.budgetsKm.length; bi++) {
+        var b = options.budgetsKm[bi];
+        var bandCoords = [];
+        distMap.forEach(function (d, key) { if (d <= b) bandCoords.push(keyToCoord(key)); });
+        polygons.push({
+          budgetKm: b,
+          polygon: buildWalkshedPolygon(bandCoords, options.maxEdge),
+          nodeCount: bandCoords.length
+        });
+      }
+      result.polygons = polygons;
+    }
+
+    return result;
   }
 
   // Same flood as computeWalkshed, but returns the raw per-node cost map instead
