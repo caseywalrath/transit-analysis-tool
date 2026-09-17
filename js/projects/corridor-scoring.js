@@ -490,8 +490,14 @@
     // a missing/non-numeric cdi now takes buildStepColorExpr's typeof-based
     // noDataColor path instead of the old "coalesce to -1, add a 0 break"
     // sentinel, which drew the same gray for the same case.
+    // Colors resolve through the layer color cascade
+    // (docs/layer-color-customization-plan.md) — restricted to diverging
+    // palettes only by the "corridor-scoring" spec's allow list, so this can
+    // never become an unreadable sequential ramp.
+    var csColors = (App.resolveLayerColors && App.resolveLayerColors("corridor-scoring")) ||
+      ["#C53030", "#C05621", "#D69E2E", "#276749"];
     var colorExpr = App.choropleth.buildStepColorExpr(
-      "cdi", [2, 3, 4], ["#C53030", "#C05621", "#D69E2E", "#276749"], "rgba(180,180,180,0.7)"
+      "cdi", [2, 3, 4], csColors, "rgba(180,180,180,0.7)"
     );
 
     if (!map.getSource(CS_SOURCE)) {
@@ -527,6 +533,7 @@
       });
     } else {
       map.getSource(CS_SOURCE).setData(fc);
+      map.setPaintProperty(CS_LINE_LAYER, "line-color", colorExpr); // pick up a palette changed while results were on screen
     }
   }
 
@@ -535,6 +542,15 @@
     if (!map) return;
     if (map.getLayer(CS_LINE_LAYER)) map.removeLayer(CS_LINE_LAYER);
     if (map.getSource(CS_SOURCE))    map.removeSource(CS_SOURCE);
+  }
+
+  // Re-renders from the last result (cheap — geometry is already resolved,
+  // no Census calls) so a palette change picked up from the Layers panel
+  // repaints instantly. No-op when nothing has been scored yet.
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("corridor-scoring", function () {
+      if (_lastResult) renderMapChoropleth(_lastResult);
+    });
   }
 
   // ---- Factor breakdown (per-corridor expansion) ----

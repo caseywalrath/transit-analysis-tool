@@ -299,10 +299,41 @@
 
   // Band fill/line color, smallest band (index 0) darkest so it reads as "most
   // walkable" — same ["match", ["get", "bandIdx"], ...] pattern network-joins-point
-  // uses in js/core/network-connectors.js. Any bandIdx beyond the listed cases
-  // (only possible past 3 bands, which the UI never allows) falls through to the
-  // trailing default color.
-  var BAND_COLORS = ["match", ["get", "bandIdx"], 0, "#1e40af", 1, "#3b82f6", "#93c5fd"];
+  // uses in js/core/network-connectors.js. Resolved through the layer color
+  // cascade (docs/layer-color-customization-plan.md); guarded so a missing
+  // layer-palettes.js script tag degrades to the original hardcoded colors
+  // rather than throwing, same defensive pattern used elsewhere in this file
+  // for window.WalkCost.
+  var WS_SEG_DEFAULT_COLOR = "#16a34a";
+  function bandColorExpr() {
+    if (typeof window.LayerPalette === "undefined") {
+      return ["match", ["get", "bandIdx"], 0, "#1e40af", 1, "#3b82f6", "#93c5fd"];
+    }
+    var colors = App.resolveLayerColors("walkshed") || ["#1e40af", "#3b82f6", "#93c5fd"];
+    return window.LayerPalette.matchExpr("bandIdx", colors);
+  }
+  function segColor() {
+    if (typeof App.resolveLayerColors !== "function") return WS_SEG_DEFAULT_COLOR;
+    var colors = App.resolveLayerColors("walkshed-seg");
+    return (colors && colors[0]) || WS_SEG_DEFAULT_COLOR;
+  }
+
+  // Re-applies paint properties from the current cascade without re-running
+  // the analysis, so a palette change is instant. No-op when the layers
+  // aren't currently on the map.
+  function repaintWalkshedLayers() {
+    var map = App.map;
+    if (!map || !map.getLayer(WS_FILL_LAYER)) return;
+    var expr = bandColorExpr();
+    map.setPaintProperty(WS_FILL_LAYER, "fill-color", expr);
+    map.setPaintProperty(WS_LINE_LAYER, "line-color", expr);
+    if (map.getLayer(WS_SEG_LAYER)) {
+      map.setPaintProperty(WS_SEG_LAYER, "line-color", segColor());
+    }
+  }
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("walkshed", repaintWalkshedLayers);
+  }
 
   function renderWalkshedLayers(entries) {
     var map = App.map;
@@ -344,15 +375,16 @@
       map.addSource(WS_FILL_SRC, { type: "geojson", data: polyFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
-        paint: { "fill-color": BAND_COLORS, "fill-opacity": 0.30 }
+        paint: { "fill-color": bandColorExpr(), "fill-opacity": 0.30 }
       });
       map.addLayer({
         id: WS_LINE_LAYER, type: "line", source: WS_FILL_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": BAND_COLORS, "line-width": 2, "line-opacity": 0.9 }
+        paint: { "line-color": bandColorExpr(), "line-width": 2, "line-opacity": 0.9 }
       });
     } else {
       map.getSource(WS_FILL_SRC).setData(polyFc);
+      repaintWalkshedLayers(); // pick up a palette changed while results were on screen
     }
 
     if (!map.getSource(WS_SEG_SRC)) {
@@ -360,7 +392,7 @@
       map.addLayer({
         id: WS_SEG_LAYER, type: "line", source: WS_SEG_SRC,
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#16a34a", "line-width": 1.5, "line-opacity": 0.85 }
+        paint: { "line-color": segColor(), "line-width": 1.5, "line-opacity": 0.85 }
       });
     } else {
       map.getSource(WS_SEG_SRC).setData(segFc);

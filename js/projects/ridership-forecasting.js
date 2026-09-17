@@ -737,6 +737,25 @@
   var RF_CORRIDOR_SOURCE = "rf-corridor-cdi";
   var RF_CORRIDOR_LAYER = "rf-corridor-cdi-layer";
   var _corridorPopup = null; // MapLibre Popup instance for corridor CDI hover
+  var _lastChoroplethTpi = null; // the tpiResult last painted onto the "rf" choropleth, for repaints
+
+  // The 0 stop is a fixed no-data gray (cdiScore falls back to 0 when a
+  // route has no finite CDI — see renderCorridorCDILines below), not part of
+  // the ramp; stops 1-5 resolve through the same "rf" styleKey the
+  // choropleth uses, so the corridor lines and the choropleth always agree.
+  function corridorCdiColorExpr() {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("rf")) ||
+      ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"];
+    return [
+      "interpolate", ["linear"], ["get", "cdiScore"],
+      0, "#d3d3d3",
+      1, colors[0],
+      2, colors[1],
+      3, colors[2],
+      4, colors[3],
+      5, colors[4]
+    ];
+  }
 
   // Hover popup for the "rf" choropleth (Phase 3 Step 3.3 of
   // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
@@ -756,6 +775,7 @@
     var map = App.map;
     if (!map || !result || !result.tpiResult) return;
     var tpi = result.tpiResult;
+    _lastChoroplethTpi = tpi; // tracked so a palette-change repaint can re-call this with no other state
 
     var useClipped = tpi.apportionByArea && tpi.clippedGeos;
     var clippedLookup = null;
@@ -784,7 +804,9 @@
 
     App.choropleth.render({
       id: "rf", features: features, valueProp: "cdiScore",
-      breaks: [1, 2, 3, 4], ramp: "blues", fillOpacity: 0.55,
+      breaks: [1, 2, 3, 4], ramp: "blues",
+      colors: App.resolveLayerColors ? App.resolveLayerColors("rf") : null,
+      fillOpacity: 0.55,
       hoverHTML: rfHoverHTML, beforeLayer: "buffers-fill"
     });
   }
@@ -829,15 +851,7 @@
       paint: {
         "line-width": 5,
         "line-opacity": 0.85,
-        "line-color": [
-          "interpolate", ["linear"], ["get", "cdiScore"],
-          0, "#d3d3d3",
-          1, "#eff3ff",
-          2, "#bdd7e7",
-          3, "#6baed6",
-          4, "#3182bd",
-          5, "#08519c"
-        ]
+        "line-color": corridorCdiColorExpr()
       }
     });
 
@@ -869,6 +883,20 @@
     if (map.getLayer(RF_CORRIDOR_LAYER)) map.removeLayer(RF_CORRIDOR_LAYER);
     if (map.getSource(RF_CORRIDOR_SOURCE)) map.removeSource(RF_CORRIDOR_SOURCE);
     if (_corridorPopup) { _corridorPopup.remove(); _corridorPopup = null; }
+  }
+
+  // Re-renders the choropleth from the last-painted tpiResult (cheap — no
+  // Census calls) and refreshes the corridor CDI line color in place, so a
+  // palette change picked up from the Layers panel repaints both instantly.
+  // Both share the "rf" styleKey. No-op when nothing has been scored yet.
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("rf", function () {
+      if (_lastChoroplethTpi) renderChoropleth({ tpiResult: _lastChoroplethTpi });
+      var map = App.map;
+      if (map && map.getLayer(RF_CORRIDOR_LAYER)) {
+        map.setPaintProperty(RF_CORRIDOR_LAYER, "line-color", corridorCdiColorExpr());
+      }
+    });
   }
 
   function clearAll() {

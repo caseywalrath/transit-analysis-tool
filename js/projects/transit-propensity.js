@@ -741,7 +741,9 @@
     // yields tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
     App.choropleth.render({
       id: "tpi", features: features, valueProp: "tpiScore",
-      breaks: [1, 2, 3, 4], ramp: "blues", fillOpacity: 0.55,
+      breaks: [1, 2, 3, 4], ramp: "blues",
+      colors: App.resolveLayerColors ? App.resolveLayerColors("tpi") : null,
+      fillOpacity: 0.55,
       hoverHTML: tpiHoverHTML, beforeLayer: "buffers-fill"
     });
 
@@ -754,6 +756,15 @@
 
   function removeChoropleth() {
     App.choropleth.remove("tpi");
+  }
+
+  // Re-renders from the last result (cheap — no Census calls) so a palette
+  // change picked up from the Layers panel repaints instantly. No-op when
+  // nothing has been scored yet.
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("tpi", function () {
+      if (_lastResult) renderChoropleth(_lastResult);
+    });
   }
 
   function clearChoropleth() {

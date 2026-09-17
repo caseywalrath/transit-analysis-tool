@@ -738,7 +738,31 @@
 
   // 3-class Blues, innermost (band 0 = shortest budget) darkest — the repo's
   // only other `step`/classed color expression precedent is corridor-scoring.js.
-  var TS_COLOR_EXPR = ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
+  // Resolved through the layer color cascade
+  // (docs/layer-color-customization-plan.md); guarded so a missing
+  // layer-palettes.js script tag degrades to the original hardcoded colors
+  // rather than throwing.
+  function tsColorExpr() {
+    if (typeof window.LayerPalette === "undefined") {
+      return ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
+    }
+    var colors = App.resolveLayerColors("transit-travelshed") || ["#1d4ed8", "#3b82f6", "#93c5fd"];
+    return window.LayerPalette.matchExpr("band", colors);
+  }
+
+  // Re-applies paint properties from the current cascade without re-running
+  // the analysis, so a palette change is instant. No-op when the layers
+  // aren't currently on the map.
+  function repaintTravelshedLayers() {
+    var map = App.map;
+    if (!map || !map.getLayer(TS_FILL_LAYER)) return;
+    var expr = tsColorExpr();
+    map.setPaintProperty(TS_FILL_LAYER, "fill-color", expr);
+    map.setPaintProperty(TS_LINE_LAYER, "line-color", expr);
+  }
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("transit-travelshed", repaintTravelshedLayers);
+  }
 
   function renderTravelshedLayers(rings) {
     var map = App.map;
@@ -754,15 +778,16 @@
       map.addSource(TS_SOURCE, { type: "geojson", data: fc });
       map.addLayer({
         id: TS_FILL_LAYER, type: "fill", source: TS_SOURCE,
-        paint: { "fill-color": TS_COLOR_EXPR, "fill-opacity": 0.35 }
+        paint: { "fill-color": tsColorExpr(), "fill-opacity": 0.35 }
       });
       map.addLayer({
         id: TS_LINE_LAYER, type: "line", source: TS_SOURCE,
         layout: { "line-join": "round" },
-        paint: { "line-color": TS_COLOR_EXPR, "line-width": 1.5, "line-opacity": 0.9 }
+        paint: { "line-color": tsColorExpr(), "line-width": 1.5, "line-opacity": 0.9 }
       });
     } else {
       map.getSource(TS_SOURCE).setData(fc);
+      repaintTravelshedLayers(); // pick up a palette changed while results were on screen
     }
   }
 

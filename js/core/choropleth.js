@@ -19,11 +19,20 @@
 
   var DEFAULT_NO_DATA_COLOR = "rgba(200,200,200,0.35)";
 
+  // DUPLICATED DATA: viridis/gray/quality below are byte-identical to their
+  // entries in js/core/layer-palettes.js's PALETTES table (Phase 4.7 of
+  // docs/layer-color-customization-plan.md — Feature Area Analysis keeps its
+  // own #basMapRamp dropdown rather than the Layers-panel drawer, so this
+  // table can't simply delegate to that one). If you change a color in
+  // either table, change it in both.
   var RAMPS = {
-    blues:  { label: "Blues",             colors5: ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"] },
-    heat:   { label: "Heat (Yl-Or-Rd)",   colors5: ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"] },
-    greens: { label: "Greens",            colors5: ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"] },
-    rdbu:   { label: "Diverging (Rd-Bu)", colors5: ["#ca0020", "#f4a582", "#f7f7f7", "#92c5de", "#0571b0"] }
+    blues:   { label: "Blues",             colors5: ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"] },
+    heat:    { label: "Heat (Yl-Or-Rd)",   colors5: ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"] },
+    greens:  { label: "Greens",            colors5: ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"] },
+    rdbu:    { label: "Diverging (Rd-Bu)", colors5: ["#ca0020", "#f4a582", "#f7f7f7", "#92c5de", "#0571b0"] },
+    viridis: { label: "Viridis",           colors5: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"] },
+    gray:    { label: "Grayscale",         colors5: ["#f7f7f7", "#cccccc", "#969696", "#636363", "#252525"] },
+    quality: { label: "Red–Green",       colors5: ["#C53030", "#C05621", "#D69E2E", "#68A357", "#276749"] }
   };
 
   // ---- Pure classification math (golden-testable) ----------------------
@@ -134,10 +143,12 @@
 
   // ---- Map-facing instance API ------------------------------------------
 
-  // opts = { id, features, valueProp, method, classes, ramp, breaks
-  //   (optional manual override), beforeLayer, fillOpacity, lineColor,
-  //   lineWidth, lineOpacity, hoverHTML (fn(props) => html string | falsy,
-  //   or null for no hover), noDataColor }
+  // opts = { id, features, valueProp, method, classes, ramp, colors
+  //   (optional — explicit color array in place of a RAMPS[ramp] lookup, e.g.
+  //   from App.resolveLayerColors(); see docs/layer-color-customization-plan.md
+  //   Phase 4.1), breaks (optional manual override), beforeLayer, fillOpacity,
+  //   lineColor, lineWidth, lineOpacity, hoverHTML (fn(props) => html string |
+  //   falsy, or null for no hover), noDataColor }
   // Creates or updates source "<id>-choropleth" and layers
   // "<id>-choropleth-fill" / "<id>-choropleth-line". Returns
   // { breaks, colors, nEffective, min, max } for the caller's legend.
@@ -158,6 +169,11 @@
     var max = values.length ? Math.max.apply(null, values) : null;
 
     var rampDef = RAMPS[opts.ramp] || RAMPS.blues;
+    // Explicit colors (e.g. from App.resolveLayerColors()) take the place of
+    // a RAMPS[ramp] lookup for both branches below. Additive and backward
+    // compatible — every existing caller passes no opts.colors and behaves
+    // exactly as before.
+    var explicitColors = (opts.colors && opts.colors.length) ? opts.colors : null;
     var noDataColor = opts.noDataColor || DEFAULT_NO_DATA_COLOR;
 
     var breaksResult, colors, colorExpr;
@@ -170,11 +186,12 @@
       // range, or just its one solid fallback color when the range is
       // degenerate — a caller's legend must match the map, not always show
       // 5 swatches when only one color was ever drawn.
+      var gradientColors = explicitColors || rampDef.colors5;
       var validRange = (min != null && max != null && max > min);
       colors = !validRange
-        ? (min == null ? [] : [rampDef.colors5[Math.floor((rampDef.colors5.length - 1) / 2)]])
-        : rampDef.colors5;
-      colorExpr = buildInterpolateColorExpr(valueProp, min, max, rampDef.colors5, noDataColor);
+        ? (min == null ? [] : [gradientColors[Math.floor((gradientColors.length - 1) / 2)]])
+        : gradientColors;
+      colorExpr = buildInterpolateColorExpr(valueProp, min, max, gradientColors, noDataColor);
       breaksResult = { breaks: [], nEffective: colors.length };
     } else {
       if (opts.breaks) {
@@ -182,7 +199,17 @@
       } else {
         breaksResult = computeClassBreaks(values, opts.method || "quantile", opts.classes || 5);
       }
-      colors = pickRampColors(rampDef.colors5, Math.max(breaksResult.nEffective, 1));
+      var n = Math.max(breaksResult.nEffective, 1);
+      if (explicitColors) {
+        // Caller already sized this ramp for exactly n colors (e.g.
+        // LayerPalette.rampColors(id, spec.n, ...)) — slice/pad rather than
+        // re-subsample a 5-color array like the RAMPS path does below.
+        colors = explicitColors.slice(0, n);
+        var padColor = explicitColors[explicitColors.length - 1];
+        while (colors.length < n) colors.push(padColor);
+      } else {
+        colors = pickRampColors(rampDef.colors5, n);
+      }
       colorExpr = buildStepColorExpr(valueProp, breaksResult.breaks, colors, noDataColor);
     }
 
