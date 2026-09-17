@@ -106,12 +106,31 @@
   // Cache key — a walkshed is a pure function of the origin coords, the walk
   // parameters, and the loaded network (roadNetworkEpoch bumps on (re)load/clear).
   // Every budget must be included, not just one, or changing budget 2/3 won't
-  // invalidate the cache.
+  // invalidate the cache. The two crossing-penalty seconds must be included too
+  // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5) — they change
+  // the result but don't bump the network epoch, so without this the cache
+  // would serve stale polygons after a penalty change.
   function settingsKeyFor(pf) {
     var c = pf.geometry.coordinates;
     var s = pointSettingsFor(pf);
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
-    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch].join("|");
+    var crossMajor = (App.networkSettings && App.networkSettings.crossingMajorSec) || 0;
+    var crossMinor = (App.networkSettings && App.networkSettings.crossingMinorSec) || 0;
+    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|");
+  }
+
+  // Builds { major, minor } crossing-penalty km values from the global
+  // App.networkSettings seconds plus this point's own walk speed (km/h) — see
+  // js/core/walk-cost.js. Guarded so a missing walk-cost.js script tag
+  // degrades to no penalty rather than throwing.
+  function crossingPenaltyKmFor(speedKmh) {
+    if (typeof window.WalkCost === "undefined") return null;
+    var opts = {
+      majorSec: (App.networkSettings && App.networkSettings.crossingMajorSec) || 0,
+      minorSec: (App.networkSettings && App.networkSettings.crossingMinorSec) || 0,
+      speedKmh: speedKmh
+    };
+    return { major: window.WalkCost.penaltyKm("major", opts), minor: window.WalkCost.penaltyKm("minor", opts) };
   }
 
   // ---- Core compute (shared by the Compute button and ensurePointWalksheds) ----
@@ -133,7 +152,8 @@
     var budgetsKm = s.budgets.map(function (m) { return speedKmh * (m / 60); });
     var maxBudgetKm = budgetsKm[budgetsKm.length - 1];
     var res = App.computeWalkshed
-      ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm, { maxEdge: s.maxEdge, budgetsKm: budgetsKm })
+      ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm,
+          { maxEdge: s.maxEdge, budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh) })
       : null;
 
     if (!res) {
@@ -703,6 +723,14 @@
     // this module never stores its own copy of the value.
     var tol = document.getElementById("wsSnapTol");
     if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
+    // Crossing-penalty seconds are GLOBAL state too, same sharing rationale
+    // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
+    var cMajor = document.getElementById("wsCrossMajor");
+    var cMinor = document.getElementById("wsCrossMinor");
+    if (App.networkSettings) {
+      if (cMajor) cMajor.value = App.networkSettings.crossingMajorSec;
+      if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
+    }
     updateStudyAreaButtonLabel();
   }
 
@@ -728,6 +756,21 @@
     if (App.networkSettings) App.networkSettings.snapToleranceFt = +el.value;
     if (App.cache && App.cache.save) App.cache.save();
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+    if (_lastEntries.length) markStale();
+  }
+
+  // Crossing-penalty seconds are global state too, same sharing rationale as
+  // snap tolerance (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5)
+  // — write straight to App.networkSettings. No connector overlay to re-run;
+  // no network geometry changed, only the flood's cost function.
+  function onCrossingChange() {
+    var majorEl = document.getElementById("wsCrossMajor");
+    var minorEl = document.getElementById("wsCrossMinor");
+    if (App.networkSettings) {
+      if (majorEl && +majorEl.value >= 0) App.networkSettings.crossingMajorSec = +majorEl.value;
+      if (minorEl && +minorEl.value >= 0) App.networkSettings.crossingMinorSec = +minorEl.value;
+    }
+    if (App.cache && App.cache.save) App.cache.save();
     if (_lastEntries.length) markStale();
   }
 
@@ -758,6 +801,11 @@
 
     var snapEl = document.getElementById("wsSnapTol");
     if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
+
+    ["wsCrossMajor", "wsCrossMinor"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("change", onCrossingChange);
+    });
   }
 
   function onOpen(core) {

@@ -1,7 +1,9 @@
 // js/core/road-network.js
 // Offline road network: Overpass download, graph construction, Dijkstra pathfinding.
 // Allows local street-snapped routing when OSRM servers are unavailable.
-// Depends on: App.map (map.js), App.setStatus (utils.js), turf (CDN).
+// Depends on: App.map (map.js), App.setStatus (utils.js), turf (CDN),
+//             window.WalkCost (walk-cost.js, optional — crossing penalties,
+//             see docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
 // Exports: roadNetworkLoaded, findLocalRoute, fetchRoadNetwork,
 //          loadRoadNetworkFromFile, exportRoadNetwork, clearRoadNetwork,
 //          computeWalkshed, computeWalkCostMap, polygonizeNodeSet,
@@ -26,6 +28,7 @@
   var _graph = null;        // Map<nodeKey, [{node, weight, coords}]>
   var _segmentIndex = null; // Array of {startKey, endKey, startCoord, endCoord, pedBlocked, carBlocked, kind} per segment
   var _segGrid = null;      // Map<"gx,gy", int[]> of _segmentIndex indices — snap acceleration, see buildSegGrid()
+  var _nodeTier = null;     // Map<nodeKey, "major"|"minor"> — crossing-penalty tier per intersection node, see buildNodeTierMap()
   var _featureCount = 0;
   var _networkEpoch = 0;    // bumped on every (re)build/clear — lets caches (e.g. walkshed) invalidate
   var _downloadedBboxPolygon = null; // turf Polygon of the last Overpass download extent (for the on-map outline)
@@ -90,11 +93,30 @@
   // Pushes a bidirectional edge into an explicit graph Map. Extracted from
   // buildGraph() (which calls it with its local `graph`) so applyConnectorOverlay()
   // can push connector-derived edges into the live _graph the same way.
-  function addGraphEdge(graph, fromKey, toKey, weight, coordPair, pedBlocked, carBlocked) {
+  function addGraphEdge(graph, fromKey, toKey, weight, coordPair, pedBlocked, carBlocked, hwy) {
+    hwy = hwy || "";
     if (!graph.has(fromKey)) graph.set(fromKey, []);
-    graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked });
+    graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked, hwy: hwy });
     if (!graph.has(toKey)) graph.set(toKey, []);
-    graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked });
+    graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked, hwy: hwy });
+  }
+
+  // Crossing-penalty tier per intersection node (docs/walkshed-bands-and-
+  // crossing-penalties-plan.md Phase 5). Walks the graph once: a node's own
+  // adjacency-list length equals the number of segments incident to it (each
+  // incident segment contributes exactly one directed edge in that node's own
+  // array), so it's exactly the "how many edges meet here" count
+  // window.WalkCost.nodeTier() needs. Nodes with no penalty (fewer than 3
+  // incident edges) are omitted entirely rather than stored as null.
+  function buildNodeTierMap(graph) {
+    var map = new Map();
+    if (!graph || typeof window.WalkCost === "undefined") return map;
+    graph.forEach(function (edges, key) {
+      var hwyList = edges.map(function (e) { return e.hwy || ""; });
+      var tier = window.WalkCost.nodeTier(hwyList);
+      if (tier) map.set(key, tier);
+    });
+    return map;
   }
 
   // Removes one edge fromKey -> toKey from _graph (the first matching entry).
@@ -146,7 +168,7 @@
           var k1 = nodeKey(c1);
           var k2 = nodeKey(c2);
           var dist = turf.distance(turf.point(c1), turf.point(c2), { units: "kilometers" });
-          addGraphEdge(graph, k1, k2, dist, [c1, c2], pedBlocked, carBlocked);
+          addGraphEdge(graph, k1, k2, dist, [c1, c2], pedBlocked, carBlocked, hwy);
           segments.push({
             startKey: k1,
             endKey: k2,
@@ -154,6 +176,7 @@
             endCoord: c2,
             pedBlocked: pedBlocked,
             carBlocked: carBlocked,
+            hwy: hwy,
             kind: "base"
           });
 
@@ -168,6 +191,7 @@
     _graph = graph;
     _segmentIndex = segments;
     _segGrid = buildSegGrid(segments, minLat, maxLat, minLng, maxLng);
+    _nodeTier = buildNodeTierMap(_graph);
     _featureCount = features.length;
   }
 
@@ -250,6 +274,7 @@
 
     _segmentIndex = newSegmentIndex;
     _segGrid = buildSegGrid(_segmentIndex, minLat, maxLat, minLng, maxLng);
+    _nodeTier = buildNodeTierMap(_graph);
 
     _lastOverlayReport = {
       addEdges: result.addEdges.length,
@@ -810,6 +835,7 @@
     _graph = null;
     _segmentIndex = null;
     _segGrid = null;
+    _nodeTier = null;
     _featureCount = 0;
     _networkEpoch++;
     _downloadedBboxPolygon = null;
@@ -870,8 +896,13 @@
   // Budget-limited flood Dijkstra: settle every node whose cumulative distance
   // from startKey is <= budgetKm. Unlike dijkstra() there is no endKey early-exit;
   // we prune any relaxation that would exceed the budget so the search stays local.
+  //   penaltyKm : optional { major, minor } km values (docs/walkshed-bands-and-
+  //               crossing-penalties-plan.md Phase 5) — added to newDist when
+  //               arriving at a node classified in _nodeTier, so the budget
+  //               check below correctly prunes an over-budget crossing. null/
+  //               absent = no penalty, byte-identical to pre-Phase-5 behavior.
   // Returns a Map<nodeKey, distKm> of all settled nodes within budget.
-  function floodDijkstra(startKey, budgetKm) {
+  function floodDijkstra(startKey, budgetKm, penaltyKm) {
     var dist = new Map();
     var heap = new MinHeap();
 
@@ -889,6 +920,10 @@
         var nb = neighbors[i];
         if (nb.pedBlocked) continue; // pedestrians can't walk motorways/trunk roads
         var newDist = current.dist + nb.weight;
+        if (penaltyKm) {
+          var tier = _nodeTier.get(nb.node);
+          if (tier) newDist += (tier === "major" ? penaltyKm.major : penaltyKm.minor);
+        }
         if (newDist > budgetKm) continue; // beyond walk budget — don't settle
         if (newDist < (dist.get(nb.node) || Infinity)) {
           dist.set(nb.node, newDist);
@@ -932,13 +967,17 @@
   // async-safe.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km
+  //   opts     : optional { crossingPenaltyKm: {major, minor} } — threaded to
+  //              floodDijkstra (docs/walkshed-bands-and-crossing-penalties-plan.md
+  //              Phase 5). Absent/no crossingPenaltyKm = no penalty, unchanged
+  //              behavior — computeWalkCostMap deliberately never passes this.
   // Returns null when no network is loaded or the origin is outside walkable
   // coverage (snap > SNAP_MAX_KM). Otherwise { distMap: Map<nodeKey,distKm>,
   // snap, computeMs, snapMs, floodMs }. snapMs/floodMs split the total so
   // callers doing many of these (e.g. Transit Travelshed's per-stop floods)
   // can diagnose whether time is going to snapping or to the Dijkstra flood
   // itself — see the "Spatial grid over segments" comment above buildSegGrid().
-  function runWalkFlood(lngLat, budgetKm) {
+  function runWalkFlood(lngLat, budgetKm, opts) {
     if (!_graph || !(budgetKm > 0)) return null;
 
     var t0 = (typeof performance !== "undefined" && performance.now)
@@ -992,7 +1031,7 @@
     var distMap;
     try {
       injectSnapNode(snap);
-      distMap = floodDijkstra(snap.key, budgetKm);
+      distMap = floodDijkstra(snap.key, budgetKm, opts && opts.crossingPenaltyKm);
     } finally {
       cleanupTempNodes();
     }
@@ -1013,13 +1052,18 @@
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km (= speedKmh * minutes/60)
   //   options  : { maxEdge,       — advanced concave-hull edge length (km)
-  //               budgetsKm }    — OPTIONAL ascending array of km values; when
+  //               budgetsKm,     — OPTIONAL ascending array of km values; when
   //                                 present, floods once at max(budgetsKm) and
   //                                 returns one nested polygon per entry (see
   //                                 `polygons` below). Absent = today's behavior,
   //                                 byte-identical — see
   //                                 docs/walkshed-bands-and-crossing-penalties-plan.md
   //                                 Phase 2.
+  //               crossingPenaltyKm } — OPTIONAL { major, minor } km values,
+  //                                 threaded to the flood (Phase 5). Absent/zero
+  //                                 = no penalty, byte-identical to pre-Phase-5
+  //                                 output — this is a hard backward-compat
+  //                                 requirement, verified pixel-identical at 0.
   // Returns null when no network is loaded or the origin is outside coverage
   // (snap > SNAP_MAX_KM). Otherwise { polygon, reachableSegments, reachableCount,
   // snap, computeMs }. Built on top of runWalkFlood — the graph mutation stays
@@ -1032,7 +1076,7 @@
   function computeWalkshed(lngLat, budgetKm, options) {
     options = options || {};
 
-    var flood = runWalkFlood(lngLat, budgetKm);
+    var flood = runWalkFlood(lngLat, budgetKm, options);
     if (!flood) return null;
     var distMap = flood.distMap;
     var snap = flood.snap;

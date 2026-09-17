@@ -34,7 +34,16 @@
   // never per-module state (see docs/network-connectors-plan.md §2). Persisted
   // as an additive field in the core session-cache state (cache.js), same
   // pattern as featureSortMode — defaults gracefully when absent.
-  App.networkSettings = App.networkSettings || { snapToleranceFt: 50 };
+  //
+  // crossingMajorSec/crossingMinorSec (docs/walkshed-bands-and-crossing-
+  // penalties-plan.md Phase 5): the same kind of global, shared setting,
+  // default 0 = off (opt-in only, no behavior change until the user raises
+  // one). `|| {}` above short-circuits on an already-created object, so
+  // backfill the two new keys defensively when they're absent (e.g. a page
+  // that only ever set snapToleranceFt before this phase shipped).
+  App.networkSettings = App.networkSettings || { snapToleranceFt: 50, crossingMajorSec: 0, crossingMinorSec: 0 };
+  if (App.networkSettings.crossingMajorSec == null) App.networkSettings.crossingMajorSec = 0;
+  if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
 
   var FT_TO_KM = 0.0003048;
 

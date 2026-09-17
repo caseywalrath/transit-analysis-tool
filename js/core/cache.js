@@ -156,6 +156,8 @@
       featureShowGroups: _fss ? _fss.showGroups : true,
       featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
       networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
+      networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
+      networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -305,6 +307,15 @@
     // field — absent on an old session, App.networkSettings keeps its default).
     if (App.networkSettings && state.networkSnapToleranceFt != null) {
       App.networkSettings.snapToleranceFt = state.networkSnapToleranceFt;
+    }
+    // 3a-3. Restore the global crossing-penalty settings (additive fields,
+    // docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5 — absent on
+    // an old session, App.networkSettings keeps its 0 default).
+    if (App.networkSettings && state.networkCrossingMajorSec != null) {
+      App.networkSettings.crossingMajorSec = state.networkCrossingMajorSec;
+    }
+    if (App.networkSettings && state.networkCrossingMinorSec != null) {
+      App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
     }
 
     // 3b. Restore offset toggle (actual offset computed after render via auto-recompute hook)

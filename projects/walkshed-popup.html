@@ -44,6 +44,20 @@
           How close a drawn walk connector's end must be to an existing street to join it.
           Shared with the Transit Travelshed module.
         </p>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Crossing delay — major street (s)</label>
+          <input type="number" id="wsCrossMajor" class="rf-number-input" min="0" max="120" step="1" value="0">
+        </div>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Crossing delay — minor street (s)</label>
+          <input type="number" id="wsCrossMinor" class="rf-number-input" min="0" max="60" step="1" value="0">
+        </div>
+        <p class="tiny u-mt-1 u-muted">
+          Seconds added each time the walk crosses an intersection. 0 = off. Typical signalized arterial is
+          15–20 s; suburban arterials with long cycles run 30–45 s. Shared with Transit Travelshed. Applied
+          at every intersection on the route, so walking <em>along</em> an arterial is charged too — treat
+          these as blended averages, not exact signal waits.
+        </p>
       </details>
 
       <div class="module-input-actions">
