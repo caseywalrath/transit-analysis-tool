@@ -650,6 +650,11 @@ button { cursor: pointer; }
   cursor: pointer;
 }
 .lp-style-reset:hover { color: var(--danger); border-color: var(--danger-hover); }
+/* Layer palette select (docs/layer-color-customization-plan.md Phase 6) reuses
+   .lp-basemap-select, which is flex:1 for its usual full-width row context;
+   inside the narrower .lp-style-control it needs a cap so a long palette
+   label can't push the 208px panel into horizontal scroll. */
+.lp-style-control .lp-basemap-select { max-width: 104px; flex: 0 1 auto; }
 /* --- Shared census-cache status line (analysis modules) --- */
 /* A status NOTE, not a control. It previously carried a filled background, a
    full border and a radius, which — sitting directly under Corridor Scoring's

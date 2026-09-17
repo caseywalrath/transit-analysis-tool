@@ -15,6 +15,11 @@
 //             App.BUFFER_RADIUS_STEPS, App.sectionColors, App.featureSettings,
 //             App.getTypeDefaultColor, App.getBasemaps, App.switchBasemap,
 //             App.cache, App.refreshFeaturePanel.
+// Analysis/reference layer color styling (docs/layer-color-customization-plan.md
+// Phase 6) additionally depends on window.LayerPalette, App.resolveLayerColors,
+// App.setLayerStyle, App.clearLayerStyle, App.layerStyles, App.mapPalette,
+// App.repaintStyledLayers (js/core/layer-palettes.js) — all optional, guarded
+// with typeof checks so a missing script tag just omits the style drawers.
 (function () {
   var App = window.App = window.App || {};
 
@@ -50,9 +55,9 @@
       { id: "network-joins-point", op: "circle-opacity" }],
       clear: callIf("clearRoadNetwork") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
-      clear: callIf("clearGTFS") },
+      clear: callIf("clearGTFS"), styleKey: "gtfs-shapes" },
     { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" }],
-      clear: callIf("clearGTFS") },
+      clear: callIf("clearGTFS"), styleKey: "gtfs-stops" },
     { id: "osm-points-layer",     label: "OSM points",           layers: [{ id: "osm-points-layer", op: "circle-opacity" }],
       clear: function () { if (typeof App.osmToggleCategory === "function") App.osmToggleCategory("bus_stops"); } },
     { id: "osm-lines-layer",      label: "OSM lines",            layers: [{ id: "osm-lines-layer", op: "line-opacity" }],
@@ -63,13 +68,13 @@
   var ANALYSIS = [
     { id: "bas-choropleth-fill", label: "Feature Area Analysis", moduleId: "buffer-summary",
       layers: [{ id: "bas-choropleth-fill", op: "fill-opacity" }, { id: "bas-choropleth-line", op: "line-opacity" }] },
-    { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity",
+    { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity", styleKey: "tpi",
       layers: [{ id: "tpi-choropleth-fill", op: "fill-opacity" }, { id: "tpi-choropleth-line", op: "line-opacity" }] },
-    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring",
+    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring",
       layers: [{ id: "corridor-scoring-routes-layer", op: "line-opacity" }] },
-    { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting",
+    { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
-    { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed",
+    { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed", styleKey: "transit-travelshed",
       layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-line", op: "line-opacity" }] },
     // Added after an audit found five map-rendering surfaces were never
     // registered here, so their output was invisible to this panel — no
@@ -79,10 +84,10 @@
       layers: [{ id: "transit-coverage-coverage-layer", op: "fill-opacity" },
                { id: "transit-coverage-threshold-layer", op: "fill-opacity" },
                { id: "transit-coverage-area-layer", op: "line-opacity" }] },
-    { id: "walkshed-fill", label: "Walkshed", moduleId: "walkshed",
+    { id: "walkshed-fill", label: "Walkshed", moduleId: "walkshed", styleKey: "walkshed",
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
-    { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed",
+    { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
       layers: [{ id: "walkshed-seg", op: "line-opacity" }] },
     { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi",
       layers: [{ id: "tvi-impacted-fill", op: "fill-opacity" },
@@ -549,10 +554,167 @@
     });
   }
 
+  // ---- Analysis/reference layer style drawer (Palette/Reverse/Color, per
+  // styleKey — docs/layer-color-customization-plan.md Phase 6). Mirrors
+  // buildTypeStyleRow's shape but writes through App.setLayerStyle /
+  // App.clearLayerStyle instead of App.sectionColors / App.featureSettings,
+  // since these are analysis-rendered layers, not drawn features (see the
+  // App.registerLayerRepainter registry in layer-palettes.js — this drawer
+  // never touches map.setPaintProperty itself). ----
+  var _expandedLayerStyle = {};
+
+  function buildLayerStyleDrawer(styleKey, spec, rerender) {
+    var body = document.createElement("div");
+    body.className = "lp-style-drawer";
+
+    var ov = (App.layerStyles && App.layerStyles[styleKey]) || {};
+
+    if (spec.kind === "ramp") {
+      var pRow = document.createElement("div");
+      pRow.className = "lp-style-row";
+      var pLab = document.createElement("span");
+      pLab.className = "lp-style-label";
+      pLab.textContent = "Palette";
+      pRow.appendChild(pLab);
+      var pWrap = document.createElement("div");
+      pWrap.className = "lp-style-control";
+      pRow.appendChild(pWrap);
+
+      var sel = document.createElement("select");
+      sel.className = "lp-basemap-select";
+      var defOpt = document.createElement("option");
+      defOpt.value = "";
+      defOpt.textContent = "Default";
+      sel.appendChild(defOpt);
+      window.LayerPalette.list(spec.allow).forEach(function (p) {
+        var o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = p.label;
+        sel.appendChild(o);
+      });
+      sel.value = ov.palette || "";
+      sel.addEventListener("click", function (e) { e.stopPropagation(); });
+      sel.addEventListener("change", function () {
+        App.setLayerStyle(styleKey, { palette: sel.value || null });
+        rerender();
+      });
+      pWrap.appendChild(sel);
+      body.appendChild(pRow);
+
+      var rRow = document.createElement("div");
+      rRow.className = "lp-style-row";
+      var rLab = document.createElement("span");
+      rLab.className = "lp-style-label";
+      rLab.textContent = "Reverse";
+      rRow.appendChild(rLab);
+      var rWrap = document.createElement("div");
+      rWrap.className = "lp-style-control";
+      rRow.appendChild(rWrap);
+
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!((ov.reverse != null) ? ov.reverse : spec.reverseDefault);
+      cb.disabled = !ov.palette;
+      cb.addEventListener("click", function (e) { e.stopPropagation(); });
+      cb.addEventListener("change", function () {
+        App.setLayerStyle(styleKey, { reverse: cb.checked });
+        rerender();
+      });
+      rWrap.appendChild(cb);
+      body.appendChild(rRow);
+
+      if (ov.palette || ov.reverse != null) {
+        var resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.className = "lp-style-reset";
+        resetBtn.textContent = "Reset";
+        resetBtn.title = "Reset to default";
+        resetBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          App.clearLayerStyle(styleKey);
+          rerender();
+        });
+        body.appendChild(resetBtn);
+      }
+    } else if (spec.kind === "solid") {
+      var cRow = document.createElement("div");
+      cRow.className = "lp-style-row";
+      var cLab = document.createElement("span");
+      cLab.className = "lp-style-label";
+      cLab.textContent = "Color";
+      cRow.appendChild(cLab);
+      var cWrap = document.createElement("div");
+      cWrap.className = "lp-style-control";
+      cRow.appendChild(cWrap);
+
+      var colors = (App.resolveLayerColors && App.resolveLayerColors(styleKey)) || spec.defaultColors;
+      var sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "lp-swatch";
+      sw.style.background = colors[0];
+      sw.title = "Change color";
+      sw.setAttribute("aria-label", "Change color for " + spec.label);
+      sw.addEventListener("click", function (e) {
+        e.stopPropagation();
+        App.openColorPicker(sw, colors[0], function (nc) {
+          App.setLayerStyle(styleKey, { color: nc });
+          rerender();
+        });
+      });
+      cWrap.appendChild(sw);
+
+      if (ov.color) {
+        var clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "lp-style-clear";
+        clearBtn.textContent = "×";
+        clearBtn.title = "Clear override (use default)";
+        clearBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          App.clearLayerStyle(styleKey);
+          rerender();
+        });
+        cWrap.appendChild(clearBtn);
+      }
+      body.appendChild(cRow);
+    }
+
+    return body;
+  }
+
   // ---- Generic row builder (reference / analysis) ----
   function buildLayerRow(entry, bandKey, order, getPresent) {
+    var spec = (entry.styleKey && typeof window.LayerPalette !== "undefined" &&
+                typeof window.LayerPalette.specFor === "function")
+      ? window.LayerPalette.specFor(entry.styleKey) : null;
+
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-group";
+
     var row = document.createElement("div");
     row.className = "lp-row lp-row-draggable";
+
+    var drawer = null;
+    if (spec) {
+      var open = !!_expandedLayerStyle[entry.styleKey];
+      var caret = document.createElement("button");
+      caret.type = "button";
+      caret.className = "lp-caret";
+      caret.innerHTML = "&#9662;";
+      caret.classList.toggle("open", open);
+      caret.setAttribute("aria-label", "Toggle style for " + entry.label);
+      caret.setAttribute("aria-expanded", open ? "true" : "false");
+      caret.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var isOpen = drawer.style.display !== "none";
+        drawer.style.display = isOpen ? "none" : "";
+        caret.classList.toggle("open", !isOpen);
+        caret.setAttribute("aria-expanded", isOpen ? "false" : "true");
+        if (isOpen) delete _expandedLayerStyle[entry.styleKey];
+        else _expandedLayerStyle[entry.styleKey] = true;
+      });
+      row.appendChild(caret);
+    }
 
     var grip = document.createElement("span");
     grip.className = "lp-grip";
@@ -642,7 +804,15 @@
     });
 
     attachDrag(row, bandKey, entry.id, order, getPresent);
-    return row;
+    wrap.appendChild(row);
+
+    if (spec) {
+      drawer = buildLayerStyleDrawer(entry.styleKey, spec, render);
+      drawer.style.display = open ? "" : "none";
+      wrap.appendChild(drawer);
+    }
+
+    return wrap;
   }
 
   // ---- Drawn features (nested by user group) ----
@@ -1141,6 +1311,50 @@
     return wrap;
   }
 
+  // ---- Global palette row (top of Analysis band — docs/layer-color-
+  // customization-plan.md Phase 6 §6.3). One shared palette choice that
+  // reaches every layer whose styleKey accepts that palette's family; a
+  // layer with its own per-layer override (buildLayerStyleDrawer above)
+  // keeps that override regardless of this selection. ----
+  function buildGlobalPaletteRow() {
+    var row = document.createElement("div");
+    row.className = "lp-style-row";
+    row.title = "Applies to layers that accept this palette type";
+
+    var lab = document.createElement("span");
+    lab.className = "lp-style-label";
+    lab.textContent = "Palette";
+    row.appendChild(lab);
+
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-control";
+    row.appendChild(wrap);
+
+    var sel = document.createElement("select");
+    sel.className = "lp-basemap-select";
+    var defOpt = document.createElement("option");
+    defOpt.value = "";
+    defOpt.textContent = "Default";
+    sel.appendChild(defOpt);
+    window.LayerPalette.list(null).forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.label;
+      sel.appendChild(o);
+    });
+    sel.value = App.mapPalette || "";
+    sel.addEventListener("click", function (e) { e.stopPropagation(); });
+    sel.addEventListener("change", function () {
+      App.mapPalette = sel.value || null;
+      if (App.cache && typeof App.cache.save === "function") App.cache.save();
+      if (typeof App.repaintStyledLayers === "function") App.repaintStyledLayers();
+      render();
+    });
+    wrap.appendChild(sel);
+
+    return row;
+  }
+
   // ---- Basemap row ----
   function buildBasemapBand() {
     var band = buildBand("Basemap");
@@ -1208,6 +1422,9 @@
     var analysisPresent = getAnalysis();
     if (analysisPresent.length) {
       var aBand = buildBand("Analysis overlays");
+      if (typeof window.LayerPalette !== "undefined" && typeof App.resolveLayerColors === "function") {
+        aBand.appendChild(buildGlobalPaletteRow());
+      }
       analysisPresent.forEach(function (e) {
         aBand.appendChild(buildLayerRow(e, "analysis", _analysisOrder, getAnalysis));
       });
