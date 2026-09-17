@@ -26,6 +26,23 @@ export default {
     { id: "rampColors/unknown-palette-null", call: "LayerPalette.rampColors",
       args: ["nope", 3, false] },
 
+    // ensureVisible() lightness floor: a subsampled ramp's near-white
+    // extreme is clamped so it never reads as invisible against a light
+    // basemap (reported for Walkshed's Blues/Greens/Grayscale palettes,
+    // which all start colors5[0] within a few percent of pure white — see
+    // the LIGHTNESS_CEILING comment in layer-palettes.js). "gray" is the
+    // most severe case: its unclamped light end (#f7f7f7) is nearly
+    // identical to the app's own light basemaps.
+    { id: "rampColors/gray-n3-forward-light-end-clamped", call: "LayerPalette.rampColors",
+      args: ["gray", 3, false] },
+    { id: "rampColors/gray-n3-reversed-light-end-clamped", call: "LayerPalette.rampColors",
+      args: ["gray", 3, true] },
+    // viridis's extremes are dark purple / saturated yellow, neither of
+    // which trips the clamp — pins that the floor only fires when it's
+    // actually needed.
+    { id: "rampColors/viridis-n3-unaffected", call: "LayerPalette.rampColors",
+      args: ["viridis", 3, false] },
+
     // ---- matchExpr ----
     { id: "matchExpr/3-colors", call: "LayerPalette.matchExpr",
       args: ["bandIdx", ["#1e40af", "#3b82f6", "#93c5fd"]] },

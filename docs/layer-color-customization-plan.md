@@ -787,3 +787,37 @@ from the repainter.
    Phase 1, or every downstream demographic module quietly analyzes a donut.
 5. **Legend order must match map color order** per module — some legends list high
    first, some list low first.
+
+---
+
+## Post-ship fix — light-end visibility in subsampled ramps
+
+Reported: selecting Blues, Greens, or Grayscale for Walkshed made the outermost
+(lightest, largest-budget) band effectively disappear.
+
+**Cause:** `blues`/`greens`/`gray`/`heat`'s `colors5[0]` all sit within a few percent
+of pure white (`gray` literally at `#f7f7f7`, nearly identical to the app's own light
+basemaps). That is a fine, deliberately subtle lowest class for a 5-class choropleth —
+TPI/RF sample `n === colors5.length` and bypass subsampling entirely, returning
+`colors5` untouched — but Walkshed/Transit Travelshed both sample `n: 3` from a 5-stop
+preset, and with `reverseDefault: true` that near-white extreme lands on the
+**outermost** band, painted at low fill-opacity (0.30/0.35) over a light basemap:
+functionally invisible, both as a fill and — since the line layer reuses the same
+color at 0.9 opacity — as a boundary.
+
+**Fix:** `pickRampColors()` (`js/core/layer-palettes.js`) now runs every subsampled
+color through `ensureVisible()`, which scales a color's channels down (preserving
+hue/relative saturation, not shifting it) whenever its average channel exceeds
+`LIGHTNESS_CEILING` (225). This only fires inside the `n < colors5.length` subsampling
+branch — the `n >= colors5.length` branch (TPI/RF's `n: 5`) returns `colors5` as-is, so
+no existing default changed. `gradientColors()` (the Phase 7 custom 2-stop picker) is
+deliberately exempt: a custom gradient's endpoints are the user's own explicit choice,
+and silently darkening one would be surprising. `choropleth.js` carries an intentionally
+identical copy of `pickRampColors()` for its own classed choropleths (Feature Area
+Analysis) and was **not** touched — its low-n case is a rare tied-data degenerate
+(dedup), not the everyday few-class-ramp path, so the divergence is acceptable and is
+called out where the two functions' parity is documented in `layer-palettes.js`.
+
+Golden-tested in `test/cases/layer-palettes.mjs` (`gray-n3-*-light-end-clamped` pins
+the worst case; `viridis-n3-unaffected` pins that the floor only fires when a color
+actually needs it). Verified: `node test/run-golden.mjs` → 215/215.

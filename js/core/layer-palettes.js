@@ -43,14 +43,41 @@
   // click. See the resolver's custom branch below.
   var CUSTOM_ID = "custom";
 
-  // Same sampling arithmetic as js/core/choropleth.js's pickRampColors(), so
-  // a palette subsamples identically in both engines.
+  // A subsampled ramp (n < 5) can land on a preset's near-white extreme —
+  // "blues"/"greens"/"gray"/"heat" all start colors5[0] within a few percent
+  // of pure white. That is a fine, deliberately subtle lowest class for a
+  // classed choropleth (TPI/RF always sample n === colors5.length, which
+  // bypasses this clamp below and returns colors5 untouched), but it reads
+  // as functionally invisible when it is instead the OUTERMOST band of a
+  // ring layer (Walkshed/Transit Travelshed, both n:3) painted over a light
+  // basemap — reported as "I don't see the outermost/lightest color" for
+  // Blues/Greens/Grayscale. Scale any picked color whose average channel
+  // exceeds LIGHTNESS_CEILING down to that ceiling, preserving hue/relative
+  // saturation (a uniform per-channel scale-down, not a hue shift), so a
+  // subsampled ramp never hands back a color indistinguishable from a light
+  // map background. Deliberately NOT applied to gradientColors() — a custom
+  // gradient's endpoints are the user's own explicit picks (see the
+  // CUSTOM_ID comment above) and silently darkening one would be surprising.
+  var LIGHTNESS_CEILING = 225;
+  function ensureVisible(hex) {
+    var c = hexToRgb(hex);
+    if (!c) return hex;
+    var avg = (c.r + c.g + c.b) / 3;
+    if (avg <= LIGHTNESS_CEILING) return hex;
+    var factor = LIGHTNESS_CEILING / avg;
+    return rgbToHex({ r: c.r * factor, g: c.g * factor, b: c.b * factor });
+  }
+
+  // Same sampling arithmetic as js/core/choropleth.js's pickRampColors(),
+  // plus the ensureVisible() floor above (choropleth.js's twin does not
+  // apply it — see that function's comment for why the two are allowed to
+  // diverge here).
   function pickRampColors(colors5, n) {
     if (n >= colors5.length) return colors5.slice(0, n);
-    if (n === 1) return [colors5[Math.floor((colors5.length - 1) / 2)]];
+    if (n === 1) return [ensureVisible(colors5[Math.floor((colors5.length - 1) / 2)])];
     var out = [];
     for (var i = 0; i < n; i++) {
-      out.push(colors5[Math.round(i * (colors5.length - 1) / (n - 1))]);
+      out.push(ensureVisible(colors5[Math.round(i * (colors5.length - 1) / (n - 1))]));
     }
     return out;
   }
