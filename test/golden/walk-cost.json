@@ -1,0 +1,19 @@
+{
+  "road-tier-primary-major": "major",
+  "road-tier-secondary-link-major": "major",
+  "road-tier-tertiary-minor": "minor",
+  "road-tier-residential-minor": "minor",
+  "road-tier-empty-string-minor": "minor",
+  "road-tier-unknown-minor": "minor",
+  "node-tier-4way-with-primary-major": "major",
+  "node-tier-4way-all-residential-minor": "minor",
+  "node-tier-2edge-null": null,
+  "node-tier-1edge-null": null,
+  "node-tier-empty-null": null,
+  "penalty-km-major-20s-5kmh": 0.027777777777777776,
+  "penalty-km-minor-5s-5kmh": 0.006944444444444444,
+  "penalty-km-null-tier-zero": 0,
+  "penalty-km-major-zero-sec-zero": 0,
+  "penalty-km-major-20s-5kmh-speed-pair-a": 0.027777777777777776,
+  "penalty-km-major-20s-2p5kmh-speed-pair-b": 0.013888888888888888
+}
