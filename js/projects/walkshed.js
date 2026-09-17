@@ -311,15 +311,26 @@
     entries.forEach(function (e) {
       if (!e || e.failed) return;
       var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
-      // Push largest band first so the smallest paints on top (no ring-
-      // differencing in this phase — stacked translucent fills are simpler).
+      // Ring-difference for rendering only (bands[] itself, which
+      // getPointWalkshed()/exportGeoJSON() read, stays un-differenced — see
+      // docs/layer-color-customization-plan.md Phase 1). Largest-first so the
+      // innermost band stays solid; a turf.difference failure or null result
+      // falls back to the un-differenced polygon for that band rather than
+      // dropping it. Same approach as transit-travelshed.js's ring builder.
       for (var bi = bands.length - 1; bi >= 0; bi--) {
         var band = bands[bi];
         if (!band.polygon) continue;
+        var ringPoly = band.polygon;
+        if (bi > 0 && bands[bi - 1].polygon) {
+          try {
+            var diffed = turf.difference(ringPoly, bands[bi - 1].polygon);
+            if (diffed) ringPoly = diffed;
+          } catch (err) { /* fall back to the un-differenced polygon for this band */ }
+        }
         polyFeatures.push({
           type: "Feature",
           properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi },
-          geometry: band.polygon.geometry
+          geometry: ringPoly.geometry
         });
       }
       if (e.reachableSegments && e.reachableSegments.features) {
@@ -333,7 +344,7 @@
       map.addSource(WS_FILL_SRC, { type: "geojson", data: polyFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
-        paint: { "fill-color": BAND_COLORS, "fill-opacity": 0.14 }
+        paint: { "fill-color": BAND_COLORS, "fill-opacity": 0.30 }
       });
       map.addLayer({
         id: WS_LINE_LAYER, type: "line", source: WS_FILL_SRC,
