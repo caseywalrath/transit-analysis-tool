@@ -20,7 +20,7 @@
 
   // ---- Defaults + module-local state (persists across popup open/close) ----
 
-  var DEFAULT_SETTINGS = { minutes: 15, walkSpeedMph: 3.1, maxEdge: 0.3 };
+  var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1, maxEdge: 0.3 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdge is
@@ -73,60 +73,115 @@
     return null;
   }
 
+  // Valid budgets only, ascending, deduped, each capped at MAX_MINUTES. Never
+  // returns an empty array — falls back to the smallest default budget when
+  // every input is blank/invalid.
+  function activeBudgets() {
+    var out = [];
+    (_settings.budgets || []).forEach(function (m) {
+      var v = +m;
+      if (v > 0) out.push(Math.min(v, MAX_MINUTES));
+    });
+    out = out.filter(function (v, i) { return out.indexOf(v) === i; });
+    out.sort(function (a, b) { return a - b; });
+    if (!out.length) out = [DEFAULT_SETTINGS.budgets[0]];
+    return out;
+  }
+
   // Per-point walk parameters. Global module settings apply to every point; a
   // point may optionally carry attributes.walkMinutes / walkSpeedMph overrides
   // (data model supports it; the current UI only sets the type, not overrides).
+  // A point with a walkMinutes override uses that single value as its only
+  // budget — otherwise it uses the module's full activeBudgets() list.
   // `speed` is in mph — converted to km/h at the point of use (computeForPoint).
   function pointSettingsFor(pf) {
     var attrs = (pf.properties && pf.properties.attributes) || {};
-    var minutes = (attrs.walkMinutes != null && +attrs.walkMinutes > 0) ? +attrs.walkMinutes : _settings.minutes;
-    var speed   = (attrs.walkSpeedMph != null && +attrs.walkSpeedMph > 0) ? +attrs.walkSpeedMph : _settings.walkSpeedMph;
-    return { minutes: Math.min(minutes, MAX_MINUTES), speed: speed, maxEdge: _settings.maxEdge };
+    var budgets = (attrs.walkMinutes != null && +attrs.walkMinutes > 0)
+      ? [Math.min(+attrs.walkMinutes, MAX_MINUTES)]
+      : activeBudgets();
+    var speed = (attrs.walkSpeedMph != null && +attrs.walkSpeedMph > 0) ? +attrs.walkSpeedMph : _settings.walkSpeedMph;
+    return { budgets: budgets, speed: speed, maxEdge: _settings.maxEdge };
   }
 
   // Cache key — a walkshed is a pure function of the origin coords, the walk
   // parameters, and the loaded network (roadNetworkEpoch bumps on (re)load/clear).
+  // Every budget must be included, not just one, or changing budget 2/3 won't
+  // invalidate the cache.
   function settingsKeyFor(pf) {
     var c = pf.geometry.coordinates;
     var s = pointSettingsFor(pf);
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
-    return [c[0].toFixed(6), c[1].toFixed(6), s.minutes, s.speed, s.maxEdge, epoch].join("|");
+    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch].join("|");
   }
 
   // ---- Core compute (shared by the Compute button and ensurePointWalksheds) ----
 
   // Compute + cache a walkshed for one point. Returns the cache entry, or a
   // { failed:true, reason } sentinel. Reuses a valid cached entry when present.
+  // Floods once at the largest budget and thresholds it into one polygon per
+  // budget (App.computeWalkshed's options.budgetsKm). entry.polygon/area/
+  // reachableCount alias the SMALLEST band, since that is the study area
+  // getPointWalkshed() returns — the other bands are display-only.
   function computeForPoint(pf) {
     var pIdx = pf.properties.pointIdx;
     var key = settingsKeyFor(pf);
     var existing = _walkshedCache.get(pIdx);
     if (existing && existing.settingsKey === key && existing.polygon) return existing;
 
-    var s = pointSettingsFor(pf);
-    var budgetKm = (s.speed * KM_PER_MILE) * (s.minutes / 60); // s.speed is mph; engine works in km
-    var res = App.computeWalkshed ? App.computeWalkshed(pf.geometry.coordinates, budgetKm, { maxEdge: s.maxEdge }) : null;
+    var s = pointSettingsFor(pf); // s.budgets is ascending (activeBudgets() / single override)
+    var speedKmh = s.speed * KM_PER_MILE; // s.speed is mph; engine works in km
+    var budgetsKm = s.budgets.map(function (m) { return speedKmh * (m / 60); });
+    var maxBudgetKm = budgetsKm[budgetsKm.length - 1];
+    var res = App.computeWalkshed
+      ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm, { maxEdge: s.maxEdge, budgetsKm: budgetsKm })
+      : null;
 
-    if (!res || !res.polygon) {
+    if (!res) {
       _walkshedCache.delete(pIdx);
       return {
         failed: true,
         pointIdx: pIdx,
         name: pf.properties.name,
-        reason: res ? "no reachable area (sparse/disconnected network)" : "origin off-network (> 500 m from a road)"
+        reason: "origin off-network (> 500 m from a road)"
       };
     }
 
-    res.polygon.properties = res.polygon.properties || {};
-    res.polygon.properties.pointIdx = pIdx;
+    // options.budgetsKm always has >=1 entries (activeBudgets() never returns
+    // empty), so App.computeWalkshed always returns `polygons` — the fallback
+    // here only guards a caller running against a pre-Phase-2 engine.
+    var bandPolys = res.polygons || [{ budgetKm: maxBudgetKm, polygon: res.polygon, nodeCount: res.reachableCount }];
+    var bands = [];
+    for (var i = 0; i < s.budgets.length; i++) {
+      var bp = bandPolys[i];
+      bands.push({
+        minutes:   s.budgets[i],
+        polygon:   bp ? bp.polygon : null,
+        area:      (bp && bp.polygon) ? turf.area(bp.polygon) : 0, // m²
+        nodeCount: bp ? bp.nodeCount : 0
+      });
+    }
+
+    if (!bands[0].polygon) {
+      _walkshedCache.delete(pIdx);
+      return {
+        failed: true,
+        pointIdx: pIdx,
+        name: pf.properties.name,
+        reason: "no reachable area (sparse/disconnected network)"
+      };
+    }
+
+    bands[0].polygon.properties = bands[0].polygon.properties || {};
+    bands[0].polygon.properties.pointIdx = pIdx;
 
     var entry = {
-      polygon:           res.polygon,
+      polygon:           bands[0].polygon,
       reachableSegments: res.reachableSegments,
-      reachableCount:    res.reachableCount,
-      area:              turf.area(res.polygon),   // m²
+      reachableCount:    bands[0].nodeCount,
+      area:              bands[0].area,   // m²
+      bands:             bands,           // ascending, one entry per active budget
       computeMs:         res.computeMs,
-      minutes:           s.minutes,
+      minutes:           bands[0].minutes,
       name:              pf.properties.name,
       pointIdx:          pIdx,
       coord:             pf.geometry.coordinates.slice(),
@@ -222,15 +277,30 @@
 
   // ---- Map rendering ----
 
+  // Band fill/line color, smallest band (index 0) darkest so it reads as "most
+  // walkable" — same ["match", ["get", "bandIdx"], ...] pattern network-joins-point
+  // uses in js/core/network-connectors.js. Any bandIdx beyond the listed cases
+  // (only possible past 3 bands, which the UI never allows) falls through to the
+  // trailing default color.
+  var BAND_COLORS = ["match", ["get", "bandIdx"], 0, "#1e40af", 1, "#3b82f6", "#93c5fd"];
+
   function renderWalkshedLayers(entries) {
     var map = App.map;
     if (!map) return;
     var polyFeatures = [], segFeatures = [];
     entries.forEach(function (e) {
       if (!e || e.failed) return;
-      if (e.polygon) {
-        var pf = { type: "Feature", properties: { pointIdx: e.pointIdx, name: e.name, minutes: e.minutes }, geometry: e.polygon.geometry };
-        polyFeatures.push(pf);
+      var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+      // Push largest band first so the smallest paints on top (no ring-
+      // differencing in this phase — stacked translucent fills are simpler).
+      for (var bi = bands.length - 1; bi >= 0; bi--) {
+        var band = bands[bi];
+        if (!band.polygon) continue;
+        polyFeatures.push({
+          type: "Feature",
+          properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi },
+          geometry: band.polygon.geometry
+        });
       }
       if (e.reachableSegments && e.reachableSegments.features) {
         segFeatures = segFeatures.concat(e.reachableSegments.features);
@@ -243,12 +313,12 @@
       map.addSource(WS_FILL_SRC, { type: "geojson", data: polyFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
-        paint: { "fill-color": "#2563eb", "fill-opacity": 0.14 }
+        paint: { "fill-color": BAND_COLORS, "fill-opacity": 0.14 }
       });
       map.addLayer({
         id: WS_LINE_LAYER, type: "line", source: WS_FILL_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": "#2563eb", "line-width": 2, "line-opacity": 0.9 }
+        paint: { "line-color": BAND_COLORS, "line-width": 2, "line-opacity": 0.9 }
       });
     } else {
       map.getSource(WS_FILL_SRC).setData(polyFc);
@@ -303,7 +373,7 @@
   // header still answers "what am I looking at".
   function inputsSummary() {
     var n = _lastEntries.length;
-    return _settings.minutes + " min · " + _settings.walkSpeedMph + " mph · " +
+    return activeBudgets().join(" / ") + " min · " + _settings.walkSpeedMph + " mph · " +
            n + " point" + (n === 1 ? "" : "s");
   }
 
@@ -341,17 +411,26 @@
     _lastEntries.forEach(function (e) {
       if (e.failed) {
         rows += '<tr class="ws-row-fail"><td>' + escapeHtml(e.name || ("Point " + e.pointIdx)) +
-          '</td><td colspan="3" class="ws-warn">skipped — ' + escapeHtml(e.reason) + '</td></tr>';
-      } else {
-        rows += "<tr><td>" + escapeHtml(e.name || ("Point " + e.pointIdx)) + "</td>" +
-          "<td>" + (e.area * M2_TO_MI2).toFixed(3) + " mi&sup2;<span class='ws-sub'> / " + (e.area * M2_TO_KM2).toFixed(3) + " km&sup2;</span></td>" +
-          "<td>" + e.reachableCount + "</td>" +
-          "<td>" + e.computeMs + " ms</td></tr>";
+          '</td><td colspan="4" class="ws-warn">skipped — ' + escapeHtml(e.reason) + '</td></tr>';
+        return;
       }
+      var bands = e.bands || [{ minutes: e.minutes, area: e.area, nodeCount: e.reachableCount, polygon: e.polygon }];
+      bands.forEach(function (band, bi) {
+        var areaCell = band.polygon
+          ? (band.area * M2_TO_MI2).toFixed(3) + " mi&sup2;<span class='ws-sub'> / " + (band.area * M2_TO_KM2).toFixed(3) + " km&sup2;</span>"
+          : "&mdash;";
+        rows += "<tr>" +
+          "<td>" + (bi === 0 ? escapeHtml(e.name || ("Point " + e.pointIdx)) : "") + "</td>" +
+          "<td>" + band.minutes + " min</td>" +
+          "<td>" + areaCell + "</td>" +
+          "<td>" + band.nodeCount + "</td>" +
+          "<td>" + (bi === 0 ? e.computeMs + " ms" : "") + "</td>" +
+          "</tr>";
+      });
     });
     host.innerHTML =
       '<table class="ws-table"><thead><tr>' +
-      "<th>Point</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
+      "<th>Point</th><th>Band</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table>";
 
     renderConnectionReport();
@@ -393,7 +472,9 @@
   // for MORE coverage than strictly needed, never less.
   function computeRequiredExtent(targets) {
     if (!targets.length) return null;
-    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (_settings.minutes / 60);
+    var budgets = activeBudgets();
+    var maxMinutes = budgets[budgets.length - 1]; // size the circle from the LARGEST budget
+    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (maxMinutes / 60);
     var pieces = [];
     targets.forEach(function (pf) {
       var c = pf.geometry && pf.geometry.coordinates;
@@ -556,11 +637,15 @@
   function exportGeoJSON() {
     var features = [];
     _lastEntries.forEach(function (e) {
-      if (e.failed || !e.polygon) return;
-      features.push({
-        type: "Feature",
-        properties: { pointIdx: e.pointIdx, name: e.name, minutes: e.minutes, areaM2: e.area, reachableNodes: e.reachableCount },
-        geometry: e.polygon.geometry
+      if (e.failed) return;
+      var bands = e.bands || [{ minutes: e.minutes, area: e.area, nodeCount: e.reachableCount, polygon: e.polygon }];
+      bands.forEach(function (band, bi) {
+        if (!band.polygon) return;
+        features.push({
+          type: "Feature",
+          properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi, areaM2: band.area, reachableNodes: band.nodeCount },
+          geometry: band.polygon.geometry
+        });
       });
     });
     if (!features.length) { setStatus("Nothing to export.", "error"); return; }
@@ -582,20 +667,35 @@
   // ---- Settings <-> inputs ----
 
   function readSettingsFromInputs() {
-    var m = document.getElementById("wsMinutes");
+    var m1 = document.getElementById("wsMinutes");
+    var m2 = document.getElementById("wsMinutes2");
+    var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
     var e = document.getElementById("wsMaxEdge");
-    if (m && +m.value > 0) _settings.minutes = Math.min(+m.value, MAX_MINUTES);
+    var budgets = [];
+    [m1, m2, m3].forEach(function (el) {
+      if (el && +el.value > 0) budgets.push(Math.min(+el.value, MAX_MINUTES));
+    });
+    if (budgets.length) {
+      budgets.sort(function (a, b) { return a - b; });
+      _settings.budgets = budgets;
+    }
     if (s && +s.value > 0) _settings.walkSpeedMph = +s.value;
     if (e && +e.value > 0) _settings.maxEdge = +e.value / FT_PER_KM; // ft input -> km stored
     if (App.cache && App.cache.save) App.cache.save();
+    updateStudyAreaButtonLabel();
   }
 
   function syncInputsFromSettings() {
-    var m = document.getElementById("wsMinutes");
+    var m1 = document.getElementById("wsMinutes");
+    var m2 = document.getElementById("wsMinutes2");
+    var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
     var e = document.getElementById("wsMaxEdge");
-    if (m) m.value = _settings.minutes;
+    var b = _settings.budgets || [];
+    if (m1) m1.value = (b[0] != null) ? b[0] : "";
+    if (m2) m2.value = (b[1] != null) ? b[1] : "";
+    if (m3) m3.value = (b[2] != null) ? b[2] : "";
     if (s) s.value = _settings.walkSpeedMph;
     if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
@@ -603,6 +703,21 @@
     // this module never stores its own copy of the value.
     var tol = document.getElementById("wsSnapTol");
     if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
+    updateStudyAreaButtonLabel();
+  }
+
+  // The study-area button's label always names the SMALLEST active budget,
+  // since that is the one band getPointWalkshed() actually returns — changing
+  // it changes the study area for every downstream module (Buffer-Area
+  // Summary, TPI, Census, LODES, Transit Coverage, Title VI, ...).
+  function updateStudyAreaButtonLabel() {
+    var btn = document.getElementById("wsUseStudyArea");
+    if (!btn) return;
+    var smallest = activeBudgets()[0];
+    btn.textContent = "Use " + smallest + "-min walkshed as study areas";
+    btn.title = "Set these points' Service Area to the " + smallest + "-min Walkshed so demographic modules " +
+      "use it instead of a circle. Changing the smallest time budget changes the study area used by every " +
+      "downstream module.";
   }
 
   // Snap tolerance is global state, not a module setting — write straight to
@@ -636,7 +751,7 @@
     var use = document.getElementById("wsUseStudyArea");
     if (use) use.addEventListener("click", useAsStudyAreas);
 
-    ["wsMinutes", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
+    ["wsMinutes", "wsMinutes2", "wsMinutes3", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); if (_lastEntries.length) markStale(); });
     });
@@ -710,8 +825,8 @@
 
   function collect() {
     return {
-      version: 2,
-      minutes: _settings.minutes,
+      version: 3,
+      budgets: (_settings.budgets || []).filter(function (b) { return b != null; }),
       walkSpeedMph: _settings.walkSpeedMph,
       maxEdge: _settings.maxEdge
     };
@@ -719,7 +834,19 @@
 
   function apply(data) {
     if (!data) return;
-    if (+data.minutes > 0) _settings.minutes = Math.min(+data.minutes, MAX_MINUTES);
+    if (Array.isArray(data.budgets) && data.budgets.length) {
+      // v3: an explicit budget list.
+      var budgets = data.budgets
+        .filter(function (b) { return +b > 0; })
+        .map(function (b) { return Math.min(+b, MAX_MINUTES); });
+      if (budgets.length) {
+        budgets.sort(function (a, b) { return a - b; });
+        _settings.budgets = budgets;
+      }
+    } else if (+data.minutes > 0) {
+      // v1/v2: a single minutes value — becomes the sole (smallest) budget.
+      _settings.budgets = [Math.min(+data.minutes, MAX_MINUTES)];
+    }
     if (+data.walkSpeedMph > 0) {
       _settings.walkSpeedMph = +data.walkSpeedMph;
     } else if (+data.walkSpeedKmh > 0) {
