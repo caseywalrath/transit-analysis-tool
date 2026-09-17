@@ -808,10 +808,13 @@ color at 0.9 opacity — as a boundary.
 **Fix:** `pickRampColors()` (`js/core/layer-palettes.js`) now runs every subsampled
 color through `ensureVisible()`, which scales a color's channels down (preserving
 hue/relative saturation, not shifting it) whenever its average channel exceeds
-`LIGHTNESS_CEILING` (225). This only fires inside the `n < colors5.length` subsampling
-branch — the `n >= colors5.length` branch (TPI/RF's `n: 5`) returns `colors5` as-is, so
-no existing default changed. `gradientColors()` (the Phase 7 custom 2-stop picker) is
-deliberately exempt: a custom gradient's endpoints are the user's own explicit choice,
+`LIGHTNESS_CEILING`. A first pass at 225 still read too faint against a light basemap
+(fine against Carto Dark, where nearly anything short of white shows up), so the
+ceiling was lowered to **180** — a solidly visible mid-light tone against both. This
+only fires inside the `n < colors5.length` subsampling branch — the `n >=
+colors5.length` branch (TPI/RF's `n: 5`) returns `colors5` as-is, so no existing
+default changed. `gradientColors()` (the Phase 7 custom 2-stop picker) is deliberately
+exempt: a custom gradient's endpoints are the user's own explicit choice,
 and silently darkening one would be surprising. `choropleth.js` carries an intentionally
 identical copy of `pickRampColors()` for its own classed choropleths (Feature Area
 Analysis) and was **not** touched — its low-n case is a rare tied-data degenerate

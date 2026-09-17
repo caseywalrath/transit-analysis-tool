@@ -51,14 +51,17 @@
   // as functionally invisible when it is instead the OUTERMOST band of a
   // ring layer (Walkshed/Transit Travelshed, both n:3) painted over a light
   // basemap — reported as "I don't see the outermost/lightest color" for
-  // Blues/Greens/Grayscale. Scale any picked color whose average channel
-  // exceeds LIGHTNESS_CEILING down to that ceiling, preserving hue/relative
-  // saturation (a uniform per-channel scale-down, not a hue shift), so a
-  // subsampled ramp never hands back a color indistinguishable from a light
-  // map background. Deliberately NOT applied to gradientColors() — a custom
-  // gradient's endpoints are the user's own explicit picks (see the
-  // CUSTOM_ID comment above) and silently darkening one would be surprising.
-  var LIGHTNESS_CEILING = 225;
+  // Blues/Greens/Grayscale (a first pass at 225 was still too faint against
+  // a light basemap, though it read fine on a dark one — 180 gives a solidly
+  // visible mid-light tone on both). Scale any picked color whose average
+  // channel exceeds LIGHTNESS_CEILING down to that ceiling, preserving
+  // hue/relative saturation (a uniform per-channel scale-down, not a hue
+  // shift), so a subsampled ramp never hands back a color indistinguishable
+  // from a light map background. Deliberately NOT applied to
+  // gradientColors() — a custom gradient's endpoints are the user's own
+  // explicit picks (see the CUSTOM_ID comment above) and silently darkening
+  // one would be surprising.
+  var LIGHTNESS_CEILING = 180;
   function ensureVisible(hex) {
     var c = hexToRgb(hex);
     if (!c) return hex;

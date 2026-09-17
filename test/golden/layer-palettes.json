@@ -1,17 +1,17 @@
 {
   "rampColors/blues-n3-forward": [
-    "#dbdfea",
+    "#afb2bb",
     "#6baed6",
     "#08519c"
   ],
   "rampColors/blues-n3-reversed": [
     "#08519c",
     "#6baed6",
-    "#dbdfea"
+    "#afb2bb"
   ],
   "rampColors/blues-n4-forward": [
-    "#dbdfea",
-    "#bdd7e7",
+    "#afb2bb",
+    "#a1b7c4",
     "#3182bd",
     "#08519c"
   ],
@@ -35,14 +35,14 @@
   ],
   "rampColors/unknown-palette-null": null,
   "rampColors/gray-n3-forward-light-end-clamped": [
-    "#e1e1e1",
+    "#b4b4b4",
     "#969696",
     "#252525"
   ],
   "rampColors/gray-n3-reversed-light-end-clamped": [
     "#252525",
     "#969696",
-    "#e1e1e1"
+    "#b4b4b4"
   ],
   "rampColors/viridis-n3-unaffected": [
     "#440154",
