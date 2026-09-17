@@ -158,6 +158,10 @@
       networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
       networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
       networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
+      // Layer color palette cascade (additive fields, docs/layer-color-customization-plan.md
+      // Phase 3 — absent on an old session, App.layerStyles/mapPalette keep their defaults).
+      layerStyles: App.layerStyles ? JSON.parse(JSON.stringify(App.layerStyles)) : {},
+      mapPalette: App.mapPalette || null,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -318,6 +322,16 @@
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
     }
 
+    // 3a-4. Restore the layer color palette cascade (additive fields,
+    // docs/layer-color-customization-plan.md Phase 3 — absent on an old
+    // session, App.layerStyles/mapPalette keep their defaults). Repainting
+    // happens once at the end of this function, after every module has had
+    // a chance to register its repainter.
+    if (state.layerStyles && typeof state.layerStyles === "object") {
+      App.layerStyles = JSON.parse(JSON.stringify(state.layerStyles));
+    }
+    if (state.mapPalette !== undefined) App.mapPalette = state.mapPalette || null;
+
     // 3b. Restore offset toggle (actual offset computed after render via auto-recompute hook)
     var offsetEl = document.getElementById("offsetOverlap");
     if (offsetEl && state.offsetOverlap) {
@@ -415,6 +429,12 @@
         }
       }
     }
+
+    // 10. Repaint any styled layers from the restored cascade (Phase 3 of
+    // docs/layer-color-customization-plan.md). Guarded with typeof — no
+    // module has registered a repainter yet until Phase 4, so this is a
+    // no-op today by design.
+    if (typeof App.repaintStyledLayers === "function") App.repaintStyledLayers();
   }
 
   // ---- Save (debounced) ----

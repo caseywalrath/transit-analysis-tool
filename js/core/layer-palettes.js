@@ -160,4 +160,86 @@
     specFor: specFor
   };
 
+  // ---- App-level cascade (Phase 3 of docs/layer-color-customization-plan.md) ---
+  // Reads/writes App state only inside function bodies (never at the top
+  // level beyond the two default-init lines below), so this loads safely in
+  // the golden sandbox, which stubs window.App with no App.map/App.cache —
+  // same rule js/core/choropleth.js follows.
+
+  var App = window.App;
+
+  // Per-layer overrides, keyed by styleKey:
+  //   { palette: "<id>"|null, reverse: bool|null, color: "#hex"|null }
+  // A null/absent field means "not overridden at this level" — falls through
+  // to the global palette (ramp layers) or the module default.
+  App.layerStyles = App.layerStyles || {};
+  App.mapPalette = App.mapPalette || null; // null = module defaults everywhere
+
+  // Resolves the colors a layer should actually paint right now: per-layer
+  // override -> global palette (only when the layer's spec.allow accepts its
+  // family) -> the module's own defaultColors. Returns null for an unknown
+  // styleKey. Never throws and never resolves to nothing paintable.
+  App.resolveLayerColors = function (styleKey) {
+    var spec = window.LayerPalette.specFor(styleKey);
+    if (!spec) return null;
+    var ov = App.layerStyles[styleKey] || {};
+
+    if (spec.kind === "solid") {
+      // Solid layers ignore App.mapPalette entirely — a global ramp says
+      // nothing about what color a single accent line should be.
+      return (ov.color) ? [ov.color] : spec.defaultColors.slice();
+    }
+
+    // kind === "ramp"
+    var paletteId = ov.palette ||
+      (window.LayerPalette.allows(spec, App.mapPalette) ? App.mapPalette : null);
+    if (!paletteId) return spec.defaultColors.slice();
+    var reverse = (ov.reverse != null) ? ov.reverse : spec.reverseDefault;
+    var colors = window.LayerPalette.rampColors(paletteId, spec.n, reverse);
+    return colors || spec.defaultColors.slice(); // unknown id never paints nothing
+  };
+
+  // Shallow-merges patch into App.layerStyles[styleKey]; an entry left with
+  // every field null/absent is deleted outright so a defaulted layer leaves
+  // no cache residue. Saves and repaints — never call map.setPaintProperty
+  // directly from the Layers panel; this is the only sanctioned write path.
+  App.setLayerStyle = function (styleKey, patch) {
+    var cur = App.layerStyles[styleKey] || {};
+    var next = {
+      palette: (patch.palette !== undefined) ? patch.palette : cur.palette,
+      reverse: (patch.reverse !== undefined) ? patch.reverse : cur.reverse,
+      color: (patch.color !== undefined) ? patch.color : cur.color
+    };
+    var isEmpty = !next.palette && next.reverse == null && !next.color;
+    if (isEmpty) {
+      delete App.layerStyles[styleKey];
+    } else {
+      App.layerStyles[styleKey] = next;
+    }
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    App.repaintStyledLayers();
+  };
+
+  App.clearLayerStyle = function (styleKey) {
+    delete App.layerStyles[styleKey];
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    App.repaintStyledLayers();
+  };
+
+  // Each module registers a callback here (Phase 4) that re-applies its
+  // paint properties from App.resolveLayerColors(...) WITHOUT re-running the
+  // analysis, so a palette change is instant. A module whose layer is not
+  // currently on the map must no-op rather than throw — the try/catch below
+  // is what keeps one absent layer from stopping every later repainter.
+  var _repainters = {};
+  App.registerLayerRepainter = function (styleKey, fn) {
+    _repainters[styleKey] = fn;
+  };
+  App.repaintStyledLayers = function (only) {
+    Object.keys(_repainters).forEach(function (k) {
+      if (only && k !== only) return;
+      try { _repainters[k](); } catch (e) { /* no live layer for this module right now */ }
+    });
+  };
+
 })();
