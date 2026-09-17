@@ -98,6 +98,26 @@
       "family": "sequential"
     },
     {
+      "id": "plasma",
+      "label": "Plasma",
+      "family": "sequential"
+    },
+    {
+      "id": "inferno",
+      "label": "Inferno",
+      "family": "sequential"
+    },
+    {
+      "id": "magma",
+      "label": "Magma",
+      "family": "sequential"
+    },
+    {
+      "id": "cividis",
+      "label": "Cividis",
+      "family": "sequential"
+    },
+    {
       "id": "gray",
       "label": "Grayscale",
       "family": "sequential"

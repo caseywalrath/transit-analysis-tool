@@ -79,7 +79,10 @@ provable no-op, which is the whole point of the ordering.
 
 Each palette belongs to a family:
 
-- **sequential** — one hue ramp, low→high. `blues`, `greens`, `heat`, `viridis`, `gray`
+- **sequential** — one hue ramp, low→high. `blues`, `greens`, `heat`, `viridis`, `plasma`,
+  `inferno`, `magma`, `cividis`, `gray` (`plasma`/`inferno`/`magma`/`cividis` added
+  post-ship — see the "Post-ship addition — matplotlib perceptually-uniform presets"
+  section below)
 - **diverging** — two opposed ends. `rdbu`, `quality`
 
 Each layer declares which families it accepts, via `allow`.
@@ -824,3 +827,22 @@ called out where the two functions' parity is documented in `layer-palettes.js`.
 Golden-tested in `test/cases/layer-palettes.mjs` (`gray-n3-*-light-end-clamped` pins
 the worst case; `viridis-n3-unaffected` pins that the floor only fires when a color
 actually needs it). Verified: `node test/run-golden.mjs` → 215/215.
+
+## Post-ship addition — matplotlib perceptually-uniform presets
+
+Requested: more high-contrast options in the spirit of Viridis.
+
+**Added:** `plasma`, `inferno`, `magma`, `cividis` to `PALETTES`
+(`js/core/layer-palettes.js`) — the rest of matplotlib's perceptually-uniform
+sequential family alongside the existing `viridis`. All four are `family: "sequential"`,
+5-stop `colors5` sampled from the standard published colormap at t = 0, 0.25, 0.5, 0.75,
+1.0, same shape as every other preset. `cividis` is additionally colorblind-safe
+(deuteranopia/protanopia) — the only preset in the table with that property.
+
+No engine change: these are pure table additions, so `pickRampColors()`/`ensureVisible()`
+apply automatically (e.g. `inferno`'s and `cividis`'s light ends both exceed
+`LIGHTNESS_CEILING` and get clamped like any other preset's would). `list(null)` now
+returns 11 entries instead of 7; nothing consumes a hardcoded count. Golden-tested via
+the existing `list/null-allow-everything` case, which now includes the four new rows.
+Verified: `node test/run-golden.mjs` → 215/215 (only `test/golden/layer-palettes.json`'s
+`list()` snapshot changed, by the 4 new rows — no other module's numbers moved).

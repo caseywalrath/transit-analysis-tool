@@ -28,6 +28,10 @@
     greens:  { label: "Greens",       family: "sequential", colors5: ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"] },
     heat:    { label: "Heat",         family: "sequential", colors5: ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"] },
     viridis: { label: "Viridis",      family: "sequential", colors5: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"] },
+    plasma:  { label: "Plasma",       family: "sequential", colors5: ["#0d0887", "#7e03a8", "#cc4778", "#f89441", "#f0f921"] },
+    inferno: { label: "Inferno",      family: "sequential", colors5: ["#000004", "#781c6d", "#bb3754", "#ed6925", "#fcffa4"] },
+    magma:   { label: "Magma",        family: "sequential", colors5: ["#000004", "#51127c", "#b73779", "#fb8761", "#fcfdbf"] },
+    cividis: { label: "Cividis",      family: "sequential", colors5: ["#00204d", "#414d6b", "#7c7b78", "#bcaf6f", "#ffea46"] },
     gray:    { label: "Grayscale",    family: "sequential", colors5: ["#f7f7f7", "#cccccc", "#969696", "#636363", "#252525"] },
     rdbu:    { label: "Red–Blue",   family: "diverging",  colors5: ["#ca0020", "#f4a582", "#f7f7f7", "#92c5de", "#0571b0"] },
     quality: { label: "Red–Green",  family: "diverging",  colors5: ["#C53030", "#C05621", "#D69E2E", "#68A357", "#276749"] }
