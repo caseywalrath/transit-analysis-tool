@@ -41,9 +41,15 @@
   // one). `|| {}` above short-circuits on an already-created object, so
   // backfill the two new keys defensively when they're absent (e.g. a page
   // that only ever set snapToleranceFt before this phase shipped).
-  App.networkSettings = App.networkSettings || { snapToleranceFt: 50, crossingMajorSec: 0, crossingMinorSec: 0 };
+  // excludedWayIds (docs/sidewalk-data-plan.md Phase 4): the user-excluded-
+  // street list, stored as a plain array (JSON-serializable for the session
+  // cache). road-network.js hydrates it into a private Set on every call to
+  // App.setExcludedWays() — that function, not this array, is the sanctioned
+  // write path; nothing should push directly into this array.
+  App.networkSettings = App.networkSettings || { snapToleranceFt: 50, crossingMajorSec: 0, crossingMinorSec: 0, excludedWayIds: [] };
   if (App.networkSettings.crossingMajorSec == null) App.networkSettings.crossingMajorSec = 0;
   if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
+  if (App.networkSettings.excludedWayIds == null) App.networkSettings.excludedWayIds = [];
 
   var FT_TO_KM = 0.0003048;
 
@@ -153,10 +159,15 @@
   function segmentsToGeoJSON(segments) {
     var features = new Array(segments.length);
     for (var i = 0; i < segments.length; i++) {
+      var seg = segments[i];
       features[i] = {
         type: "Feature",
-        properties: { kind: segments[i].kind },
-        geometry: { type: "LineString", coordinates: segments[i].coords }
+        // wayId (docs/sidewalk-data-plan.md Phase 4) drives hover/click
+        // exclusion; excluded drives the distinct red/dashed styling below.
+        // Both are additive — a legacy import has wayId: null and excluded:
+        // false on every segment, which the click handler guards on.
+        properties: { kind: seg.kind, excluded: !!seg.excluded, wayId: seg.wayId != null ? seg.wayId : null, name: seg.name || "" },
+        geometry: { type: "LineString", coordinates: seg.coords }
       };
     }
     return { type: "FeatureCollection", features: features };
@@ -184,16 +195,21 @@
 
     var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
     if (!loaded) {
+      if (map.getLayer(WN_HOVER_LAYER)) map.removeLayer(WN_HOVER_LAYER);
       if (map.getLayer(WN_LAYER)) map.removeLayer(WN_LAYER);
       if (map.getSource(WN_SRC)) map.removeSource(WN_SRC);
       if (map.getLayer(NJ_LAYER)) map.removeLayer(NJ_LAYER);
       if (map.getSource(NJ_SRC)) map.removeSource(NJ_SRC);
+      _wnFC = null;
+      _hoverWayId = null;
+      if (_wnHoverPopup) _wnHoverPopup.remove();
       return;
     }
 
     var segments = typeof App.getWalkNetworkSegments === "function"
       ? App.getWalkNetworkSegments() : [];
     var fc = segmentsToGeoJSON(segments);
+    _wnFC = fc; // kept for the hover/click handlers' wayId -> {name, length} lookups
 
     if (!map.getSource(WN_SRC)) {
       map.addSource(WN_SRC, { type: "geojson", data: fc });
@@ -203,16 +219,150 @@
         source: WN_SRC,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#94a3b8",
-          "line-width": 1,
-          "line-opacity": 0.45
+          // Excluded segments (docs/sidewalk-data-plan.md Phase 4) render
+          // red/dashed so a user-excluded street stays visible and clickable
+          // — never simply vanish, or there would be no way to undo it.
+          "line-color": ["case", ["get", "excluded"], "#dc2626", "#94a3b8"],
+          "line-dasharray": ["case", ["get", "excluded"], ["literal", [2, 1.5]], ["literal", [1, 0]]],
+          "line-width": ["case", ["get", "excluded"], 2, 1],
+          "line-opacity": ["case", ["get", "excluded"], 0.85, 0.45]
         }
       }, firstUserLayer());
+
+      // Whole-way hover highlight (Phase 4 step 8 — "hover must preview the
+      // whole way before a click commits it"). A single feature is one
+      // coordinate-pair segment, but a way is usually many of them, so this
+      // is a FILTERED highlight over the same source keyed on wayId, not a
+      // per-feature state — the only way to light up an entire way at once.
+      // Starts matching nothing (no wayId is ever null on a real segment
+      // filter target since legacy segments carry wayId: null, which the
+      // hover handler never sets as the filter value).
+      map.addLayer({
+        id: WN_HOVER_LAYER,
+        type: "line",
+        source: WN_SRC,
+        filter: ["==", ["get", "wayId"], "__wn_none__"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#fbbf24",
+          "line-width": 5,
+          "line-opacity": 0.9
+        }
+      }, firstUserLayer());
+
+      wireWalkNetworkInteraction(map);
     } else {
       map.getSource(WN_SRC).setData(fc);
     }
 
     refreshJoinMarkers();
+  }
+
+  // ---- Hover/click interaction on walk-network-line (Phase 4 step 8) ----
+  // Wired exactly once, when WN_LAYER is first created — refreshWalkNetworkLayer()
+  // re-runs on every download/import/clear, but MapLibre event listeners on a
+  // layer id persist across setData() calls, so re-attaching here would stack
+  // duplicate handlers on every reload.
+
+  var WN_HOVER_LAYER = "walk-network-hover-line";
+  var _wnFC = null;        // last built FeatureCollection — wayId -> {name, length} lookups
+  var _hoverWayId = null;
+  var _wnHoverPopup = null;
+
+  function wnEscapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function wayFeatures(wayId) {
+    if (!_wnFC || wayId == null) return [];
+    return _wnFC.features.filter(function (f) { return f.properties.wayId === wayId; });
+  }
+
+  function wayLengthFt(wayId) {
+    var feats = wayFeatures(wayId);
+    var km = 0;
+    feats.forEach(function (f) {
+      if (typeof turf !== "undefined" && turf.length) km += turf.length(f, { units: "kilometers" });
+    });
+    return km * FT_PER_KM;
+  }
+
+  function isWayExcluded(wayId) {
+    var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
+    return ids.indexOf(wayId) !== -1;
+  }
+
+  function toggleExcludedWay(wayId) {
+    var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
+    var idx = ids.indexOf(wayId);
+    var next = ids.slice();
+    if (idx === -1) next.push(wayId); else next.splice(idx, 1);
+    if (typeof App.setExcludedWays === "function") App.setExcludedWays(next);
+  }
+
+  function ensureWnHoverPopup() {
+    if (!_wnHoverPopup) {
+      _wnHoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px" });
+    }
+    return _wnHoverPopup;
+  }
+
+  function wireWalkNetworkInteraction(map) {
+    map.on("mousemove", WN_LAYER, function (e) {
+      if (!e.features || !e.features.length) return;
+      var wayId = e.features[0].properties.wayId;
+
+      // Guard on wayId presence (§2, plan step 8) — a legacy import has
+      // none, so hovering it shows no highlight/tooltip rather than a
+      // half-working preview for a street that can't be excluded anyway.
+      if (wayId == null) {
+        if (!App.drawMode) map.getCanvas().style.cursor = "grab";
+        if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
+        if (_wnHoverPopup) _wnHoverPopup.remove();
+        _hoverWayId = null;
+        return;
+      }
+
+      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (wayId !== _hoverWayId) {
+        _hoverWayId = wayId;
+        map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], wayId]);
+      }
+
+      var feats = wayFeatures(wayId);
+      var name = (feats[0] && feats[0].properties.name) || "Unnamed street";
+      var excluded = isWayExcluded(wayId);
+      var lengthFt = wayLengthFt(wayId);
+
+      ensureWnHoverPopup()
+        .setLngLat(e.lngLat)
+        .setHTML(
+          '<div class="tiny"><strong>' + wnEscapeHtml(name) + '</strong><br>' +
+          Math.round(lengthFt).toLocaleString() + ' ft · ' +
+          (excluded ? '<span style="color:#dc2626;">Excluded</span>' : 'Walkable') +
+          '<br><span style="opacity:.7;">Click to ' + (excluded ? "restore" : "exclude") + '</span></div>'
+        )
+        .addTo(map);
+    });
+
+    map.on("mouseleave", WN_LAYER, function () {
+      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+      _hoverWayId = null;
+      if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
+      if (_wnHoverPopup) _wnHoverPopup.remove();
+    });
+
+    map.on("click", WN_LAYER, function (e) {
+      if (!e.features || !e.features.length) return;
+      var wayId = e.features[0].properties.wayId;
+      if (wayId == null) {
+        App.setStatus("This street can't be excluded — it was imported before way ids were captured.");
+        return;
+      }
+      toggleExcludedWay(wayId);
+    });
   }
 
   // Builds the join/orphan marker layer (Phase 6) from the cached report's

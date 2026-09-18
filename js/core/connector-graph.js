@@ -138,7 +138,7 @@
     // (possibly already-split) edges of connectors processed earlier — so a
     // later connector can weld or cross against an earlier one too.
     var pool = (candidates || []).map(function (c) {
-      return { id: c.segId, coords: [c.coords[0], c.coords[1]], pedBlocked: !!c.pedBlocked, origin: "base", baseId: c.segId };
+      return { id: c.segId, coords: [c.coords[0], c.coords[1]], pedBlocked: !!c.pedBlocked, userExcluded: !!c.userExcluded, origin: "base", baseId: c.segId };
     });
     var synthCounter = 0;
 
@@ -188,7 +188,12 @@
           var poolHits = {}; // pool entry id -> { entry, pts: [{t, point}] }
           for (var pi = 0; pi < snapshot.length; pi++) {
             var seg = snapshot[pi];
-            if (seg.pedBlocked) continue; // never auto-join across a bridge/freeway (§1)
+            // never auto-join across a bridge/freeway (§1) — but a user-
+            // excluded street (docs/sidewalk-data-plan.md §2) is NOT the same
+            // as class-blocked: it must stay weldable so a connector drawn
+            // along it can still join (the "exclude coarsely, restore
+            // precisely" workflow, plan §1.5).
+            if (seg.pedBlocked && !seg.userExcluded) continue;
             if (seg.origin === "connector" && seg.connectorId === connector.id) continue; // no self-crossing
             var hit = segmentIntersection(cA, cB, seg.coords[0], seg.coords[1]);
             if (!hit) continue;
@@ -240,7 +245,9 @@
         var best = null;
         for (var pi = 0; pi < pool.length; pi++) {
           var seg = pool[pi];
-          if (seg.pedBlocked) continue;
+          // Same userExcluded carve-out as the crossing-split pass above —
+          // motorways/trunks still never weld; user-excluded streets do.
+          if (seg.pedBlocked && !seg.userExcluded) continue;
           if (seg.origin === "connector" && seg.connectorId === connector.id) continue; // don't weld to own chain
           var np = pointToSegmentKm(v, seg.coords[0], seg.coords[1]);
           if (!best || np.distKm < best.distKm) best = { distKm: np.distKm, point: np.point, t: np.t, entry: seg };

@@ -163,6 +163,51 @@ export default {
       ],
     },
 
+    // 5b. userExcluded carve-out, crossing pass (docs/sidewalk-data-plan.md
+    // Phase 4 step 7): same geometry as case 5, but the base segment is
+    // pedBlocked AND userExcluded — the crossing must join exactly as it
+    // does in unblocked case 1 (a user exclusion is not the same as a class
+    // block, for welding). This is the inverse of case 5, which must stay
+    // byte-identical (userExcluded absent/false there).
+    {
+      id: "planarize-crossing-userexcluded-joins",
+      call: "ConnectorGraph.planarizeConnectors",
+      args: [
+        [{ id: "c1", coords: [[-105.001, 39.000], [-104.999, 39.000]] }],
+        [{ segId: "s1", coords: [[-105.000, 38.999], [-105.000, 39.001]], pedBlocked: true, userExcluded: true }],
+        { snapToleranceKm: 0, weldVertices: false, splitCrossings: true },
+      ],
+    },
+
+    // 5c. userExcluded carve-out, weld pass: same geometry as case 3, but the
+    // base segment is pedBlocked AND userExcluded -> must still weld (1 weld
+    // join, 1 split of "s2", 1 link edge), same shape as case 3's unblocked
+    // result.
+    {
+      id: "planarize-weld-userexcluded-joins",
+      call: "ConnectorGraph.planarizeConnectors",
+      args: [
+        [{ id: "c3", coords: [[-105.009, 39.010 - 0.0000904], [-105.009, 39.005]] }],
+        [{ segId: "s2", coords: [[-105.010, 39.010], [-105.008, 39.010]], pedBlocked: true, userExcluded: true }],
+        { snapToleranceKm: 0.01524, weldVertices: true, splitCrossings: false },
+      ],
+    },
+
+    // 5d. Class-pedBlocked weld still refused: same geometry as 5c, but
+    // pedBlocked without userExcluded (a real motorway/trunk) -> the weld
+    // must be refused (0 joins, endpoint reported as an orphan) exactly like
+    // the existing class-blocked crossing case (5). Locks in the other half
+    // of the carve-out — motorways never become weldable.
+    {
+      id: "planarize-weld-pedblocked-still-rejected",
+      call: "ConnectorGraph.planarizeConnectors",
+      args: [
+        [{ id: "c3", coords: [[-105.009, 39.010 - 0.0000904], [-105.009, 39.005]] }],
+        [{ segId: "s2", coords: [[-105.010, 39.010], [-105.008, 39.010]], pedBlocked: true, userExcluded: false }],
+        { snapToleranceKm: 0.01524, weldVertices: true, splitCrossings: false },
+      ],
+    },
+
     // 6. Connector-connector crossing: no base candidates at all. Connector
     // "A" (horizontal) is processed first and its edges enter the pool;
     // connector "B" (vertical) crosses it -> 1 crossing join reported under

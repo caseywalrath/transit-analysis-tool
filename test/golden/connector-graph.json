@@ -496,6 +496,224 @@
       }
     ]
   },
+  "planarize-crossing-userexcluded-joins": {
+    "addEdges": [
+      {
+        "coords": [
+          [
+            -105,
+            38.999
+          ],
+          [
+            -105,
+            39
+          ]
+        ],
+        "kind": "split",
+        "srcId": "s1"
+      },
+      {
+        "coords": [
+          [
+            -105,
+            39
+          ],
+          [
+            -105,
+            39.001
+          ]
+        ],
+        "kind": "split",
+        "srcId": "s1"
+      },
+      {
+        "coords": [
+          [
+            -105.001,
+            39
+          ],
+          [
+            -105,
+            39
+          ]
+        ],
+        "kind": "connector",
+        "srcId": "c1"
+      },
+      {
+        "coords": [
+          [
+            -105,
+            39
+          ],
+          [
+            -104.999,
+            39
+          ]
+        ],
+        "kind": "connector",
+        "srcId": "c1"
+      }
+    ],
+    "removeSegIds": [
+      "s1"
+    ],
+    "joins": [
+      {
+        "point": [
+          -105,
+          39
+        ],
+        "kind": "crossing",
+        "connectorId": "c1",
+        "segId": "s1"
+      }
+    ],
+    "orphans": [
+      {
+        "connectorId": "c1",
+        "point": [
+          -105.001,
+          39
+        ],
+        "nearestKm": null
+      },
+      {
+        "connectorId": "c1",
+        "point": [
+          -104.999,
+          39
+        ],
+        "nearestKm": null
+      }
+    ]
+  },
+  "planarize-weld-userexcluded-joins": {
+    "addEdges": [
+      {
+        "coords": [
+          [
+            -105.009,
+            39.0099096
+          ],
+          [
+            -105.009,
+            39.005
+          ]
+        ],
+        "kind": "connector",
+        "srcId": "c3"
+      },
+      {
+        "coords": [
+          [
+            -105.01,
+            39.01
+          ],
+          [
+            -105.009,
+            39.01
+          ]
+        ],
+        "kind": "split",
+        "srcId": "s2"
+      },
+      {
+        "coords": [
+          [
+            -105.009,
+            39.01
+          ],
+          [
+            -105.008,
+            39.01
+          ]
+        ],
+        "kind": "split",
+        "srcId": "s2"
+      },
+      {
+        "coords": [
+          [
+            -105.009,
+            39.0099096
+          ],
+          [
+            -105.009,
+            39.01
+          ]
+        ],
+        "kind": "connector",
+        "srcId": "c3"
+      }
+    ],
+    "removeSegIds": [
+      "s2"
+    ],
+    "joins": [
+      {
+        "point": [
+          -105.009,
+          39.01
+        ],
+        "kind": "weld",
+        "connectorId": "c3",
+        "segId": "s2"
+      }
+    ],
+    "orphans": [
+      {
+        "connectorId": "c3",
+        "point": [
+          -105.009,
+          39.005
+        ],
+        "nearestKm": 0.5528699999994972
+      }
+    ]
+  },
+  "planarize-weld-pedblocked-still-rejected": {
+    "addEdges": [
+      {
+        "coords": [
+          [
+            -105.009,
+            39.0099096
+          ],
+          [
+            -105.009,
+            39.005
+          ]
+        ],
+        "kind": "connector",
+        "srcId": "c3"
+      }
+    ],
+    "removeSegIds": [],
+    "joins": [],
+    "orphans": [
+      {
+        "connectorId": "c3",
+        "point": [
+          -105.009,
+          39.0099096
+        ],
+        "nearestKm": {
+          "__num__": "Infinity"
+        }
+      },
+      {
+        "connectorId": "c3",
+        "point": [
+          -105.009,
+          39.005
+        ],
+        "nearestKm": {
+          "__num__": "Infinity"
+        }
+      }
+    ]
+  },
   "planarize-connector-connector-crossing": {
     "addEdges": [
       {

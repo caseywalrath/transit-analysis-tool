@@ -840,7 +840,26 @@
       if (cMajor) cMajor.value = App.networkSettings.crossingMajorSec;
       if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
     }
+    syncExcludedWaysLine();
     updateStudyAreaButtonLabel();
+  }
+
+  // "Excluded streets: N — clear all" (docs/sidewalk-data-plan.md Phase 4
+  // step 9) — discoverability + bulk-undo for exclusions made by clicking
+  // the walk-network layer directly, which this popup has no other view into.
+  function syncExcludedWaysLine() {
+    var countEl = document.getElementById("wsExcludedWaysCount");
+    var clearBtn = document.getElementById("wsClearExcludedWays");
+    if (!countEl) return;
+    var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
+    countEl.textContent = ids.length;
+    if (clearBtn) clearBtn.style.display = ids.length ? "" : "none";
+  }
+
+  function clearExcludedWays() {
+    if (typeof App.setExcludedWays === "function") App.setExcludedWays([]);
+    syncExcludedWaysLine();
+    if (_lastEntries.length) markStale();
   }
 
   // The study-area button's label always names the SMALLEST active budget,
@@ -915,6 +934,9 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", onCrossingChange);
     });
+
+    var clearExcludedBtn = document.getElementById("wsClearExcludedWays");
+    if (clearExcludedBtn) clearExcludedBtn.addEventListener("click", clearExcludedWays);
   }
 
   function onOpen(core) {

@@ -42,6 +42,14 @@
   var _connectorOpts = {};     // { snapToleranceKm }
   var _lastOverlayReport = null; // last applyConnectorOverlay() result, returned by setNetworkConnectors()
 
+  // ---- Manual street exclusion state (docs/sidewalk-data-plan.md Phase 4) ----
+  // Set<wayId> hydrated from App.networkSettings.excludedWayIds (an array,
+  // JSON-serializable for the session cache) via the sole write path,
+  // App.setExcludedWays(). Read inside buildGraph() — see the plan's §3 "The
+  // two insertion points" — so exclusions re-apply automatically after a
+  // re-download without any caller having to reapply them.
+  var _excludedWays = new Set();
+
   // ---- Byte formatting helper ----
 
   function formatBytes(bytes) {
@@ -148,8 +156,6 @@
       // traversable by both modes so legacy road-network files still route.
       var props = f.properties || {};
       var hwy = props.highway || "";
-      var pedBlocked = isPedForbidden(hwy, props.foot);
-      var carBlocked = isCarForbidden(hwy);
       // Sidewalk-data plan Phase 1: captured on segments only, never on graph
       // edges (docs/sidewalk-data-plan.md §2 "Stage A does not touch graph
       // edges") — a city network has hundreds of thousands of edges and
@@ -157,6 +163,19 @@
       var sidewalk = props.sidewalk || "";
       var footway = props.footway || "";
       var wayId = props.wayId != null ? props.wayId : null;
+      // Carried through for the Phase 4 hover tooltip ("the tooltip names
+      // the street" — plan step 8); already downloaded on every way, just
+      // not previously propagated past this parse loop.
+      var name = props.name || "";
+      // Phase 4: a user-excluded way is blocked for pedestrians just like a
+      // class-forbidden one (motorway/trunk), but userExcluded is recorded
+      // separately so getWalkNetworkSegments() and the weld carve-out
+      // (connector-graph.js) can tell "blocked by the user" from "blocked by
+      // class" — see the plan's §2. carBlocked is untouched: driving is
+      // never affected by exclusion.
+      var userExcluded = !!(wayId != null && _excludedWays.has(wayId));
+      var pedBlocked = isPedForbidden(hwy, props.foot) || userExcluded;
+      var carBlocked = isCarForbidden(hwy);
 
       var coordArrays = [];
       if (geom.type === "LineString" && geom.coordinates && geom.coordinates.length >= 2) {
@@ -187,6 +206,8 @@
             sidewalk: sidewalk,
             footway: footway,
             wayId: wayId,
+            userExcluded: userExcluded,
+            name: name,
             kind: "base"
           });
 
@@ -320,7 +341,12 @@
     var candidates = [];
     idxSet.forEach(function (idx) {
       var seg = _segmentIndex[idx];
-      candidates.push({ segId: idx, coords: [seg.startCoord, seg.endCoord], pedBlocked: seg.pedBlocked });
+      // userExcluded lets connector-graph.js's weld/crossing-split guards
+      // tell "blocked by the user" from "blocked by class" (motorway/trunk),
+      // so a connector drawn along a user-excluded street can still weld to
+      // it while the bridge/freeway mitigation stays intact for real
+      // freeways — see docs/sidewalk-data-plan.md Phase 4 step 7.
+      candidates.push({ segId: idx, coords: [seg.startCoord, seg.endCoord], pedBlocked: seg.pedBlocked, userExcluded: !!seg.userExcluded });
     });
     return candidates;
   }
@@ -1192,14 +1218,20 @@
     if (_segmentIndex) {
       for (var i = 0; i < _segmentIndex.length; i++) {
         var seg = _segmentIndex[i];
-        if (seg.pedBlocked) continue;
+        // Phase 4: a user-excluded segment stays in the walk-network view
+        // (rendered distinctly, still clickable to undo — see the plan's
+        // §2 "Excluded streets must stay visible and clickable"). Only a
+        // class-blocked segment (motorway/trunk) is skipped, same as before.
+        if (seg.pedBlocked && !seg.userExcluded) continue;
         segments.push({
           coords: [seg.startCoord, seg.endCoord],
           kind: seg.kind || "base",
           sidewalk: seg.sidewalk || "",
           footway: seg.footway || "",
           hwy: seg.hwy || "",
-          wayId: seg.wayId != null ? seg.wayId : null
+          wayId: seg.wayId != null ? seg.wayId : null,
+          excluded: !!seg.userExcluded,
+          name: seg.name || ""
         });
       }
     }
@@ -1236,6 +1268,21 @@
   // sync even when a base-network reload (which also re-runs applyConnectorOverlay
   // via rebuildNetwork()) happens without going through setNetworkConnectors().
   App.getLastConnectorOverlayReport = function () { return _lastOverlayReport; };
+
+  // ---- Manual street exclusion (docs/sidewalk-data-plan.md Phase 4) ----
+  // The ONLY sanctioned write path to _excludedWays, mirroring
+  // App.setNetworkConnectors(): stores the Set, writes the array back to
+  // App.networkSettings.excludedWayIds so it round-trips through the session
+  // cache, saves, then rebuildNetwork() — buildGraph() re-reads _excludedWays
+  // on every call, so exclusions re-apply automatically after a re-download
+  // and the epoch bumps exactly once per change.
+  App.setExcludedWays = function (ids) {
+    ids = ids || [];
+    _excludedWays = new Set(ids);
+    if (App.networkSettings) App.networkSettings.excludedWayIds = ids.slice();
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    rebuildNetwork();
+  };
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 

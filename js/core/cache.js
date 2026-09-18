@@ -158,6 +158,7 @@
       networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
       networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
       networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
+      networkExcludedWayIds: (App.networkSettings && App.networkSettings.excludedWayIds) ? App.networkSettings.excludedWayIds.slice() : [],
       // Layer color palette cascade (additive fields, docs/layer-color-customization-plan.md
       // Phase 3 — absent on an old session, App.layerStyles/mapPalette keep their defaults).
       layerStyles: App.layerStyles ? JSON.parse(JSON.stringify(App.layerStyles)) : {},
@@ -320,6 +321,17 @@
     }
     if (App.networkSettings && state.networkCrossingMinorSec != null) {
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
+    }
+    // 3a-3b. Restore user-excluded streets (docs/sidewalk-data-plan.md
+    // Phase 4 — additive field, absent on an old session leaves the
+    // exclusion set empty). Goes through the sanctioned write path
+    // (App.setExcludedWays), not a direct App.networkSettings poke, so
+    // road-network.js's private _excludedWays Set — the object it actually
+    // reads at buildGraph time — stays in sync. No base network is loaded
+    // yet at restore time, so this is a cheap no-op rebuild that simply
+    // primes the exclusion set for whenever a network is next loaded.
+    if (state.networkExcludedWayIds && typeof App.setExcludedWays === "function") {
+      App.setExcludedWays(state.networkExcludedWayIds);
     }
 
     // 3a-4. Restore the layer color palette cascade (additive fields,
