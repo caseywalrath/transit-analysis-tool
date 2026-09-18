@@ -97,6 +97,44 @@ keep the centerline network (complete and reliable) and subtract the streets
 your own judgment rejects. For many US study areas this is the better path, and
 Checkpoint 1 is where that call gets made.
 
+### 1.5 An OSM way is not a street — and why that mostly works out
+
+Exclusion is keyed by way id (§2), so be precise about what a way is: a
+**tag-homogeneous stretch**, not a street. OSM requires splitting a way wherever
+tags change — and `sidewalk=*` is a tag. So wherever a mapper has recorded that
+coverage changes partway along a street, **the way is already split at that
+point**. Ways also split at name changes, bridges, surface changes and most
+junctions; in urban US data a way is typically one to a few blocks, not miles.
+
+The granularity mismatch therefore appears only where the sidewalk is
+**untagged** — the common case — since nothing forced a split there. Two
+properties of the architecture keep that from being a real problem:
+
+- **Excluding a centerline does not exclude parallel mapped sidewalk geometry.**
+  A `footway=sidewalk` line is a *different way* with its own id.
+- **Excluding a centerline does not exclude connectors.**
+  `applyConnectorOverlay()` runs *after* `buildGraph()` inside
+  `rebuildNetwork()` and adds its edges `pedBlocked: false` unconditionally.
+
+So a partly-sidewalked street whose sidewalk **is** mapped comes out correct
+with no user effort at all. One whose sidewalk is **not** mapped is handled by
+excluding the way and drawing a connector Line back along the walkable
+stretch — **exclude coarsely, restore precisely**, using tooling that already
+exists. Phase 4 step 7 is what keeps that second half working.
+
+Two things stay genuinely unsolved and should be stated rather than worked
+around:
+
+- **`sidewalk=left`/`right` is not representable in centerline mode.** One line
+  either exists or it does not; there is no half a street. This is inherent to
+  centerline routing and is exactly what Stage D would buy. Treat `"one-side"`
+  as walkable and let the coverage layer show it.
+- **Sub-way precision is deferred.** If way granularity proves too coarse in
+  practice, the clean answer is two-click range selection — click two nodes on
+  one way, store `wayId` plus both `nodeKey`s (stable across re-downloads since
+  they are 6-decimal quantized coordinates). Do **not** build it in Phase 4.
+  Ship way-level first and find out whether the connector escape hatch suffices.
+
 ---
 
 ## 2. Settled design decisions
@@ -129,6 +167,17 @@ Checkpoint 1 is where that call gets made.
   vanish from the walk-network layer with no way to undo it. Segments blocked
   *by the user* are returned and rendered distinctly; segments blocked *by
   class* (motorways) stay hidden as today.
+- **User-excluded is not the same as class-blocked, for welding.**
+  `connector-graph.js` skips `pedBlocked` candidates for both crossing splits
+  (`:191`) and welds (`:243`) — the bridge/freeway mitigation from
+  `docs/network-connectors-plan.md` §1. That must keep applying to motorways but
+  **not** to user-excluded streets, or the exclude-coarsely-restore-precisely
+  workflow in §1.5 silently fails: a connector drawn along an excluded street
+  would not weld at its ends.
+- **Hover must preview the whole way before a click commits it.** Way-level
+  exclusion is only honest if the user can see the extent first — a mile-long
+  way needs to announce itself at hover time, not after the walkshed collapses.
+  This is a requirement, not polish.
 - **Exclusion bumps the epoch; the Stage D mode toggle does not.** Exclusion
   rebuilds the graph, so `rebuildNetwork()`'s single epoch bump is correct. The
   Stage D walk mode is a pure setting and folds into Walkshed's
@@ -374,7 +423,8 @@ The inverse of a Network Connector. See §1.4 for why this may matter more than
 Stage D.
 
 **Files:** `js/core/road-network.js`, `js/core/network-connectors.js`,
-`js/core/cache.js`, `css/style.css`, `CLAUDE.md`
+`js/core/connector-graph.js`, `js/core/cache.js`, `css/style.css`,
+`test/cases/connector-graph.mjs`, `CLAUDE.md`
 
 **Work:**
 
@@ -419,20 +469,42 @@ Stage D.
    dashed `line-dasharray` under the same case. They must stay visible, or the
    user can never click one to undo (§2).
 
-7. Click handling on `walk-network-line` (same `mouseenter`/`click` pattern the
-   GTFS layers use): click toggles that feature's `wayId` in/out of the
-   exclusion set via `App.setExcludedWays()`. Hover cursor + a tooltip naming
-   the street and its current state. Guard on `wayId` being present — a legacy
-   import has none, so the click is a no-op with a one-line status message
-   rather than a silent failure.
+7. **Weld carve-out — do not skip this step.** Without it the recovery workflow
+   in §1.5 silently fails. `connector-graph.js` currently refuses to split or
+   weld against any `pedBlocked` candidate (`:191`, `:243`). Once a user
+   exclusion sets `pedBlocked`, a connector drawn along an excluded street would
+   not join the network at its ends — the exact move this plan tells the user to
+   make.
+   - `applyConnectorOverlay()` (`road-network.js:313`) already builds each
+     candidate as `{ segId, coords, pedBlocked }`. Add `userExcluded` to it.
+   - In `connector-graph.js`, change both guards from `if (seg.pedBlocked)` to
+     `if (seg.pedBlocked && !seg.userExcluded)`. Motorways and trunks still
+     never weld (the §1 bridge/freeway mitigation is intact); user-excluded
+     streets become weldable again.
+   - Add golden cases to `test/cases/connector-graph.mjs`: a weld against a
+     `userExcluded` candidate (**joins**) and one against a class-`pedBlocked`
+     candidate (**does not join** — the existing scenario, which must stay
+     byte-identical). Same for a crossing split.
 
-8. Add a small "Excluded streets: N — clear all" line to the Walkshed Advanced
+8. Click and hover on `walk-network-line`, using the `mouseenter`/`mousemove`/
+   `mouseleave`/`click` pattern the GTFS layers already use.
+   - **Hover highlights the entire way**, not the segment under the cursor (§2)
+     — use a feature-state or filtered highlight layer keyed on `wayId`. The
+     tooltip names the street, its length, and its current state. A user must be
+     able to see a mile-long way *before* excluding it.
+   - Click toggles that feature's `wayId` in/out of the exclusion set via
+     `App.setExcludedWays()`.
+   - Guard on `wayId` being present — a legacy import has none, so the click is
+     a no-op with a one-line status message rather than a silent failure.
+
+9. Add a small "Excluded streets: N — clear all" line to the Walkshed Advanced
    block, reading `App.networkSettings.excludedWayIds.length`, so exclusions are
    discoverable and reversible in bulk without hunting on the map.
 
-9. Update `CLAUDE.md`: `App.networkSettings`, `cache.js` collect/restore,
-   `buildGraph`, `getWalkNetworkSegments`, `network-connectors.js`, and the
-   Walkshed module entry.
+10. Update `CLAUDE.md`: `App.networkSettings`, `cache.js` collect/restore,
+    `buildGraph`, `getWalkNetworkSegments`, `network-connectors.js`,
+    `connector-graph.js` (the `userExcluded` carve-out), and the Walkshed
+    module entry.
 
 **Verify:**
 - With an empty exclusion list, walkshed output is **byte-identical** to before
@@ -441,8 +513,22 @@ Stage D.
   of the green reachable-streets overlay, and the walkshed visibly shrinks on
   that side. Click it again → fully restored.
 - Excluded streets are **still clickable** (the §2 trap).
+- Hovering any part of a street highlights the **whole way** and reports its
+  length before any click commits.
+- **The §1.5 recovery workflow end to end:** exclude a street that has sidewalks
+  on only part of its length → draw a connector Line along the sidewalked
+  stretch → set `networkRole = "connector"` → the connector **welds** and that
+  stretch is walkable again while the rest stays excluded. If the connector
+  comes back as an orphan, step 7 was skipped or done wrong.
+- A connector still **refuses** to weld across a motorway/trunk (the §1
+  bridge/freeway mitigation must survive the carve-out).
+- A partly-sidewalked street whose sidewalk **is** mapped as `footway=sidewalk`
+  geometry stays walkable along the sidewalk after the centerline is excluded,
+  with no connector drawn (§1.5, the free case).
 - Motorways remain hidden from the walk-network layer — they are blocked by
   class, not by the user, and must not start appearing as "excluded".
+- `node test/run-golden.mjs` → `PASS — N/N`, with the new `connector-graph`
+  cases hand-verified and every pre-existing case **unchanged**.
 - `App.findLocalRoute` still routes over an excluded street (driving unaffected).
 - Transit Travelshed picks the exclusion up with **no module-specific code**.
 - Reload the page → exclusions survive. Re-download the network over the same
@@ -762,6 +848,10 @@ crossings** instead of the node-degree heuristic.
 | Risk | Phase | Mitigation |
 |---|---|---|
 | Excluded street vanishes from the layer, can't be undone | 4 | `userExcluded` flag keeps it rendered and clickable; explicit Verify step |
+| Connector won't weld to an excluded street, breaking the §1.5 recovery workflow | 4 | Step 7 weld carve-out + end-to-end Verify step; golden cases both ways |
+| Weld carve-out accidentally lets connectors weld across freeways | 4 | Guard checks `pedBlocked && !userExcluded`; existing class-blocked golden case must stay byte-identical |
+| Way turns out to be far longer than the user expected | 4 | Hover previews the whole way and its length before the click commits |
+| Way granularity too coarse for intermittent sidewalks | 4 | Mapped sidewalks survive exclusion automatically; unmapped ones restored with a connector (§1.5). Sub-way ranges deferred, not built |
 | Exclusion silently breaks driving routes | 4 | Acts on `pedBlocked` only; `carBlocked` untouched; Verify runs `findLocalRoute` |
 | Exclusions lost on network re-download | 4 | Keyed by stable OSM way id and applied in `buildGraph`, which every rebuild routes through; explicit Verify step |
 | Motorways start rendering as user-excluded | 4 | `userExcluded` distinguishes blocked-by-user from blocked-by-class |
