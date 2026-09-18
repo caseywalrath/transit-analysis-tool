@@ -867,7 +867,8 @@
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
       "</p>" +
-      connectionReportHTML();
+      connectionReportHTML() +
+      coverageReportHTML();
   }
 
   // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
@@ -877,6 +878,20 @@
   function connectionReportHTML() {
     var summary = typeof App.getConnectorReportSummary === "function"
       ? App.getConnectorReportSummary() : null;
+    if (!summary) return "";
+    var color = summary.warn ? "#b45309" : "var(--muted)";
+    return '<p class="tiny" style="margin-top:6px;color:' + color + ';">' +
+      escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "") +
+      "</p>";
+  }
+
+  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
+  // only rendered when a network is loaded — absent, not "0%", when there
+  // isn't one. Shared logic with Walkshed's identical footer line.
+  function coverageReportHTML() {
+    var summary = typeof App.getSidewalkCoverageSummary === "function"
+      ? App.getSidewalkCoverageSummary() : null;
     if (!summary) return "";
     var color = summary.warn ? "#b45309" : "var(--muted)";
     return '<p class="tiny" style="margin-top:6px;color:' + color + ';">' +

@@ -190,4 +190,37 @@
 
   App.refreshSidewalkCoverageLayer = refreshSidewalkCoverageLayer;
 
+  // ---- Coverage statistics (docs/sidewalk-data-plan.md Phase 3) ----
+
+  // Below this, sidewalk-only routing (Stage D) would be unreliable — the
+  // flood would confidently under-report reachability. Mirrors the threshold
+  // language in the plan's §1.4/Checkpoint 1.
+  var LOW_COVERAGE_PCT = 25;
+
+  // Mirrors App.getConnectorReportSummary() (network-connectors.js) exactly —
+  // the established pattern for a one-line module footer. Returns null when
+  // no network is loaded, so callers hide the line entirely rather than
+  // showing a misleading "0%".
+  function getSidewalkCoverageSummary() {
+    var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
+    if (!loaded) return null;
+
+    var segments = typeof App.getWalkNetworkSegments === "function"
+      ? App.getWalkNetworkSegments() : [];
+    var stats = WalkAudit.coverageStats(segments);
+
+    var text = "Sidewalks: " + Math.round(stats.pctTagged) + "% of streets tagged · " +
+      Math.round(stats.pctBoth) + "% both sides · " +
+      stats.crossingCount.toLocaleString() + " crossing" + (stats.crossingCount === 1 ? "" : "s");
+
+    var warn = stats.pctTagged < LOW_COVERAGE_PCT;
+    var detail = warn
+      ? "Low sidewalk-attribute coverage here — treat sidewalk-only routing (if enabled) as unreliable."
+      : null;
+
+    return { text: text, detail: detail, warn: warn };
+  }
+
+  App.getSidewalkCoverageSummary = getSidewalkCoverageSummary;
+
 })();

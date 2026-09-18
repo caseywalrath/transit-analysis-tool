@@ -550,6 +550,7 @@
       "</tr></thead><tbody>" + rows + "</tbody></table>";
 
     renderConnectionReport();
+    renderCoverageReport();
   }
 
   // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
@@ -561,6 +562,21 @@
     if (!el) return;
     var summary = typeof App.getConnectorReportSummary === "function"
       ? App.getConnectorReportSummary() : null;
+    if (!summary) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.style.color = summary.warn ? "#b45309" : "";
+    el.innerHTML = escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "");
+  }
+
+  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
+  // only rendered when a network is loaded — absent, not "0%", when there
+  // isn't one. Same warning-color convention as renderConnectionReport().
+  function renderCoverageReport() {
+    var el = document.getElementById("wsCoverageReport");
+    if (!el) return;
+    var summary = typeof App.getSidewalkCoverageSummary === "function"
+      ? App.getSidewalkCoverageSummary() : null;
     if (!summary) { el.style.display = "none"; return; }
     el.style.display = "";
     el.style.color = summary.warn ? "#b45309" : "";
