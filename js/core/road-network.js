@@ -906,6 +906,9 @@
 
     // Reconcile the discreet walk-network reference layer (network-connectors.js).
     if (typeof App.refreshWalkNetworkLayer === "function") App.refreshWalkNetworkLayer();
+
+    // Reconcile the sidewalk coverage audit layer (walk-audit.js Phase 2).
+    if (typeof App.refreshSidewalkCoverageLayer === "function") App.refreshSidewalkCoverageLayer();
   }
 
   // ---- Walkshed (network isochrone) ----
