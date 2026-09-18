@@ -27,6 +27,7 @@
 
   var WN_SRC = "walk-network";
   var WN_LAYER = "walk-network-line";
+  var WN_EXCLUDED_LAYER = "walk-network-excluded-line"; // docs/sidewalk-data-plan.md Phase 4
   var NJ_SRC = "network-joins";
   var NJ_LAYER = "network-joins-point";
 
@@ -196,6 +197,7 @@
     var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
     if (!loaded) {
       if (map.getLayer(WN_HOVER_LAYER)) map.removeLayer(WN_HOVER_LAYER);
+      if (map.getLayer(WN_EXCLUDED_LAYER)) map.removeLayer(WN_EXCLUDED_LAYER);
       if (map.getLayer(WN_LAYER)) map.removeLayer(WN_LAYER);
       if (map.getSource(WN_SRC)) map.removeSource(WN_SRC);
       if (map.getLayer(NJ_LAYER)) map.removeLayer(NJ_LAYER);
@@ -219,13 +221,35 @@
         source: WN_SRC,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          // Excluded segments (docs/sidewalk-data-plan.md Phase 4) render
-          // red/dashed so a user-excluded street stays visible and clickable
-          // — never simply vanish, or there would be no way to undo it.
-          "line-color": ["case", ["get", "excluded"], "#dc2626", "#94a3b8"],
-          "line-dasharray": ["case", ["get", "excluded"], ["literal", [2, 1.5]], ["literal", [1, 0]]],
-          "line-width": ["case", ["get", "excluded"], 2, 1],
-          "line-opacity": ["case", ["get", "excluded"], 0.85, 0.45]
+          "line-color": "#94a3b8",
+          "line-width": 1,
+          "line-opacity": 0.45
+        }
+      }, firstUserLayer());
+
+      // Excluded segments (docs/sidewalk-data-plan.md Phase 4) render red/
+      // dashed on a SEPARATE layer, filtered rather than styled with a
+      // data-driven paint expression on the base layer above — MapLibre's
+      // line-dasharray does not support per-feature (data-driven) values,
+      // only a static array or a zoom function; a ["case", ...] there fails
+      // style validation and MapLibre just silently refuses to add the
+      // layer (no thrown error, just a console warning), which took the
+      // whole walk-network-line layer down with it the first time this was
+      // tried. `filter`, unlike a paint property, can vary per feature, so
+      // this overlay — same source, drawn on top — is the correct way to
+      // single out excluded segments. Must stay visible/clickable, never
+      // simply vanish, or there would be no way to undo an exclusion.
+      map.addLayer({
+        id: WN_EXCLUDED_LAYER,
+        type: "line",
+        source: WN_SRC,
+        filter: ["==", ["get", "excluded"], true],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#dc2626",
+          "line-width": 2,
+          "line-opacity": 0.85,
+          "line-dasharray": [2, 1.5]
         }
       }, firstUserLayer());
 

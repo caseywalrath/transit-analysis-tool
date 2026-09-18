@@ -1275,13 +1275,19 @@
   // App.networkSettings.excludedWayIds so it round-trips through the session
   // cache, saves, then rebuildNetwork() — buildGraph() re-reads _excludedWays
   // on every call, so exclusions re-apply automatically after a re-download
-  // and the epoch bumps exactly once per change.
+  // and the epoch bumps exactly once per change. updateUI() (the same choke
+  // point fetchNetworkForBounds/loadRoadNetworkFromFile call after rebuilding)
+  // is required here too — rebuildNetwork() alone only updates the internal
+  // graph/_segmentIndex; without this the walk-network-line map source keeps
+  // its stale pre-exclusion GeoJSON and an excluded street never visibly
+  // changes until some unrelated event happens to refresh the layer.
   App.setExcludedWays = function (ids) {
     ids = ids || [];
     _excludedWays = new Set(ids);
     if (App.networkSettings) App.networkSettings.excludedWayIds = ids.slice();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     rebuildNetwork();
+    updateUI();
   };
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----

@@ -52,6 +52,7 @@
     { id: "road-dl-area-line",    label: "Road download area",   layers: [{ id: "road-dl-area-line", op: "line-opacity" }],
       clear: callIf("clearRoadDownloadArea") },
     { id: "walk-network-line",    label: "Walk network",         layers: [{ id: "walk-network-line", op: "line-opacity" },
+      { id: "walk-network-excluded-line", op: "line-opacity" },
       { id: "network-joins-point", op: "circle-opacity" }],
       clear: callIf("clearRoadNetwork") },
     { id: "sidewalk-coverage-line", label: "Sidewalk coverage",  layers: [{ id: "sidewalk-coverage-line", op: "line-opacity" }],
