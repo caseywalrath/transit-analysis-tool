@@ -9,7 +9,8 @@ checkpoint is a hard stop: the implementer finishes the phase, commits, and
 reports to the user. The user then decides whether the next stage is worth
 building — **every stage after A is genuinely optional**, and Stage D in
 particular should only be built if the data in the user's actual study areas
-turns out to support it.
+turns out to support it. Stage D may well turn out to be unnecessary; see
+Checkpoint 1.
 
 Each phase lists goal, files, work, and a **Verify** block. Complete the Verify
 block before moving on. Commit at the end of each phase. Work on branch
@@ -25,7 +26,7 @@ touching markup or the Layers panel runs `node test/ui-screens/capture.mjs` and
 
 ## 1. Background — read this before touching anything
 
-Three facts reframe what this feature actually is. Getting them wrong will
+Four facts reframe what this feature actually is. Getting them wrong will
 produce a plan that builds the wrong thing.
 
 ### 1.1 Sidewalk geometry is already in the network
@@ -39,10 +40,10 @@ already being flooded over today — it is simply not *distinguished* from road
 centerlines anywhere in the code or the UI. Stage A adds no new Overpass
 elements at all.
 
-Further: Overpass `out geom;` already returns **all** tags on each way. The
-parse loop at `:734-743` just doesn't read them — it keeps only `highway`,
-`name`, `oneway`, `foot`. Reading three more tags is a parse-side change with
-**zero** effect on download size or query time.
+Further: Overpass `out geom;` already returns **all** tags and the way id on
+each element. The parse loop at `:734-743` just doesn't read them — it keeps
+only `highway`, `name`, `oneway`, `foot`. Reading more is a parse-side change
+with **zero** effect on download size or query time.
 
 ### 1.2 `sidewalk=*` and Network Connectors solve different problems
 
@@ -61,7 +62,7 @@ no-op duplicate edge.
 **Therefore: `sidewalk=*` alone is a quality map, not a drawing worklist.**
 A phase that renders it and calls it a connector worklist is wrong.
 
-### 1.3 The actual connector worklist comes from two different tests
+### 1.3 The connector worklist comes from two different tests
 
 1. **Topology gaps** (Stage B) — disconnected components and near-miss dead ends
    in the walk graph. Finds unmapped cut-throughs, plazas, parking-lot
@@ -73,14 +74,36 @@ A phase that renders it and calls it a connector worklist is wrong.
    exists in reality but OSM has no line for it." Only matters if sidewalk-only
    routing (Stage D) is on the table.
 
+### 1.4 Manual exclusion is the inverse of a connector — and may beat Stage D
+
+Actual motorways are **already excluded**: `PED_FORBIDDEN_HWY` (`:71-73`) blocks
+`motorway`, `trunk` and both `_link` ramp forms, and `isPedForbidden` already
+honors an explicit `foot=no` override on any class.
+
+The real problem case is the middle tier — a `primary`/`secondary` arterial with
+no sidewalk, high speed, no shoulder. Fully walkable in the flood today, and
+genuinely not walkable in reality. No tag reliably identifies these; it takes
+human judgment against satellite imagery.
+
+Phase 4 therefore lets a user mark a street not-walkable. Connectors **add**
+missing links; exclusions **remove** bad ones — symmetric halves of hand-tuning
+a network to real conditions.
+
+Strategically this matters more than it first appears. Stage D (sidewalk-only
+routing) depends entirely on OSM having good sidewalk **and** crossing geometry,
+which Checkpoint 1 may well show it does not. Manual exclusion delivers much of
+the same analytical benefit with **no** dependence on OSM sidewalk data quality:
+keep the centerline network (complete and reliable) and subtract the streets
+your own judgment rejects. For many US study areas this is the better path, and
+Checkpoint 1 is where that call gets made.
+
 ---
 
 ## 2. Settled design decisions
 
-- **Stage A ships standalone value and changes no numbers.** No routing change,
-  no walkshed output change. It is a data-capture + visualization + statistics
-  stage only. This is deliberate: it answers "is the full analysis worthwhile"
-  *before* any expensive or risky work is committed to.
+- **Stage A changes no analysis numbers automatically.** Phases 1–3 are
+  data-capture, visualization and statistics only. Phase 4 changes results
+  **only where the user explicitly excludes a street** — never on its own.
 - **Coverage is its own layer, not a restyle of `walk-network-line`.** They have
   different semantics (walkable segments the flood uses vs. the sidewalk
   attribute on road centerlines) and different subsets. The user must be able to
@@ -95,16 +118,32 @@ A phase that renders it and calls it a connector worklist is wrong.
   twice per segment and a city network has hundreds of thousands of them —
   adding fields nothing reads is pure memory cost in the hot routing path.
   Stage D adds them to edges, when something finally reads them.
+- **Exclusion is keyed by OSM way id, never by segment index.** `_segmentIndex`
+  entries are per **coordinate pair**, so one city block can be ten segments —
+  segment-level exclusion would be unusable, and indices do not survive a
+  re-download. Way ids are stable in OSM, and "this street is not walkable" is
+  naturally a whole-way judgment. This also means **no geometry matching
+  anywhere** in Phase 4, which is why it is cheap and exact.
+- **Excluded streets must stay visible and clickable.** `getWalkNetworkSegments()`
+  skips `pedBlocked`, so a naive implementation would make an excluded street
+  vanish from the walk-network layer with no way to undo it. Segments blocked
+  *by the user* are returned and rendered distinctly; segments blocked *by
+  class* (motorways) stay hidden as today.
+- **Exclusion bumps the epoch; the Stage D mode toggle does not.** Exclusion
+  rebuilds the graph, so `rebuildNetwork()`'s single epoch bump is correct. The
+  Stage D walk mode is a pure setting and folds into Walkshed's
+  `settingsKeyFor()` (`js/projects/walkshed.js:113-120`) instead — the precedent
+  set by the crossing-penalty seconds.
+- **Driving is never affected.** Exclusion and sidewalk mode both act on
+  `pedBlocked` only; `carBlocked` and `findLocalRoute` are untouched throughout.
 - **Legacy imports degrade gracefully.** A road-network file exported before
-  this feature has no sidewalk tags. Absent → `"unknown"`, never an error.
-  Same convention as the existing "Imported networks may lack a highway/foot
-  tag" handling at `:147-150`.
-- **`App.networkSettings` is the home for any new shared setting** (Stage D's
-  walk mode), matching `snapToleranceFt` / `crossingMajorSec` / `crossingMinorSec`.
-  Never per-module state — see `docs/network-connectors-plan.md` §2.
-- **Mode is a setting, not a network change.** Stage D folds into Walkshed's
-  `settingsKeyFor()` cache key (`js/projects/walkshed.js:113-120`), **not** an
-  epoch bump — the precedent set by the crossing-penalty seconds.
+  this feature has no sidewalk tags and no way ids. Absent → `"unknown"` /
+  not-excludable, never an error. Same convention as the existing "Imported
+  networks may lack a highway/foot tag" handling at `:147-150`.
+- **`App.networkSettings` is the home for shared network state** (the exclusion
+  list, Stage D's walk mode), matching `snapToleranceFt` / `crossingMajorSec` /
+  `crossingMinorSec`. Never per-module state — see
+  `docs/network-connectors-plan.md` §2.
 
 ---
 
@@ -117,16 +156,23 @@ reads `App.*` only at call time). Load it **after** `road-network.js` (it
 consumes `App.getWalkNetworkSegments`) and **before** `walkshed.js` /
 `transit-travelshed.js`. Slot it directly after `network-connectors.js`.
 
-### Where the single traversal predicate lives
+### The two insertion points
 
-`floodDijkstra` (`js/core/road-network.js:905`) is the **only** flood used by
-both `computeWalkshed` and `computeWalkCostMap`, via `runWalkFlood` (`:980`).
-Its `if (nb.pedBlocked) continue;` at `:921` is the single edge predicate.
+Everything in this plan lands at one of exactly two places:
 
-This matters for Stage D: a mode filter added there is picked up by **both**
-Walkshed and Transit Travelshed automatically. That is strictly better than how
-crossing penalties landed, where `computeWalkCostMap` deliberately opted out and
-Transit Travelshed is still out of sync on that feature.
+1. **`buildGraph` (`:147-151`)** — *what is walkable at all.* Phase 4's exclusion
+   OR goes here, because `rebuildNetwork()` → `buildGraph()` is the single choke
+   point every base-network load routes through, so exclusions re-apply
+   automatically after a re-download and bump the epoch exactly once.
+2. **`floodDijkstra` (`:905`, predicate at `:921`)** — *what this particular
+   flood may use.* Stage D's mode filter goes here.
+
+`floodDijkstra` is the **only** flood used by both `computeWalkshed` and
+`computeWalkCostMap`, via `runWalkFlood` (`:980`). So anything added at either
+point is picked up by **both** Walkshed and Transit Travelshed automatically.
+That is strictly better than how crossing penalties landed, where
+`computeWalkCostMap` deliberately opted out and Transit Travelshed is still out
+of sync on that feature.
 
 ### Pure-engine data shapes
 
@@ -142,46 +188,49 @@ The adjacency conversion is one O(nodes) pass. That is fine because these are
 
 ---
 
-# STAGE A — Sidewalk visibility and coverage statistics
+# STAGE A — Visibility and manual network correction
 
-Ships standalone value. Changes no analysis numbers. Low risk.
+Phases 1–3 ship standalone value and change no analysis numbers. Phase 4 adds
+the first tool that changes results, and only by explicit user action.
 
 ---
 
-### Phase 1 — Capture sidewalk tags
+### Phase 1 — Capture sidewalk tags and way ids
 
-**Goal:** the three tags reach `_segmentIndex`. No visual change whatsoever.
+**Goal:** the new fields reach `_segmentIndex`. No visual change whatsoever.
 
 **Files:** `js/core/road-network.js`, `CLAUDE.md`
 
 **Work:**
 
 1. In the Overpass parse loop (`:734-743`), read three more tags into
-   `properties`: `sidewalk`, `footway`, `crossing`. **Do not change the
-   `way["highway"~...]` query filter** — `out geom;` already returns all tags,
-   so this is parse-side only and adds nothing to the download.
-2. In `buildGraph` (`:147-151`), alongside the existing `hwy` /
-   `pedBlocked` / `carBlocked` classification, read
-   `props.sidewalk` / `props.footway` into locals, defaulting to `""`.
-3. Add `sidewalk` and `footway` to the `segments.push({…})` object
+   `properties` — `sidewalk`, `footway`, `crossing` — plus `wayId: el.id`.
+   **Do not change the `way["highway"~...]` query filter** — `out geom;` already
+   returns all tags and the element id, so this is parse-side only and adds
+   nothing to the download.
+2. In `buildGraph` (`:147-151`), alongside the existing `hwy` / `pedBlocked` /
+   `carBlocked` classification, read `props.sidewalk` / `props.footway` /
+   `props.wayId` into locals, defaulting to `""` / `null`.
+3. Add `sidewalk`, `footway` and `wayId` to the `segments.push({…})` object
    (`:172-181`). **Do not** add them to the `addGraphEdge(…)` call — see §2.
-4. Extend `getWalkNetworkSegments()` (`:1169`) to carry `sidewalk`, `footway`
-   and `hwy` on each returned record alongside the existing `coords` / `kind`.
-   Additive — existing consumers ignore the new fields. The `_walkSegCache`
-   epoch keying is unchanged.
+4. Extend `getWalkNetworkSegments()` (`:1169`) to carry `sidewalk`, `footway`,
+   `hwy` and `wayId` on each returned record alongside the existing `coords` /
+   `kind`. Additive — existing consumers ignore the new fields. The
+   `_walkSegCache` epoch keying is unchanged.
 5. Update `CLAUDE.md`: the `road-network.js` File Structure entry and its App
-   Namespace entry, noting the three captured tags, that segments (not edges)
-   carry them, and that legacy imports leave them `""`.
+   Namespace entry, noting the captured fields, that segments (not edges) carry
+   them, and that legacy imports leave them empty.
 
 **Verify:**
 - `node --check js/core/road-network.js`.
 - Download a network in a city with known sidewalk tagging. In the console:
-  `App.getWalkNetworkSegments().filter(s => s.sidewalk).length` is > 0, and
-  `…filter(s => s.footway === "sidewalk").length` is > 0.
+  `App.getWalkNetworkSegments().filter(s => s.sidewalk).length` is > 0,
+  `…filter(s => s.footway === "sidewalk").length` is > 0, and
+  `…filter(s => s.wayId).length` equals the total segment count.
 - `App.getWalkNetworkSegments().length` is unchanged from before this phase
   for the same download extent.
 - Import a road-network file exported **before** this change → no console
-  errors, walkshed still computes, new fields read `""`.
+  errors, walkshed still computes, new fields read `""` / `null`.
 - `node test/run-golden.mjs` → unchanged pass count (no pure math touched).
 
 ---
@@ -318,33 +367,129 @@ attribute, plus separate footway geometry in a distinct style.
 
 ---
 
-## ⛔ CHECKPOINT 1 — Stop and report
+### Phase 4 — Manual street exclusion
 
-**Report to the user:** the coverage percentages for two or three real study
-areas, plus a screenshot of the Phase 2 layer in each.
+**Goal:** the user can mark a street not-walkable, and the walkshed respects it.
+The inverse of a Network Connector. See §1.4 for why this may matter more than
+Stage D.
 
-**The decision this unlocks:**
+**Files:** `js/core/road-network.js`, `js/core/network-connectors.js`,
+`js/core/cache.js`, `css/style.css`, `CLAUDE.md`
 
-- **If `pctTagged` is low (< ~25%) in the user's real study areas:** Stage C and
-  Stage D are **not worth building** — sidewalk-only routing there would produce
-  confidently wrong walksheds. Stage A still stands on its own as a data-quality
-  finding. **Stage B is still worth doing** — it needs no sidewalk data at all.
-- **If coverage is good:** all remaining stages are live.
+**Work:**
 
-**Either way, Stage B is the next recommended phase**, because it delivers the
-connector worklist the user actually asked for and does not depend on sidewalk
-data quality at all.
+1. Add `excludedWayIds: []` to `App.networkSettings`
+   (`js/core/network-connectors.js:44`), with the same defensive backfill the
+   crossing fields use at `:45-46` so an older page load never leaves it
+   `undefined`. Stored as an **array** (JSON-serializable); hydrated to a `Set`
+   inside `road-network.js` for lookup.
+
+2. Persist as an additive `networkExcludedWayIds` field in `cache.js`
+   `collect()` / `restore()` (`:158-160`, `:311-322`) — same additive pattern as
+   `networkSnapToleranceFt`, no core schema bump. Absent on an older session →
+   empty array.
+
+3. `road-network.js`: private `_excludedWays` Set plus
+   `App.setExcludedWays(ids)` — stores the Set, writes the array back to
+   `App.networkSettings.excludedWayIds`, calls `App.cache.save()`, then
+   `rebuildNetwork()`. That is the **only** sanctioned write path, mirroring
+   `App.setNetworkConnectors()`.
+
+4. In `buildGraph` (`:151`), OR the exclusion into the existing classification:
+   ```js
+   var userExcluded = !!(wayId && _excludedWays.has(wayId));
+   var pedBlocked = isPedForbidden(hwy, props.foot) || userExcluded;
+   ```
+   Record `userExcluded` on the segment too (step 5 needs to tell
+   blocked-by-user from blocked-by-class). `carBlocked` is **untouched** —
+   driving is unaffected.
+
+5. `getWalkNetworkSegments()` (`:1169`): change the skip from
+   `if (seg.pedBlocked) continue;` to
+   `if (seg.pedBlocked && !seg.userExcluded) continue;`, and carry
+   `excluded: seg.userExcluded` on the returned record.
+   **Use a separate boolean, not a new `kind` value** — `kind` stays
+   `"base"`/`"connector"` so the existing match expression keeps working, and
+   exclusion is orthogonal to it. (A connector is never excluded; connectors are
+   user-drawn and always `pedBlocked: false`.)
+
+6. `network-connectors.js`: paint excluded segments distinctly on
+   `walk-network-line` — wrap the existing color in
+   `["case", ["get","excluded"], "#dc2626", <existing expression>]` and add a
+   dashed `line-dasharray` under the same case. They must stay visible, or the
+   user can never click one to undo (§2).
+
+7. Click handling on `walk-network-line` (same `mouseenter`/`click` pattern the
+   GTFS layers use): click toggles that feature's `wayId` in/out of the
+   exclusion set via `App.setExcludedWays()`. Hover cursor + a tooltip naming
+   the street and its current state. Guard on `wayId` being present — a legacy
+   import has none, so the click is a no-op with a one-line status message
+   rather than a silent failure.
+
+8. Add a small "Excluded streets: N — clear all" line to the Walkshed Advanced
+   block, reading `App.networkSettings.excludedWayIds.length`, so exclusions are
+   discoverable and reversible in bulk without hunting on the map.
+
+9. Update `CLAUDE.md`: `App.networkSettings`, `cache.js` collect/restore,
+   `buildGraph`, `getWalkNetworkSegments`, `network-connectors.js`, and the
+   Walkshed module entry.
+
+**Verify:**
+- With an empty exclusion list, walkshed output is **byte-identical** to before
+  this phase — compare area and node count for the same point and network.
+- Exclude an arterial → it turns red/dashed on the walk-network layer, drops out
+  of the green reachable-streets overlay, and the walkshed visibly shrinks on
+  that side. Click it again → fully restored.
+- Excluded streets are **still clickable** (the §2 trap).
+- Motorways remain hidden from the walk-network layer — they are blocked by
+  class, not by the user, and must not start appearing as "excluded".
+- `App.findLocalRoute` still routes over an excluded street (driving unaffected).
+- Transit Travelshed picks the exclusion up with **no module-specific code**.
+- Reload the page → exclusions survive. Re-download the network over the same
+  area → exclusions still apply (way ids are stable; this is the key property).
+- `App.roadNetworkEpoch()` bumps by exactly 1 per exclusion change.
+- Import a pre-Phase-1 network file → clicking does nothing harmful and says so.
 
 ---
 
-# STAGE B — Topology gap finder (the actual connector worklist)
+## ⛔ CHECKPOINT 1 — Stop and report
+
+**Report to the user:**
+- Coverage percentages for two or three real study areas, with a screenshot of
+  the Phase 2 layer in each.
+- Whether hand-excluding the obviously-unwalkable streets in one study area
+  produced a walkshed the user considers realistic, and roughly how many
+  exclusions that took.
+
+**The decision this unlocks — three ways, not two:**
+
+- **Stop here.** If Phase 4 exclusion plus the coverage map already produces
+  walksheds the user trusts, the remaining stages are optional refinement.
+  This is a legitimate and likely outcome.
+- **Continue to Stage B only.** The gap finder delivers the connector worklist
+  and is **independent of sidewalk data quality** — worth doing regardless of
+  what coverage turned out to be. This is the default recommendation if the user
+  wants to keep going.
+- **Pursue Stages C–D.** Only if `pctTagged` is high (well above the ~25%
+  warning threshold) in the user's real study areas **and** manual exclusion
+  proved too laborious to scale. If coverage is low, sidewalk-only routing there
+  would produce confidently wrong walksheds — say so plainly and do not build it.
+
+**Explicit guidance:** if Phase 4 made walksheds realistic, Stage D is probably
+**unnecessary**, not merely deferred. Manual exclusion and sidewalk-only routing
+are largely substitutes, and exclusion does not depend on OSM data quality.
+Record that conclusion in this doc rather than leaving Stage D looking pending.
+
+---
+
+# STAGE B — Topology gap finder (the connector worklist)
 
 Independent of sidewalk data. Works in today's centerline mode. This is the
 stage that answers *"where do I need to draw a connector?"*
 
 ---
 
-### Phase 4 — Gap analysis engine
+### Phase 5 — Gap analysis engine
 
 **Goal:** pure, golden-tested graph analysis. No UI.
 
@@ -366,7 +511,8 @@ stage that answers *"where do I need to draw a connector?"*
      **different** components, sorted by `gapKm` ascending — the nearest
      misses are the most likely real gaps.
 2. `road-network.js`: add `App.getWalkAdjacency()` → a plain adjacency object
-   built from `_graph`, **skipping `pedBlocked` edges**, plus a parallel
+   built from `_graph`, **skipping `pedBlocked` edges** (so a Phase 4 exclusion
+   correctly shows up as a topology change), plus a parallel
    `{nodeKey: [lng,lat]}` coordinate map. One O(nodes) pass. Document clearly
    that this is **on-demand audit only and must never be called from a flood**.
    Cache it by `_networkEpoch`, same as `_walkSegCache`.
@@ -380,12 +526,14 @@ stage that answers *"where do I need to draw a connector?"*
 - `node test/run-golden.mjs` → `PASS — N/N`, new cases hand-verified.
 - On a real city network in the console: `labelComponents` returns a dominant
   largest component (typically > 90% of nodes) plus a tail of small ones.
+- Excluding a street in Phase 4's UI changes the component structure (an
+  exclusion can isolate a cul-de-sac) — confirms the two features compose.
 - The whole analysis completes in well under a second on a city-scale network.
   If it doesn't, the adjacency conversion is being redone — check the cache.
 
 ---
 
-### Phase 5 — Gap markers and worklist UI
+### Phase 6 — Gap markers and worklist UI
 
 **Goal:** the user can see, on the map, where to draw connectors.
 
@@ -400,13 +548,14 @@ stage that answers *"where do I need to draw a connector?"*
    `walk-gaps-point` (markers at candidate endpoints). One data-driven
    `["match", ["get","kind"], …]` expression per layer.
 2. Style deliberately distinct from `network-joins-point`'s amber orphan
-   circles so "connector end not joined" and "gap you might want to connect"
-   are not confused. Suggest magenta/violet for gaps.
+   circles **and** from Phase 4's red excluded streets, so "connector end not
+   joined", "street you excluded" and "gap you might want to connect" are three
+   readable states. Suggest magenta/violet for gaps.
 3. Register **one** `REFERENCE` row, "Walk network gaps", carrying both layers
    in its `layers` array (the multi-layer-per-row pattern the walk-network row
    already uses). Hidden by default.
 4. Add an "Analyze gaps" button to the Walkshed Advanced block. On click: run
-   the Phase 4 analysis, show the layer, and write a count line
+   the Phase 5 analysis, show the layer, and write a count line
    (`"14 candidate gaps · 3 disconnected fragments"`). Run **on demand only** —
    never automatically on network load, since it is an O(nodes) pass the vast
    majority of sessions won't want.
@@ -436,24 +585,25 @@ confirmation that drawing a connector removes a gap from the list.
 **The decision this unlocks:**
 
 - **If false positives dominate:** tune `maxGapKm` and the ranking before going
-  further. Do not proceed to Stage C/D on a noisy worklist.
-- **If the worklist is useful:** the user may reasonably **stop here**. Stages A
-  and B together deliver a sidewalk-quality map and a working connector
-  worklist. Stage C only matters as a precursor to Stage D, and **Stage D is the
-  only stage that changes analysis numbers** — it should be entered
-  deliberately, not by momentum.
+  further. Do not proceed on a noisy worklist.
+- **If the worklist is useful:** this is the **expected stopping point for most
+  projects.** Stages A and B together give a sidewalk-quality map, manual
+  exclusion, and a working connector worklist — the full hand-tuning toolkit.
+  Stage C only matters as a precursor to Stage D, and Stage D should only be
+  entered if Checkpoint 1 explicitly concluded it was still needed.
 
 ---
 
 # STAGE C — Claimed-but-unmapped sidewalks
 
-Only build this if Checkpoint 1 showed good coverage **and** the user intends to
-pursue Stage D. On its own it produces a worklist for drawing sidewalk geometry
-that nothing yet routes on.
+Only build this if Checkpoint 1 concluded that sidewalk-only routing is both
+viable (good coverage) and still wanted (manual exclusion insufficient). On its
+own it produces a worklist for drawing sidewalk geometry that nothing yet routes
+on.
 
 ---
 
-### Phase 6 — Attribute-vs-geometry gap detection
+### Phase 7 — Attribute-vs-geometry gap detection
 
 **Goal:** find centerlines that *claim* a sidewalk but have no parallel footway.
 
@@ -478,7 +628,7 @@ street and moving on. Same algorithm, entirely different failure cost. Do not
    each road segment — the identical contract `applyConnectorOverlay()` already
    uses to feed `planarizeConnectors`. Reuse that code path; do not add a second
    spatial index.
-3. Render these on the Phase 5 gap layer as a third `kind`, so there is one gap
+3. Render these on the Phase 6 gap layer as a third `kind`, so there is one gap
    worklist rather than two competing ones.
 4. Golden cases: claimed + nearby footway (no result), claimed + distant footway
    (result), `sidewalk=no` + no footway (**no** result — correctly absent, this
@@ -501,17 +651,19 @@ the manual drawing effort that represents.
 **The decision this unlocks:** if the flagged count is large (thousands of
 segments), Stage D is impractical for that study area regardless of how good the
 code is — the user would be hand-drawing a sidewalk network. Say so plainly
-rather than proceeding.
+rather than proceeding, and point back to Phase 4 exclusion as the cheaper route
+to the same end.
 
 ---
 
 # STAGE D — Sidewalk-only walk mode
 
-**This is the only stage that changes analysis output.** Enter deliberately.
+**This is the only stage that changes analysis output without the user asking
+per-street.** Enter deliberately, and only if Checkpoint 1 said to.
 
 ---
 
-### Phase 7 — Sidewalk-only traversal mode
+### Phase 8 — Sidewalk-only traversal mode
 
 **Goal:** a toggle that floods on pedestrian geometry only.
 
@@ -522,11 +674,11 @@ rather than proceeding.
 
 **Work:**
 
-1. Add `walkNetworkMode: "centerline"` (default) to `App.networkSettings`
-   (`js/core/network-connectors.js:44`), with the same defensive backfill the
-   crossing fields use at `:45-46`. Valid values `"centerline"` | `"sidewalk"`.
+1. Add `walkNetworkMode: "centerline"` (default) to `App.networkSettings`, with
+   the same defensive backfill pattern. Valid values `"centerline"` |
+   `"sidewalk"`.
 2. Persist as an additive `networkWalkMode` field in `cache.js` `collect()` /
-   `restore()` (`:158-160`, `:311-322`), same pattern, no schema bump.
+   `restore()`, same pattern, no schema bump.
 3. **Now** add `sidewalk`/`footway` to `addGraphEdge`'s edge objects (`:96-101`)
    — this is the phase where something finally reads them.
 4. Add the predicate at `floodDijkstra:921`, immediately after the existing
@@ -546,7 +698,8 @@ rather than proceeding.
 6. Filter the reachable-streets layer (`:1092`) by the same predicate so the
    green correctness overlay matches what was actually flooded.
 7. Add `walkNetworkMode` to Walkshed's `settingsKeyFor()`
-   (`js/projects/walkshed.js:119`) — **not** an epoch bump.
+   (`js/projects/walkshed.js:119`) — **not** an epoch bump. (Contrast Phase 4,
+   where the epoch bump *is* correct because the graph itself changes.)
 8. UI: a select in **both** modules' Advanced blocks reading/writing the global,
    following `#wsSnapTol` / `#wsCrossMajor` exactly (`walkshed.js:814-865`).
    On change: `App.cache.save()` + `markStale()`. No connector rebuild needed —
@@ -555,7 +708,7 @@ rather than proceeding.
    `App.getSidewalkCoverageSummary().warn` is true, show a prominent warning in
    the results — a low-coverage sidewalk walkshed under-reports and looks
    authoritative while doing it. This is the single most important safeguard in
-   this plan; do not ship Phase 7 without it.
+   this plan; do not ship Phase 8 without it.
 10. Update `CLAUDE.md` thoroughly: `App.networkSettings`, `cache.js`,
     `floodDijkstra`, `snapToNetwork`, both module entries, `settingsKeyFor`.
 
@@ -569,6 +722,8 @@ rather than proceeding.
   code — confirm via a re-run. (If it doesn't, the predicate went in the wrong
   place; it belongs in the shared `floodDijkstra`, not a caller.)
 - A connector Line still traverses in `"sidewalk"` mode.
+- A Phase 4 exclusion still applies in `"sidewalk"` mode (the two compose —
+  exclusion acts in `buildGraph`, mode acts in the flood).
 - The low-coverage warning fires in a poorly-mapped area.
 - Mode change invalidates the Walkshed cache (result changes without a network
   reload); epoch is **unchanged**.
@@ -576,7 +731,7 @@ rather than proceeding.
 
 ---
 
-### Phase 8 — *(optional)* Crossing penalties from mapped crossings
+### Phase 9 — *(optional)* Crossing penalties from mapped crossings
 
 **Goal:** in sidewalk mode, charge the crossing penalty at **real mapped
 crossings** instead of the node-degree heuristic.
@@ -604,25 +759,32 @@ crossings** instead of the node-degree heuristic.
 
 ## 4. Risk register
 
-| Risk | Stage | Mitigation |
+| Risk | Phase | Mitigation |
 |---|---|---|
-| Sidewalk-only walkshed under-reports and looks authoritative | D | Phase 7 step 9 warning; Checkpoint 1 gates entry to the stage at all |
-| Missing mapped crossings disconnect every block face | D | Connectors always traverse (Phase 7 step 4); Stage B worklist finds the gaps first |
-| Recursive component labeling stack-overflows on a city network | B | Iterative BFS/DFS, stated in Phase 4 |
-| Adjacency conversion re-run per call, freezing the UI | B | Epoch-keyed cache; on-demand button only, never on load |
-| Crude proximity test drifts into routing use | C | Documented in Phase 6 preamble; keep it feeding the worklist only |
-| Legacy road-network imports break | A | Absent tags → `""` / `"unknown"`; explicit Verify step in Phase 1 |
-| New per-edge fields bloat the hot path | A→D | Segments only until Phase 7, when something reads them |
+| Excluded street vanishes from the layer, can't be undone | 4 | `userExcluded` flag keeps it rendered and clickable; explicit Verify step |
+| Exclusion silently breaks driving routes | 4 | Acts on `pedBlocked` only; `carBlocked` untouched; Verify runs `findLocalRoute` |
+| Exclusions lost on network re-download | 4 | Keyed by stable OSM way id and applied in `buildGraph`, which every rebuild routes through; explicit Verify step |
+| Motorways start rendering as user-excluded | 4 | `userExcluded` distinguishes blocked-by-user from blocked-by-class |
+| Sidewalk-only walkshed under-reports and looks authoritative | 8 | Phase 8 step 9 warning; Checkpoint 1 gates entry to the stage at all |
+| Missing mapped crossings disconnect every block face | 8 | Connectors always traverse (Phase 8 step 4); Stage B worklist finds the gaps first |
+| Recursive component labeling stack-overflows on a city network | 5 | Iterative BFS/DFS, stated in Phase 5 |
+| Adjacency conversion re-run per call, freezing the UI | 5 | Epoch-keyed cache; on-demand button only, never on load |
+| Crude proximity test drifts into routing use | 7 | Documented in Phase 7 preamble; keep it feeding the worklist only |
+| Legacy road-network imports break | 1, 4 | Absent tags → `""` / `"unknown"`; absent way id → click is a guarded no-op |
+| New per-edge fields bloat the hot path | 1→8 | Segments only until Phase 8, when something reads them |
 
 ## 5. Definition of done
 
-Stage A alone is a legitimate stopping point and the **expected** outcome for
-most study areas: the user can see sidewalk coverage, has a number for it, and
-knows whether deeper work is justified.
+**Stage A is a complete, legitimate deliverable on its own** and the expected
+outcome for most study areas: the user can see sidewalk coverage, has a number
+for it, and can hand-correct the network where OSM and reality disagree.
 
-Stage B is the recommended second stop and is independent of sidewalk data
-quality.
+**Stage B is the recommended second stop** and is independent of sidewalk data
+quality. Stages A + B together are the full hand-tuning toolkit — add missing
+links with connectors, remove bad ones with exclusions, find both with the gap
+worklist.
 
-Stages C and D are conditional on the checkpoints above and must not be entered
+**Stages C and D are conditional** on Checkpoint 1 concluding that sidewalk-only
+routing is both viable and still needed after Phase 4. They must not be entered
 on momentum. Stage D is done only when centerline-mode output is proven
 byte-identical to today's and the low-coverage warning is in place.
