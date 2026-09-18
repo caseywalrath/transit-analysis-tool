@@ -150,6 +150,13 @@
       var hwy = props.highway || "";
       var pedBlocked = isPedForbidden(hwy, props.foot);
       var carBlocked = isCarForbidden(hwy);
+      // Sidewalk-data plan Phase 1: captured on segments only, never on graph
+      // edges (docs/sidewalk-data-plan.md §2 "Stage A does not touch graph
+      // edges") — a city network has hundreds of thousands of edges and
+      // nothing reads these yet. Legacy imports lack them; default to "" / null.
+      var sidewalk = props.sidewalk || "";
+      var footway = props.footway || "";
+      var wayId = props.wayId != null ? props.wayId : null;
 
       var coordArrays = [];
       if (geom.type === "LineString" && geom.coordinates && geom.coordinates.length >= 2) {
@@ -177,6 +184,9 @@
             pedBlocked: pedBlocked,
             carBlocked: carBlocked,
             hwy: hwy,
+            sidewalk: sidewalk,
+            footway: footway,
+            wayId: wayId,
             kind: "base"
           });
 
@@ -737,7 +747,14 @@
             highway: (el.tags || {}).highway || "",
             name: (el.tags || {}).name || "",
             oneway: (el.tags || {}).oneway || "",
-            foot: (el.tags || {}).foot || ""
+            foot: (el.tags || {}).foot || "",
+            // Sidewalk-data plan (docs/sidewalk-data-plan.md) Phase 1: out geom;
+            // already returns every tag and the element id, so reading these
+            // three adds nothing to the download — parse-side only.
+            sidewalk: (el.tags || {}).sidewalk || "",
+            footway: (el.tags || {}).footway || "",
+            crossing: (el.tags || {}).crossing || "",
+            wayId: el.id
           },
           geometry: { type: "LineString", coordinates: coords }
         });
@@ -1173,7 +1190,14 @@
       for (var i = 0; i < _segmentIndex.length; i++) {
         var seg = _segmentIndex[i];
         if (seg.pedBlocked) continue;
-        segments.push({ coords: [seg.startCoord, seg.endCoord], kind: seg.kind || "base" });
+        segments.push({
+          coords: [seg.startCoord, seg.endCoord],
+          kind: seg.kind || "base",
+          sidewalk: seg.sidewalk || "",
+          footway: seg.footway || "",
+          hwy: seg.hwy || "",
+          wayId: seg.wayId != null ? seg.wayId : null
+        });
       }
     }
     _walkSegCache = { epoch: _networkEpoch, segments: segments };
