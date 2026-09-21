@@ -326,6 +326,22 @@
     return (colors && colors[0]) || WS_SEG_DEFAULT_COLOR;
   }
 
+  // Outline weight/opacity for the walkshed-line layer. Normally (flatten
+  // off) every per-point band boundary IS the visible edge of that band, so
+  // it stays a clearly visible line. With flatten on, the fill already
+  // shows the shortest band wherever walksheds overlap, so most of these
+  // same per-point boundaries now sit INSIDE the merged fill rather than on
+  // its real edge — left at full weight they read as visual clutter
+  // criss-crossing a region the fill already renders as one solid color.
+  // Nearly-invisible-but-still-there is the point: a user who wants to
+  // confirm "yes, an overlap happened here" can still find the line, but it
+  // no longer competes with the fill for attention.
+  var WS_OUTLINE_NORMAL   = { width: 2,   opacity: 0.9  };
+  var WS_OUTLINE_FLATTENED = { width: 1,  opacity: 0.12 };
+  function outlineStyle() {
+    return flattenEnabled() ? WS_OUTLINE_FLATTENED : WS_OUTLINE_NORMAL;
+  }
+
   // Re-applies paint properties from the current cascade without re-running
   // the analysis, so a palette change is instant. No-op when the layers
   // aren't currently on the map.
@@ -333,8 +349,11 @@
     var map = App.map;
     if (!map || !map.getLayer(WS_FILL_LAYER)) return;
     var expr = bandColorExpr();
+    var outline = outlineStyle();
     map.setPaintProperty(WS_FILL_LAYER, "fill-color", expr);
     map.setPaintProperty(WS_LINE_LAYER, "line-color", expr);
+    map.setPaintProperty(WS_LINE_LAYER, "line-width", outline.width);
+    map.setPaintProperty(WS_LINE_LAYER, "line-opacity", outline.opacity);
     if (map.getLayer(WS_SEG_LAYER)) {
       map.setPaintProperty(WS_SEG_LAYER, "line-color", segColor());
     }
@@ -510,11 +529,12 @@
     }
 
     if (!map.getSource(WS_LINE_SRC)) {
+      var initialOutline = outlineStyle();
       map.addSource(WS_LINE_SRC, { type: "geojson", data: lineFc });
       map.addLayer({
         id: WS_LINE_LAYER, type: "line", source: WS_LINE_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": bandColorExpr(), "line-width": 2, "line-opacity": 0.9 }
+        paint: { "line-color": bandColorExpr(), "line-width": initialOutline.width, "line-opacity": initialOutline.opacity }
       });
     } else {
       map.getSource(WS_LINE_SRC).setData(lineFc);

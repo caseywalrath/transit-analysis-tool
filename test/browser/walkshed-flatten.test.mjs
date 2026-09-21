@@ -148,6 +148,13 @@ function check(name, pass, detail) {
     check("flatten off: outline matches fill (nothing flattened yet)",
       unflattened.line === unflattened.fill, JSON.stringify(unflattened));
 
+    const normalOutline = await page.evaluate(() => ({
+      width: App.map.getPaintProperty("walkshed-line", "line-width"),
+      opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
+    }));
+    check("flatten off: outline paint is the normal, clearly-visible style",
+      normalOutline.width === 2 && normalOutline.opacity === 0.9, JSON.stringify(normalOutline));
+
     // ---- Turn "Flatten overlaps" on via the same App.layerStyles cascade
     // the Layers panel's checkbox writes through ----
     await page.evaluate(() => App.setLayerStyle("walkshed", { flatten: true }));
@@ -191,6 +198,17 @@ function check(name, pass, detail) {
     check("flatten on: outline still shows every point's own bands",
       flattened.lineCount === unflattened.line, JSON.stringify(flattened));
 
+    const subtleOutline = await page.evaluate(() => ({
+      width: App.map.getPaintProperty("walkshed-line", "line-width"),
+      opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
+    }));
+    // The preserved per-point outlines mostly sit INSIDE the flattened fill
+    // now (not on its real edge), so they must be much less prominent than
+    // the flatten-off style — thinner and far lower opacity, not removed.
+    check("flatten on: outline is thinner and much lower opacity than normal",
+      subtleOutline.width < normalOutline.width && subtleOutline.opacity < 0.2,
+      JSON.stringify({ normalOutline, subtleOutline }));
+
     // ---- Turn it back off: fill must return to the un-flattened set ----
     await page.evaluate(() => App.setLayerStyle("walkshed", { flatten: null }));
     await page.waitForFunction(
@@ -205,6 +223,14 @@ function check(name, pass, detail) {
       restored.fill === 4, JSON.stringify(restored));
     check("clearing the only override removes the layerStyles entry entirely",
       restored.styleCleared, JSON.stringify(restored));
+
+    const restoredOutline = await page.evaluate(() => ({
+      width: App.map.getPaintProperty("walkshed-line", "line-width"),
+      opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
+    }));
+    check("flatten off again: outline paint returns to the normal style",
+      restoredOutline.width === normalOutline.width && restoredOutline.opacity === normalOutline.opacity,
+      JSON.stringify(restoredOutline));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
