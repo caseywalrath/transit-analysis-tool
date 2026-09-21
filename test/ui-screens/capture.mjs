@@ -33,19 +33,26 @@
 // Every other remote host (basemap tiles, Census/TIGERweb, OSRM, Google
 // Fonts) is aborted immediately so the run stays fast and deterministic;
 // we're checking UI chrome, not live data or map imagery.
+//
+// Shared plumbing (Playwright loading, Chromium resolution, vendored-CDN
+// route interception, the static server, small polling utilities) lives in
+// test/browser/harness.mjs — see docs/browser-test-harness-plan.md for why.
 
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
-import { readFileSync, mkdirSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import net from "node:net";
-import http from "node:http";
+import {
+  VENDOR_DIR,
+  VENDOR_MAP,
+  loadPlaywright,
+  launchBrowser,
+  routeVendoredAssets,
+  startStaticServer,
+  sleep
+} from "../browser/harness.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, "..", "..");
 const OUT_DIR = join(HERE, "out");
-const VENDOR_DIR = join(HERE, "vendor");
 const FIXTURE_PATH = join(HERE, "fixture-session.json");
 const VIEWPORT = { width: 1600, height: 950 };
 const NARROW_VIEWPORT = { width: 1280, height: 800 };
@@ -53,45 +60,7 @@ const MAP_READY_TIMEOUT_MS = 30000;
 const POPUP_SETTLE_MS = 600;
 const TAB_SETTLE_MS = 300;
 
-// ---- Playwright loader (see USAGE above for why this isn't a plain import) ----
-
-const require = createRequire(import.meta.url);
-let playwright;
-try {
-  playwright = require("playwright");
-} catch (e) {
-  console.error("Could not load the 'playwright' package (" + e.message + ").");
-  console.error("Install it once outside the repo and point NODE_PATH at it:");
-  console.error("  mkdir -p /tmp/pw-install && cd /tmp/pw-install && npm init -y >/dev/null");
-  console.error("  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright");
-  console.error("  NODE_PATH=/tmp/pw-install/node_modules node test/ui-screens/capture.mjs");
-  process.exit(1);
-}
-const { chromium } = playwright;
-
-const CHROMIUM_CANDIDATES = [
-  process.env.PLAYWRIGHT_CHROMIUM_PATH,
-  "/opt/pw-browsers/chromium"
-].filter(Boolean);
-
-function resolveExecutablePath() {
-  for (const p of CHROMIUM_CANDIDATES) {
-    if (existsSync(p)) return p;
-  }
-  return undefined; // fall back to Playwright's own managed browser
-}
-
-// ---- Vendored CDN assets (see header comment) ----
-
-const VENDOR_MAP = new Map([
-  ["https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js", { file: "maplibre-gl.js", type: "application/javascript" }],
-  ["https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css", { file: "maplibre-gl.css", type: "text/css" }],
-  ["https://unpkg.com/@turf/turf@6.5.0/turf.min.js", { file: "turf.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/pako@2.1.0/dist/pako.min.js", { file: "pako.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/papaparse@5.4.1/papaparse.min.js", { file: "papaparse.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/jszip@3.10.1/dist/jszip.min.js", { file: "jszip.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/shapefile@0.6.6/dist/shapefile.js", { file: "shapefile.js", type: "application/javascript" }]
-]);
+const { chromium } = loadPlaywright("test/ui-screens/capture.mjs");
 
 // ---- Module popups to capture (id must match App.registerModule({id: ...})) ----
 
@@ -158,41 +127,6 @@ const DISPLAY_BUFFER_CONTROL_IDS = {
   "corridor-scoring": ["#csUseDisplayBuffers", "#csBufferMiles"],
   "transit-coverage": ["#tcUseDisplayBuffers", "#tcBufferMiles"]
 };
-
-// ---- Small utilities ----
-
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.on("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
-function waitForHttpReady(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    function attempt() {
-      const req = http.get({ host: "127.0.0.1", port, path: "/index.html", timeout: 1000 }, (res) => {
-        res.resume();
-        resolve();
-      });
-      req.on("error", () => {
-        if (Date.now() > deadline) return reject(new Error("static server never became ready on port " + port));
-        setTimeout(attempt, 100);
-      });
-      req.on("timeout", () => req.destroy());
-    }
-    attempt();
-  });
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 // ---- Report ----
 // status: "ok" | "fail" | "skip" — only "fail" makes the run exit non-zero.
@@ -345,21 +279,7 @@ async function captureTheme(browser, theme, port) {
 
   // Vendor CDN assets locally; abort everything else remote (tiles, Census,
   // OSRM, Google Fonts) so the run is fast, deterministic, and offline-safe.
-  await context.route("**/*", (route) => {
-    const url = route.request().url();
-    const vendored = VENDOR_MAP.get(url);
-    if (vendored) {
-      return route.fulfill({
-        status: 200,
-        contentType: vendored.type,
-        body: readFileSync(join(VENDOR_DIR, vendored.file))
-      });
-    }
-    if (url.startsWith("http://localhost:" + port + "/") || url.startsWith("http://127.0.0.1:" + port + "/")) {
-      return route.continue();
-    }
-    return route.abort();
-  });
+  await routeVendoredAssets(context, port);
 
   const page = await context.newPage();
   page.on("pageerror", (e) => console.warn("  [page error] " + e.message));
@@ -642,24 +562,13 @@ async function main() {
   if (existsSync(OUT_DIR)) rmSync(OUT_DIR, { recursive: true, force: true });
   mkdirSync(OUT_DIR, { recursive: true });
 
-  const port = await findFreePort();
-  console.log("Starting static server on port " + port + " (cwd=" + REPO_ROOT + ")...");
-  const pythonExecutable = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
-  const server = spawn(pythonExecutable, ["-m", "http.server", String(port)], {
-    cwd: REPO_ROOT,
-    stdio: ["ignore", "ignore", "ignore"]
-  });
+  console.log("Starting static server...");
+  const { port, stop: stopServer } = await startStaticServer();
+  console.log("Static server ready on port " + port);
 
   let browser;
   try {
-    await waitForHttpReady(port, 10000);
-
-    const executablePath = resolveExecutablePath();
-    browser = await chromium.launch({
-      executablePath,
-      headless: true,
-      args: ["--no-sandbox"]
-    });
+    browser = await launchBrowser(chromium);
 
     for (const theme of ["light", "dark"]) {
       console.log("\n=== " + theme + " ===");
@@ -667,7 +576,7 @@ async function main() {
     }
   } finally {
     if (browser) await browser.close().catch(() => {});
-    server.kill();
+    stopServer();
   }
 
   console.log("\n=== Summary ===");

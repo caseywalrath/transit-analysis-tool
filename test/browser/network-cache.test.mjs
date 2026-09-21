@@ -24,12 +24,9 @@
 // went inactive under page-startup load and made the cache silently return "no
 // stored network" — a bug invisible to both existing harnesses.
 //
-// KNOWN DUPLICATION — see docs/browser-test-harness-plan.md
-// The static-server / vendored-CDN / Chromium-resolution plumbing below is
-// copied from test/ui-screens/capture.mjs. It is duplicated on purpose for now
-// so the proven test could land; Phase 1 of that plan extracts it into a shared
-// test/browser/harness.mjs that both files import. Until then, a CDN version
-// bump has to be made in BOTH this file's VENDOR_MAP and capture.mjs's.
+// Shared plumbing (Playwright loading, Chromium resolution, vendored-CDN
+// route interception, the static server) lives in test/browser/harness.mjs —
+// see docs/browser-test-harness-plan.md.
 //
 // USAGE (same NODE_PATH dance as capture.mjs — this repo has no npm install)
 //   mkdir -p /tmp/pw-install && cd /tmp/pw-install && npm init -y >/dev/null
@@ -38,77 +35,9 @@
 //
 // Exits 0 when every check passes, 1 otherwise (same contract as run-golden.mjs).
 
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
-import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import net from "node:net";
-import http from "node:http";
+import { loadPlaywright, launchBrowser, routeVendoredAssets, startStaticServer } from "./harness.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, "..", "..");
-const VENDOR_DIR = join(REPO_ROOT, "test", "ui-screens", "vendor");
-
-const require = createRequire(import.meta.url);
-let playwright;
-try {
-  playwright = require("playwright");
-} catch (e) {
-  console.error("Could not load the 'playwright' package (" + e.message + ").");
-  console.error("Install it once outside the repo and point NODE_PATH at it:");
-  console.error("  mkdir -p /tmp/pw-install && cd /tmp/pw-install && npm init -y >/dev/null");
-  console.error("  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright");
-  console.error("  NODE_PATH=/tmp/pw-install/node_modules node test/browser/network-cache.test.mjs");
-  process.exit(1);
-}
-const { chromium } = playwright;
-
-const CHROMIUM_CANDIDATES = [
-  process.env.PLAYWRIGHT_CHROMIUM_PATH,
-  "/opt/pw-browsers/chromium"
-].filter(Boolean);
-
-function resolveExecutablePath() {
-  for (const p of CHROMIUM_CANDIDATES) {
-    if (existsSync(p)) return p;
-  }
-  return undefined; // fall back to Playwright's own managed browser
-}
-
-// Pinned CDN assets, served from test/ui-screens/vendor so the run works with
-// no network access. Must stay in sync with capture.mjs's copy until Phase 1.
-const VENDOR_MAP = new Map([
-  ["https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js", { file: "maplibre-gl.js", type: "application/javascript" }],
-  ["https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css", { file: "maplibre-gl.css", type: "text/css" }],
-  ["https://unpkg.com/@turf/turf@6.5.0/turf.min.js", { file: "turf.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/pako@2.1.0/dist/pako.min.js", { file: "pako.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/papaparse@5.4.1/papaparse.min.js", { file: "papaparse.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/jszip@3.10.1/dist/jszip.min.js", { file: "jszip.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/shapefile@0.6.6/dist/shapefile.js", { file: "shapefile.js", type: "application/javascript" }]
-]);
-
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.on("error", reject);
-    srv.listen(0, "127.0.0.1", () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
-  });
-}
-
-function waitForHttpReady(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    (function attempt() {
-      const req = http.get({ host: "127.0.0.1", port, path: "/index.html", timeout: 1000 }, (res) => { res.resume(); resolve(); });
-      req.on("error", () => {
-        if (Date.now() > deadline) return reject(new Error("static server never became ready on port " + port));
-        setTimeout(attempt, 100);
-      });
-      req.on("timeout", () => req.destroy());
-    })();
-  });
-}
+const { chromium } = loadPlaywright("test/browser/network-cache.test.mjs");
 
 // A tiny but real 4x4 street grid over the app's default view, returned for any
 // Overpass query. Enough to build a graph and flood a walkshed; small enough to
@@ -138,8 +67,9 @@ function check(name, pass, detail) {
 }
 
 // App.setStatus clears the status line after 5s, so polling the live DOM can
-// miss a message entirely. An init script records every status change into
-// window.__statusLog instead; this reads that history.
+// miss a message entirely (this cost a debugging cycle during development).
+// An init script records every status change into window.__statusLog instead;
+// this reads that history. Keep this comment wherever this helper ends up.
 async function waitStatus(page, substr, timeout = 20000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -164,22 +94,44 @@ async function idbCount(page) {
   }));
 }
 
+// Polls idbCount(page) until it equals `expected` or the deadline passes.
+// Replaces a fixed sleep for "wait for the deferred IndexedDB write/clear to
+// land" — see docs/browser-test-harness-plan.md Phase 3.
+async function waitForIdbCount(page, expected, timeout = 5000) {
+  const deadline = Date.now() + timeout;
+  let last = -2;
+  while (Date.now() < deadline) {
+    last = await idbCount(page);
+    if (last === expected) return last;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return last;
+}
+
+// There is no event for "restoreCachedNetwork() decided not to run" — a
+// cleared store legitimately produces zero status messages on the next load,
+// so there is nothing to poll *for*. This waits for the status log to become
+// non-empty (restore activity actually happened) or the deadline, whichever
+// comes first, rather than always sleeping the full bound like a flat
+// waitForTimeout would. In the common case (nothing restored) it still spends
+// the whole timeout — that is expected and is why this stays a bounded wait
+// rather than a real polled assertion (docs/browser-test-harness-plan.md
+// Phase 3).
+async function waitForStatusActivity(page, timeout = 1200) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const len = await page.evaluate(() => (window.__statusLog || []).length);
+    if (len > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 (async () => {
-  const port = await findFreePort();
-  const pythonExecutable = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
-  const server = spawn(pythonExecutable, ["-m", "http.server", String(port)], {
-    cwd: REPO_ROOT,
-    stdio: ["ignore", "ignore", "ignore"]
-  });
+  const { port, stop: stopServer } = await startStaticServer();
 
   let browser;
   try {
-    await waitForHttpReady(port, 10000);
-    browser = await chromium.launch({
-      executablePath: resolveExecutablePath(),
-      headless: true,
-      args: ["--no-sandbox"]
-    });
+    browser = await launchBrowser(chromium);
 
     const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
     await context.addInitScript(() => {
@@ -197,18 +149,13 @@ async function idbCount(page) {
     // Vendor the CDN assets, stub Overpass, abort every other remote host
     // (tiles, Census, OSRM, fonts) so the run is offline-safe and fast.
     let overpassHits = 0;
-    await context.route("**/*", (route) => {
-      const url = route.request().url();
+    await routeVendoredAssets(context, port, (route, url) => {
       if (url.includes("overpass-api.de")) {
         overpassHits++;
-        return route.fulfill({ status: 200, contentType: "application/json", body: overpassPayload() });
+        route.fulfill({ status: 200, contentType: "application/json", body: overpassPayload() });
+        return true;
       }
-      const v = VENDOR_MAP.get(url);
-      if (v) return route.fulfill({ status: 200, contentType: v.type, body: readFileSync(join(VENDOR_DIR, v.file)) });
-      if (url.startsWith("http://127.0.0.1:" + port + "/") || url.startsWith("http://localhost:" + port + "/")) {
-        return route.continue();
-      }
-      return route.abort();
+      return false;
     });
 
     const page = await context.newPage();
@@ -235,9 +182,10 @@ async function idbCount(page) {
     check("download built a graph", await page.evaluate(() => App.roadNetworkLoaded()),
       "overpass hits=" + overpassHits);
 
-    // persistNetwork defers via setTimeout(0) then writes async.
-    await page.waitForTimeout(1500);
-    check("network written to IndexedDB", (await idbCount(page)) === 1, "records=" + (await idbCount(page)));
+    // persistNetwork defers via setTimeout(0) then writes async — poll for the
+    // write to land instead of guessing at a fixed delay.
+    const countAfterDownload = await waitForIdbCount(page, 1);
+    check("network written to IndexedDB", countAfterDownload === 1, "records=" + countAfterDownload);
 
     // ---- 2. Reload: it should come back without touching Overpass ----
     const hitsBeforeReload = overpassHits;
@@ -290,12 +238,11 @@ async function idbCount(page) {
 
     // ---- 5. Explicit clear must drop the stored copy (no resurrection) ----
     await page.evaluate(() => App.clearRoadNetwork());
-    await page.waitForTimeout(800);
-    check("clearRoadNetwork emptied the store", (await idbCount(page)) === 0,
-      "records=" + (await idbCount(page)));
+    const countAfterClear = await waitForIdbCount(page, 0);
+    check("clearRoadNetwork emptied the store", countAfterClear === 0, "records=" + countAfterClear);
     await page.reload({ waitUntil: "load" });
     await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
-    await page.waitForTimeout(1200);
+    await waitForStatusActivity(page, 1200);
     check("cleared network does not resurrect on refresh",
       !(await page.evaluate(() => App.roadNetworkLoaded())));
 
@@ -331,7 +278,7 @@ async function idbCount(page) {
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
     if (browser) await browser.close().catch(() => {});
-    server.kill();
+    stopServer();
   }
 
   const failed = results.filter((r) => !r.pass);

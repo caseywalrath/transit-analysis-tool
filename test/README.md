@@ -94,4 +94,21 @@ test/
   cases/                one file per module: the inputs you choose to pin
   golden/               the recorded known-good outputs (committed; regenerated with --update)
   README.md
+  ui-screens/            pixel regression harness (Playwright) — see its own README
+  browser/                behavior tests (Playwright) — see test/browser/README.md
 ```
+
+## Other test tiers
+
+This directory only covers pure calculation math. Two more harnesses cover
+what this one deliberately does not, both needing Playwright (see their own
+READMEs for one-time setup):
+
+- **`test/ui-screens/`** — screenshots the app shell and every module popup
+  in light + dark mode and diffs against a committed baseline. Run after any
+  app-shell, shared-CSS, popup, or module-markup change.
+- **`test/browser/`** — drives the real app in headless Chromium and asserts
+  runtime behavior a pixel diff can't see: persistence across a reload,
+  startup sequencing, map-layer lifecycle. Run after a change to session
+  persistence, IndexedDB/localStorage state, or anything else that only
+  misbehaves with a real event loop.
