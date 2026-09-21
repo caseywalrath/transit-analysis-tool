@@ -1826,6 +1826,21 @@
       notifyProject();
     }
 
+    // The road network is too large for the session cache, so it lives in its
+    // own IndexedDB store and restores separately (and asynchronously) — see
+    // App.restoreCachedNetwork() in js/core/road-network.js. Runs after the
+    // session restore above so connectors and excluded ways are already
+    // registered and get re-applied by the rebuild it triggers. notifyProject()
+    // re-runs so modules gated on "is a network loaded" (Walkshed's Calculate
+    // button, Transit Travelshed's coverage warning) pick it up.
+    if (typeof App.restoreCachedNetwork === "function") {
+      App.restoreCachedNetwork().then(function (restored) {
+        if (restored) notifyProject();
+      }).catch(function (e) {
+        console.warn("Road network cache restore failed:", e);
+      });
+    }
+
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");
     if (_viewOnlyFreshBtn) {

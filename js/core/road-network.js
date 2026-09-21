@@ -21,6 +21,10 @@
   var MAX_AREA_WARN_KM2 = 2000;  // warn before downloading an expanded area larger than this (~a large county)
   var RDL_SRC = "road-dl-area";       // map source for the downloaded-area outline
   var RDL_LAYER = "road-dl-area-line"; // map layer for the downloaded-area outline
+  // A restored network younger than this is reported like any other load; an
+  // older one additionally tells the user to re-download. OSM street geometry
+  // does not meaningfully move in two days, so nagging below this would be noise.
+  var NET_CACHE_FRESH_MS = 48 * 60 * 60 * 1000;
 
   // ---- Private state ----
 
@@ -802,6 +806,7 @@
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
 
       updateUI();
+      persistNetwork(extentCacheId(extentPolygon), "overpass", "");
       App.setStatus(_featureCount.toLocaleString() + " road segments loaded \u2014 local routing enabled");
       return true;
     } catch (e) {
@@ -849,6 +854,7 @@
         rebuildNetwork();
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         updateUI();
+        persistNetwork("file:" + file.name, "file", file.name);
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
       } catch (err) {
         App.setStatus("Failed to parse road network: " + (err.message || err));
@@ -873,7 +879,99 @@
     URL.revokeObjectURL(url);
   }
 
+  // ---- Offline persistence (js/core/network-store.js) ----
+  // Overpass is the app's least reliable dependency — a failed query commonly
+  // needs three or four retries — so the built network is kept in IndexedDB and
+  // restored on the next page load instead of being re-downloaded. Writing is
+  // fire-and-forget: the in-memory network is already usable, and a browser may
+  // evict the store at any time, so nothing here is allowed to fail loudly.
+
+  // Same extent re-downloaded => same key, so a repeat download of an area
+  // replaces its stored copy instead of accumulating near-duplicates.
+  function extentCacheId(extentPolygon) {
+    var bb = turf.bbox(extentPolygon); // [w, s, e, n]
+    return "bbox:" + bb.map(function (v) { return v.toFixed(3); }).join(",");
+  }
+
+  function persistNetwork(id, source, label) {
+    if (!App.networkStore || !App.networkStore.supported() || !_roadGeoJSON) return;
+    var geojson = _roadGeoJSON;
+    var extent = _downloadedBboxPolygon;
+    var count = _featureCount;
+    // Deferred: serializing a city-scale network blocks for a few hundred ms and
+    // nothing downstream is waiting on the write.
+    setTimeout(function () {
+      var json;
+      try {
+        json = JSON.stringify(geojson);
+      } catch (e) {
+        return; // too large to serialize — the live network is unaffected
+      }
+      App.networkStore.save({
+        id: id,
+        savedAt: Date.now(),
+        source: source,
+        label: label || "",
+        featureCount: count,
+        extent: extent || null,
+        geojson: json
+      });
+    }, 0);
+  }
+
+  function formatAge(ms) {
+    function plural(n, unit) { return n + " " + unit + (n === 1 ? "" : "s"); }
+    var min = Math.round(ms / 60000);
+    if (min < 60) return plural(Math.max(1, min), "minute");
+    var hrs = Math.round(min / 60);
+    if (hrs < 48) return plural(hrs, "hour");
+    return plural(Math.round(hrs / 24), "day");
+  }
+
+  // Rebuild from the most recently stored network. Returns Promise<boolean>.
+  //
+  // Routed through the same rebuildNetwork() -> updateUI() path as a live
+  // download, which matters for correctness rather than tidiness: the epoch
+  // bumps exactly once, so every epoch-keyed module cache (walkshed, travelshed)
+  // invalidates precisely as it would after a fresh fetch. A restored network is
+  // never allowed to silently validate geometry a previous page load computed
+  // against it. The stored download extent is restored too, so
+  // getRoadDownloadExtent() — and Transit Travelshed's coverage check built on
+  // it — keeps working without a re-download.
+  async function restoreCachedNetwork() {
+    if (_graph) return false; // something already loaded a network — don't override it
+    if (!App.networkStore || !App.networkStore.supported()) return false;
+
+    var rec = await App.networkStore.latest();
+    if (!rec || !rec.geojson) return false;
+
+    var geojson;
+    try {
+      geojson = JSON.parse(rec.geojson);
+    } catch (e) {
+      return false;
+    }
+    if (!geojson.features || !geojson.features.length) return false;
+
+    _roadGeoJSON = geojson;
+    rebuildNetwork();
+    _downloadedBboxPolygon = rec.extent || null;
+    updateUI();
+
+    var age = formatAge(Date.now() - (rec.savedAt || 0));
+    var stale = (Date.now() - (rec.savedAt || 0)) > NET_CACHE_FRESH_MS;
+    App.setStatus(
+      _featureCount.toLocaleString() + " road segments restored from cache — downloaded " +
+      age + " ago." + (stale ? " Re-download to refresh." : ""));
+    return true;
+  }
+
   function clearRoadNetwork() {
+    // Clearing is an explicit "remove this" action (Add Data × icon, Reset
+    // Session), so the stored copy goes too — otherwise the next page load would
+    // silently resurrect the network the user just dismissed.
+    if (App.networkStore) App.networkStore.clear();
+
     _roadGeoJSON = null;
     _graph = null;
     _segmentIndex = null;
@@ -1248,6 +1346,10 @@
   App.loadRoadNetworkFromFile = loadRoadNetworkFromFile;
   App.exportRoadNetwork = exportRoadNetwork;
   App.clearRoadNetwork = clearRoadNetwork;
+  // Rebuild from the IndexedDB copy of the last loaded network (see the Offline
+  // persistence section above). Async; returns Promise<boolean>. Called once at
+  // startup from app.js, after the session cache has been restored.
+  App.restoreCachedNetwork = restoreCachedNetwork;
   App.computeWalkshed = computeWalkshed;
   // Remove only the downloaded-area outline (leaves the road graph intact) — used by the Layers panel.
   App.clearRoadDownloadArea = function () { _downloadedBboxPolygon = null; updateUI(); };
