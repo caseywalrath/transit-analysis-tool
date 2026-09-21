@@ -826,22 +826,6 @@
     }
   }
 
-  // Dedupe: if an existing entry points at the same file handle, remove it
-  // first so the newly-added entry becomes the most-recent one.
-  async function _dedupeByHandle(store, handle) {
-    var all = await _idbRequest(store.getAll());
-    for (var i = 0; i < all.length; i++) {
-      var entry = all[i];
-      if (!entry || !entry.handle) continue;
-      try {
-        if (typeof entry.handle.isSameEntry === "function" &&
-            await entry.handle.isSameEntry(handle)) {
-          await _idbRequest(store.delete(entry.id));
-        }
-      } catch (e) { /* ignore */ }
-    }
-  }
-
   async function addRecent(handle, meta) {
     if (!handle) return;
     try {
