@@ -729,7 +729,37 @@
         body.appendChild(rRow);
       }
 
-      if (ov.palette || ov.reverse != null) {
+      // Overlap flattening — a display option, orthogonal to color, so it
+      // renders in both the Custom-gradient and preset-palette branches
+      // above (spec.flattenOption opts a ramp layer in; only "walkshed" does
+      // today — see js/projects/walkshed.js's renderWalkshedLayers for what
+      // this actually changes on the map).
+      if (spec.flattenOption) {
+        var fRow = document.createElement("div");
+        fRow.className = "lp-style-row";
+        var fLab = document.createElement("span");
+        fLab.className = "lp-style-label";
+        fLab.textContent = "Flatten overlaps";
+        fRow.appendChild(fLab);
+        var fWrap = document.createElement("div");
+        fWrap.className = "lp-style-control";
+        fRow.appendChild(fWrap);
+
+        var fcb = document.createElement("input");
+        fcb.type = "checkbox";
+        fcb.checked = !!ov.flatten;
+        fcb.title = "Show only the shortest band in overlapping areas; longer bands keep an outline.";
+        fcb.setAttribute("aria-label", "Flatten overlapping " + spec.label + " bands");
+        fcb.addEventListener("click", function (e) { e.stopPropagation(); });
+        fcb.addEventListener("change", function () {
+          App.setLayerStyle(styleKey, { flatten: fcb.checked || null });
+          rerender();
+        });
+        fWrap.appendChild(fcb);
+        body.appendChild(fRow);
+      }
+
+      if (ov.palette || ov.reverse != null || ov.flatten) {
         var resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "lp-style-reset";

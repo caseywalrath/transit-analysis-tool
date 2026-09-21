@@ -213,7 +213,16 @@
     "walkshed": {
       label: "Walkshed", kind: "ramp", n: 3, prop: "bandIdx",
       allow: ["sequential"], reverseDefault: true,
-      defaultColors: ["#1e40af", "#3b82f6", "#93c5fd"]
+      defaultColors: ["#1e40af", "#3b82f6", "#93c5fd"],
+      // Display-only overlap flattening (see js/projects/walkshed.js's
+      // renderWalkshedLayers): when on, the FILL only ever shows the
+      // shortest-time band covering a given spot, unioned across every
+      // point, not just within one point's own bands; per-point band
+      // outlines are still drawn in full so an overlap stays visible.
+      // Generic drawer flag, not a walkshed-only code path — any other
+      // ramp-kind layer whose fill can overlap across features could opt in
+      // the same way. Off by default (see the drawer's own tooltip copy).
+      flattenOption: true
     },
     "walkshed-seg": {
       label: "Walkshed streets", kind: "solid",
@@ -365,11 +374,16 @@
       // layers); `colors` is the sparse per-class array (categorical layers).
       from: (patch.from !== undefined) ? patch.from : cur.from,
       to: (patch.to !== undefined) ? patch.to : cur.to,
-      colors: (patch.colors !== undefined) ? patch.colors : cur.colors
+      colors: (patch.colors !== undefined) ? patch.colors : cur.colors,
+      // Overlap flattening (spec.flattenOption layers only, e.g. "walkshed")
+      // — a display-only boolean, carried through the same cascade as every
+      // other per-layer override so it persists via the existing
+      // App.layerStyles/cache.js round trip with no new persistence code.
+      flatten: (patch.flatten !== undefined) ? patch.flatten : cur.flatten
     };
     var anyClassColor = !!(next.colors && next.colors.some(function (c) { return !!c; }));
     var isEmpty = !next.palette && next.reverse == null && !next.color &&
-      !next.from && !next.to && !anyClassColor;
+      !next.from && !next.to && !anyClassColor && !next.flatten;
     if (isEmpty) {
       delete App.layerStyles[styleKey];
     } else {

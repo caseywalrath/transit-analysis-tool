@@ -38,6 +38,14 @@
 
   var WS_FILL_SRC  = "walkshed-src";
   var WS_FILL_LAYER = "walkshed-fill";
+  // The line layer gets its OWN source (WS_LINE_SRC) rather than sharing
+  // WS_FILL_SRC, because "flatten overlaps" (see buildFlattenedFillFeatures
+  // below) only reshapes what the FILL paints — the outline always draws
+  // every point's own band boundaries in full, flattened or not, so an
+  // overlap stays visible even when the fill hides it. When flattening is
+  // off the two sources hold identical features; the duplication is the
+  // price of not special-casing layer creation on the toggle.
+  var WS_LINE_SRC  = "walkshed-line-src";
   var WS_LINE_LAYER = "walkshed-line";
   var WS_SEG_SRC   = "walkshed-seg-src";
   var WS_SEG_LAYER = "walkshed-seg";
@@ -333,7 +341,13 @@
   }
   if (typeof App.registerLayerRepainter === "function") {
     var refreshWalkshedPaintAndLegend = function () {
-      repaintWalkshedLayers();
+      // A palette/reverse toggle only needs paint; "Flatten overlaps"
+      // changes which polygons are painted (see buildFlattenedFillFeatures),
+      // so re-render from the last computed entries when there are any —
+      // still no flood recompute, just re-unioning already-computed band
+      // polygons, so this stays cheap despite not being paint-only anymore.
+      if (_lastEntries.length) renderWalkshedLayers(_lastEntries);
+      else repaintWalkshedLayers();
       fillWalkshedLegend(activeBudgets());
     };
     // Registered under both styleKeys — walkshed-fill and walkshed-seg are
@@ -388,10 +402,66 @@
     else fillWalkshedLegend(budgets);
   }
 
+  // Reads the display-only "Flatten overlaps" toggle from the Layers panel's
+  // walkshed-fill style drawer (docs/layer-color-customization-plan.md's
+  // App.layerStyles cascade — this rides the same persisted override object
+  // as palette/reverse, no new persistence needed). Purely a rendering
+  // choice: bands[] itself, and every study-area/export consumer that reads
+  // it, is never touched by this flag.
+  function flattenEnabled() {
+    var ov = (App.layerStyles && App.layerStyles["walkshed"]) || {};
+    return !!ov.flatten;
+  }
+
+  // "Flatten overlaps" fill geometry: system-wide "shortest walkshed wins",
+  // not just within one point's own bands. Groups every successfully-computed
+  // point's band polygons by MINUTES value (not per-point bandIdx — two points
+  // can use different budgets via attributes.walkMinutes overrides), unions
+  // each tier across every point that has one, then subtracts the running
+  // union of every smaller tier so a 15-min area from Point A masks any
+  // 30/45-min area from Point B wherever they overlap. bandIdx on the
+  // returned features is the tier's rank (0 = smallest minutes value, same
+  // meaning bandColorExpr() already gives bandIdx), not any one point's own
+  // band index. Only reshapes the FILL — renderWalkshedLayers always draws
+  // the un-flattened per-point outlines separately, so an overlap an area
+  // hides is still visible as a preserved band boundary.
+  function buildFlattenedFillFeatures(entries) {
+    var byMinutes = {}; // minutes -> polygon[]
+    entries.forEach(function (e) {
+      if (!e || e.failed) return;
+      var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+      bands.forEach(function (band) {
+        if (!band.polygon) return;
+        (byMinutes[band.minutes] = byMinutes[band.minutes] || []).push(band.polygon);
+      });
+    });
+    var tiers = Object.keys(byMinutes).map(Number).sort(function (a, b) { return a - b; });
+    var features = [];
+    var smallerUnion = null; // union of every tier already processed (<= current)
+    tiers.forEach(function (minutes, tierIdx) {
+      var tierUnion = App.foldAnalysisUnion(byMinutes[minutes]);
+      if (!tierUnion) return;
+      var ringPoly = tierUnion;
+      if (smallerUnion) {
+        try {
+          var diffed = turf.difference(ringPoly, smallerUnion);
+          if (diffed) ringPoly = diffed;
+        } catch (err) { /* fall back to the un-differenced tier union for this tier */ }
+      }
+      features.push({
+        type: "Feature",
+        properties: { minutes: minutes, bandIdx: tierIdx },
+        geometry: ringPoly.geometry
+      });
+      smallerUnion = smallerUnion ? App.foldAnalysisUnion([smallerUnion, tierUnion]) : tierUnion;
+    });
+    return features;
+  }
+
   function renderWalkshedLayers(entries) {
     var map = App.map;
     if (!map) return;
-    var polyFeatures = [], segFeatures = [];
+    var outlineFeatures = [], segFeatures = [];
     entries.forEach(function (e) {
       if (!e || e.failed) return;
       var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
@@ -401,6 +471,8 @@
       // innermost band stays solid; a turf.difference failure or null result
       // falls back to the un-differenced polygon for that band rather than
       // dropping it. Same approach as transit-travelshed.js's ring builder.
+      // This per-point set always feeds the OUTLINE layer (below), flattened
+      // fill or not — see buildFlattenedFillFeatures's comment.
       for (var bi = bands.length - 1; bi >= 0; bi--) {
         var band = bands[bi];
         if (!band.polygon) continue;
@@ -411,7 +483,7 @@
             if (diffed) ringPoly = diffed;
           } catch (err) { /* fall back to the un-differenced polygon for this band */ }
         }
-        polyFeatures.push({
+        outlineFeatures.push({
           type: "Feature",
           properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi },
           geometry: ringPoly.geometry
@@ -421,24 +493,38 @@
         segFeatures = segFeatures.concat(e.reachableSegments.features);
       }
     });
-    var polyFc = { type: "FeatureCollection", features: polyFeatures };
+
+    var fillFeatures = flattenEnabled() ? buildFlattenedFillFeatures(entries) : outlineFeatures;
+    var fillFc = { type: "FeatureCollection", features: fillFeatures };
+    var lineFc = { type: "FeatureCollection", features: outlineFeatures };
     var segFc  = { type: "FeatureCollection", features: segFeatures };
 
     if (!map.getSource(WS_FILL_SRC)) {
-      map.addSource(WS_FILL_SRC, { type: "geojson", data: polyFc });
+      map.addSource(WS_FILL_SRC, { type: "geojson", data: fillFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
         paint: { "fill-color": bandColorExpr(), "fill-opacity": 0.30 }
       });
+    } else {
+      map.getSource(WS_FILL_SRC).setData(fillFc);
+    }
+
+    if (!map.getSource(WS_LINE_SRC)) {
+      map.addSource(WS_LINE_SRC, { type: "geojson", data: lineFc });
       map.addLayer({
-        id: WS_LINE_LAYER, type: "line", source: WS_FILL_SRC,
+        id: WS_LINE_LAYER, type: "line", source: WS_LINE_SRC,
         layout: { "line-join": "round" },
         paint: { "line-color": bandColorExpr(), "line-width": 2, "line-opacity": 0.9 }
       });
     } else {
-      map.getSource(WS_FILL_SRC).setData(polyFc);
-      repaintWalkshedLayers(); // pick up a palette changed while results were on screen
+      map.getSource(WS_LINE_SRC).setData(lineFc);
     }
+
+    // Pick up a palette/reverse/flatten change made while results were
+    // already on screen — harmless to also run right after the addLayer
+    // branch above, since the colors it applies already match what was just
+    // set at creation.
+    repaintWalkshedLayers();
 
     if (!map.getSource(WS_SEG_SRC)) {
       map.addSource(WS_SEG_SRC, { type: "geojson", data: segFc });
@@ -456,7 +542,7 @@
     var map = App.map;
     if (!map) return;
     [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
-    [WS_SEG_SRC, WS_FILL_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
+    [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
   // ---- Status / stale / empty (standardized helper) ----
