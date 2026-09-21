@@ -1000,15 +1000,38 @@
     if (_lastEntries.length) markStale();
   }
 
-  // ---- Session persistence (settings only; polygons recompute cheaply) ----
+  // ---- Session persistence ----
+  // Settings always persist (light + full). The computed polygons/reachable-streets
+  // are a snapshot of a Compute run against whatever road network was loaded at the
+  // time — not re-derivable without that network — so they're included ONLY in full
+  // mode (file Save/Load State), same rule Corridor Scoring's lastSummary follows,
+  // and left out of the light/localStorage autosave to avoid growing on every
+  // settings tweak. A light-mode restore (page reload) still requires Calculate,
+  // same as before this was added.
 
-  function collect() {
-    return {
+  function collect(mode) {
+    var data = {
       version: 3,
       budgets: (_settings.budgets || []).filter(function (b) { return b != null; }),
       walkSpeedMph: _settings.walkSpeedMph,
       maxEdge: _settings.maxEdge
     };
+    if (mode === "full" && _lastEntries.length) {
+      data.lastEntries = _lastEntries.map(function (e) {
+        return e.failed
+          ? { failed: true, pointIdx: e.pointIdx, name: e.name, reason: e.reason }
+          : {
+              pointIdx: e.pointIdx,
+              name: e.name,
+              coord: e.coord,
+              settingsKey: e.settingsKey,
+              computeMs: e.computeMs,
+              bands: e.bands,                       // [{minutes, polygon, area, nodeCount}, ...]
+              reachableSegments: e.reachableSegments // FeatureCollection, for the green proof layer
+            };
+      });
+    }
+    return data;
   }
 
   function apply(data) {
@@ -1033,6 +1056,62 @@
       _settings.walkSpeedMph = +data.walkSpeedKmh / KM_PER_MILE;
     }
     if (+data.maxEdge > 0) _settings.maxEdge = +data.maxEdge;
+
+    if (Array.isArray(data.lastEntries) && data.lastEntries.length) restoreEntries(data.lastEntries);
+  }
+
+  // Rebuilds _walkshedCache + _lastEntries from a full-mode save and renders them
+  // immediately — no road network or Calculate click needed. Mirrors the tail of
+  // runWalkshed()'s success path (map layers first, then the popup DOM behind the
+  // usual isPopupVisible() guard). Restored polygons stay in _walkshedCache like any
+  // other cache entry, so getPointWalkshed()'s settingsKey check still applies —
+  // it naturally falls back to a circular buffer until a live network makes the key
+  // match again, rather than trusting a snapshot that may no longer be accurate.
+  function restoreEntries(saved) {
+    var entries = [];
+    saved.forEach(function (s) {
+      if (s.failed) {
+        entries.push({ failed: true, pointIdx: s.pointIdx, name: s.name, reason: s.reason });
+        return;
+      }
+      var bands = s.bands;
+      if (!bands || !bands.length || !bands[0] || !bands[0].polygon) return;
+      bands[0].polygon.properties = bands[0].polygon.properties || {};
+      bands[0].polygon.properties.pointIdx = s.pointIdx;
+      var entry = {
+        polygon:           bands[0].polygon,
+        reachableSegments: s.reachableSegments || null,
+        reachableCount:    bands[0].nodeCount || 0,
+        area:              bands[0].area || 0,
+        bands:             bands,
+        computeMs:         s.computeMs,
+        minutes:           bands[0].minutes,
+        name:              s.name,
+        pointIdx:          s.pointIdx,
+        coord:             s.coord,
+        settingsKey:       s.settingsKey
+      };
+      _walkshedCache.set(s.pointIdx, entry);
+      entries.push(entry);
+    });
+    if (!entries.length) return;
+
+    _lastEntries = entries;
+    _stale = false;
+
+    renderWalkshedLayers(_lastEntries);
+    var ok = _lastEntries.filter(function (e) { return !e.failed; }).length;
+    if (ok) showWalkshedLegend();
+
+    if (isPopupVisible()) {
+      var resultsEl = document.getElementById("wsResults");
+      if (resultsEl) resultsEl.style.display = ok ? "" : "none";
+      renderResults();
+      setExportEnabled(ok > 0);
+      renderInputs(ok > 0);
+      if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode(ok > 0 ? "results" : "setup");
+      setStatus(ok ? "Restored " + ok + " walkshed(s) from saved session." : "", ok ? "done" : "");
+    }
   }
 
   // ---- Register ----
