@@ -512,9 +512,47 @@
   // Cheap "has this feature been edited since the merge?" string: name, color,
   // geometry, route waypoints and attributes (never `_mergedFrom` itself, nor
   // visibility / appearance overrides).
-  function fingerprintFeature(f) {
+  // defaults (optional): { key: value } field defaults the attribute popup
+  // seeds into blank attributes when it opens (e.g. avgSpeed = 14). When given,
+  // attributes are normalized first — defaults applied to blanks, blank values
+  // and empty time-band rows dropped — so merely opening the popup (which also
+  // adds an empty weekday band row) is not counted as an edit.
+  function isBlankBand(b) {
+    return !b || ((b.from == null || b.from === "") && (b.to == null || b.to === "") &&
+                  (b.frequency == null || b.frequency === ""));
+  }
+  function normalizeAttrs(attrs, defaults) {
+    var out = {};
+    var a = attrs || {};
+    Object.keys(defaults).forEach(function (k) {
+      if (a[k] === undefined || a[k] === null || a[k] === "") out[k] = defaults[k];
+    });
+    Object.keys(a).forEach(function (k) {
+      var v = a[k];
+      if (out[k] !== undefined) return;
+      if (isBandsObject(v)) {
+        var svc = {}, any = false;
+        ["weekday", "saturday", "sunday"].forEach(function (d) {
+          var rows = (v[d] || []).filter(function (b) { return !isBlankBand(b); });
+          if (rows.length) { svc[d] = rows; any = true; }
+        });
+        if (v.sundayMirrorsSaturday) { svc.sundayMirrorsSaturday = true; any = true; }
+        if (any) out[k] = svc;
+        return;
+      }
+      if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) return;
+      out[k] = v;
+    });
+    return out;
+  }
+  function fingerprintFeature(f, defaults) {
     var p = (f && f.properties) || {};
-    return stableStringify([p.name, p.color, f && f.geometry, p.waypoints, p.attributes]);
+    var attrs = defaults ? normalizeAttrs(p.attributes, defaults) : p.attributes;
+    return stableStringify([p.name, p.color, f && f.geometry, p.waypoints, attrs]);
+  }
+
+  function attrDefaultsFor(type) {
+    return typeof App.getAttrFieldDefaults === "function" ? App.getAttrFieldDefaults(type) : null;
   }
 
   function refKey(r) { return r ? r.featureType + ":" + r.featureId : ""; }
@@ -1046,7 +1084,7 @@
       survivorRef: survivorRef,
       originals: originals,
       stops: plan.repoint ? stopChanges(stopsBefore, stopLinkLists()) : [],
-      resultFingerprint: fingerprintFeature(survivorFeat)
+      resultFingerprint: fingerprintFeature(survivorFeat, attrDefaultsFor(survivorRef.type))
     };
 
     // Splice the rest out directly (descending per type so earlier indices stay valid).
@@ -1139,7 +1177,7 @@
         return { type: o.type, name: featName(o.feature, TYPE_LABEL[o.type]),
                  inPlace: o.type === type && o.feature.properties[ID_PROP[o.type]] === sid };
       }),
-      edited: fingerprintFeature(f) !== h.resultFingerprint,
+      edited: fingerprintFeature(f, attrDefaultsFor(type)) !== h.resultFingerprint,
       stopCount: (h.stops || []).length
     };
   }

@@ -224,6 +224,20 @@ export default {
       args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
                properties: { name: "L2", color: "", waypoints: 2, attributes: { mode: "Bus", avgSpeed: 14 } } }] },
     { id: "hist/fingerprint-no-properties", call: "App.mergeHistory.fingerprintFeature", args: [{}] },
+    // With popup defaults: blank avgSpeed + an empty weekday band row (what opening the
+    // attributes popup seeds) fingerprint the same as the untouched feature — compare
+    // these two golden outputs; they must be identical.
+    { id: "hist/fingerprint-defaults-untouched", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+               properties: { name: "L", color: "", waypoints: 2, attributes: { mode: "Bus" } } }, { avgSpeed: 14 }] },
+    { id: "hist/fingerprint-defaults-popup-seeded", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+               properties: { name: "L", color: "", waypoints: 2, attributes: { mode: "Bus", avgSpeed: 14, notes: "",
+                 service: { weekday: [{ from: "", to: "", frequency: null }], saturday: [], sunday: [], sundayMirrorsSaturday: false } } } }, { avgSpeed: 14 }] },
+    { id: "hist/fingerprint-defaults-real-band", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+               properties: { name: "L", color: "", waypoints: 2, attributes: { mode: "Bus",
+                 service: { weekday: [{ from: "06:00", to: "09:00", frequency: 15 }, { from: "", to: "", frequency: null }], saturday: [], sunday: [] } } } }, { avgSpeed: 14 }] },
     { id: "hist/stable-stringify-sorted-keys", call: "App.mergeHistory.stableStringify", args: [{ b: 1, a: [{ d: 2, c: undefined }], e: null }] },
 
     // stopChanges: only points whose link list actually changed.

@@ -939,6 +939,9 @@
   "hist/fingerprint-same-as-reordered": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
   "hist/fingerprint-renamed": "[\"L2\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
   "hist/fingerprint-no-properties": "[null,null,null,null,null]",
+  "hist/fingerprint-defaults-untouched": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
+  "hist/fingerprint-defaults-popup-seeded": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
+  "hist/fingerprint-defaults-real-band": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\",\"service\":{\"weekday\":[{\"frequency\":15,\"from\":\"06:00\",\"to\":\"09:00\"}]}}]",
   "hist/stable-stringify-sorted-keys": "{\"a\":[{\"d\":2}],\"b\":1,\"e\":null}",
   "hist/stopChanges-repoint-and-dedupe": [
     {

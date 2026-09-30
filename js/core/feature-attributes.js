@@ -1388,6 +1388,15 @@
   }
 
   App.closeAttrPopup    = closeAttrPopup;
+  // { key: defaultValue } for the fields the popup seeds into blank attributes
+  // when it opens (used by Unmerge's "edited since merging" check).
+  App.getAttrFieldDefaults = function (featureType) {
+    var out = {};
+    (ATTR_FIELDS[featureType] || []).forEach(function (f) {
+      if (f.defaultValue !== undefined) out[f.key] = f.defaultValue;
+    });
+    return out;
+  };
   App.isAttrPopupOpen   = function () { return !!(_popupEl && _popupEl.style.display !== "none"); };
   App.getAttrPopupFeature = function () {
     if (!App.isAttrPopupOpen()) return null;

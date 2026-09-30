@@ -864,6 +864,20 @@ async function main() {
 
     // -- Dialog, edited-since warning, menus --
     console.log("\n# Phase 4a - dialog + menus");
+    // Opening the attributes popup seeds blank defaults (avgSpeed = 14); that is not an edit.
+    await setFixture(page, lineFx());
+    const seeded = await page.evaluate(async () => {
+      App.lines.forEach(function (l) { if (l.properties.attributes) delete l.properties.attributes.avgSpeed; });
+      await App.merge.run("line", [0, 1, 2], 1);
+      var l = App.lines[0];
+      var before = l.properties.attributes ? l.properties.attributes.avgSpeed : undefined;
+      App.openAttrPopup("line", 0, l);
+      var r = { before: before, speed: l.properties.attributes.avgSpeed, edited: App.merge.describeUnmerge("line", 0).edited };
+      App.closeAttrPopup();
+      return r;
+    });
+    check("opening the attributes popup (which seeds avgSpeed) does not count as an edit",
+      seeded.before === undefined && seeded.speed != null && seeded.edited === false, seeded);
     await setFixture(page, lineFx());
     await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
     await page.evaluate(() => App.clearSelection && App.clearSelection());
