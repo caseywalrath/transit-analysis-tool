@@ -711,6 +711,10 @@
         // Route primary, surviving line: take its identity (name, color, appearance).
         s.properties.name = p.properties.name;
         s.properties.color = p.properties.color || "";
+        // Lines and routes draw colorSeq from one shared counter, so taking the
+        // route's palette slot keeps an Automatic-colored result looking the
+        // same as the route did (the route is removed, so the slot stays unique).
+        if (typeof p.properties.colorSeq === "number") s.properties.colorSeq = p.properties.colorSeq;
         APPEARANCE_KEYS.forEach(function (k) {
           if (p.properties[k] !== undefined) s.properties[k] = p.properties[k]; else delete s.properties[k];
         });

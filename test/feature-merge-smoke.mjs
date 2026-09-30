@@ -659,9 +659,10 @@ async function main() {
         { name: "Stop 3", id: 43, at: [-104.50, 38.50], refs: [{ featureType: "line", featureId: 12, name: "Line Y" }] } ]
     });
     await setFixture(page, mixFx());
+    await page.evaluate(() => { App.lines[0].properties.colorSeq = 76; App.routes[0].properties.colorSeq = 77; });
     before = await snapshot(page);
     osrm.hits.length = 0;
-    const seqBefore = await page.evaluate(() => App.lines[0].properties.colorSeq);
+    const seqBefore = await page.evaluate(() => App.routes[0].properties.colorSeq); // survivor takes the route primary's palette slot
     const mixRefs = [{ type: "line", index: 0 }, { type: "route", index: 0 }, { type: "line", index: 2 }];
     const mplan = await page.evaluate((refs) => { const p = App.merge.analyze("linemix", refs, { type: "route", index: 0 }); return { ok: p.ok, summary: p.summary, stops: p.stopsRepointed, prepare: typeof p.prepare }; }, mixRefs);
     check("line+route plan: ok, says the result is a Line and snapping is removed, no routing step",
@@ -670,8 +671,8 @@ async function main() {
     res = await page.evaluate((refs) => App.merge.run("linemix", refs, { type: "route", index: 0 }), mixRefs);
     let mx = await dump(page);
     const ml = await page.evaluate(() => { var l = App.lines[0]; return { p: l.properties, c: l.geometry.coordinates, rb: App.routeBuffers.length, lb: App.lineBuffers.length }; });
-    check("route primary: the first selected LINE survives at its own index; route + other line removed",
-      res.ok && res.survivorType === "line" && res.survivorIndex === 0 && mx.nR === 0 && mx.nL === 2 && ml.p.lineIdx === 11 && ml.p.colorSeq === seqBefore, { res, mx });
+    check("route primary: the first selected LINE survives at its own index (with the route's colorSeq); route + other line removed",
+      res.ok && res.survivorType === "line" && res.survivorIndex === 0 && mx.nR === 0 && mx.nL === 2 && ml.p.lineIdx === 11 && seqBefore === 77 && ml.p.colorSeq === 77, { res, mx });
     check("survivor takes the route primary's name, color and appearance overrides",
       ml.p.name === "Route Q" && ml.p.color === "#ff0000" && ml.p._opacity === 40 && ml.p._lineWidth === 2, ml.p);
     check("attributes: primary wins, blanks filled from the others", ml.p.attributes.mode === "BRT" && ml.p.attributes.direction === "NB" && ml.p.attributes.notes === "rq" && ml.p.attributes.group === "GZ", ml.p.attributes);
