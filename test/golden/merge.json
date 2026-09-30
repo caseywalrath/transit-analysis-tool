@@ -1,0 +1,372 @@
+{
+  "chain/single-line": {
+    "order": [
+      0
+    ],
+    "reversed": [
+      false
+    ],
+    "connectorsMi": [],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ]
+    ]
+  },
+  "chain/in-order-touching": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.78,
+        38.81
+      ]
+    ]
+  },
+  "chain/out-of-order-one-reversed": {
+    "order": [
+      1,
+      2,
+      0
+    ],
+    "reversed": [
+      false,
+      false,
+      true
+    ],
+    "connectorsMi": [
+      0,
+      0
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.78,
+        38.81
+      ],
+      [
+        -104.78,
+        38.82
+      ]
+    ]
+  },
+  "chain/selection-reversed": {
+    "order": [
+      1,
+      0
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.78,
+        38.81
+      ]
+    ]
+  },
+  "chain/gap-keeps-both-ends": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      2.15390603761085
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ]
+  },
+  "chain/empty": {
+    "order": [],
+    "reversed": [],
+    "connectorsMi": [],
+    "coords": []
+  },
+  "chain/custom-coincident-threshold": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0.0005384765095735483
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78999,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ]
+    ]
+  },
+  "branch/none-end-to-end": null,
+  "branch/T-junction": {
+    "lineIndex": 1,
+    "end": "start",
+    "onLineIndex": 0,
+    "distanceMi": 0
+  },
+  "branch/Y-at-interior-vertex": {
+    "lineIndex": 1,
+    "end": "start",
+    "onLineIndex": 0,
+    "distanceMi": 0
+  },
+  "branch/crossing-without-endpoints-is-ok": null,
+  "branch/endpoint-just-outside-tolerance": null,
+  "length/one-degree-lat": 69.09409442795152,
+  "length/empty": 0,
+  "hasValue/blank-string": false,
+  "hasValue/text": true,
+  "hasValue/zero": true,
+  "hasValue/nan": false,
+  "hasValue/empty-array": false,
+  "hasValue/array": true,
+  "hasValue/bands-empty": false,
+  "hasValue/bands-one": true,
+  "fieldHasValue/copy-text-untrimmed": true,
+  "fieldHasValue/copy-number-null": false,
+  "fieldHasValue/copy-bands-sunday-mirror": true,
+  "attrs/primary-wins-fill-blanks": {
+    "attributes": {
+      "mode": "BRT",
+      "direction": "NB",
+      "group": "G1",
+      "stopId": "42"
+    },
+    "discarded": [
+      {
+        "key": "mode",
+        "label": "Mode",
+        "fromIndex": 2,
+        "fromName": "L3",
+        "value": "Bus",
+        "kept": "BRT"
+      },
+      {
+        "key": "group",
+        "label": "Group",
+        "fromIndex": 1,
+        "fromName": "L2",
+        "value": "G2",
+        "kept": "G1"
+      }
+    ],
+    "warnings": []
+  },
+  "attrs/pick-other-primary": {
+    "attributes": {
+      "mode": "BRT",
+      "group": "G2"
+    },
+    "discarded": [
+      {
+        "key": "mode",
+        "label": "Mode",
+        "fromIndex": 0,
+        "fromName": "L1",
+        "value": "Bus",
+        "kept": "BRT"
+      },
+      {
+        "key": "group",
+        "label": "Group",
+        "fromIndex": 0,
+        "fromName": "L1",
+        "value": "G1",
+        "kept": "G2"
+      }
+    ],
+    "warnings": []
+  },
+  "attrs/notes-distinct-joined": {
+    "attributes": {
+      "notes": "north half\nsouth half"
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/runtime-summed-when-all-have": {
+    "attributes": {
+      "runTime": 35.5
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/runtime-missing-warns": {
+    "attributes": {
+      "runTime": 20
+    },
+    "discarded": [],
+    "warnings": [
+      "Run time may need updating: not every selected feature has one, so the values could not be added together."
+    ]
+  },
+  "attrs/avgspeed-length-weighted": {
+    "attributes": {
+      "avgSpeed": 17.5
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/avgspeed-equal-unchanged": {
+    "attributes": {
+      "avgSpeed": 14
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/same-service-and-different-direction-warn": {
+    "attributes": {
+      "serviceId": "Blue",
+      "direction": "NB"
+    },
+    "discarded": [
+      {
+        "key": "serviceId",
+        "label": "Service",
+        "fromIndex": 2,
+        "fromName": "Other",
+        "value": "Red",
+        "kept": "Blue"
+      },
+      {
+        "key": "direction",
+        "label": "Direction",
+        "fromIndex": 1,
+        "fromName": "SB",
+        "value": "SB",
+        "kept": "NB"
+      }
+    ],
+    "warnings": [
+      "These features belong to different Services (Blue, Red). The result keeps 'Blue'.",
+      "NB and SB are patterns of the same Service 'Blue'. Merging them collapses that Service into a single pattern.",
+      "These features have different directions (NB, SB). The result keeps 'NB'."
+    ]
+  },
+  "attrs/bands-primary-blank-takes-first-donor": {
+    "attributes": {
+      "service": {
+        "weekday": [
+          {
+            "from": "06:00",
+            "to": "09:00",
+            "frequency": 15
+          },
+          {
+            "from": "06:00",
+            "to": "09:00",
+            "frequency": 16
+          }
+        ],
+        "saturday": [],
+        "sunday": [],
+        "sundayMirrorsSaturday": false
+      }
+    },
+    "discarded": [
+      {
+        "key": "service",
+        "label": "Service bands",
+        "fromIndex": 2,
+        "fromName": "L3",
+        "value": "1 weekday / 0 Saturday / 0 Sunday bands",
+        "kept": "2 weekday / 0 Saturday / 0 Sunday bands"
+      }
+    ],
+    "warnings": []
+  },
+  "attrs/no-attributes-anywhere": {
+    "attributes": {},
+    "discarded": [],
+    "warnings": []
+  }
+}

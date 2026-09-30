@@ -271,18 +271,10 @@
     return attrs ? attrs[fieldDef.key] : undefined;
   }
 
+  // Shared with Feature Merge (js/core/merge.js) so the two features agree on
+  // what counts as "has a value".
   function copyFieldHasValue(fieldDef, attrs) {
-    var v = attrs ? attrs[fieldDef.key] : undefined;
-    if (fieldDef.kind === "number")     return v != null && !isNaN(v);
-    if (fieldDef.kind === "routearray") return Array.isArray(v) && v.length > 0;
-    if (fieldDef.kind === "bands") {
-      if (!v) return false;
-      var w = (v.weekday  || []).length;
-      var s = (v.saturday || []).length;
-      var u = v.sundayMirrorsSaturday ? s : (v.sunday || []).length;
-      return (w + s + u) > 0;
-    }
-    return v != null && v !== ""; // text / select
+    return App.mergeAttrs.fieldHasValue(fieldDef.kind, attrs ? attrs[fieldDef.key] : undefined);
   }
 
   function copyFieldSetValue(fieldDef, attrs, val) {
