@@ -1424,7 +1424,7 @@
 
   function saveRcState(/* mode */) {
     var data = {
-      version:        2,   // v2: per-day-type structure; explicit layover/deadhead
+      version:        3,   // v3: solo Service keys are ID-based ("solo-route-id12"); v2: per-day-type structure
       settings:       Object.assign({}, _settings),
       selectedKeys:   getSelectedServiceKeys(),
       interlineGroups: _interlineGroups.map(function (g) {
@@ -1466,6 +1466,19 @@
     return data;
   }
 
+  // Upgrade legacy index-based solo keys ("solo-route-3") to ID-based ones
+  // ("solo-route-id12"), dropping any that no longer resolve. Valid only inside
+  // apply(): cache.applyState has already pushed the features in their saved
+  // order, so a legacy index still points at the feature that was selected.
+  function migrateKeyList(keys) {
+    var out = [];
+    keys.forEach(function (k) {
+      var mk = App.migrateServiceKey(k);
+      if (mk) out.push(mk);
+    });
+    return out;
+  }
+
   function restoreRcState(data) {
     if (!data) return;
     if (data.settings) {
@@ -1474,18 +1487,18 @@
     if (Array.isArray(data.selectedKeys)) {
       // Migrate legacy "group-…" keys (pre-Service rename) to "service-…"
       // so checkbox selections survive the upgrade.
-      _restoredSelectedKeys = data.selectedKeys.map(function (k) {
+      _restoredSelectedKeys = migrateKeyList(data.selectedKeys.map(function (k) {
         return (typeof k === "string" && k.indexOf("group-") === 0)
           ? "service-" + k.slice(6)
           : k;
-      });
+      }));
     }
     if (Array.isArray(data.interlineGroups)) {
       _interlineGroups = data.interlineGroups.map(function (g) {
         return {
           id:          g.id || ("ilg-" + (++_ilGroupCounter)),
           name:        g.name || "",
-          serviceKeys: Array.isArray(g.serviceKeys) ? g.serviceKeys.slice() : [],
+          serviceKeys: Array.isArray(g.serviceKeys) ? migrateKeyList(g.serviceKeys) : [],
           days:        Object.assign({ weekday: true, saturday: false, sunday: false }, g.days || {})
         };
       });
@@ -1499,6 +1512,12 @@
         summary:  data.lastSummary.summary || {},
         services: data.lastSummary.services
       };
+      // Same legacy-key upgrade for the per-Service rows (kept verbatim when a
+      // legacy index no longer resolves — the row is display-only).
+      _lastResult.services.forEach(function (r) {
+        var mk = App.migrateServiceKey(r.key);
+        if (mk) r.key = mk;
+      });
     }
   }
 

@@ -5,7 +5,8 @@
 //          enableSelect, toNumberSafe, normalizeTractGEOID, guessHeader,
 //          VAR_META, GROUP_INFO, getMeta, getCheckboxGroups,
 //          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue,
-//          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds
+//          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds,
+//          featureRef, resolveFeatureRef, featureById
 
 (function () {
   var App = window.App = window.App || {};
@@ -178,10 +179,60 @@
     });
   }
 
+  // --- Feature references by stable ID (docs/feature-merge-plan.md, Phase 4b) ---
+  // Array indices shift whenever an earlier feature is deleted or merged, so a
+  // module that remembers a feature by index silently retargets. A feature ref
+  // is { type, id } (type = point|line|route|polygon, id = the per-type stable
+  // ID above). Modules store refs, and resolve them to a current index at USE
+  // time via App.resolveFeatureRef — never cache the resolved index.
+
+  // PURE. First index in `arr` whose properties[prop] === id, else -1.
+  function findIndexById(arr, prop, id) {
+    if (!arr || !_isValidFeatureId(id)) return -1;
+    for (var i = 0; i < arr.length; i++) {
+      var p = arr[i] && arr[i].properties;
+      if (p && p[prop] === id) return i;
+    }
+    return -1;
+  }
+
+  // PURE. arraysByType = { point, line, route, polygon } (any may be absent).
+  // → { type, id } for the feature at `index`, or null (bad type, index out of
+  // range, or the feature has no valid ID).
+  function featureRefIn(arraysByType, type, index) {
+    var prop = App.FEATURE_ID_PROP[type];
+    var arr = prop && arraysByType && arraysByType[type];
+    var f = arr && arr[index];
+    var id = f && f.properties && f.properties[prop];
+    return _isValidFeatureId(id) ? { type: type, id: id } : null;
+  }
+
+  // PURE. ref = { type, id } → current index in arraysByType[type], or -1
+  // (unknown type, malformed ref, or the feature no longer exists).
+  function resolveRefIn(arraysByType, ref) {
+    if (!ref || !App.FEATURE_ID_PROP[ref.type]) return -1;
+    return findIndexById(arraysByType && arraysByType[ref.type], App.FEATURE_ID_PROP[ref.type], ref.id);
+  }
+
+  function _liveArrays() {
+    return { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons };
+  }
+  function featureRef(type, index) { return featureRefIn(_liveArrays(), type, index); }
+  function resolveFeatureRef(ref) { return resolveRefIn(_liveArrays(), ref); }
+  function featureById(type, id) {
+    var i = resolveRefIn(_liveArrays(), { type: type, id: id });
+    return i < 0 ? null : _liveArrays()[type][i];
+  }
+
   App.nextFeatureId = nextFeatureId;
   App.getFeatureIdCounters = getFeatureIdCounters;
   App.advanceFeatureIdCounters = advanceFeatureIdCounters;
   App._assignFeatureIds = assignFeatureIds;
+  App.featureRef = featureRef;
+  App.resolveFeatureRef = resolveFeatureRef;
+  App.featureById = featureById;
+  App._featureRefIn = featureRefIn;
+  App._resolveRefIn = resolveRefIn;
   App.ensureFeatureIds = ensureFeatureIds;
 
   App.resolveFeatureColor = resolveFeatureColor;

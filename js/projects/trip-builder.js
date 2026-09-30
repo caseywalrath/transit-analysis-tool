@@ -328,8 +328,9 @@
   // Rebuild services from current feature state, re-resolve the selection by
   // pattern identity (the key may have changed if serviceId was edited), and
   // re-render both columns. Called after any edit made inside the mini-popup.
-  // `anchor` is { featureType, featureIndex } of the pattern that anchors the
-  // selection — normally the first pattern of the Service being edited.
+  // `anchor` is { featureType, featureId } of the pattern that anchors the
+  // selection — normally the first pattern of the Service being edited. It is
+  // matched by stable ID, so it stays correct if an earlier feature is deleted.
   function refreshAfterEdit(anchor) {
     if (App.cache) App.cache.save();
 
@@ -342,7 +343,7 @@
       services.forEach(function (s) {
         s.patterns.forEach(function (p) {
           if (p.featureType === anchor.featureType &&
-              p.featureIndex === anchor.featureIndex) found = s;
+              p.featureId === anchor.featureId) found = s;
         });
       });
       if (found) _selectedKey = found.key;
@@ -459,6 +460,10 @@
   // Edit popup, which mutates `feature.properties.attributes` directly.
   function getFeatureFromPattern(p) {
     if (!p) return null;
+    // Resolve by stable ID at use time; featureIndex is only a fallback for a
+    // pattern with no ID (it was derived when the Service list was built and
+    // can be stale after a delete/merge).
+    if (typeof p.featureId === "number") return App.featureById(p.featureType, p.featureId);
     var arr = (p.featureType === "route") ? App.routes : App.lines;
     return (arr && arr[p.featureIndex]) || null;
   }
@@ -835,7 +840,7 @@
     if (typeof App.openMiniPopup !== "function") return;
 
     var anchorPattern = svc.patterns[0]
-      ? { featureType: svc.patterns[0].featureType, featureIndex: svc.patterns[0].featureIndex }
+      ? { featureType: svc.patterns[0].featureType, featureId: svc.patterns[0].featureId }
       : null;
 
     var content = document.createElement("div");
@@ -1111,7 +1116,7 @@
 
   function saveTbState(/* mode */) {
     return {
-      version:        1,
+      version:        2,   // v2: solo Service keys are ID-based ("solo-route-id12")
       selectedKey:    _selectedKey,
       tripsByService: _tripsByService     // small enough to persist as-is
     };
@@ -1119,9 +1124,19 @@
 
   function restoreTbState(data) {
     if (!data) return;
-    if (typeof data.selectedKey === "string") _selectedKey = data.selectedKey;
+    // Legacy (v1) Service keys embedded the feature's ARRAY INDEX
+    // ("solo-route-3"). App.migrateServiceKey upgrades them to the ID form; it
+    // is only valid here because cache.applyState has already pushed the
+    // features in their saved order, so the index still points at the right
+    // feature. Keys that no longer resolve are dropped (their trips with them).
+    if (typeof data.selectedKey === "string") _selectedKey = App.migrateServiceKey(data.selectedKey);
     if (data.tripsByService && typeof data.tripsByService === "object") {
-      _tripsByService = data.tripsByService;
+      var migrated = {};
+      Object.keys(data.tripsByService).forEach(function (k) {
+        var mk = App.migrateServiceKey(k);
+        if (mk) migrated[mk] = data.tripsByService[k];
+      });
+      _tripsByService = migrated;
     }
   }
 

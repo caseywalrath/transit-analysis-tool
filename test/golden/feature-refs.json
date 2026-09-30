@@ -1,0 +1,33 @@
+{
+  "ref/route-by-index": {
+    "type": "route",
+    "id": 4
+  },
+  "ref/line-by-index": {
+    "type": "line",
+    "id": 2
+  },
+  "ref/index-out-of-range": null,
+  "ref/negative-index": null,
+  "ref/unknown-type": null,
+  "ref/absent-type-array": null,
+  "ref/feature-without-id": null,
+  "ref/null-arrays": null,
+  "resolve/finds-current-index": 2,
+  "resolve/id-not-index": -1,
+  "resolve/deleted-id": -1,
+  "resolve/type-mismatch-not-found": -1,
+  "resolve/line": 1,
+  "resolve/unknown-type": -1,
+  "resolve/null-ref": -1,
+  "resolve/non-numeric-id": -1,
+  "resolve/null-arrays": -1,
+  "resolve/duplicate-id-first-wins": 0,
+  "svckey/legacy-route-upgraded": "solo-route-id4",
+  "svckey/legacy-line-upgraded": "solo-line-id5",
+  "svckey/legacy-index-out-of-range": null,
+  "svckey/new-format-passes-through": "solo-route-id3",
+  "svckey/paired-passes-through": "service-Route 5",
+  "svckey/non-string": null,
+  "svckey/legacy-target-without-id": null
+}

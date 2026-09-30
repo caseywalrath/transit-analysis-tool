@@ -7,9 +7,20 @@
 //   App.buildTransitServices(options) → Service[]
 //   App.getEffectiveServiceBands(service, day) → bands[]
 //   App.directionSummary(svc) / App.hasBlockingWarnings(svc) — convenience.
+//   App.migrateServiceKey(key, arraysByType) → string | null — upgrades a
+//     legacy index-based solo key to the ID-based format (see below).
 //
 // A Service is { key, name, isGroup, patterns: [...], warnings: [...] }.
 // A pattern is the per-feature record emitted by collectPattern().
+//
+// Service keys (persisted by Route Costing / Trip Builder):
+//   paired: "service-<serviceId>"            (serviceId is a stable string)
+//   solo:   "solo-<type>-id<stable ID>"      e.g. "solo-route-id12"
+// The solo key is built from the feature's stable ID (properties.routeIdx /
+// lineIdx), NOT its array index, so it survives deleting or merging an earlier
+// feature (docs/feature-merge-plan.md Phase 4b). The old format was
+// "solo-<type>-<arrayIndex>" ("solo-route-3"); the "id" infix makes the two
+// formats impossible to confuse, and migrateServiceKey upgrades a legacy one.
 
 (function () {
   "use strict";
@@ -34,9 +45,11 @@
     try { lengthMi = (typeof turf !== "undefined") ? turf.length(feature, { units: "miles" }) : 0; }
     catch (e) { lengthMi = 0; }
     var serviceId = attrs.serviceId ? String(attrs.serviceId).trim() : "";
+    var fid = feature.properties && feature.properties[App.FEATURE_ID_PROP[type]];
     return {
       featureType:  type,
-      featureIndex: idx,
+      featureIndex: idx,   // derived at assembly time; resolve by featureId for anything long-lived
+      featureId:    (typeof fid === "number") ? fid : null,
       name:         name,
       color:        App.resolveFeatureColor(type, feature),
       direction:    attrs.direction || "Both",
@@ -125,6 +138,29 @@
     }
   }
 
+  // ID-based solo key; falls back to the legacy index form only for a feature
+  // with no stable ID (none exist after cache.applyState / the draw paths).
+  function soloKey(type, id, idx) {
+    return (typeof id === "number") ? ("solo-" + type + "-id" + id) : ("solo-" + type + "-" + idx);
+  }
+
+  // Upgrade a legacy "solo-<type>-<arrayIndex>" key to "solo-<type>-id<ID>".
+  // MUST be called while the array index still points at the feature that was
+  // selected when the key was saved — i.e. inside a module's cache apply()
+  // hook, which runs after cache.applyState pushed the features in saved order.
+  // Returns the key unchanged when it is not a legacy solo key (new-format and
+  // "service-…" keys pass through, so this is idempotent), and null for a
+  // legacy key whose index no longer resolves to a feature with an ID.
+  // arraysByType defaults to the live App arrays.
+  function migrateServiceKey(key, arraysByType) {
+    if (typeof key !== "string") return null;
+    var m = /^solo-(route|line)-(\d+)$/.exec(key);
+    if (!m) return key;
+    var arrs = arraysByType || { route: App.routes, line: App.lines };
+    var ref = App._featureRefIn ? App._featureRefIn(arrs, m[1], parseInt(m[2], 10)) : null;
+    return ref ? soloKey(ref.type, ref.id, -1) : null;
+  }
+
   function buildTransitServices(options) {
     var runtimeMode = (options && options.runtimeMode) || "either";
 
@@ -138,7 +174,7 @@
         buckets[p.serviceId].patterns.push(p);
       } else {
         services.push({
-          key:      "solo-" + type + "-" + idx,
+          key:      soloKey(type, p.featureId, idx),
           name:     p.name,
           isGroup:  false,
           patterns: [p],
@@ -185,6 +221,7 @@
   }
 
   App.buildTransitServices       = buildTransitServices;
+  App.migrateServiceKey          = migrateServiceKey;
   App.getEffectiveServiceBands   = getEffectiveServiceBands;
   App.directionSummary           = directionSummary;
   App.hasBlockingWarnings        = hasBlockingWarnings;

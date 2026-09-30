@@ -54,7 +54,7 @@
     return {
       name: name || "",
       changeType: "adjustment",
-      before: null,   // { featureType, featureIndex, featureName }
+      before: null,   // { featureType, featureId (stable ID), featureName }
       after: null,
       computed: null,  // filled by computeAlterationMetrics
       manual: {
@@ -294,12 +294,34 @@
     return computed;
   };
 
+  // Resolves a { featureType, featureId } ref to the live feature by stable ID
+  // (never by array index, which shifts on delete/merge). Returns null when the
+  // feature no longer exists — callers must treat that as "missing", not fall
+  // back to anything else. Legacy index-only refs are migrated to IDs at
+  // session restore (title-vi.js applyState) and so never reach here.
   function resolveFeature(ref) {
-    if (!ref) return null;
+    if (!ref || typeof ref.featureId !== "number") return null;
     var App = window.App;
-    var arr = ref.featureType === "route" ? (App.routes || []) : (App.lines || []);
-    return arr[ref.featureIndex] || null;
+    if (ref.featureType !== "route" && ref.featureType !== "line") return null;
+    return App.featureById ? App.featureById(ref.featureType, ref.featureId) : null;
   }
+
+  TitleVI.resolveFeature = resolveFeature;
+
+  // Lists the before/after refs a scenario's alterations NEED (per change type:
+  // adjustment = both, elimination = before, new_route = after) that point at a
+  // feature which no longer exists. → [{ altName, which: "before"|"after" }].
+  TitleVI.findMissingRefs = function (scenario) {
+    var out = [];
+    ((scenario && scenario.alterations) || []).forEach(function (alt) {
+      var ct = alt.changeType || "adjustment";
+      var needBefore = ct !== "new_route";
+      var needAfter  = ct !== "elimination";
+      if (needBefore && alt.before && !resolveFeature(alt.before)) out.push({ altName: alt.name, which: "before" });
+      if (needAfter  && alt.after  && !resolveFeature(alt.after))  out.push({ altName: alt.name, which: "after" });
+    });
+    return out;
+  };
 
   function pctChangeNullable(before, after) {
     if (!Number.isFinite(before) || before === 0 || !Number.isFinite(after)) return null;

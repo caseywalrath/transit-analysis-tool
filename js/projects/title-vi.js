@@ -104,14 +104,17 @@
 
   // ---- Feature checklist helpers ----
 
-  function makeFeatureCheckRow(type, index, name, checked) {
+  // Checklist rows carry the feature's stable ID (data-feature-id), not its
+  // array index, so a saved/remembered filter survives deleting or merging an
+  // earlier feature (docs/feature-merge-plan.md Phase 4b).
+  function makeFeatureCheckRow(type, id, name, checked) {
     var row = document.createElement("div");
     row.className = "rf-feature-check-row";
     var cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = checked;
     cb.setAttribute("data-feature-type", type);
-    cb.setAttribute("data-feature-index", String(index));
+    cb.setAttribute("data-feature-id", String(id));
     var badge = document.createElement("span");
     badge.className = "rf-feature-type-badge";
     badge.textContent = type === "route" ? "R" : type === "line" ? "L" : "P";
@@ -136,18 +139,21 @@
     }
     for (var ri = 0; ri < routes.length; ri++) {
       var name = (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1));
-      var checked = !previousFilter || !previousFilter.routeIndices || previousFilter.routeIndices.indexOf(ri) !== -1;
-      container.appendChild(makeFeatureCheckRow("route", ri, name, checked));
+      var rid = routes[ri].properties && routes[ri].properties.routeIdx;
+      var checked = !previousFilter || !previousFilter.routeIds || previousFilter.routeIds.indexOf(rid) !== -1;
+      container.appendChild(makeFeatureCheckRow("route", rid, name, checked));
     }
     for (var li = 0; li < lines.length; li++) {
       var lname = (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1));
-      var lchecked = !previousFilter || !previousFilter.lineIndices || previousFilter.lineIndices.indexOf(li) !== -1;
-      container.appendChild(makeFeatureCheckRow("line", li, lname, lchecked));
+      var lid = lines[li].properties && lines[li].properties.lineIdx;
+      var lchecked = !previousFilter || !previousFilter.lineIds || previousFilter.lineIds.indexOf(lid) !== -1;
+      container.appendChild(makeFeatureCheckRow("line", lid, lname, lchecked));
     }
     for (var pi = 0; pi < polygons.length; pi++) {
       var pname = (polygons[pi].properties && polygons[pi].properties.name) || ("Polygon " + (pi + 1));
-      var pchecked = !previousFilter || !previousFilter.polygonIndices || previousFilter.polygonIndices.indexOf(pi) !== -1;
-      container.appendChild(makeFeatureCheckRow("polygon", pi, pname, pchecked));
+      var pid = polygons[pi].properties && polygons[pi].properties.polyIdx;
+      var pchecked = !previousFilter || !previousFilter.polygonIds || previousFilter.polygonIds.indexOf(pid) !== -1;
+      container.appendChild(makeFeatureCheckRow("polygon", pid, pname, pchecked));
     }
   }
 
@@ -156,21 +162,21 @@
     if (!container) return null;
     var cbs = container.querySelectorAll('input[type="checkbox"]');
     if (cbs.length === 0) return null;
-    var routeIndices = [], lineIndices = [], polygonIndices = [];
+    var routeIds = [], lineIds = [], polygonIds = [];
     var allChecked = true;
     for (var i = 0; i < cbs.length; i++) {
       var type = cbs[i].getAttribute("data-feature-type");
-      var idx = parseInt(cbs[i].getAttribute("data-feature-index"), 10);
+      var fid = parseInt(cbs[i].getAttribute("data-feature-id"), 10);
       if (cbs[i].checked) {
-        if (type === "route") routeIndices.push(idx);
-        else if (type === "line") lineIndices.push(idx);
-        else if (type === "polygon") polygonIndices.push(idx);
+        if (type === "route") routeIds.push(fid);
+        else if (type === "line") lineIds.push(fid);
+        else if (type === "polygon") polygonIds.push(fid);
       } else {
         allChecked = false;
       }
     }
     if (allChecked) return null;
-    return { routeIndices: routeIndices, lineIndices: lineIndices, polygonIndices: polygonIndices };
+    return { routeIds: routeIds, lineIds: lineIds, polygonIds: polygonIds };
   }
 
   function wireFeatureSelectLinks(selectAllId, selectNoneId, containerId) {
@@ -219,11 +225,11 @@
     var lines = App.lines || [];
     for (var ri = 0; ri < routes.length; ri++) {
       var rname = (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1));
-      options.push({ featureType: "route", featureIndex: ri, label: rname });
+      options.push({ featureType: "route", featureId: routes[ri].properties && routes[ri].properties.routeIdx, label: rname });
     }
     for (var li = 0; li < lines.length; li++) {
       var lname = (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1));
-      options.push({ featureType: "line", featureIndex: li, label: lname });
+      options.push({ featureType: "line", featureId: lines[li].properties && lines[li].properties.lineIdx, label: lname });
     }
     return options;
   }
@@ -234,12 +240,25 @@
     sel.style.fontSize = "11px";
     sel.innerHTML = '<option value="">(select feature)</option>';
     var opts = buildFeatureOptions();
+    // A ref whose feature was deleted (or whose legacy index no longer
+    // resolved) gets its own selected "(deleted feature)" option, so the card
+    // shows the truth instead of silently falling back to "(select feature)"
+    // or to a different feature. Re-selecting it is a no-op (see parseFeatureRef).
+    if (selectedRef && !TV.resolveFeature(selectedRef)) {
+      var missEl = document.createElement("option");
+      missEl.value = selectedRef.featureType + ":" + (selectedRef.featureId == null ? "" : selectedRef.featureId);
+      missEl.textContent = "(deleted feature" + (selectedRef.featureName ? ": " + selectedRef.featureName : "") + ")";
+      missEl.setAttribute("data-missing", "1");
+      missEl.setAttribute("data-name", selectedRef.featureName || "");
+      missEl.selected = true;
+      sel.appendChild(missEl);
+    }
     for (var i = 0; i < opts.length; i++) {
       var o = opts[i];
       var optEl = document.createElement("option");
-      optEl.value = o.featureType + ":" + o.featureIndex;
+      optEl.value = o.featureType + ":" + o.featureId;
       optEl.textContent = o.label;
-      if (selectedRef && selectedRef.featureType === o.featureType && selectedRef.featureIndex === o.featureIndex) {
+      if (selectedRef && selectedRef.featureType === o.featureType && selectedRef.featureId === o.featureId) {
         optEl.selected = true;
       }
       sel.appendChild(optEl);
@@ -252,11 +271,17 @@
     if (!val) return null;
     var parts = val.split(":");
     var featureType = parts[0];
-    var featureIndex = parseInt(parts[1], 10);
-    var arr = featureType === "route" ? (App.routes || []) : (App.lines || []);
-    var feat = arr[featureIndex];
-    var featureName = (feat && feat.properties && feat.properties.name) || (featureType + " " + (featureIndex + 1));
-    return { featureType: featureType, featureIndex: featureIndex, featureName: featureName };
+    var featureId = parseInt(parts[1], 10);
+    var feat = App.featureById(featureType, featureId);
+    if (!feat) {
+      // The "(deleted feature)" option: keep the dangling ref (and its last
+      // known name) so the card keeps showing it as missing.
+      var opt = selectEl.options[selectEl.selectedIndex];
+      return { featureType: featureType, featureId: Number.isFinite(featureId) ? featureId : null,
+               featureName: (opt && opt.getAttribute("data-name")) || "" };
+    }
+    var featureName = (feat.properties && feat.properties.name) || (featureType + " " + featureId);
+    return { featureType: featureType, featureId: featureId, featureName: featureName };
   }
 
   function addAlteration() {
@@ -314,6 +339,9 @@
     if (alt.changeType === "adjustment" && alt.before && alt.after) canCompute = true;
     if (alt.changeType === "elimination" && alt.before) canCompute = true;
     if (alt.changeType === "new_route" && alt.after) canCompute = true;
+    // A ref to a deleted feature is never computed against anything else.
+    if (TV.findMissingRefs({ alterations: [alt] }).length) canCompute = false;
+    updateMissingNote(card, alt);
 
     if (canCompute) {
       var bufferMiles = _policy.bufferDistanceMiles || 0.5;
@@ -326,6 +354,20 @@
 
     markStale();
     saveState();
+  }
+
+  // Shows/hides the per-card warning for refs whose feature no longer exists.
+  function updateMissingNote(card, alt) {
+    var note = card.querySelector(".tvi-alt-missing");
+    if (!note) return;
+    var missing = TV.findMissingRefs({ alterations: [alt] });
+    if (missing.length) {
+      note.textContent = "A selected feature was deleted or merged away. Pick another feature " +
+        "(or remove this adjustment) before running the analysis.";
+      note.style.display = "block";
+    } else {
+      note.style.display = "none";
+    }
   }
 
   function readManualInputs(card) {
@@ -487,6 +529,14 @@
     if (alt.changeType === "elimination") afterRow.style.display = "none";
     card.appendChild(afterRow);
 
+    // Warning shown when a before/after feature no longer exists
+    var missingNote = document.createElement("div");
+    missingNote.className = "tiny tvi-alt-missing";
+    missingNote.style.color = "var(--danger)";
+    missingNote.style.display = "none";
+    card.appendChild(missingNote);
+    updateMissingNote(card, alt);
+
     // Computed metrics section (hidden until computed)
     var computedSection = document.createElement("div");
     computedSection.className = "tvi-computed-section";
@@ -583,7 +633,9 @@
       }
 
       if (!unionGeom) {
-        if (statusEl) statusEl.textContent = "Error: No features drawn. Draw routes/lines on the map first.";
+        if (statusEl) statusEl.textContent = _baselineFeatureFilter
+          ? "Error: None of the selected baseline features exist any more. Re-select features."
+          : "Error: No features drawn. Draw routes/lines on the map first.";
         _running = false;
         return;
       }
@@ -632,23 +684,25 @@
     var bufs = [];
     var routeBuffers = App.routeBuffers || [];
     var lineBuffers = App.lineBuffers || [];
-    if (filter.routeIndices) {
-      for (var i = 0; i < filter.routeIndices.length; i++) {
-        var ri = filter.routeIndices[i];
-        if (routeBuffers[ri]) bufs.push(routeBuffers[ri]);
+    // The filter holds stable IDs; resolve each to its CURRENT index here, at
+    // use time. IDs whose feature was deleted are skipped (never retargeted).
+    if (filter.routeIds) {
+      for (var i = 0; i < filter.routeIds.length; i++) {
+        var ri = App.resolveFeatureRef({ type: "route", id: filter.routeIds[i] });
+        if (ri >= 0 && routeBuffers[ri]) bufs.push(routeBuffers[ri]);
       }
     }
-    if (filter.lineIndices) {
-      for (var j = 0; j < filter.lineIndices.length; j++) {
-        var li = filter.lineIndices[j];
-        if (lineBuffers[li]) bufs.push(lineBuffers[li]);
+    if (filter.lineIds) {
+      for (var j = 0; j < filter.lineIds.length; j++) {
+        var li = App.resolveFeatureRef({ type: "line", id: filter.lineIds[j] });
+        if (li >= 0 && lineBuffers[li]) bufs.push(lineBuffers[li]);
       }
     }
-    if (filter.polygonIndices) {
+    if (filter.polygonIds) {
       var polygons = App.polygons || [];
-      for (var k = 0; k < filter.polygonIndices.length; k++) {
-        var pi = filter.polygonIndices[k];
-        if (polygons[pi]) bufs.push(polygons[pi]);
+      for (var k = 0; k < filter.polygonIds.length; k++) {
+        var pi = App.resolveFeatureRef({ type: "polygon", id: filter.polygonIds[k] });
+        if (pi >= 0 && polygons[pi]) bufs.push(polygons[pi]);
       }
     }
     if (bufs.length === 0) return null;
@@ -678,6 +732,17 @@
 
       // Update scenario's impact method from DOM
       scenario.impactMethod = getSelectedImpactMethod();
+
+      // Refuse to run against a deleted/merged-away feature: the engine would
+      // otherwise skip the alteration (null metrics), quietly understating it.
+      var missingRefs = TV.findMissingRefs(scenario);
+      if (missingRefs.length) {
+        if (statusEl) statusEl.textContent = "Error: " + missingRefs.map(function (m) {
+          return "\"" + (m.altName || "(unnamed)") + "\" " + m.which + " feature was deleted";
+        }).join("; ") + ". Re-select or remove it in Policies & Inputs.";
+        _running = false;
+        return;
+      }
 
       // Compute alteration metrics (ensure all are up-to-date)
       var bufferMiles = _policy.bufferDistanceMiles || 0.5;
@@ -1328,7 +1393,11 @@
   // ---- Session persistence ----
 
   function collectState(mode) {
-    readPolicyFromDOM();
+    // The popup body is lazy-loaded; before the first open (e.g. an autosave
+    // right after a page reload) there is no DOM to read and _policy, already
+    // restored by applyState, is the truth. Without this guard the read threw
+    // and the module's whole saved state was silently dropped from the session.
+    if (document.getElementById("tviRuleRouteMiles")) readPolicyFromDOM();
 
     // Deep-copy scenarios, stripping computed geometry in light mode
     var scenariosCopy = JSON.parse(JSON.stringify(_scenarios));
@@ -1345,7 +1414,11 @@
     }
 
     var state = {
-      version: 2,
+      // v3: alteration before/after refs are { featureType, featureId, featureName }
+      // and the baseline filter is { routeIds, lineIds, polygonIds } (stable IDs);
+      // v1/v2 stored array indices (featureIndex / *Indices) — migrated on apply.
+      version: 3,
+      baselineFeatureFilter: _baselineFeatureFilter ? JSON.parse(JSON.stringify(_baselineFeatureFilter)) : null,
       policy: JSON.parse(JSON.stringify(_policy)),
       scenarios: scenariosCopy,
       activeScenarioIdx: _activeScenarioIdx,
@@ -1368,8 +1441,39 @@
     return state;
   }
 
+  // Legacy (v1/v2) refs remembered a feature by array index. Convert to the ID
+  // form. Only correct while that index still points at the saved feature —
+  // true inside the cache apply() hook (cache.applyState pushes the features in
+  // saved order first); for a standalone session-file import it is a
+  // best-effort against the live features, exactly what the old code resolved
+  // against. An index that no longer resolves becomes a missing ref
+  // (featureId null), never a different feature.
+  function migrateRef(ref) {
+    if (!ref || typeof ref.featureId === "number" || ref.featureId === null) {
+      if (ref) delete ref.featureIndex;
+      return ref;
+    }
+    var r = App._featureRefIn({ route: App.routes, line: App.lines }, ref.featureType, ref.featureIndex);
+    return { featureType: ref.featureType, featureId: r ? r.id : null, featureName: ref.featureName || "" };
+  }
+
+  function migrateIndexFilter(f) {
+    if (!f) return null;
+    if (f.routeIds || f.lineIds || f.polygonIds) return f;
+    function ids(type, list) {
+      var out = [];
+      (list || []).forEach(function (idx) {
+        var r = App._featureRefIn({ route: App.routes, line: App.lines, polygon: App.polygons }, type, idx);
+        if (r) out.push(r.id);
+      });
+      return out;
+    }
+    return { routeIds: ids("route", f.routeIndices), lineIds: ids("line", f.lineIndices),
+             polygonIds: ids("polygon", f.polygonIndices) };
+  }
+
   function applyState(data) {
-    if (!data || (data.version !== 1 && data.version !== 2)) return;
+    if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return;
     if (data.policy) _policy = data.policy;
     if (data.scenarios) {
       _scenarios = data.scenarios;
@@ -1377,9 +1481,15 @@
       for (var i = 0; i < _scenarios.length; i++) {
         if (!_scenarios[i].alterations) _scenarios[i].alterations = [];
         if (_scenarios[i].impactMethod === "selected_routes") _scenarios[i].impactMethod = "full_route_buffer";
+        // v1/v2 → v3: index refs → stable-ID refs (idempotent for v3 data)
+        _scenarios[i].alterations.forEach(function (alt) {
+          alt.before = migrateRef(alt.before);
+          alt.after  = migrateRef(alt.after);
+        });
       }
     }
     if (typeof data.activeScenarioIdx === "number") _activeScenarioIdx = data.activeScenarioIdx;
+    if (data.baselineFeatureFilter !== undefined) _baselineFeatureFilter = migrateIndexFilter(data.baselineFeatureFilter);
     if (data.baseline) _baseline = data.baseline;
     if (data.results) _results = data.results;
     if (typeof data.stale === "boolean") _stale = data.stale;

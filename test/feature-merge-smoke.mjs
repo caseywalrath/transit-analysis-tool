@@ -10,6 +10,8 @@
 // Phase 4a covers Unmerge (history recorded on the survivor, exact restore for
 // every merge kind, nested history, edited-since warning, best-effort stop
 // reversal, reload persistence, exports omitting `_mergedFrom`).
+// Phase 4b-1 covers module references by stable ID (Route Costing, Trip Builder,
+// Title VI: survive delete/merge of earlier features, reload, legacy index sessions).
 // Later phases append
 // more `await check(...)` groups in the "ASSERTIONS" section below.
 // Screenshots of the dialog are written to $MERGE_SHOT_DIR (default: os tmpdir).
@@ -1065,6 +1067,246 @@ async function main() {
     await page.waitForTimeout(300);
     check("Attribute Summary shows nothing about merge history", await page.evaluate(() => document.body.innerText.indexOf("_mergedFrom") < 0 && document.body.innerText.indexOf("resultFingerprint") < 0));
     await page.keyboard.press("Escape");
+
+    // ---- Phase 4b-1: module references by stable ID (Route Costing, Trip Builder, Title VI) ----
+    console.log("\n# Phase 4b-1 - module references by stable ID");
+
+    const BANDS = { weekday: [{ from: "06:00", to: "10:00", frequency: 30 }], saturday: [], sunday: [] };
+    const solo = (name, id, y) => ({ name, id, coords: [[-104.80, y], [-104.70, y + 0.01]], attrs: { direction: "Both", avgSpeed: 12, service: BANDS } });
+    const fx4b = () => ({ routes: [
+      solo("Alpha", 10, 38.80), solo("Bravo", 11, 38.82), solo("Charlie", 12, 38.84), solo("Delta", 13, 38.86),
+      { name: "NB leg", id: 14, coords: [[-104.60, 38.80], [-104.50, 38.81]], attrs: { direction: "NB", avgSpeed: 12, serviceId: "Pair", service: BANDS } },
+      { name: "SB leg", id: 15, coords: [[-104.50, 38.81], [-104.60, 38.80]], attrs: { direction: "SB", avgSpeed: 12, serviceId: "Pair", service: BANDS } }
+    ] });
+    const settle = (ms) => page.waitForTimeout(ms || 700);
+    const closeModule = () => page.evaluate(() => App.popup.isOpen() && App.popup.close());
+    const rcChecked = () => page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll("#rcServiceList input[type=checkbox]"), (b) => b.checked)
+      .map((b) => b.closest("label").querySelector(".rc-service-name").textContent.replace(/\s*⚠.*/, "").trim()).sort());
+    const rcKeys = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll("#rcServiceList input[type=checkbox]"), (b) => b.getAttribute("data-key")));
+    const modState = (id) => page.evaluate((id) => JSON.parse(JSON.stringify(App.cache.collectState("light").moduleState[id] || null)), id);
+    const reloadApp = async () => {
+      await page.evaluate(() => App.cache.save()); await settle(800);
+      await page.reload({ waitUntil: "load" });
+      await page.waitForFunction("window.App && window.App.map && window.App.map.loaded() && App.cache && App.routes.length > 0", { timeout: 30000 });
+    };
+
+    // -- Route Costing --
+    await setFixture(page, fx4b());
+    await page.evaluate(() => App.openModulePopup("route-costing"));
+    await settle(500);
+    check("Route Costing: solo Service keys are ID-based (solo-route-id10 ...)", JSON.stringify(await rcKeys()) ===
+      JSON.stringify(["solo-route-id10", "solo-route-id11", "solo-route-id12", "solo-route-id13", "service-Pair"]), await rcKeys());
+    // Uncheck Bravo, then cost.
+    await page.evaluate(() => { document.querySelector('#rcServiceList input[data-key="solo-route-id11"]').checked = false; });
+    await page.click("#rcCostBtn");
+    await page.waitForFunction("document.querySelector('#rcResultsTable') && document.querySelector('#rcResultsTable').innerHTML.length > 50", { timeout: 10000 });
+    check("Route Costing: costing ran for the checked Services", await page.evaluate(() => /Alpha/.test(document.getElementById("rcResultsTable").textContent) && !/Bravo/.test(document.getElementById("rcResultsTable").textContent)));
+    const rcBefore = await rcChecked();
+    // Delete the EARLIEST route (Alpha): every later index shifts down by one.
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });
+    await settle(300);
+    check("Route Costing: deleting an earlier route keeps the selection on the same Services (Bravo still unchecked)",
+      JSON.stringify(await rcChecked()) === JSON.stringify(rcBefore.filter((n) => n !== "Alpha")), { now: await rcChecked(), before: rcBefore });
+    check("Route Costing: keys of later Services are unchanged by the delete", JSON.stringify(await rcKeys()) ===
+      JSON.stringify(["solo-route-id11", "solo-route-id12", "solo-route-id13", "service-Pair"]), await rcKeys());
+    // Merge two later routes (Charlie + Delta, primary Charlie) via the real engine.
+    osrm.mode = "ok";
+    const mres = await page.evaluate(async () => {
+      var ci = App.routes.findIndex((r) => r.properties.name === "Charlie"), di = App.routes.findIndex((r) => r.properties.name === "Delta");
+      var r = await App.merge.run("route", [ci, di], ci);
+      await App.notifyProject();
+      return r;
+    });
+    await settle(300);
+    check("Route Costing: a merge of later routes leaves Bravo unchecked and Charlie (survivor) checked",
+      mres && mres.ok !== false && JSON.stringify(await rcChecked()) === JSON.stringify(["Charlie", "NB leg + SB leg".length ? "Pair" : ""].sort()) , { mres: mres && mres.ok, now: await rcChecked() });
+    await closeModule();
+    // Persisted state is ID-based and survives a reload.
+    let rcSt = await modState("route-costing");
+    check("Route Costing: persisted selectedKeys / lastSummary keys are ID-based",
+      JSON.stringify(rcSt.selectedKeys.slice().sort()) === JSON.stringify(["service-Pair", "solo-route-id12"]) &&
+      rcSt.lastSummary && rcSt.lastSummary.services.every((r) => /^(solo-route-id\d+|service-.+)$/.test(r.key)), rcSt.selectedKeys);
+    await reloadApp();
+    await page.evaluate(() => App.openModulePopup("route-costing"));
+    await settle(500);
+    check("Route Costing: after reload the same Services are still checked", JSON.stringify(await rcChecked()) === JSON.stringify(["Charlie", "Pair"]), await rcChecked());
+    await closeModule();
+
+    // -- Route Costing: legacy (index-based) session migration --
+    await setFixture(page, fx4b());   // ids 10..13 at indices 0..3; NB/SB = 14/15 at 4/5
+    // Produce a REAL lastSummary (run costing), then rewrite every key to its legacy index form.
+    await page.evaluate(() => App.openModulePopup("route-costing"));
+    await settle(400);
+    await page.click("#rcCostBtn");
+    await page.waitForFunction("document.querySelector('#rcResultsTable') && document.querySelector('#rcResultsTable').innerHTML.length > 50", { timeout: 10000 });
+    await closeModule();
+    await page.evaluate(() => {
+      var st = JSON.parse(JSON.stringify(App.cache.collectState("full")));
+      var legacy = { "solo-route-id10": "solo-route-0", "solo-route-id11": "solo-route-1", "solo-route-id12": "solo-route-2", "solo-route-id13": "solo-route-3" };
+      var rc = st.moduleState["route-costing"];
+      rc.version = 2;
+      rc.lastSummary.services.forEach((r) => { if (legacy[r.key]) r.key = legacy[r.key]; });
+      rc.selectedKeys = ["solo-route-1", "solo-route-3", "group-Pair", "solo-route-99"];
+      rc.interlineGroups = [{ id: "ilg-1", name: "G", serviceKeys: ["solo-route-0", "solo-route-2", "service-Pair", "solo-line-4"], days: {} }];
+      App.cache.applyState(st);
+    });
+    await page.evaluate(() => App.openModulePopup("route-costing"));
+    await settle(500);
+    rcSt = await modState("route-costing");
+    check("Route Costing legacy restore: selected index keys -> ID keys (and group- -> service-), unresolvable dropped",
+      JSON.stringify(await rcChecked()) === JSON.stringify(["Bravo", "Delta", "Pair"]) &&
+      JSON.stringify(rcSt.selectedKeys.slice().sort()) === JSON.stringify(["service-Pair", "solo-route-id11", "solo-route-id13"]), { checked: await rcChecked(), keys: rcSt.selectedKeys });
+    check("Route Costing legacy restore: interline group member keys migrated (unresolvable dropped)",
+      JSON.stringify(rcSt.interlineGroups[0].serviceKeys) === JSON.stringify(["solo-route-id10", "solo-route-id12", "service-Pair"]), rcSt.interlineGroups);
+    check("Route Costing legacy restore: lastSummary row keys migrated", rcSt.lastSummary.services.length >= 2 && rcSt.lastSummary.services.some((r) => r.key === "solo-route-id12") &&
+      rcSt.lastSummary.services.every((r) => /^(solo-route-id\d+|service-.+)$/.test(r.key)), rcSt.lastSummary.services.map((r) => r.key));
+    await closeModule();
+
+    // -- Trip Builder --
+    await setFixture(page, fx4b());
+    const tbRows = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll("#tbServiceList .tb-svc-row"), (r) =>
+      ({ key: r.getAttribute("data-key"), name: r.querySelector(".tb-svc-name").textContent.replace(/Needs setup/, "").trim(), sel: r.classList.contains("tb-svc-selected") })));
+    await page.evaluate(() => App.openModulePopup("trip-builder"));
+    await settle(500);
+    await page.click('#tbServiceList .tb-svc-row[data-key="solo-route-id12"]');
+    await page.click("#tbGenerateBtn");
+    await settle(300);
+    check("Trip Builder: solo key is ID-based and trips generated for Charlie",
+      await page.evaluate(() => /Charlie/.test(document.getElementById("tbHeader").textContent) && document.querySelectorAll("#tbResults tbody tr").length > 0));
+    const tripsBefore = await page.evaluate(() => document.querySelectorAll("#tbResults tbody tr").length);
+    await page.evaluate(async () => { App.removeRoute(0); App.removeRoute(0); await App.notifyProject(); });   // delete Alpha and Bravo
+    await settle(300);
+    let rows = await tbRows();
+    check("Trip Builder: deleting earlier routes keeps the selection on Charlie (same key, same name)",
+      rows.filter((r) => r.sel).length === 1 && rows.find((r) => r.sel).name === "Charlie" && rows.find((r) => r.sel).key === "solo-route-id12", rows);
+    check("Trip Builder: the generated trips still belong to Charlie (stored under its ID key, still shown)",
+      await page.evaluate((n) => document.querySelectorAll("#tbResults tbody tr").length === n && /Charlie/.test(document.getElementById("tbHeader").textContent), tripsBefore) &&
+      JSON.stringify(Object.keys((await modState("trip-builder")).tripsByService)) === JSON.stringify(["solo-route-id12"]), await modState("trip-builder"));
+    // refreshAfterEdit anchors by ID: re-key Charlie through the Edit popup after the shifts above.
+    await page.click("#tbEditBtn");
+    await page.waitForSelector("#fp-mini-popup .tb-edit-popup-body input.fp-attr-input");
+    await page.fill("#fp-mini-popup .tb-edit-popup-body input.fp-attr-input", "Renamed");
+    await page.press("#fp-mini-popup .tb-edit-popup-body input.fp-attr-input", "Tab");
+    await settle(300);
+    rows = await tbRows();
+    check("Trip Builder: re-keying a Service via the Edit popup keeps the selection (anchored by ID)",
+      rows.filter((r) => r.sel).length === 1 && rows.find((r) => r.sel).key === "service-Renamed", rows);
+    await page.evaluate(() => App.closeMiniPopup && App.closeMiniPopup());
+    // Undo the rename so the session is back to a solo Charlie.
+    await page.evaluate(() => { delete App.routes.find((r) => r.properties.name === "Charlie").properties.attributes.serviceId; });
+    await closeModule();
+    await page.evaluate(() => App.openModulePopup("trip-builder"));
+    await settle(400);
+    await page.click('#tbServiceList .tb-svc-row[data-key="solo-route-id12"]');
+    await page.click("#tbGenerateBtn");
+    await settle(300);
+    await closeModule();
+    await reloadApp();
+    let tbSt = await modState("trip-builder");
+    check("Trip Builder: persisted selectedKey/tripsByService are ID-keyed and survive a reload",
+      tbSt.version === 2 && tbSt.selectedKey === "solo-route-id12" && Object.keys(tbSt.tripsByService).includes("solo-route-id12"), tbSt && { v: tbSt.version, k: tbSt.selectedKey });
+    await page.evaluate(() => App.openModulePopup("trip-builder"));
+    await settle(500);
+    rows = await tbRows();
+    check("Trip Builder: after reload the selected row is still Charlie with its trips",
+      rows.find((r) => r.sel) && rows.find((r) => r.sel).name === "Charlie" && await page.evaluate(() => document.querySelectorAll("#tbResults tbody tr").length > 0), rows);
+    await closeModule();
+
+    // -- Trip Builder: legacy (index-based) session migration --
+    await setFixture(page, fx4b());
+    await page.evaluate(() => {
+      var st = JSON.parse(JSON.stringify(App.cache.collectState("full")));
+      st.moduleState = st.moduleState || {};
+      var cols = { weekday: [{ direction: "Both", label: "Outbound*", withAsterisk: true, color: "#000", patternName: "x", runtimeMin: 30, trips: [{ startMin: 360, endMin: 390 }] }], saturday: [], sunday: [] };
+      st.moduleState["trip-builder"] = { version: 1, selectedKey: "solo-route-2",
+        tripsByService: { "solo-route-2": cols, "solo-route-3": cols, "service-Pair": cols, "solo-route-77": cols } };
+      App.cache.applyState(st);
+    });
+    tbSt = await modState("trip-builder");
+    check("Trip Builder legacy restore: selectedKey and tripsByService keys migrated; unresolvable dropped",
+      tbSt.selectedKey === "solo-route-id12" && JSON.stringify(Object.keys(tbSt.tripsByService).sort()) === JSON.stringify(["service-Pair", "solo-route-id12", "solo-route-id13"]), tbSt);
+
+    // -- Title VI --
+    const tviAlts = () => page.evaluate(() => JSON.parse(JSON.stringify((App.cache.collectState("light").moduleState["title-vi"].scenarios[0] || {}).alterations || [])));
+    await setFixture(page, fx4b());
+    await page.evaluate(() => App.openModulePopup("title-vi"));
+    await settle(500);
+    await page.click("#tviAddAlteration");
+    const optVals = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll(".tvi-alt-before option"), (o) => o.value));
+    check("Title VI: feature dropdown values encode the stable ID (route:10 ...)", optVals.includes("route:10") && optVals.includes("route:13") && !optVals.includes("route:0"), optVals);
+    await page.selectOption(".tvi-alt-before", "route:11");
+    await page.selectOption(".tvi-alt-after", "route:12");
+    await settle(300);
+    let alts = await tviAlts();
+    check("Title VI: alteration stores { featureType, featureId, featureName } (no featureIndex)",
+      alts[0].before.featureId === 11 && alts[0].before.featureName === "Bravo" && alts[0].after.featureId === 12 &&
+      alts[0].before.featureIndex === undefined && alts[0].computed && Number.isFinite(alts[0].computed.beforeMiles), alts[0]);
+    const cardSel = () => page.evaluate(() => ({
+      before: (document.querySelector(".tvi-alt-before").selectedOptions[0] || {}).textContent,
+      after: (document.querySelector(".tvi-alt-after").selectedOptions[0] || {}).textContent,
+      note: getComputedStyle(document.querySelector(".tvi-alt-missing")).display }));
+    // Delete an EARLIER route, then merge away a LATER one: refs must keep pointing at Bravo/Charlie.
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });
+    await settle(300);
+    check("Title VI: after deleting an earlier route the card still shows Bravo -> Charlie", JSON.stringify(await cardSel()) === JSON.stringify({ before: "Bravo", after: "Charlie", note: "none" }), await cardSel());
+    check("Title VI: engine resolves the refs to the same features after the shift",
+      await page.evaluate(() => { var a = App.cache.collectState("light").moduleState["title-vi"].scenarios[0].alterations[0];
+        return TitleVI.resolveFeature(a.before).properties.name === "Bravo" && TitleVI.resolveFeature(a.after).properties.name === "Charlie" && TitleVI.findMissingRefs({ alterations: [a] }).length === 0; }));
+    // Persist + reload keeps the ID refs.
+    await reloadApp();
+    alts = await tviAlts();
+    check("Title VI: refs survive a page reload (IDs, v3)", alts[0].before.featureId === 11 && alts[0].after.featureId === 12 && (await modState("title-vi")).version === 3, alts[0]);
+    await page.evaluate(() => App.openModulePopup("title-vi"));
+    await settle(500);
+    check("Title VI: after reload the card still shows Bravo -> Charlie", JSON.stringify(await cardSel()) === JSON.stringify({ before: "Bravo", after: "Charlie", note: "none" }), await cardSel());
+    // Delete the BEFORE feature: shown as missing; analysis refuses to run (and never uses another feature).
+    await page.evaluate(() => { var s = App.cache.collectState("full"); s.moduleState["title-vi"].baseline = { type: "system_population", geoLevel: "bg", year: "2022", minorityShare: 0.3, lowIncomeShare: 0.2, totalPop: 1000, minorityPop: 300, lowIncomePop: 200, geoCount: 3, computedAt: "x" }; App.cache.applyState(s); });
+    await page.evaluate(() => App.openModulePopup("title-vi")); await settle(400);
+    await page.evaluate(async () => { App.removeRoute(App.routes.findIndex((r) => r.properties.name === "Bravo")); await App.notifyProject(); });
+    await settle(300);
+    const miss = await cardSel();
+    check("Title VI: a deleted Before feature shows as '(deleted feature: Bravo)' with a warning (not another feature)",
+      /^\(deleted feature: Bravo\)$/.test(miss.before) && miss.after === "Charlie" && miss.note === "block", miss);
+    await page.click('.tvi-tab[data-tab="analysis"]');
+    await page.click("#tviRunAnalysis");
+    await settle(400);
+    const tviStatus = await page.evaluate(() => document.getElementById("tviAnalysisStatus").textContent);
+    check("Title VI: Run Equity Analysis refuses with a clear message naming the deleted feature", /deleted/.test(tviStatus) && /Error/.test(tviStatus), tviStatus);
+    check("Title VI: the missing ref stays recorded as a dangling ID (featureId 11), not retargeted", (await tviAlts())[0].before.featureId === 11);
+    await closeModule();
+
+    // -- Title VI: baseline feature filter by ID --
+    await setFixture(page, fx4b());
+    await page.evaluate(() => { var s = App.cache.collectState("full"); var t = s.moduleState["title-vi"] || {};
+      t.version = 3; t.baselineFeatureFilter = { routeIds: [11], lineIds: [], polygonIds: [] }; s.moduleState["title-vi"] = t; App.cache.applyState(s); });
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });
+    await page.evaluate(() => App.openModulePopup("title-vi")); await settle(400);
+    const baseChecks = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll("#tviBaselineFeatureList .rf-feature-check-row"), (r) => r.querySelector("label").textContent + ":" + r.querySelector("input").checked));
+    check("Title VI: baseline checklist filter follows IDs after an earlier route is deleted (only Bravo checked)",
+      JSON.stringify(await baseChecks()) === JSON.stringify(["Bravo:true", "Charlie:false", "Delta:false", "NB leg:false", "SB leg:false"]), await baseChecks());
+    check("Title VI: baseline filter persists as stable IDs", JSON.stringify((await modState("title-vi")).baselineFeatureFilter) === JSON.stringify({ routeIds: [11], lineIds: [], polygonIds: [] }));
+    await closeModule();
+
+    // -- Title VI: legacy v2 session migration (indices -> IDs) --
+    await setFixture(page, fx4b());   // Alpha..Delta = ids 10..13 at indices 0..3
+    await page.evaluate(() => {
+      var s = JSON.parse(JSON.stringify(App.cache.collectState("full")));
+      var alt = (b, a) => ({ name: "alt", changeType: "adjustment", before: b, after: a, computed: null,
+        manual: { revenueHours: {}, spanHours: {}, fare: {} } });
+      s.moduleState["title-vi"] = { version: 2, policy: JSON.parse(JSON.stringify(TitleVI.defaultPolicy())),
+        scenarios: [{ id: "scenario-1", name: "Legacy", type: "service_change", impactMethod: "service_loss_area", notes: "",
+          alterations: [alt({ featureType: "route", featureIndex: 1, featureName: "Bravo" }, { featureType: "route", featureIndex: 3, featureName: "Delta" }),
+                        alt({ featureType: "route", featureIndex: 40, featureName: "Gone" }, null)] }],
+        activeScenarioIdx: 0, baseline: null, stale: false, activeTab: "policies", results: {} };
+      App.cache.applyState(s);
+    });
+    alts = await tviAlts();
+    check("Title VI legacy v2 restore: index refs -> featureId (Bravo=11, Delta=13), featureIndex dropped",
+      alts[0].before.featureId === 11 && alts[0].after.featureId === 13 && alts[0].before.featureIndex === undefined && alts[0].before.featureName === "Bravo", alts[0]);
+    check("Title VI legacy v2 restore: an unresolvable index becomes a missing ref (featureId null), not another feature",
+      alts[1].before.featureId === null && alts[1].before.featureName === "Gone" &&
+      await page.evaluate(() => TitleVI.findMissingRefs(App.cache.collectState("light").moduleState["title-vi"].scenarios[0]).length === 1), alts[1]);
+    check("Title VI legacy restore is saved back as v3", (await modState("title-vi")).version === 3);
 
 
     // ================= END ASSERTIONS =================

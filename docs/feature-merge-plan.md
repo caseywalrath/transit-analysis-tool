@@ -1,6 +1,6 @@
 # Feature Merge — implementation plan
 
-Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) and Phase 4a (Unmerge) are done; Phase 4b (module stable IDs) is not started. Phases are built in order; each phase is one or more commits
+Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) and Phase 4a (Unmerge) are done; Phase 4b part 1 (shared `featureRef`/`resolveFeatureRef` helpers, service-assembly solo keys, Route Costing, Trip Builder, Title VI) is done; Phase 4b part 2 (TPI, Ridership Forecasting, Corridor Scoring, Transit Coverage, Feature Area Analysis) is not started. Phases are built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 
 ## Goal
