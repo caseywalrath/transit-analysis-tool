@@ -163,7 +163,24 @@
     return res.changes;
   }
 
+  // Snapshot of the counters for the session cache.
+  function getFeatureIdCounters() {
+    return { point: _featureIdCounters.point, line: _featureIdCounters.line,
+             route: _featureIdCounters.route, polygon: _featureIdCounters.polygon };
+  }
+
+  // Raise each counter to at least the stored value (never lowers one).
+  function advanceFeatureIdCounters(stored) {
+    if (!stored) return;
+    Object.keys(_featureIdCounters).forEach(function (type) {
+      var v = stored[type];
+      if (_isValidFeatureId(v) && v > _featureIdCounters[type]) _featureIdCounters[type] = v;
+    });
+  }
+
   App.nextFeatureId = nextFeatureId;
+  App.getFeatureIdCounters = getFeatureIdCounters;
+  App.advanceFeatureIdCounters = advanceFeatureIdCounters;
   App._assignFeatureIds = assignFeatureIds;
   App.ensureFeatureIds = ensureFeatureIds;
 

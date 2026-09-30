@@ -128,6 +128,9 @@
       polygons:  App.polygons.slice(),
       labels:    App.labels    ? App.labels.slice()    : [],
       textBoxes: App.textBoxes ? App.textBoxes.slice() : [],
+      // Per-type ID counters, so an ID that belonged to a deleted feature is
+      // never reissued after a reload (a stop link may still reference it).
+      featureIdCounters: (typeof App.getFeatureIdCounters === "function") ? App.getFeatureIdCounters() : null,
       sectionColors: App.sectionColors ? {
         point:   App.sectionColors.point   || null,
         line:    App.sectionColors.line    || null,
@@ -241,6 +244,11 @@
     // (the normal case, including undo/redo) are left untouched. Imported
     // features arrive with no ID and are stamped here. Stop links that pointed
     // at a duplicated ID keep pointing at the first (older) feature.
+    // Stored counters (additive field; absent in older sessions) only ever
+    // advance the live counters, never lower them.
+    if (state.featureIdCounters && typeof App.advanceFeatureIdCounters === "function") {
+      App.advanceFeatureIdCounters(state.featureIdCounters);
+    }
     if (typeof App.ensureFeatureIds === "function") App.ensureFeatureIds();
 
     // 3. Restore feature settings into App.featureSettings

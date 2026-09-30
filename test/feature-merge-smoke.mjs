@@ -219,6 +219,23 @@ async function main() {
       resolve.every((x) => x.matches.length === 1 && x.matches[0] === x.i), resolve);
     check("route buffers carry the route's ID", resolve.every((x) => x.bufferId === x.id), resolve);
 
+    // 7. Counters survive a page reload: delete the highest-ID route, reload,
+    // draw a new route — the deleted ID must not be reissued.
+    const deletedId = await page.evaluate(async () => {
+      var maxI = 0;
+      App.routes.forEach(function (r, i) { if (r.properties.routeIdx > App.routes[maxI].properties.routeIdx) maxI = i; });
+      var id = App.routes[maxI].properties.routeIdx;
+      App.removeRoute(maxI);
+      App.cache.save();
+      await new Promise((r) => setTimeout(r, 800)); // save is debounced
+      return id;
+    });
+    await page.reload({ waitUntil: "load" });
+    await page.waitForFunction("window.App && window.App.map && window.App.map.loaded() && App.cache && App.routes.length > 0", { timeout: 30000 });
+    await drawRoute(page, [-104.5, 38.83], [-104.49, 38.84]);
+    ids = await routeIds(page);
+    check("deleted ID is not reissued after a page reload", !ids.includes(deletedId) && allUnique(ids), { deletedId, ids });
+
     // ================= END ASSERTIONS =================
   } finally {
     if (browser) await browser.close().catch(() => {});
