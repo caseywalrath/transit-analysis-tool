@@ -934,5 +934,208 @@
       }
     ],
     "warnings": []
+  },
+  "hist/fingerprint-basic": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
+  "hist/fingerprint-same-as-reordered": "[\"L\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
+  "hist/fingerprint-renamed": "[\"L2\",\"\",{\"coordinates\":[[0,0],[1,1]],\"type\":\"LineString\"},2,{\"avgSpeed\":14,\"mode\":\"Bus\"}]",
+  "hist/fingerprint-no-properties": "[null,null,null,null,null]",
+  "hist/stable-stringify-sorted-keys": "{\"a\":[{\"d\":2}],\"b\":1,\"e\":null}",
+  "hist/stopChanges-repoint-and-dedupe": [
+    {
+      "pointId": 1,
+      "before": [
+        {
+          "featureType": "route",
+          "featureId": 2,
+          "name": "B"
+        }
+      ],
+      "after": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "A"
+        }
+      ]
+    },
+    {
+      "pointId": 2,
+      "before": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "A"
+        },
+        {
+          "featureType": "route",
+          "featureId": 2,
+          "name": "B"
+        }
+      ],
+      "after": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "A"
+        }
+      ]
+    }
+  ],
+  "hist/stopChanges-name-refresh-only": [
+    {
+      "pointId": 5,
+      "before": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "Old"
+        }
+      ],
+      "after": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "New"
+        }
+      ]
+    }
+  ],
+  "hist/stopChanges-none": [],
+  "hist/restore-exact-when-untouched": [
+    {
+      "featureType": "route",
+      "featureId": 1,
+      "name": "A"
+    },
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-exact-keeps-original-order-and-names": [
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    },
+    {
+      "featureType": "route",
+      "featureId": 1,
+      "name": "A"
+    }
+  ],
+  "hist/restore-best-effort-re-adds-removed-refs": [
+    {
+      "featureType": "route",
+      "featureId": 1,
+      "name": "A"
+    },
+    {
+      "featureType": "route",
+      "featureId": 7,
+      "name": "Added since"
+    },
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-best-effort-drops-survivor-ref-not-linked-before": [
+    {
+      "featureType": "route",
+      "featureId": 7,
+      "name": "Added since"
+    },
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-best-effort-keeps-survivor-ref-linked-before-with-fresh-name": [
+    {
+      "featureType": "route",
+      "featureId": 1,
+      "name": "A"
+    },
+    {
+      "featureType": "route",
+      "featureId": 7,
+      "name": "X"
+    },
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-best-effort-user-removed-survivor-link-stays-removed": [
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-best-effort-dedupes": [
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/restore-line-survivor-same-id-different-type": [
+    {
+      "featureType": "route",
+      "featureId": 1,
+      "name": "R"
+    },
+    {
+      "featureType": "line",
+      "featureId": 1,
+      "name": "L"
+    }
+  ],
+  "hist/restore-missing-current": [
+    {
+      "featureType": "route",
+      "featureId": 2,
+      "name": "B"
+    }
+  ],
+  "hist/validate-ok": "",
+  "hist/validate-wrong-feature": "The merge history belongs to a different feature.",
+  "hist/validate-survivor-missing-from-originals": "The merge history is incomplete.",
+  "hist/validate-future-version": "This merge history was saved by a newer version and can't be read.",
+  "hist/validate-none": "This feature has no merge history.",
+  "hist/strip-removes-history": {
+    "type": "Feature",
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "properties": {
+      "name": "P",
+      "attributes": {
+        "a": 1
+      }
+    }
+  },
+  "hist/strip-nothing-to-strip": {
+    "type": "Feature",
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "properties": {
+      "name": "P"
+    }
   }
 }

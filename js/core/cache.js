@@ -1122,6 +1122,15 @@
     };
   }
 
+  // Feature exports (as opposed to session save / autosave / undo, which keep
+  // it) never carry a feature's Unmerge history (properties._mergedFrom — see
+  // js/core/merge.js): it holds full clones of the original features. CSV, KML
+  // and Shapefile already write only a fixed set of attribute columns, so they
+  // can't include it; this covers the one export that writes whole features.
+  function _stripMergeHistory(feat) {
+    return (App.mergeHistory && App.mergeHistory.stripHistory) ? App.mergeHistory.stripHistory(feat) : feat;
+  }
+
   // ---- Export: JSON (Features only) ----
 
   function exportFeaturesOnly(scope) {
@@ -1130,10 +1139,10 @@
       var state = {
         version: SCHEMA_VERSION,
         exportType: "features",
-        points: arrs.points,
-        lines: arrs.lines,
-        routes: arrs.routes,
-        polygons: arrs.polygons,
+        points: arrs.points.map(_stripMergeHistory),
+        lines: arrs.lines.map(_stripMergeHistory),
+        routes: arrs.routes.map(_stripMergeHistory),
+        polygons: arrs.polygons.map(_stripMergeHistory),
         labels: arrs.labels,
         bufferRadius:      (App.featureSettings && App.featureSettings.bufferRadius      != null) ? App.featureSettings.bufferRadius      : 0.5,
         lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0.5,

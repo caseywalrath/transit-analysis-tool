@@ -6,7 +6,10 @@
 // Phase 1 covers unique, stable per-type feature IDs; Phase 2 covers the merge
 // engine, dialog, polygons and lines (including a pass through the real UI:
 // Ctrl+click rows, right-click, dialog, Escape/Merge); Phase 3 covers routes
-// (street-routed connectors via a mocked OSRM), points and line + route.
+// (street-routed connectors via a mocked OSRM), points and line + route;
+// Phase 4a covers Unmerge (history recorded on the survivor, exact restore for
+// every merge kind, nested history, edited-since warning, best-effort stop
+// reversal, reload persistence, exports omitting `_mergedFrom`).
 // Later phases append
 // more `await check(...)` groups in the "ASSERTIONS" section below.
 // Screenshots of the dialog are written to $MERGE_SHOT_DIR (default: os tmpdir).
@@ -740,6 +743,315 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector(".fm-dialog"));
     const ui = await page.evaluate(() => ({ n: App.routes.length, verts: App.routes[0].geometry.coordinates.length, wps: App.routes[0].properties.waypoints.length }));
     check("clicking Merge in the dialog routes the connector, merges and closes", ui.n === 2 && ui.verts === 5 && ui.wps === 4, ui);
+
+    // ================= Phase 4a - Unmerge =================
+    console.log("\n# Phase 4a - Unmerge");
+    // Arrays sorted by ID: an unmerge appends the other originals to the ends of
+    // their arrays, so compare the set of features, not their positions.
+    const sortedSnap = (pg) => pg.evaluate(() => {
+      const s = (arr, k) => arr.slice().sort((a, b) => a.properties[k] - b.properties[k]);
+      return JSON.stringify({ l: s(App.lines, "lineIdx"), r: s(App.routes, "routeIdx"), p: s(App.polygons, "polyIdx"), pt: s(App.points, "pointIdx") });
+    });
+    const hist = (pg, type, idx) => pg.evaluate(([t, i]) => {
+      const f = { line: App.lines, route: App.routes, point: App.points, polygon: App.polygons }[t][i];
+      const h = f && f.properties._mergedFrom;
+      return h ? { version: h.version, at: h.at, survivorRef: h.survivorRef, nOrig: h.originals.length,
+        origKinds: h.originals.map((o) => o.type + ":" + o.feature.properties.name), stops: h.stops, fp: typeof h.resultFingerprint,
+        nested: h.originals.map((o) => !!o.feature.properties._mergedFrom) } : null;
+    }, [type, idx]);
+    const trackPushes = () => page.evaluate(() => { window.__pushes = 0; if (!App.undo.__wrapped) { var o = App.undo.push; App.undo.push = function () { window.__pushes++; return o.apply(this, arguments); }; App.undo.__wrapped = true; } });
+
+    // -- Lines: record + exact restore + single undo step --
+    osrm.mode = "ok";
+    await setFixture(page, lineFx());
+    before = await sortedSnap(page);
+    const beforeRaw = await snapshot(page);
+    res = await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    const merged1 = await snapshot(page);
+    let h = await hist(page, "line", 0);
+    check("merge records _mergedFrom v1 on the survivor (ISO time, survivor ref, 3 originals incl. the primary, fingerprint)",
+      res.ok && h && h.version === 1 && /^\d{4}-\d\d-\d\dT/.test(h.at) && h.survivorRef.type === "line" && h.survivorRef.id === 12 &&
+      h.nOrig === 3 && h.origKinds.includes("line:Line X") && h.origKinds.includes("line:Line Y") && h.origKinds.includes("line:Line Z") && h.fp === "string", h);
+    check("originals were cloned pre-merge: the survivor's own clone is not recursive and has no history",
+      await page.evaluate(() => { var o = App.lines[0].properties._mergedFrom.originals; return o.every((x) => !x.feature.properties._mergedFrom) && JSON.stringify(o).indexOf("_mergedFrom") < 0; }));
+    check("stop links changed by the merge are recorded with pre/post lists (2 stops: 41, 42)",
+      h.stops.length === 2 && h.stops.map((x) => x.pointId).sort().join() === "41,42", h.stops);
+    check("only the survivor carries history (other lines do not)", await page.evaluate(() => App.lines.filter((l) => l.properties._mergedFrom).length === 1));
+    check("Unmerge is offered (hasHistory) for the survivor only", await page.evaluate(() => App.merge.hasHistory("line", 0) && !App.merge.hasHistory("line", 1) && !App.merge.hasHistory("point", 0)));
+
+    p0 = await pushes();
+    res = await page.evaluate(() => App.merge.unmerge("line", 0));
+    const um = await page.evaluate(() => ({ names: App.lines.map((l) => l.properties.name), sel: App.getSelectedFeatures(),
+      status: (document.getElementById("status") || {}).textContent || "", hasH: App.lines.some((l) => l.properties._mergedFrom) }));
+    check("unmerge restores the exact pre-merge lines, stops and IDs (sorted compare)", res.ok && (await sortedSnap(page)) === before, res);
+    check("survivor replaced in place (position 0), others appended in selection order",
+      um.names.join() === "Line Y,Line W,Line X,Line Z" && res.survivorIndex === 0 && res.restored.length === 2, um.names);
+    check("restored survivor is selected; status says 'Unmerged 'Line Y' into 3 features — Ctrl+Z to undo'",
+      um.sel.length === 1 && um.sel[0].type === "line" && um.sel[0].index === 0 && um.status === "Unmerged 'Line Y' into 3 features — Ctrl+Z to undo", { sel: um.sel, status: um.status });
+    check("no history left on any restored line (they had none before)", !um.hasH);
+    check("unmerge took exactly ONE undo snapshot", (await pushes()) - p0 === 1);
+    await page.evaluate(() => App.undo.undo());
+    check("Ctrl+Z after Unmerge brings the merged line back (with its history)", (await snapshot(page)) === merged1);
+    await page.evaluate(() => App.undo.undo());
+    check("a second Ctrl+Z undoes the merge itself", (await snapshot(page)) === beforeRaw);
+    // redo keeps history through the snapshot round trip
+    await page.evaluate(() => { App.undo.redo(); });
+    check("undo/redo snapshots keep _mergedFrom", await page.evaluate(() => !!App.lines[0].properties._mergedFrom));
+    await page.evaluate(() => { App.undo.undo(); });
+
+    // -- Polygons --
+    await setFixture(page, { polygons: [
+      { name: "Poly A", id: 21, rings: [P1], attrs: { notes: "west" } }, { name: "Poly B", id: 22, rings: [P2], attrs: { notes: "east", group: "g" } },
+      { name: "Poly C", id: 23, rings: [P3] } ] });
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("polygon", [0, 1], 0));
+    h = await hist(page, "polygon", 0);
+    check("polygon merge records history (2 originals, no stops)", h && h.nOrig === 2 && h.stops.length === 0 && h.survivorRef.id === 21, h);
+    res = await page.evaluate(() => App.merge.unmerge("polygon", 0));
+    check("polygon unmerge restores both polygons exactly (incl. the un-unioned ring)", res.ok && (await sortedSnap(page)) === before);
+
+    // -- Routes (street-routed connector) --
+    osrm.mode = "ok";
+    await setFixture(page, routeFx());
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("route", [0, 1], 0));
+    h = await hist(page, "route", 0);
+    check("route merge records history with both originals' full geometry and the stop changes",
+      h && h.nOrig === 2 && h.stops.length === 2 && await page.evaluate(() => App.routes[0].properties._mergedFrom.originals.every((o) => o.feature.geometry.coordinates.length === 2 && o.feature.properties.waypoints.length === 2)), h);
+    res = await page.evaluate(() => App.merge.unmerge("route", 0));
+    check("route unmerge restores both routes (un-routed geometry, waypoints) and every stop link exactly", res.ok && (await sortedSnap(page)) === before, res);
+
+    // -- Points --
+    await setFixture(page, pointFx());
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("point", [0, 1], 0));
+    h = await hist(page, "point", 0);
+    check("point merge records history (2 originals, no stop repoints — no route moved)", h && h.nOrig === 2 && h.stops.length === 0, h);
+    res = await page.evaluate(() => App.merge.unmerge("point", 0));
+    check("point unmerge brings the removed stop back with its own attributes and links", res.ok && (await sortedSnap(page)) === before, res);
+
+    // -- Line + route, route primary (survivor is the first LINE, a different feature) --
+    await setFixture(page, mixFx());
+    await page.evaluate(() => { App.lines[0].properties.colorSeq = 76; App.routes[0].properties.colorSeq = 77; });
+    before = await sortedSnap(page);
+    await page.evaluate((refs) => App.merge.run("linemix", refs, { type: "route", index: 0 }), mixRefs);
+    h = await hist(page, "line", 0);
+    check("line+route merge (route primary): survivor is a LINE (id 11); originals include the route, both lines; survivor clone kept separately",
+      h && h.survivorRef.type === "line" && h.survivorRef.id === 11 && h.nOrig === 3 && h.origKinds.includes("route:Route Q") && h.origKinds.includes("line:Line X") && h.origKinds.includes("line:Line Z"), h);
+    res = await page.evaluate(() => App.merge.unmerge("line", 0));
+    const lm = await page.evaluate(() => ({ lines: App.lines.map((l) => l.properties.name), routes: App.routes.map((r) => r.properties.name), q: App.routes[0] && App.routes[0].properties }));
+    check("line+route unmerge: Line X back in place with its own name/color, Route Q back as a route with its appearance overrides",
+      res.ok && lm.lines[0] === "Line X" && lm.routes.join() === "Route Q" && lm.q._opacity === 40 && lm.q.color === "#ff0000" && lm.q.colorSeq === 77, lm);
+    check("line+route unmerge restores everything exactly (sorted compare), stops included", (await sortedSnap(page)) === before);
+
+    // -- Nested: merge, merge again, unmerge goes back ONE level --
+    await setFixture(page, lineFx());
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("line", [1, 2], 1));          // Line Y + Line Z -> M1 (Y)
+    const m1 = await page.evaluate(() => App.lines.map((l) => l.properties.name));
+    await page.evaluate(() => { var ix = App.lines.findIndex((l) => l.properties.name === "Line Y"), iX = App.lines.findIndex((l) => l.properties.name === "Line X"); return App.merge.run("line", [ix, iX], ix); }); // M1 + Line X -> M2
+    const afterM2 = await page.evaluate(() => App.lines.map((l) => l.properties.name));
+    h = await hist(page, "line", await page.evaluate(() => App.lines.findIndex((l) => l.properties.name === "Line Y")));
+    check("second merge keeps the first merge's history inside its original (nested, not stripped)", h && h.nOrig === 2 && h.nested.some(Boolean), h);
+    const i2 = await page.evaluate(() => App.lines.findIndex((l) => l.properties.name === "Line Y"));
+    res = await page.evaluate((i) => App.merge.unmerge("line", i), i2);
+    let h1 = await hist(page, "line", await page.evaluate(() => App.lines.findIndex((l) => l.properties.name === "Line Y")));
+    check("unmerging the second merge goes back exactly one level: the first merge result is back WITH its history",
+      res.ok && h1 && h1.nOrig === 2 && h1.origKinds.join() !== "" && await page.evaluate(() => App.lines.some((l) => l.properties.name === "Line X") && App.lines.length === 3), { h1, afterM2 });
+    const i1 = await page.evaluate(() => App.lines.findIndex((l) => l.properties.name === "Line Y"));
+    res = await page.evaluate((i) => App.merge.unmerge("line", i), i1);
+    check("unmerging again restores the original four lines exactly", res.ok && (await sortedSnap(page)) === before);
+
+    // -- Dialog, edited-since warning, menus --
+    console.log("\n# Phase 4a - dialog + menus");
+    await setFixture(page, lineFx());
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    await page.evaluate(() => App.clearSelection && App.clearSelection());
+    const fresh = await page.evaluate(() => App.merge.describeUnmerge("line", 0));
+    check("describeUnmerge: not edited right after the merge; lists 3 originals; 2 stop records", fresh.ok && !fresh.edited && fresh.originals.length === 3 && fresh.stopCount === 2, fresh);
+    await page.evaluate(() => App.merge.openUnmergeDialog("line", 0));
+    await page.waitForSelector(".fm-dialog");
+    let dtxt = await page.locator(".fm-dialog").textContent();
+    check("unmerge dialog: title, what comes back (names + types), 'returns to what it was', footer note; no warning when unedited",
+      (await page.locator("#fmTitle").textContent()) === "Unmerge 'Line Y'" && /Line X \(line\)/.test(dtxt) && /Line Z \(line\)/.test(dtxt) &&
+      /returns to what it was before merging/.test(dtxt) && /Ctrl\+Z until you reload/.test(dtxt) && (await page.locator(".fm-note-warn").count()) === 0, dtxt.slice(0, 500));
+    check("unmerge dialog uses the shared .fm-* shell (overlay + dialog + actions), focus lands on Unmerge when nothing is lost",
+      await page.evaluate(() => !!document.querySelector(".fm-overlay .fm-dialog .rf-weights-modal-actions") && document.activeElement && document.activeElement.textContent === "Unmerge"));
+    p0 = await pushes(); const snapNow = await snapshot(page);
+    await page.keyboard.press("Escape");
+    check("Escape closes the unmerge dialog and changes nothing", await page.evaluate(() => !document.querySelector(".fm-dialog")) && (await snapshot(page)) === snapNow && (await pushes()) === p0);
+    await page.evaluate(() => App.merge.openUnmergeDialog("line", 0));
+    await page.waitForSelector(".fm-dialog");
+    await page.locator(".fm-dialog .rf-btn-sm", { hasText: "Cancel" }).click();
+    check("Cancel closes it and changes nothing", await page.evaluate(() => !document.querySelector(".fm-dialog")) && (await snapshot(page)) === snapNow);
+    // edit the merged line: rename + nudge a vertex + change an attribute
+    await page.evaluate(() => { var l = App.lines[0]; l.properties.name = "Renamed merged"; l.geometry.coordinates[1] = [l.geometry.coordinates[1][0], l.geometry.coordinates[1][1] + 0.0001]; l.properties.attributes.mode = "Rail"; });
+    check("describeUnmerge: edited = true after renaming / reshaping / changing attributes", (await page.evaluate(() => App.merge.describeUnmerge("line", 0))).edited === true);
+    await page.evaluate(() => App.merge.openUnmergeDialog("line", 0));
+    await page.waitForSelector(".fm-dialog");
+    const warn = await page.locator(".fm-note-warn").allTextContents();
+    check("edited since merging: amber warning says shape, attributes and name edits will be lost; Cancel is focused",
+      warn.length === 1 && /edited since it was merged/.test(warn[0]) && /shape, attributes, name/.test(warn[0]) && /lost/.test(warn[0]) &&
+      await page.evaluate(() => document.activeElement && document.activeElement.textContent === "Cancel"), warn);
+    await page.screenshot({ path: join(SHOT_DIR, "unmerge-dialog-edited.png") });
+    await page.locator(".fm-dialog .rf-action-primary").click();
+    check("clicking Unmerge in the dialog unmerges (3 lines + W) and closes it",
+      await page.evaluate(() => !document.querySelector(".fm-dialog") && App.lines.length === 4 && App.lines.every((l) => !l.properties._mergedFrom)));
+    check("the edits made since merging are gone: the line is exactly the pre-merge Line Y again",
+      await page.evaluate(() => { var y = App.lines.filter((l) => l.properties.name === "Line Y")[0]; return y.geometry.coordinates.length === 2 && y.properties.attributes.mode === "" ; }));
+
+    // Features panel menu: Unmerge… only for a single feature WITH history
+    await setFixture(page, lineFx());
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    await page.evaluate(() => App.clearSelection && App.clearSelection());
+    await page.locator("#fp-tab-features").getByText("G", { exact: true }).first().click(); // the merged line sits in group "G" (collapsed)
+    await row("Line Y").click({ button: "right" });
+    let menu = await page.locator("#fp-context-menu button").allTextContents();
+    check("Features panel menu: Unmerge… appears for the merged line", menu.some((t) => t.trim() === "Unmerge…"), menu);
+    await page.evaluate(() => { var m = document.getElementById("fp-context-menu"); if (m) m.remove(); });
+    await row("Line W").click({ button: "right" });
+    menu = await page.locator("#fp-context-menu button").allTextContents();
+    check("Features panel menu: no Unmerge… for a line without history", !menu.some((t) => /Unmerge/.test(t)), menu);
+    await page.evaluate(() => { var m = document.getElementById("fp-context-menu"); if (m) m.remove(); });
+    await row("Line Y").click();
+    await row("Line W").click({ modifiers: ["Control"] });
+    await row("Line Y").click({ button: "right" });
+    menu = await page.locator("#fp-context-menu button").allTextContents();
+    check("Features panel menu: no Unmerge… on a multi-selection", !menu.some((t) => /Unmerge/.test(t)), menu);
+    await page.evaluate(() => { var m = document.getElementById("fp-context-menu"); if (m) m.remove(); });
+    await row("Line Y").click();
+    await row("Line Y").click({ button: "right" });
+    await page.locator("#fp-context-menu button", { hasText: "Unmerge" }).click();
+    await page.waitForSelector(".fm-dialog");
+    check("the menu item opens the unmerge dialog", (await page.locator("#fmTitle").textContent()) === "Unmerge 'Line Y'");
+    await page.keyboard.press("Escape");
+
+    // Map right-click menu (editing.js)
+    const mapMenu = async (lngLat) => {
+      await page.evaluate(([c]) => { App.map.jumpTo({ center: c, zoom: 15 }); }, [lngLat]);
+      await page.waitForTimeout(500);
+      const pt = await page.evaluate(([c]) => { var p = App.map.project(c); var r = App.map.getCanvas().getBoundingClientRect(); return { x: r.left + p.x, y: r.top + p.y }; }, [lngLat]);
+      await page.mouse.click(pt.x, pt.y, { button: "right" });
+      await page.waitForTimeout(200);
+      const t = await page.locator("#fp-context-menu button").allTextContents();
+      await page.evaluate(() => { var m = document.getElementById("fp-context-menu"); if (m) m.remove(); });
+      return t;
+    };
+    const mergedMid = await page.evaluate(() => { var c = App.lines[0].geometry.coordinates; return [(c[0][0] + c[1][0]) / 2, (c[0][1] + c[1][1]) / 2]; }); // mid-segment, not a vertex
+    let mm = await mapMenu(mergedMid);
+    check("map right-click menu: Unmerge… appears for the merged line", mm.some((t) => t.trim() === "Unmerge…") && mm.some((t) => /Attributes/.test(t)), mm);
+    mm = await mapMenu([-104.495, 38.50]);
+    check("map right-click menu: no Unmerge… for a line without history", mm.length > 0 && !mm.some((t) => /Unmerge/.test(t)), mm);
+
+    // -- Stops: best-effort reversal when a stop was edited since the merge --
+    console.log("\n# Phase 4a - stops");
+    await setFixture(page, lineFx());
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    const stopsAfterMerge = await page.evaluate(() => App.points.map((p) => p.properties.attributes.associatedRoutes.map((r) => r.featureType + ":" + r.featureId)));
+    check("after the merge, stops 1 and 2 point at the merged line (12), stop 3 at W (14)",
+      JSON.stringify(stopsAfterMerge) === JSON.stringify([["line:12"], ["line:12"], ["line:14"]]), stopsAfterMerge);
+    // stop 1 (was [11,12]) gains a link to W; stop 2 (was [13]) gains a link to W; stop 3 untouched
+    await page.evaluate(() => {
+      [0, 1].forEach((i) => App.points[i].properties.attributes.associatedRoutes.push({ featureType: "line", featureId: 14, name: "Line W" }));
+    });
+    await page.evaluate(() => App.merge.unmerge("line", 0));
+    const stopsRestored = await page.evaluate(() => App.points.map((p) => p.properties.attributes.associatedRoutes.map((r) => r.featureType + ":" + r.featureId + ":" + r.name)));
+    check("edited stop 1 (was [X,Y]): survivor link kept (was linked before), new W link kept, removed X link re-added, names refreshed",
+      JSON.stringify(stopsRestored[0]) === JSON.stringify(["line:12:Line Y", "line:14:Line W", "line:11:Line X"]), stopsRestored[0]);
+    check("edited stop 2 (was [Z]): survivor link dropped (wasn't linked before), new W link kept, Z link re-added",
+      JSON.stringify(stopsRestored[1]) === JSON.stringify(["line:14:Line W", "line:13:Line Z"]), stopsRestored[1]);
+    check("untouched stop 3 is identical", JSON.stringify(stopsRestored[2]) === JSON.stringify(["line:14:Line W"]), stopsRestored[2]);
+    // a stop deleted since the merge is simply skipped
+    await setFixture(page, lineFx());
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    await page.evaluate(() => { App.points.splice(1, 1); });
+    res = await page.evaluate(() => App.merge.unmerge("line", 0));
+    check("a stop deleted since the merge does not break unmerge", res.ok && await page.evaluate(() => App.points.length === 2));
+
+    // -- Persistence: history survives a page reload --
+    console.log("\n# Phase 4a - persistence");
+    await setFixture(page, lineFx());
+    before = await sortedSnap(page);
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    await page.evaluate(async () => { App.cache.save(); await new Promise((r) => setTimeout(r, 900)); });
+    await page.reload({ waitUntil: "load" });
+    await page.waitForFunction("window.App && window.App.map && window.App.map.loaded() && App.cache && App.lines.length > 0", { timeout: 30000 });
+    await trackPushes();
+    check("after a reload the survivor still has its merge history", await page.evaluate(() => App.lines.length === 2 && App.merge.hasHistory("line", 0) && App.lines[0].properties._mergedFrom.originals.length === 3));
+    res = await page.evaluate(() => App.merge.unmerge("line", 0));
+    check("unmerge after a reload restores the exact pre-merge features, IDs and stops", res.ok && (await sortedSnap(page)) === before, res);
+    check("... as one undo step", (await pushes()) === 1);
+    check("... and no feature ID collision (new feature gets a fresh ID)", await page.evaluate(() => {
+      App.addLineFromCoords([[-104.3, 38.3], [-104.2, 38.3]]);
+      var ids = App.lines.map((l) => l.properties.lineIdx); return new Set(ids).size === ids.length;
+    }));
+
+    // -- Exports omit _mergedFrom; session / autosave / undo keep it --
+    console.log("\n# Phase 4a - exports");
+    await setFixture(page, Object.assign(lineFx(), {}));
+    await page.evaluate(() => App.merge.run("line", [0, 1, 2], 1));
+    await page.evaluate(() => {
+      window.__blobs = [];
+      if (!window.__origCreate) { window.__origCreate = URL.createObjectURL; }
+      URL.createObjectURL = function (b) { window.__blobs.push(b); return window.__origCreate.call(URL, b); };
+    });
+    const grabBlobs = async (fn) => page.evaluate(async (which) => {
+      window.__blobs.length = 0;
+      App.cache[which]("all");
+      await new Promise((r) => setTimeout(r, 1200));
+      const out = [];
+      for (const b of window.__blobs) {
+        if (/zip/.test(b.type) || b.type === "") {
+          const z = await JSZip.loadAsync(b);
+          for (const name of Object.keys(z.files)) out.push({ name, text: await z.files[name].async("string") });
+        } else out.push({ name: b.type, text: await b.text() });
+      }
+      return out;
+    }, fn);
+    const leak = (files) => files.some((f) => /_mergedFrom|originals|resultFingerprint/.test(f.text));
+    const fJson = await grabBlobs("exportFeaturesOnly");
+    check("JSON (Features only) export: still has the merged line, omits _mergedFrom", fJson.length === 1 && /Line Y/.test(fJson[0].text) && !leak(fJson), fJson.map((f) => f.text.length));
+    const fCsv = await grabBlobs("exportCSV");
+    check("CSV export omits _mergedFrom (and has the row)", fCsv.length === 1 && /Line Y/.test(fCsv[0].text) && !leak(fCsv));
+    const fKml = await grabBlobs("exportKML");
+    check("KML export omits _mergedFrom (and has the placemark)", fKml.length === 1 && /Line Y/.test(fKml[0].text) && !leak(fKml));
+    const fShp = await grabBlobs("exportSHP");
+    check("Shapefile/DBF export omits _mergedFrom (zip has .shp/.dbf)", fShp.some((f) => /\.dbf$/.test(f.name)) && !leak(fShp), fShp.map((f) => f.name));
+    const fSess = await grabBlobs("exportToFile");
+    check("Session JSON export KEEPS _mergedFrom", fSess.length === 1 && /_mergedFrom/.test(fSess[0].text) && /originals/.test(fSess[0].text));
+    check("autosave state (light) and full state keep it", await page.evaluate(() => JSON.stringify(App.cache.collectState("light")).indexOf("_mergedFrom") > 0 && JSON.stringify(App.cache.collectState("full")).indexOf("_mergedFrom") > 0) &&
+      await page.evaluate(() => (localStorage.getItem("mat-session") || "").indexOf("_mergedFrom") > 0));
+    await page.evaluate(() => { URL.createObjectURL = window.__origCreate; });
+
+    // -- Display / copy paths --
+    console.log("\n# Phase 4a - display + copy paths");
+    const leaks = await page.evaluate(async () => {
+      var out = {};
+      App.selectFeature("line", 0);
+      await new Promise((r) => setTimeout(r, 200));
+      ["lines", "routes", "points", "polygons", "hl-feature"].forEach(function (id) {
+        var src = App.map.getSource(id);
+        out[id] = src ? JSON.stringify(src.serialize().data).indexOf("_mergedFrom") : "no source";
+      });
+      var f = App.lines[0];
+      App.openAttrPopup("line", 0, f);
+      await new Promise((r) => setTimeout(r, 200));
+      out.attrPopup = (document.getElementById("fp-attr-popup") || { textContent: "" }).textContent.indexOf("rigin") + "/" + (document.getElementById("fp-attr-popup") || { innerHTML: "" }).innerHTML.indexOf("_mergedFrom");
+      App.closeAttrPopup();
+      App.duplicateLine(0);
+      out.dup = App.lines[App.lines.length - 1].properties._mergedFrom === undefined;
+      out.dupOrigHasHist = !!App.lines[0].properties._mergedFrom;
+      return out;
+    });
+    check("map sources (lines, hl-feature, ...) carry no _mergedFrom", [leaks.lines, leaks.routes, leaks.points, leaks.polygons, leaks["hl-feature"]].every((v) => v === -1 || v === "no source"), leaks);
+    check("the attribute popup shows nothing about merge history", leaks.attrPopup === "-1/-1", leaks.attrPopup);
+    check("Duplicate does not copy merge history (the original keeps it)", leaks.dup === true && leaks.dupOrigHasHist === true, leaks);
+    await page.evaluate(() => App.openAttributeSummary && App.openAttributeSummary());
+    await page.waitForTimeout(300);
+    check("Attribute Summary shows nothing about merge history", await page.evaluate(() => document.body.innerText.indexOf("_mergedFrom") < 0 && document.body.innerText.indexOf("resultFingerprint") < 0));
+    await page.keyboard.press("Escape");
+
 
     // ================= END ASSERTIONS =================
   } finally {

@@ -36,7 +36,7 @@
   function _withResolvedColor(featureType, arr) {
     return arr.map(function (f) {
       var props = {};
-      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
       props.resolvedColor = App.resolveFeatureColor(featureType, f);
       return { type: "Feature", properties: props, geometry: f.geometry };
     });
@@ -590,7 +590,7 @@
                 type: "FeatureCollection",
                 features: App.polygons.map(function (f) {
                   var props = {};
-                  for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+                  for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
                   props.resolvedColor = App.resolveFeatureColor("polygon", f);
                   return {
                     type: "Feature",
@@ -831,10 +831,7 @@
 
       if (typeof App.showContextMenu === "function") {
         var isHidden = !!feature.properties.hidden;
-        App.showContextMenu(
-          e.originalEvent.clientX,
-          e.originalEvent.clientY,
-          [
+        var menuItems = [
             { label: "Attributes", action: function () {
                 if (typeof App.openAttrPopup === "function") App.openAttrPopup(featureType, featureIndex, feature);
             }},
@@ -842,6 +839,10 @@
                 var dupFns = { point: App.duplicatePoint, line: App.duplicateLine, route: App.duplicateRoute, polygon: App.duplicatePolygon };
                 var fn = dupFns[featureType];
                 if (typeof fn === "function") fn(featureIndex);
+            }},
+            // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
+            { label: "Unmerge\u2026", hidden: !(App.merge && App.merge.hasHistory(featureType, featureIndex)), action: function () {
+                App.merge.openUnmergeDialog(featureType, featureIndex);
             }},
             { label: isHidden ? "Show" : "Hide", action: function () {
                 feature.properties.hidden = !feature.properties.hidden;
@@ -859,7 +860,11 @@
                 if (typeof fn === "function") fn(featureIndex);
                 if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
             }}
-          ]
+        ];
+        App.showContextMenu(
+          e.originalEvent.clientX,
+          e.originalEvent.clientY,
+          menuItems.filter(function (o) { return !o.hidden; })
         );
       }
     });

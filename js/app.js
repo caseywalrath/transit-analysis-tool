@@ -456,7 +456,7 @@
   function _withResolvedColorForOffset(featureType, arr) {
     return arr.filter(function (f) { return !f.properties.hidden; }).map(function (f) {
       var props = {};
-      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
       props.resolvedColor = App.resolveFeatureColor(featureType, f);
       return { type: "Feature", properties: props, geometry: f.geometry };
     });

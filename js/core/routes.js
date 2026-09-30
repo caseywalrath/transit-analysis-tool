@@ -124,7 +124,7 @@
       type: "FeatureCollection",
       features: routes.filter(function (r) { return !r.properties.hidden; }).map(function (r) {
         var props = {};
-        for (var k in r.properties) { if (Object.prototype.hasOwnProperty.call(r.properties, k)) props[k] = r.properties[k]; }
+        for (var k in r.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(r.properties, k)) props[k] = r.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("route", r);
         return { type: "Feature", properties: props, geometry: r.geometry };
       })

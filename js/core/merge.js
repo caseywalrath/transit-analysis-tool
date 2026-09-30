@@ -1,6 +1,8 @@
 // js/core/merge.js
 // Feature Merge (docs/feature-merge-plan.md). Phases 2-3: lines, polygons,
 // routes, points ("combine stops") and line + route (result is a Line).
+// Phase 4a: every merge records its undo-independent history on the survivor
+// (properties._mergedFrom) so App.merge.unmerge() can split it apart later.
 //
 // Three layers, each usable on its own:
 //   1. Pure helpers (no turf / DOM / map — loaded by the golden harness):
@@ -9,6 +11,8 @@
 //                         connector assembly)
 //        App.mergeAttrs — hasValue, fieldHasValue, mergeAttributes,
 //                         reversalWarnings
+//        App.mergeHistory — fingerprintFeature, stopChanges, restoreStopRefs,
+//                         validateHistory, stripHistory (Unmerge support)
 //   2. Per-type STRATEGIES (line, route, point, polygon, linemix). A
 //      strategy's analyze() inspects a selection SYNCHRONOUSLY and cheaply and
 //      returns a "plan": errors / warnings / summary / discarded list, the
@@ -16,8 +20,8 @@
 //      and optionally prepare(ctx) — an async step that runs only when the
 //      user clicks Merge (routes use it to street-route connectors). The undo
 //      snapshot is taken after prepare() finishes, right before apply().
-//   3. App.merge — run() (the undoable operation, returns a Promise) and
-//      openDialog() (the modal).
+//   3. App.merge — run() (the undoable operation, returns a Promise),
+//      openDialog() (the modal), and unmerge() / openUnmergeDialog() (Phase 4a).
 //
 // Refs: a selection member is { type, index } (indices are per type, so a
 // line + route selection addresses two arrays). Single-type callers may still
@@ -35,7 +39,7 @@
 //   App.foldAnalysisUnion (polygons, turf), App.ensurePointWalksheds /
 //   App.dropPointWalksheds / App.refreshBuffers (points) — all only touched
 //   inside functions, never at load time.
-// Exports: App.mergeGeom, App.mergeAttrs, App.merge
+// Exports: App.mergeGeom, App.mergeAttrs, App.mergeHistory, App.merge
 
 (function () {
   var App = window.App = window.App || {};
@@ -492,6 +496,119 @@
   };
 
   /* =====================================================================
+     Pure merge-history helpers (Phase 4a — Unmerge)
+     ===================================================================== */
+
+  // JSON with sorted object keys, so two structurally equal values always
+  // stringify identically regardless of key insertion order.
+  function stableStringify(v) {
+    if (v === undefined) return "null";
+    if (v === null || typeof v !== "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+    return "{" + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; })
+      .map(function (k) { return JSON.stringify(k) + ":" + stableStringify(v[k]); }).join(",") + "}";
+  }
+
+  // Cheap "has this feature been edited since the merge?" string: name, color,
+  // geometry, route waypoints and attributes (never `_mergedFrom` itself, nor
+  // visibility / appearance overrides).
+  function fingerprintFeature(f) {
+    var p = (f && f.properties) || {};
+    return stableStringify([p.name, p.color, f && f.geometry, p.waypoints, p.attributes]);
+  }
+
+  function refKey(r) { return r ? r.featureType + ":" + r.featureId : ""; }
+  function keysOf(list) { return (list || []).map(refKey).join("|"); }
+
+  // Stop-link changes a merge made. before / after: { pointId: associatedRoutes[] }
+  // (only points that had links). Returns [{ pointId, before, after }] for every
+  // point whose list differs at all (repoint, de-dupe or a refreshed cached name).
+  function stopChanges(before, after) {
+    var ids = {}, out = [];
+    Object.keys(before || {}).forEach(function (k) { ids[k] = 1; });
+    Object.keys(after || {}).forEach(function (k) { ids[k] = 1; });
+    Object.keys(ids).forEach(function (k) {
+      var b = (before || {})[k] || [], a = (after || {})[k] || [];
+      if (stableStringify(b) === stableStringify(a)) return;
+      out.push({ pointId: isNaN(Number(k)) ? k : Number(k), before: clone(b), after: clone(a) });
+    });
+    return out;
+  }
+
+  // Reverse one stop's merge-time change. rec = { before, after } (its list before
+  // the merge / right after it); current = its list now; survivorKey = "type:id"
+  // of the merged feature; names = optional { "type:id": name } refresh for the
+  // kept refs. If the list still has the post-merge links (compared by type + ID —
+  // cached names may drift) the pre-merge list comes back exactly. If the user
+  // edited it since: keep what is there, re-add the pre-merge refs the merge
+  // removed, and drop the survivor's ref only if it was not linked before the
+  // merge. De-duplicated; never throws.
+  function restoreStopRefs(rec, current, survivorKey, names) {
+    var before = Array.isArray(rec && rec.before) ? rec.before : [];
+    var after = Array.isArray(rec && rec.after) ? rec.after : [];
+    current = Array.isArray(current) ? current : [];
+    if (keysOf(current) === keysOf(after)) return clone(before);
+    var beforeKeys = {}, afterKeys = {}, seen = {}, out = [];
+    before.forEach(function (r) { beforeKeys[refKey(r)] = 1; });
+    after.forEach(function (r) { afterKeys[refKey(r)] = 1; });
+    function add(r) {
+      if (!r) return;
+      var k = refKey(r);
+      if (seen[k]) return;
+      seen[k] = 1;
+      var c = clone(r);
+      if (names && names[k] !== undefined) c.name = names[k];
+      out.push(c);
+    }
+    current.forEach(function (r) {
+      if (r && refKey(r) === survivorKey && !beforeKeys[survivorKey]) return;
+      add(r);
+    });
+    before.forEach(function (r) { if (!afterKeys[refKey(r)]) add(r); });
+    return out;
+  }
+
+  // "" when the history on a survivor is usable, else a short reason.
+  // survivor = { type, id }; idProps = { type: idPropName }.
+  function validateHistory(h, survivor, idProps) {
+    if (!h || typeof h !== "object") return "This feature has no merge history.";
+    if (h.version !== 1) return "This merge history was saved by a newer version and can't be read.";
+    if (!Array.isArray(h.originals) || h.originals.length < 2) return "The merge history is incomplete.";
+    if (!h.survivorRef || h.survivorRef.type !== survivor.type || h.survivorRef.id !== survivor.id) {
+      return "The merge history belongs to a different feature.";
+    }
+    var hits = 0;
+    for (var i = 0; i < h.originals.length; i++) {
+      var o = h.originals[i];
+      if (!o || !idProps[o.type] || !o.feature || !o.feature.properties || !o.feature.geometry) return "The merge history is incomplete.";
+      if (o.type === survivor.type && o.feature.properties[idProps[o.type]] === survivor.id) hits++;
+    }
+    if (hits !== 1) return "The merge history is incomplete.";
+    return "";
+  }
+
+  // A copy of a feature without its merge history (export paths). Returns the
+  // input itself when there is nothing to strip.
+  function stripHistory(f) {
+    if (!f || !f.properties || f.properties._mergedFrom === undefined) return f;
+    var props = {};
+    Object.keys(f.properties).forEach(function (k) { if (k !== "_mergedFrom") props[k] = f.properties[k]; });
+    var out = {};
+    Object.keys(f).forEach(function (k) { out[k] = f[k]; });
+    out.properties = props;
+    return out;
+  }
+
+  App.mergeHistory = {
+    stableStringify: stableStringify,
+    fingerprintFeature: fingerprintFeature,
+    stopChanges: stopChanges,
+    restoreStopRefs: restoreStopRefs,
+    validateHistory: validateHistory,
+    stripHistory: stripHistory
+  };
+
+  /* =====================================================================
      Shared strategy plumbing
      ===================================================================== */
 
@@ -877,16 +994,60 @@
     return st.analyze(toRefs(type, indices), toPrimary(type === "linemix" ? "line" : type, primary));
   }
 
+  // { pointId: associatedRoutes[] } for every stop that has route links — the
+  // before/after pair a merge's stop changes are diffed from.
+  function stopLinkLists() {
+    var out = {};
+    (App.points || []).forEach(function (pt) {
+      var list = pt.properties && pt.properties.attributes && pt.properties.attributes.associatedRoutes;
+      if (Array.isArray(list) && list.length) out[pt.properties.pointIdx] = clone(list);
+    });
+    return out;
+  }
+
+  // Re-render every type a merge / unmerge touched. Points also refresh their
+  // walkshed cache (removedPointIds: stops whose cached walkshed is now stale)
+  // and rebuild buffers from it; other types re-render through rerenderForType.
+  function rerenderTouched(touched, removedPointIds) {
+    touched.forEach(function (t) {
+      if (t === "point") {
+        if (typeof App.dropPointWalksheds === "function") App.dropPointWalksheds(removedPointIds || []);
+        if (typeof App.ensurePointWalksheds === "function") App.ensurePointWalksheds();
+        if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+        else if (typeof App.rerenderForType === "function") App.rerenderForType("point");
+      } else if (typeof App.rerenderForType === "function") App.rerenderForType(t);
+    });
+  }
+
   // The mutation. Everything here is synchronous: one undo snapshot, apply,
   // repoint, splice, re-render, housekeeping, select the survivor.
   function commit(st, plan) {
     var survivorFeat = getFeat(plan.survivor);
     var removedFeats = plan.removed.map(getFeat);
 
+    // Phase 4a history, captured BEFORE anything mutates: a deep clone of every
+    // selected feature (primary and survivor included — in a line + route merge
+    // with a route primary they are different features). A clone keeps whatever
+    // `_mergedFrom` its feature already carried, so Unmerge goes back one level.
+    var originals = plan.refs.map(function (r) { return { type: r.type, feature: clone(getFeat(r)) }; });
+    var survivorRef = { type: plan.survivor.type, id: survivorFeat.properties[ID_PROP[plan.survivor.type]] };
+    var stopsBefore = plan.repoint ? stopLinkLists() : null;
+
     if (App.undo && !App.undo.isRestoring()) App.undo.push(); // ONE snapshot for the whole merge
 
     plan.apply();
     var repoints = plan.repoint ? plan.repoint(survivorFeat) : [];
+
+    // Stamp the history on the survivor (replacing any older one — that older
+    // record lives on inside its own original's clone).
+    survivorFeat.properties._mergedFrom = {
+      version: 1,
+      at: new Date().toISOString(),
+      survivorRef: survivorRef,
+      originals: originals,
+      stops: plan.repoint ? stopChanges(stopsBefore, stopLinkLists()) : [],
+      resultFingerprint: fingerprintFeature(survivorFeat)
+    };
 
     // Splice the rest out directly (descending per type so earlier indices stay valid).
     var byType = {};
@@ -903,16 +1064,7 @@
     // Re-render every type that lost or gained a feature.
     var touched = [survivorType];
     Object.keys(byType).forEach(function (t) { if (touched.indexOf(t) < 0) touched.push(t); });
-    touched.forEach(function (t) {
-      if (t === "point") {
-        // Stops: drop removed points' walkshed cache entries, (re)compute any
-        // walkshed-flagged survivor, then rebuild buffers from the cache.
-        if (typeof App.dropPointWalksheds === "function") App.dropPointWalksheds(plan.removedIds.point || []);
-        if (typeof App.ensurePointWalksheds === "function") App.ensurePointWalksheds();
-        if (typeof App.refreshBuffers === "function") App.refreshBuffers();
-        else if (typeof App.rerenderForType === "function") App.rerenderForType("point");
-      } else if (typeof App.rerenderForType === "function") App.rerenderForType(t);
-    });
+    rerenderTouched(touched, plan.removedIds.point);
     if (typeof App.onFeatureDelete === "function") App.onFeatureDelete(); // exit edit, clear selection, refresh panel, notify, save
     if (typeof App.selectFeature === "function") App.selectFeature(survivorType, newIndex);
 
@@ -957,6 +1109,95 @@
   }
 
   /* =====================================================================
+     Unmerge (Phase 4a)
+     ===================================================================== */
+
+  function getHistory(type, index) {
+    var f = arrayFor(type)[index];
+    var h = f && f.properties && f.properties._mergedFrom;
+    return h && typeof h === "object" ? h : null;
+  }
+
+  // Does this feature carry merge history (is "Unmerge…" offered)?
+  function hasHistory(type, index) { return !!ID_PROP[type] && !!getHistory(type, index); }
+
+  function survivorOf(type, index) {
+    var f = arrayFor(type)[index];
+    return { type: type, id: f && f.properties ? f.properties[ID_PROP[type]] : undefined };
+  }
+
+  // What Unmerge would do, without doing it (the dialog's content). Returns
+  // { ok, errors, survivorName, originals: [{type, name, inPlace}], edited, stopCount }.
+  function describeUnmerge(type, index) {
+    var f = arrayFor(type)[index], h = getHistory(type, index);
+    var why = f ? validateHistory(h, survivorOf(type, index), ID_PROP) : "That feature could not be found.";
+    if (why) return { ok: false, errors: [why], survivorName: featName(f, ""), originals: [], edited: false, stopCount: 0 };
+    var sid = h.survivorRef.id;
+    return {
+      ok: true, errors: [], survivorName: featName(f, TYPE_LABEL[type] + " " + (index + 1)),
+      originals: h.originals.map(function (o) {
+        return { type: o.type, name: featName(o.feature, TYPE_LABEL[o.type]),
+                 inPlace: o.type === type && o.feature.properties[ID_PROP[o.type]] === sid };
+      }),
+      edited: fingerprintFeature(f) !== h.resultFingerprint,
+      stopCount: (h.stops || []).length
+    };
+  }
+
+  // The undoable operation. Replaces the merged feature (same array position)
+  // with the clone of its own pre-merge original, appends the other originals to
+  // the ends of their type arrays (their IDs were never reissued, so they come
+  // back unchanged — ensureFeatureIds is only a safety net), then reverses the
+  // stop-link changes. Synchronous. Returns { ok, survivorType, survivorIndex,
+  // restored: [{type, index}], message } | { ok:false, errors }.
+  function unmerge(type, index) {
+    var info = describeUnmerge(type, index);
+    if (!info.ok) return { ok: false, errors: info.errors };
+    var feat = arrayFor(type)[index];
+    var h = clone(feat.properties._mergedFrom);
+    var sid = h.survivorRef.id, mergedName = info.survivorName;
+
+    if (App.undo && !App.undo.isRestoring()) App.undo.push(); // ONE snapshot
+
+    var restored = [], touched = [type], survivorIdx = index, keptName = mergedName;
+    h.originals.forEach(function (o) {
+      var isSurvivor = o.type === type && o.feature.properties[ID_PROP[o.type]] === sid;
+      if (isSurvivor) {
+        arrayFor(type)[index] = o.feature;
+        keptName = o.feature.properties.name;
+      } else {
+        var arr = arrayFor(o.type);
+        arr.push(o.feature);
+        restored.push({ type: o.type, index: arr.length - 1 });
+        if (touched.indexOf(o.type) < 0) touched.push(o.type);
+      }
+      if (typeof App._advanceColorSeqPast === "function" && typeof o.feature.properties.colorSeq === "number") {
+        App._advanceColorSeqPast(o.feature.properties.colorSeq);
+      }
+    });
+
+    // Stop links: exact reversal where untouched since the merge, best effort otherwise.
+    var skey = type + ":" + sid, names = {};
+    names[skey] = keptName;
+    (h.stops || []).forEach(function (rec) {
+      var pt = (App.points || []).filter(function (x) { return x.properties.pointIdx === rec.pointId; })[0];
+      if (!pt) return; // the stop was deleted since
+      var attrs = pt.properties.attributes || (pt.properties.attributes = {});
+      attrs.associatedRoutes = restoreStopRefs(rec, attrs.associatedRoutes, skey, names);
+    });
+
+    if (typeof App.ensureFeatureIds === "function") App.ensureFeatureIds();
+    if (typeof App.closeAttrPopup === "function" && typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) App.closeAttrPopup();
+    rerenderTouched(touched, []);
+    if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
+    if (typeof App.selectFeature === "function") App.selectFeature(type, survivorIdx);
+
+    var msg = "Unmerged '" + mergedName + "' into " + h.originals.length + " features — Ctrl+Z to undo";
+    if (typeof App.setStatus === "function") App.setStatus(msg);
+    return { ok: true, survivorType: type, survivorIndex: survivorIdx, restored: restored, message: msg };
+  }
+
+  /* =====================================================================
      Dialog
      ===================================================================== */
 
@@ -984,6 +1225,59 @@
     container.appendChild(ul);
   }
 
+  // ---- Shared dialog shell (merge + unmerge dialogs) ----
+
+  // Overlay + card + title. Returns { overlay, box }.
+  function buildShell(titleText) {
+    var overlay = el("div", "fm-overlay");
+    var box = el("div", "fm-dialog");
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-labelledby", "fmTitle");
+    overlay.appendChild(box);
+    var title = el("div", "rf-weights-modal-title", titleText);
+    title.id = "fmTitle";
+    box.appendChild(title);
+    return { overlay: overlay, box: box };
+  }
+
+  // Footer: [spacer] Cancel  <confirm>. Returns { cancelBtn, okBtn }.
+  function buildActions(box, okLabel) {
+    var actions = el("div", "rf-weights-modal-actions");
+    actions.appendChild(el("span", "rf-modal-spacer"));
+    var cancelBtn = el("button", "rf-btn-sm", "Cancel");
+    cancelBtn.type = "button";
+    var okBtn = el("button", "rf-action-primary rf-modal-confirm", okLabel);
+    okBtn.type = "button";
+    actions.appendChild(cancelBtn); actions.appendChild(okBtn);
+    box.appendChild(actions);
+    return { cancelBtn: cancelBtn, okBtn: okBtn };
+  }
+
+  // Keyboard: Escape closes; Tab stays inside; no key reaches the app's global
+  // shortcuts (draw tools, Delete, Ctrl+Z) while the dialog is open. Mounts the
+  // overlay and registers it as THE open dialog. Returns the dialog record.
+  function installDialog(overlay, box) {
+    function onKey(e) {
+      if (!_dlg) return;
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDialog(); return; }
+      if (e.key === "Tab") {
+        var f = box.querySelectorAll("input:not(:disabled), button:not(:disabled)");
+        if (!f.length) return;
+        var first = f[0], last = f[f.length - 1];
+        if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+        else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+      e.stopPropagation();
+    }
+    document.addEventListener("keydown", onKey, true);
+    var me = { overlay: overlay, onKey: onKey, prevFocus: document.activeElement };
+    _dlg = me;
+    document.body.appendChild(overlay);
+    return me;
+  }
+
   function openDialog(type, indices, primary) {
     var st = STRATEGIES[type];
     if (!st || !indices || indices.length < 2) return;
@@ -994,16 +1288,8 @@
     var prim0 = toPrimary(mixed ? "line" : type, primary);
     var state = { primary: refs.some(function (r) { return sameRef(r, prim0); }) ? prim0 : refs[0], busy: false };
 
-    var overlay = el("div", "fm-overlay");
-    var box = el("div", "fm-dialog");
-    box.setAttribute("role", "dialog");
-    box.setAttribute("aria-modal", "true");
-    box.setAttribute("aria-labelledby", "fmTitle");
-    overlay.appendChild(box);
-
-    var title = el("div", "rf-weights-modal-title", "Merge " + refs.length + " " + st.titleNoun);
-    title.id = "fmTitle";
-    box.appendChild(title);
+    var shell = buildShell("Merge " + refs.length + " " + st.titleNoun);
+    var overlay = shell.overlay, box = shell.box;
     box.appendChild(el("div", "fm-intro", st.intro || ("The " + st.plural + " you selected will become one " + st.singular +
       ". All the others are removed.")));
 
@@ -1047,15 +1333,9 @@
 
     box.appendChild(el("div", "fm-footnote", "You can undo this with Ctrl+Z until you reload the page."));
 
-    var actions = el("div", "rf-weights-modal-actions");
-    actions.appendChild(el("span", "rf-modal-spacer"));
-    var cancelBtn = el("button", "rf-btn-sm", "Cancel");
-    cancelBtn.type = "button";
-    var mergeBtn = el("button", "rf-action-primary rf-modal-confirm", "Merge");
-    mergeBtn.type = "button";
+    var acts = buildActions(box, "Merge");
+    var cancelBtn = acts.cancelBtn, mergeBtn = acts.okBtn;
     mergeBtn.disabled = true;
-    actions.appendChild(cancelBtn); actions.appendChild(mergeBtn);
-    box.appendChild(actions);
 
     function section(heading, cls) {
       var s = el("div", "fm-section " + (cls || ""));
@@ -1151,28 +1431,65 @@
       });
     });
 
-    // Keyboard: Escape closes; Tab stays inside; no key reaches the app's
-    // global shortcuts (draw tools, Delete, Ctrl+Z) while the dialog is open.
-    function onKey(e) {
-      if (!_dlg) return;
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDialog(); return; }
-      if (e.key === "Tab") {
-        var f = box.querySelectorAll("input:not(:disabled), button:not(:disabled)");
-        if (!f.length) return;
-        var first = f[0], last = f[f.length - 1];
-        if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
-        else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-      e.stopPropagation();
-    }
-    document.addEventListener("keydown", onKey, true);
-
-    var me = { overlay: overlay, onKey: onKey, prevFocus: document.activeElement };
-    _dlg = me;
-    document.body.appendChild(overlay);
+    var me = installDialog(overlay, box);
     // Focus the primary button once the analysis enables it (Cancel if blocked).
     refresh(function (plan) { if (_dlg === me) (plan && plan.ok ? mergeBtn : cancelBtn).focus(); });
+  }
+
+  // Confirm dialog for Unmerge — same .fm-* shell as the merge dialog.
+  function openUnmergeDialog(type, index) {
+    var info = describeUnmerge(type, index);
+    if (_dlg) closeDialog();
+    if (typeof App.closeContextMenu === "function") App.closeContextMenu();
+    var shell = buildShell("Unmerge '" + info.survivorName + "'");
+    var overlay = shell.overlay, box = shell.box;
+    box.appendChild(el("div", "fm-intro", info.ok
+      ? "'" + info.survivorName + "' will be split back into the " + info.originals.length +
+        " features it was merged from. It returns to what it was before merging."
+      : "This feature can't be unmerged."));
+
+    var body = el("div", "fm-body");
+    body.setAttribute("aria-live", "polite");
+    box.appendChild(body);
+    if (!info.ok) {
+      var eb = el("div", "fm-note fm-note-error");
+      eb.setAttribute("role", "alert");
+      renderList(eb, info.errors);
+      body.appendChild(eb);
+    } else {
+      var sec = el("div", "fm-section");
+      sec.appendChild(el("div", "fm-section-title", "Features that will come back"));
+      renderList(sec, info.originals.map(function (o) {
+        return o.name + " (" + o.type + ")" + (o.inPlace ? " — replaces '" + info.survivorName + "'" : "");
+      }), "fm-list");
+      body.appendChild(sec);
+      if (info.stopCount) {
+        body.appendChild(el("div", "fm-hint", plural(info.stopCount, "stop") + " that were re-linked by the merge will be linked as before."));
+      }
+      if (info.edited) {
+        var wb = el("div", "fm-note fm-note-warn");
+        wb.setAttribute("role", "alert");
+        renderList(wb, ["'" + info.survivorName + "' has been edited since it was merged. Edits made since merging " +
+          "(shape, attributes, name) will be lost."]);
+        body.appendChild(wb);
+      }
+    }
+    box.appendChild(el("div", "fm-footnote", "You can undo this with Ctrl+Z until you reload the page."));
+
+    var acts = buildActions(box, "Unmerge");
+    acts.okBtn.disabled = !info.ok;
+    acts.cancelBtn.addEventListener("click", closeDialog);
+    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) closeDialog(); });
+    acts.okBtn.addEventListener("click", function () {
+      var res = unmerge(type, index);
+      if (res && res.ok) { closeDialog(); return; }
+      var eb2 = el("div", "fm-note fm-note-error", "Unmerge failed: " + ((res && res.errors && res.errors.join(" ")) || "unknown error"));
+      eb2.setAttribute("role", "alert");
+      body.insertBefore(eb2, body.firstChild);
+    });
+    var me = installDialog(overlay, box);
+    // Edits would be lost: land on Cancel. Otherwise the primary action.
+    if (_dlg === me) (info.ok && !info.edited ? acts.okBtn : acts.cancelBtn).focus();
   }
 
   App.merge = {
@@ -1180,6 +1497,10 @@
     analyze: analyze,
     run: run,
     openDialog: openDialog,
+    hasHistory: hasHistory,
+    describeUnmerge: describeUnmerge,
+    unmerge: unmerge,
+    openUnmergeDialog: openUnmergeDialog,
     closeDialog: closeDialog,
     isDialogOpen: function () { return !!_dlg; },
     _strategies: STRATEGIES

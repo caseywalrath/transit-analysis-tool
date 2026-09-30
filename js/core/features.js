@@ -672,6 +672,10 @@
           if (typeof dupFn === "function") {
             options.push({ label: "Duplicate", action: function () { dupFn(fi); } });
           }
+          // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
+          if (App.merge && App.merge.hasHistory(ft, fi)) {
+            options.push({ label: "Unmerge\u2026", action: function () { App.merge.openUnmergeDialog(ft, fi); } });
+          }
           options.push({ label: feat.properties.hidden ? "Show" : "Hide", action: function () {
             feat.properties.hidden = !feat.properties.hidden;
             if (App.cache && typeof App.cache.save === "function") App.cache.save();

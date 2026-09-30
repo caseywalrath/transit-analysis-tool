@@ -182,7 +182,7 @@
       if (feature) {
         var props = {};
         var fp = feature.properties;
-        if (fp) { for (var k in fp) { if (Object.prototype.hasOwnProperty.call(fp, k)) props[k] = fp[k]; } }
+        if (fp) { for (var k in fp) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(fp, k)) props[k] = fp[k]; } }
         props.hl_color = color;
         featureGeos.push({ type: "Feature", geometry: feature.geometry, properties: props });
       }

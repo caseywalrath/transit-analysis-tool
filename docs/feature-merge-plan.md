@@ -1,6 +1,6 @@
 # Feature Merge — implementation plan
 
-Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) are done. Phases are built in order; each phase is one or more commits
+Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) and Phase 4a (Unmerge) are done; Phase 4b (module stable IDs) is not started. Phases are built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 
 ## Goal
@@ -199,7 +199,17 @@ restores everything.
 
 ## Phase 4 — Unmerge and stable IDs in modules
 
-### 4a Unmerge
+### Phase 4a — as built (decisions the plan left open)
+
+- `_mergedFrom` is `{ version: 1, at, survivorRef: {type, id}, originals: [{type, feature}], stops: [{pointId, before, after}], resultFingerprint }`. `stops` replaces the plan's `repoints` list: it stores each changed point's full pre-/post-merge `associatedRoutes`, which makes the reversal exact and also covers de-duplication and cached-name refreshes that a from/to repoint list cannot express. Point merges record no stops (no route moved; the primary's pre-merge clone already holds its own links).
+- The survivor is replaced by the clone of *its own* original (matched by `survivorRef`), which differs from the primary in a line + route merge with a route primary.
+- Stop reversal is exact when the stop's current links equal the post-merge links (compared by type + ID; cached names may drift). Otherwise best effort: keep the current list, re-add pre-merge refs the merge removed, drop the survivor's ref only if it was not linked before the merge, refresh the survivor's cached name, de-duplicate. A stop deleted since the merge is skipped.
+- `resultFingerprint` covers name, color, geometry, route waypoints and attributes (not visibility or appearance overrides). Opening the attribute popup can seed default attributes (e.g. `avgSpeed`) and so can trigger the "edited since merging" warning conservatively.
+- **JSON (Features only)** is treated as a feature export and strips `_mergedFrom`; the session paths (autosave, undo, session JSON, Save State, share link) keep it. CSV/KML/SHP write fixed attribute columns and never included it.
+- Unmerge is one undo step; Ctrl+Z restores the merged feature with its history.
+- Nested history is stored inside the original's clone, so every merge level nests one deeper in the session file (accepted; no compression).
+
+### 4a Unmerge (spec)
 
 - At merge time store on the survivor
   `properties._mergedFrom = { at, originals: [{type, feature}], repoints: [...] }`

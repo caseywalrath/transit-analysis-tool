@@ -1,7 +1,9 @@
 // Golden cases for the pure Feature Merge helpers (js/core/merge.js —
 // docs/feature-merge-plan.md Phases 2-3): App.mergeGeom (chainLines, findBranch,
-// lengthMi, routeChain) and App.mergeAttrs (hasValue, fieldHasValue,
-// mergeAttributes, reversalWarnings).
+// lengthMi, routeChain), App.mergeAttrs (hasValue, fieldHasValue,
+// mergeAttributes, reversalWarnings) and, from Phase 4a (Unmerge),
+// App.mergeHistory (fingerprintFeature, stopChanges, restoreStopRefs,
+// validateHistory, stripHistory).
 // Everything here is plain arrays/objects — no turf, DOM or map. The merge
 // operation, dialog and polygon union are covered by test/feature-merge-smoke.mjs.
 
@@ -209,5 +211,88 @@ export default {
         { name: "S1", attributes: {}, lengthMi: 0 },
         { name: "S2", attributes: { serviceAreaType: "walkshed" }, lengthMi: 0 }
       ], 0, { kind: "point" }] }
+    ,
+    // ---- Phase 4a: merge history (Unmerge) ----
+    // fingerprintFeature: key order never matters; name/geometry/attributes do; history + visibility don't.
+    { id: "hist/fingerprint-basic", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+               properties: { name: "L", color: "", waypoints: 2, attributes: { mode: "Bus", avgSpeed: 14 }, hidden: true, _mergedFrom: { x: 1 } } }] },
+    { id: "hist/fingerprint-same-as-reordered", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { coordinates: [[0, 0], [1, 1]], type: "LineString" },
+               properties: { attributes: { avgSpeed: 14, mode: "Bus" }, waypoints: 2, color: "", name: "L" } }] },
+    { id: "hist/fingerprint-renamed", call: "App.mergeHistory.fingerprintFeature",
+      args: [{ type: "Feature", geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+               properties: { name: "L2", color: "", waypoints: 2, attributes: { mode: "Bus", avgSpeed: 14 } } }] },
+    { id: "hist/fingerprint-no-properties", call: "App.mergeHistory.fingerprintFeature", args: [{}] },
+    { id: "hist/stable-stringify-sorted-keys", call: "App.mergeHistory.stableStringify", args: [{ b: 1, a: [{ d: 2, c: undefined }], e: null }] },
+
+    // stopChanges: only points whose link list actually changed.
+    { id: "hist/stopChanges-repoint-and-dedupe", call: "App.mergeHistory.stopChanges",
+      args: [
+        { 1: [{ featureType: "route", featureId: 2, name: "B" }], 2: [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 2, name: "B" }], 3: [{ featureType: "route", featureId: 9, name: "Z" }] },
+        { 1: [{ featureType: "route", featureId: 1, name: "A" }], 2: [{ featureType: "route", featureId: 1, name: "A" }], 3: [{ featureType: "route", featureId: 9, name: "Z" }] }
+      ] },
+    { id: "hist/stopChanges-name-refresh-only", call: "App.mergeHistory.stopChanges",
+      args: [{ 5: [{ featureType: "route", featureId: 1, name: "Old" }] }, { 5: [{ featureType: "route", featureId: 1, name: "New" }] }] },
+    { id: "hist/stopChanges-none", call: "App.mergeHistory.stopChanges", args: [{ 1: [{ featureType: "line", featureId: 1, name: "L" }] }, { 1: [{ featureType: "line", featureId: 1, name: "L" }] }] },
+
+    // restoreStopRefs: exact when untouched, best effort when the stop was edited.
+    { id: "hist/restore-exact-when-untouched", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [{ featureType: "route", featureId: 1, name: "A renamed since" }], "route:1", {}] },
+    { id: "hist/restore-exact-keeps-original-order-and-names", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 2, name: "B" }, { featureType: "route", featureId: 1, name: "A" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [{ featureType: "route", featureId: 1, name: "A" }], "route:1", { "route:1": "IGNORED on exact restore" }] },
+    { id: "hist/restore-best-effort-re-adds-removed-refs", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 7, name: "Added since" }], "route:1", {}] },
+    { id: "hist/restore-best-effort-drops-survivor-ref-not-linked-before", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 7, name: "Added since" }], "route:1", {}] },
+    { id: "hist/restore-best-effort-keeps-survivor-ref-linked-before-with-fresh-name", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "Merged" }] },
+        [{ featureType: "route", featureId: 1, name: "Merged" }, { featureType: "route", featureId: 7, name: "X" }], "route:1", { "route:1": "A" }] },
+    { id: "hist/restore-best-effort-user-removed-survivor-link-stays-removed", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 1, name: "A" }, { featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [], "route:1", {}] },
+    { id: "hist/restore-best-effort-dedupes", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] },
+        [{ featureType: "route", featureId: 2, name: "B" }, { featureType: "route", featureId: 2, name: "B" }], "route:1", {}] },
+    { id: "hist/restore-line-survivor-same-id-different-type", call: "App.mergeHistory.restoreStopRefs",
+      args: [
+        { before: [{ featureType: "route", featureId: 1, name: "R" }, { featureType: "line", featureId: 1, name: "L" }], after: [{ featureType: "line", featureId: 1, name: "R" }] },
+        [{ featureType: "line", featureId: 1, name: "R" }], "line:1", { "line:1": "L" }] },
+    { id: "hist/restore-missing-current", call: "App.mergeHistory.restoreStopRefs",
+      args: [{ before: [{ featureType: "route", featureId: 2, name: "B" }], after: [{ featureType: "route", featureId: 1, name: "A" }] }, null, "route:1", {}] },
+
+    // validateHistory
+    { id: "hist/validate-ok", call: "App.mergeHistory.validateHistory",
+      args: [{ version: 1, survivorRef: { type: "line", id: 1 }, originals: [
+        { type: "line", feature: { geometry: {}, properties: { lineIdx: 1 } } }, { type: "line", feature: { geometry: {}, properties: { lineIdx: 2 } } }] },
+        { type: "line", id: 1 }, { line: "lineIdx", route: "routeIdx" }] },
+    { id: "hist/validate-wrong-feature", call: "App.mergeHistory.validateHistory",
+      args: [{ version: 1, survivorRef: { type: "line", id: 9 }, originals: [
+        { type: "line", feature: { geometry: {}, properties: { lineIdx: 1 } } }, { type: "line", feature: { geometry: {}, properties: { lineIdx: 2 } } }] },
+        { type: "line", id: 1 }, { line: "lineIdx", route: "routeIdx" }] },
+    { id: "hist/validate-survivor-missing-from-originals", call: "App.mergeHistory.validateHistory",
+      args: [{ version: 1, survivorRef: { type: "line", id: 1 }, originals: [
+        { type: "route", feature: { geometry: {}, properties: { routeIdx: 1 } } }, { type: "route", feature: { geometry: {}, properties: { routeIdx: 2 } } }] },
+        { type: "line", id: 1 }, { line: "lineIdx", route: "routeIdx" }] },
+    { id: "hist/validate-future-version", call: "App.mergeHistory.validateHistory",
+      args: [{ version: 2, survivorRef: { type: "line", id: 1 }, originals: [] }, { type: "line", id: 1 }, { line: "lineIdx" }] },
+    { id: "hist/validate-none", call: "App.mergeHistory.validateHistory", args: [null, { type: "line", id: 1 }, { line: "lineIdx" }] },
+
+    // stripHistory: copy without _mergedFrom, input untouched, same object when nothing to strip.
+    { id: "hist/strip-removes-history", call: "App.mergeHistory.stripHistory",
+      args: [{ type: "Feature", geometry: { type: "Point", coordinates: [1, 2] }, properties: { name: "P", _mergedFrom: { originals: [1, 2, 3] }, attributes: { a: 1 } } }] },
+    { id: "hist/strip-nothing-to-strip", call: "App.mergeHistory.stripHistory",
+      args: [{ type: "Feature", geometry: { type: "Point", coordinates: [1, 2] }, properties: { name: "P" } }] }
   ]
 };

@@ -55,7 +55,7 @@
       type: "FeatureCollection",
       features: lines.filter(function (l) { return !l.properties.hidden; }).map(function (l) {
         var props = {};
-        for (var k in l.properties) { if (Object.prototype.hasOwnProperty.call(l.properties, k)) props[k] = l.properties[k]; }
+        for (var k in l.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(l.properties, k)) props[k] = l.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("line", l);
         return { type: "Feature", properties: props, geometry: l.geometry };
       })

@@ -16,7 +16,7 @@
       type: "FeatureCollection",
       features: points.filter(function (p) { return !p.properties.hidden; }).map(function (p) {
         var props = {};
-        for (var k in p.properties) { if (Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
+        for (var k in p.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("point", p);
         return { type: "Feature", properties: props, geometry: p.geometry };
       })
