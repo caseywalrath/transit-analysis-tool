@@ -12,7 +12,7 @@
 //     Summary, Census, LODES, TPI, Title VI, FTA, corridor pickers) uses the
 //     walkshed as the study area with no changes to those modules.
 //
-// Public API (on App): getPointWalkshed(pointIdx), ensurePointWalksheds().
+// Public API (on App): getPointWalkshed(pointIdx), ensurePointWalksheds(), dropPointWalksheds(ids).
 
 (function () {
   "use strict";
@@ -709,6 +709,12 @@
 
   App.getPointWalkshed = getPointWalkshed;
   App.ensurePointWalksheds = ensurePointWalksheds;
+  // Drop cached walksheds for points that no longer exist (e.g. removed by a
+  // merge). Stale entries are already ignored by getPointWalkshed (it needs the
+  // point to exist); this just frees them. ids = pointIdx values.
+  App.dropPointWalksheds = function (ids) {
+    (ids || []).forEach(function (id) { _walkshedCache.delete(id); });
+  };
 
   App.registerModule({
     id:         "walkshed",

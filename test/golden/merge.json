@@ -368,5 +368,571 @@
     "attributes": {},
     "discarded": [],
     "warnings": []
+  },
+  "routeChain/coincident-join-drops-duplicate-waypoint": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "gaps": [],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.795,
+        38.801
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.785,
+        38.799
+      ],
+      [
+        -104.78,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/coincident-geometry-near-but-distinct-waypoints": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "gaps": [],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79001,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/gap-straight-fallback-keeps-both-ends": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      2.15390603761085
+    ],
+    "gaps": [
+      {
+        "k": 0,
+        "from": [
+          -104.79,
+          38.8
+        ],
+        "to": [
+          -104.75,
+          38.8
+        ],
+        "mi": 2.15390603761085
+      }
+    ],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/gap-routed-connector-inserted": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      2.15390603761085
+    ],
+    "gaps": [
+      {
+        "k": 0,
+        "from": [
+          -104.79,
+          38.8
+        ],
+        "to": [
+          -104.75,
+          38.8
+        ],
+        "mi": 2.15390603761085
+      }
+    ],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.77,
+        38.805
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/routed-connector-endpoints-slightly-off": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      2.15390603761085
+    ],
+    "gaps": [
+      {
+        "k": 0,
+        "from": [
+          -104.79,
+          38.8
+        ],
+        "to": [
+          -104.75,
+          38.8
+        ],
+        "mi": 2.15390603761085
+      }
+    ],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78999,
+        38.80001
+      ],
+      [
+        -104.77,
+        38.805
+      ],
+      [
+        -104.75001,
+        38.79999
+      ],
+      [
+        -104.75,
+        38.8
+      ],
+      [
+        -104.74,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/out-of-order-one-reversed-waypoints-flip": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      true
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "gaps": [],
+    "waypoints": [
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.785,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.8,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.8,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/three-routes-mixed-gap-and-touch": {
+    "order": [
+      0,
+      1,
+      2
+    ],
+    "reversed": [
+      false,
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0,
+      1.0769530188050425
+    ],
+    "gaps": [
+      {
+        "k": 1,
+        "from": [
+          -104.78,
+          38.8
+        ],
+        "to": [
+          -104.76,
+          38.8
+        ],
+        "mi": 1.0769530188050425
+      }
+    ],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.76,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.77,
+        38.801
+      ],
+      [
+        -104.76,
+        38.8
+      ],
+      [
+        -104.75,
+        38.8
+      ]
+    ]
+  },
+  "routeChain/no-connector-geoms-equals-chainLines-coords": {
+    "order": [
+      0,
+      1
+    ],
+    "reversed": [
+      false,
+      false
+    ],
+    "connectorsMi": [
+      0
+    ],
+    "gaps": [],
+    "waypoints": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.81
+      ]
+    ],
+    "coords": [
+      [
+        -104.8,
+        38.8
+      ],
+      [
+        -104.79,
+        38.8
+      ],
+      [
+        -104.78,
+        38.8
+      ],
+      [
+        -104.78,
+        38.81
+      ]
+    ]
+  },
+  "reversal/directional-reversed-warns": [
+    "'NB Line' (NB) is reversed to line up with the others, so its direction of travel is flipped in the result."
+  ],
+  "reversal/non-directional-reversed-silent": [],
+  "reversal/directional-not-reversed-silent": [],
+  "reversal/several-names-in-chain-order": [
+    "'C' (CCW) is reversed to line up with the others, so its direction of travel is flipped in the result.",
+    "'A' (Inbound) is reversed to line up with the others, so its direction of travel is flipped in the result."
+  ],
+  "attrs/point-associatedRoutes-union-dedup": {
+    "attributes": {
+      "stopId": "100",
+      "associatedRoutes": [
+        {
+          "featureType": "route",
+          "featureId": 1,
+          "name": "R1"
+        },
+        {
+          "featureType": "line",
+          "featureId": 1,
+          "name": "L1"
+        },
+        {
+          "featureType": "route",
+          "featureId": 2,
+          "name": "R2"
+        }
+      ]
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/point-primary-blank-routes-take-union-of-others": {
+    "attributes": {
+      "associatedRoutes": [
+        {
+          "featureType": "route",
+          "featureId": 2,
+          "name": "R2"
+        },
+        {
+          "featureType": "route",
+          "featureId": 3,
+          "name": "R3"
+        }
+      ]
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/point-conflicting-stopIds-warn": {
+    "attributes": {
+      "stopId": "100",
+      "group": "North"
+    },
+    "discarded": [
+      {
+        "key": "stopId",
+        "label": "Stop ID",
+        "fromIndex": 1,
+        "fromName": "S2",
+        "value": "200",
+        "kept": "100"
+      },
+      {
+        "key": "group",
+        "label": "Group",
+        "fromIndex": 1,
+        "fromName": "S2",
+        "value": "South",
+        "kept": "North"
+      }
+    ],
+    "warnings": [
+      "These stops have different Stop IDs (100, 200). The result keeps '100'."
+    ]
+  },
+  "attrs/point-serviceAreaType-primary-walkshed-kept": {
+    "attributes": {
+      "serviceAreaType": "walkshed"
+    },
+    "discarded": [],
+    "warnings": []
+  },
+  "attrs/point-serviceAreaType-blank-primary-not-filled": {
+    "attributes": {},
+    "discarded": [
+      {
+        "key": "serviceAreaType",
+        "label": "Service area",
+        "fromIndex": 1,
+        "fromName": "S2",
+        "value": "walkshed",
+        "kept": "circular buffer"
+      }
+    ],
+    "warnings": []
   }
 }

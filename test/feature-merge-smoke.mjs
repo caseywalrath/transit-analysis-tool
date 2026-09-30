@@ -5,7 +5,9 @@
 // Loads the real app, drives window.App through page.evaluate, and asserts.
 // Phase 1 covers unique, stable per-type feature IDs; Phase 2 covers the merge
 // engine, dialog, polygons and lines (including a pass through the real UI:
-// Ctrl+click rows, right-click, dialog, Escape/Merge). Later phases append
+// Ctrl+click rows, right-click, dialog, Escape/Merge); Phase 3 covers routes
+// (street-routed connectors via a mocked OSRM), points and line + route.
+// Later phases append
 // more `await check(...)` groups in the "ASSERTIONS" section below.
 // Screenshots of the dialog are written to $MERGE_SHOT_DIR (default: os tmpdir).
 //
@@ -16,7 +18,8 @@
 // Same approach as capture.mjs: the CDN libraries are served from
 // test/ui-screens/vendor/ via route interception, everything else remote is
 // aborted (so street-snapped routing falls back to a straight line between
-// waypoints — fine for ID tests). Prints PASS/FAIL per assertion; exits
+// waypoints — fine for ID tests). Phase 3 installs a page-level handler for the
+// OSRM demo server (fake geometry / failure / held-open) to test connector routing. Prints PASS/FAIL per assertion; exits
 // non-zero if any fail.
 
 import { spawn } from "node:child_process";
@@ -103,7 +106,12 @@ async function drawRoute(page, a, b) {
 async function setFixture(page, fx) {
   await page.evaluate((fx) => {
     var st = App.cache.collectState("full");
-    st.routes = []; st.labels = st.labels || []; 
+    st.labels = st.labels || [];
+    // routes: [{name, id, coords, waypoints, attrs, color, props}] (props = extra properties such as _opacity)
+    st.routes = (fx.routes || []).map((r) => ({ type: "Feature",
+      properties: Object.assign({ name: r.name, routeIdx: r.id, waypoints: r.waypoints || [r.coords[0], r.coords[r.coords.length - 1]],
+        color: r.color || "", attributes: r.attrs || {} }, r.props || {}),
+      geometry: { type: "LineString", coordinates: r.coords } }));
     st.lines = (fx.lines || []).map((l) => ({ type: "Feature",
       properties: { name: l.name, lineIdx: l.id, waypoints: l.coords.length, color: l.color || "", attributes: l.attrs || {} },
       geometry: { type: "LineString", coordinates: l.coords } }));
@@ -111,13 +119,13 @@ async function setFixture(page, fx) {
       properties: { name: p.name, polyIdx: p.id, vertices: p.rings[0].length - 1, color: "", attributes: p.attrs || {} },
       geometry: { type: "Polygon", coordinates: p.rings } }));
     st.points = (fx.points || []).map((p) => ({ type: "Feature",
-      properties: { name: p.name, pointIdx: p.id, color: "", attributes: { associatedRoutes: p.refs || [] } },
+      properties: { name: p.name, pointIdx: p.id, color: "", attributes: Object.assign({ associatedRoutes: p.refs || [] }, p.attrs || {}) },
       geometry: { type: "Point", coordinates: p.at } }));
     App.cache.applyState(st);
   }, fx);
 }
 const square = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
-const snapshot = (page) => page.evaluate(() => JSON.stringify({ l: App.lines, p: App.polygons, pt: App.points }));
+const snapshot = (page) => page.evaluate(() => JSON.stringify({ l: App.lines, r: App.routes, p: App.polygons, pt: App.points }));
 
 const routeIds = (page) => page.evaluate(() => App.routes.map((r) => r.properties.routeIdx));
 
@@ -146,6 +154,20 @@ async function main() {
       return route.abort();
     });
     const page = await context.newPage();
+    // OSRM mock (Phase 3). Modes: "fail" (abort, default), "ok" (a fake detour via
+    // a midpoint nudged 0.002 deg north), "hang" (hold the response until osrm.release()).
+    const osrm = { mode: "fail", hits: [], gate: null, release: null };
+    osrm.hold = () => { osrm.gate = new Promise((r) => { osrm.release = r; }); };
+    await page.route("https://router.project-osrm.org/**", async (route) => {
+      osrm.hits.push(route.request().url());
+      if (osrm.mode === "hang") await osrm.gate;
+      if (osrm.mode === "fail") return route.abort();
+      const m = /driving\/([^?]+)/.exec(route.request().url());
+      const pts = decodeURIComponent(m[1]).split(";").map((p) => p.split(",").map(Number));
+      const a = pts[0], b = pts[pts.length - 1];
+      const geometry = { type: "LineString", coordinates: [a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.002], b] };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: "Ok", routes: [{ geometry }] }) });
+    });
     page.on("pageerror", (e) => console.warn("  [page error] " + e.message));
     await page.goto("http://localhost:" + port + "/index.html", { waitUntil: "load" });
     await page.waitForFunction("window.App && window.App.map && window.App.map.loaded() && App.cache", { timeout: 30000 });
@@ -445,6 +467,278 @@ async function main() {
       await page.keyboard.press("Escape"); await page.mouse.click(5, 5);
       return !t.some((x) => /Merge/.test(x));
     })());
+
+    // ================= Phase 3 - routes, points, line + route =================
+    console.log("\n# Phase 3 - routes, points, line + route");
+    // Count undo snapshots so "exactly one (and none when cancelled)" is checkable.
+    await page.evaluate(() => { window.__pushes = 0; var o = App.undo.push; App.undo.push = function () { window.__pushes++; return o.apply(this, arguments); }; });
+    const pushes = () => page.evaluate(() => window.__pushes);
+    const ROUTE_A = [[-104.80, 38.80], [-104.79, 38.80]];
+    const ROUTE_B = [[-104.787, 38.80], [-104.777, 38.80]];      // ~0.16 mi east of A's end
+    const routeFx = () => ({
+      routes: [
+        { name: "Route A", id: 21, coords: ROUTE_A, waypoints: ROUTE_A, attrs: { mode: "Bus", direction: "EB", runTime: 10 } },
+        { name: "Route B", id: 22, coords: ROUTE_B, waypoints: ROUTE_B, attrs: { direction: "EB", runTime: 8 } },
+        { name: "Route C", id: 23, coords: [[-104.50, 38.50], [-104.49, 38.50]], attrs: {} } ],
+      points: [
+        { name: "Stop 1", id: 41, at: [-104.78, 38.80], refs: [{ featureType: "route", featureId: 22, name: "Route B" }] },
+        { name: "Stop 2", id: 42, at: [-104.79, 38.80], refs: [{ featureType: "route", featureId: 21, name: "Route A" }, { featureType: "route", featureId: 22, name: "Route B" }] },
+        { name: "Stop 3", id: 43, at: [-104.50, 38.50], refs: [{ featureType: "route", featureId: 23, name: "Route C" }] } ]
+    });
+    const dump = (page) => page.evaluate(() => ({
+      nR: App.routes.length, nL: App.lines.length, nP: App.points.length,
+      routeNames: App.routes.map((r) => r.properties.name), lineNames: App.lines.map((l) => l.properties.name),
+      pointNames: App.points.map((p) => p.properties.name),
+      sel: App.getSelectedFeatures(),
+      stops: App.points.map((p) => ((p.properties.attributes || {}).associatedRoutes || []).map((r) => r.featureType + ":" + r.featureId + ":" + r.name)),
+      status: (document.getElementById("status") || {}).textContent || ""
+    }));
+
+    // -- selection eligibility --
+    check("mergeableSelection: routes, points, line+route ok; point+line, route+polygon, label+line rejected", await page.evaluate(() => {
+      var m = App.merge.mergeableSelection;
+      return m([{ type: "route", index: 0 }, { type: "route", index: 1 }]).type === "route" &&
+        m([{ type: "point", index: 0 }, { type: "point", index: 1 }]).type === "point" &&
+        m([{ type: "line", index: 0 }, { type: "route", index: 0 }]).type === "linemix" &&
+        m([{ type: "route", index: 0 }, { type: "line", index: 0 }, { type: "route", index: 1 }]).indices.length === 3 &&
+        !m([{ type: "point", index: 0 }, { type: "line", index: 0 }]) &&
+        !m([{ type: "route", index: 0 }, { type: "polygon", index: 0 }]) &&
+        !m([{ type: "label", index: 0 }, { type: "line", index: 0 }]) &&
+        !m([{ type: "line", index: 0 }, { type: "route", index: 0 }, { type: "point", index: 0 }]);
+    }));
+
+    // -- Routes: gap street-routed through the (mocked) router --
+    osrm.mode = "ok"; osrm.hits.length = 0;
+    await setFixture(page, routeFx());
+    before = await snapshot(page);
+    const rplan = await page.evaluate(() => {
+      const p = App.merge.analyze("route", [0, 1], 0);
+      return { ok: p.ok, errors: p.errors, warnings: p.warnings, summary: p.summary, gaps: p.routingGaps, hasPrepare: typeof p.prepare === "function", stops: p.stopsRepointed };
+    });
+    check("route analyze is cheap: ok, one gap to route, no network request made",
+      rplan.ok && rplan.gaps === 1 && rplan.hasPrepare && osrm.hits.length === 0 && rplan.summary.some((t) => /will be street-routed/.test(t)), { rplan, hits: osrm.hits.length });
+    check("route plan reports the stops to re-link", rplan.stops === 2, rplan.stops);
+    let p0 = await pushes();
+    res = await page.evaluate(() => App.merge.run("route", [0, 1], 0));
+    let rm = await dump(page);
+    const rgeo = await page.evaluate(() => ({ c: App.routes[0].geometry.coordinates, w: App.routes[0].properties.waypoints, id: App.routes[0].properties.routeIdx, a: App.routes[0].properties.attributes }));
+    check("route merge ok; survivor is Route A (primary) and the other routes are untouched", res.ok && rm.nR === 2 && rm.routeNames[0] === "Route A" && rm.routeNames[1] === "Route C" && rgeo.id === 21, { res, rm });
+    check("connector was street-routed through the router exactly once", osrm.hits.length === 1 && res.routing && res.routing.routed === 1 && res.routing.failed === 0 && /street-routed/.test(res.message), { hits: osrm.hits, routing: res.routing });
+    check("geometry = A + routed detour + B (5 vertices, joins de-duplicated)",
+      rgeo.c.length === 5 && rgeo.c[2][1] > 38.801 && JSON.stringify(rgeo.c[0]) === JSON.stringify(ROUTE_A[0]) && JSON.stringify(rgeo.c[4]) === JSON.stringify(ROUTE_B[1]), rgeo.c);
+    check("waypoints concatenated in order (4), ready for re-routing", JSON.stringify(rgeo.w) === JSON.stringify([ROUTE_A[0], ROUTE_A[1], ROUTE_B[0], ROUTE_B[1]]), rgeo.w);
+    check("runTime summed, primary direction kept", rgeo.a.runTime === 18 && rgeo.a.direction === "EB" && rgeo.a.mode === "Bus", rgeo.a);
+    check("stops re-linked to the surviving route and de-duplicated",
+      JSON.stringify(rm.stops) === JSON.stringify([["route:21:Route A"], ["route:21:Route A"], ["route:23:Route C"]]), rm.stops);
+    check("survivor selected; exactly ONE undo snapshot taken", rm.sel.length === 1 && rm.sel[0].type === "route" && rm.sel[0].index === 0 && (await pushes()) - p0 === 1, { sel: rm.sel });
+    await page.evaluate(() => App.undo.undo());
+    check("single Ctrl+Z restores routes, stops and IDs exactly", (await snapshot(page)) === before);
+
+    // -- Routes: routing unavailable falls back to a straight connector --
+    osrm.mode = "fail"; osrm.hits.length = 0;
+    res = await page.evaluate(() => App.merge.run("route", [0, 1], 0));
+    const fb = await page.evaluate(() => ({ c: App.routes[0].geometry.coordinates, w: App.routes[0].properties.waypoints.length, status: (document.getElementById("status") || {}).textContent || "" }));
+    check("routing failure still merges, with a straight connector (4 vertices)", res.ok && fb.c.length === 4 && fb.w === 4, { res, fb });
+    check("failure is reported in the status message", res.routing.failed === 1 && /could not be street-routed/.test(res.message) && /could not be street-routed/.test(fb.status), { msg: res.message, status: fb.status });
+    await page.evaluate(() => App.undo.undo());
+
+    // -- Routes: touching join does not duplicate a waypoint; reversed directional segment warns --
+    osrm.mode = "ok"; osrm.hits.length = 0;
+    await setFixture(page, { routes: [
+      { name: "Route East", id: 31, coords: [[-104.80, 38.80], [-104.79, 38.80]], waypoints: [[-104.80, 38.80], [-104.795, 38.80], [-104.79, 38.80]], attrs: { direction: "EB" } },
+      { name: "Route West", id: 32, coords: [[-104.78, 38.80], [-104.79, 38.80]], waypoints: [[-104.78, 38.80], [-104.79, 38.80]], attrs: { direction: "WB" } } ] });
+    before = await snapshot(page);
+    const tplan = await page.evaluate(() => { const p = App.merge.analyze("route", [0, 1], 0); return { ok: p.ok, warnings: p.warnings, prepare: typeof p.prepare, summary: p.summary }; });
+    check("touching routes need no routing", tplan.ok && tplan.prepare !== "function", tplan);
+    check("reversed directional route warns: names it and says direction is flipped",
+      tplan.warnings.some((w) => /Route West/.test(w) && /WB/.test(w) && /flipped/.test(w)), tplan.warnings);
+    check("the un-reversed directional route does not warn", !tplan.warnings.some((w) => /Route East.*flipped/.test(w)), tplan.warnings);
+    res = await page.evaluate(() => App.merge.run("route", [0, 1], 0));
+    const tj = await page.evaluate(() => ({ c: App.routes[0].geometry.coordinates, w: App.routes[0].properties.waypoints }));
+    check("coincident join: no duplicate vertex and no duplicate waypoint (and no network request)",
+      res.ok && tj.c.length === 3 && JSON.stringify(tj.w) === JSON.stringify([[-104.80, 38.80], [-104.795, 38.80], [-104.79, 38.80], [-104.78, 38.80]]) && osrm.hits.length === 0, { tj, hits: osrm.hits.length });
+    await page.evaluate(() => App.undo.undo());
+    await setFixture(page, lineFx());
+    const lw = await page.evaluate(() => App.merge.analyze("line", [0, 1, 2], 1).warnings);
+    check("reversed directional LINE (Line Z, SB) warns; un-reversed Line X does not",
+      lw.some((w) => /Line Z/.test(w) && /SB/.test(w) && /flipped/.test(w)) && !lw.some((w) => /Line X.*flipped/.test(w)), lw);
+
+    // -- Routes: cancelling while routing changes nothing --
+    osrm.mode = "hang"; osrm.hold(); osrm.hits.length = 0;
+    await setFixture(page, routeFx());
+    before = await snapshot(page);
+    p0 = await pushes();
+    await page.evaluate(() => App.merge.openDialog("route", [0, 1], 0));
+    await page.waitForFunction(() => [].some.call(document.querySelectorAll(".fm-dialog button"), (b) => b.textContent === "Merge" && !b.disabled));
+    check("opening the dialog made no routing request (analysis stays cheap)", osrm.hits.length === 0, osrm.hits);
+    check("route dialog says gaps will be street-routed", /will be street-routed when you merge/.test(await page.locator(".fm-dialog").textContent()));
+    await page.screenshot({ path: join(SHOT_DIR, "merge-dialog-route.png") });
+    await page.locator(".fm-dialog .rf-action-primary").click();
+    await page.waitForFunction(() => { var b = document.querySelector(".fm-busy"); return b && b.style.display !== "none" && /Routing connections/.test(b.textContent); });
+    const busy = await page.evaluate(() => {
+      var btns = [].slice.call(document.querySelectorAll(".fm-dialog .rf-weights-modal-actions button"));
+      return { text: document.querySelector(".fm-busy").textContent, cancelEnabled: !btns[0].disabled, mergeDisabled: btns[1].disabled,
+               radiosDisabled: [].every.call(document.querySelectorAll('.fm-dialog input[name="fmPrimary"]'), (r) => r.disabled) };
+    });
+    check("while routing: 'Routing connections…' shown, Merge + radios disabled, Cancel still available",
+      /Routing connections/.test(busy.text) && busy.mergeDisabled && busy.radiosDisabled && busy.cancelEnabled, busy);
+    check("no undo snapshot is taken until routing completes", (await pushes()) === p0);
+    await page.screenshot({ path: join(SHOT_DIR, "merge-dialog-routing.png") });
+    await page.keyboard.press("Escape");
+    osrm.release();
+    await page.waitForTimeout(400);
+    check("Escape during routing closes the dialog and aborts", await page.evaluate(() => !document.querySelector(".fm-dialog")));
+    check("after the late router response: nothing changed, no undo snapshot", (await snapshot(page)) === before && (await pushes()) === p0);
+    // cancellation through the API
+    osrm.mode = "ok";
+    res = await page.evaluate(() => App.merge.run("route", [0, 1], 0, { isCancelled: function () { return true; } }));
+    check("run() with isCancelled resolves cancelled and leaves everything alone", res.ok === false && res.cancelled === true && (await snapshot(page)) === before && (await pushes()) === p0, res);
+    // the Cancel button path
+    osrm.mode = "hang"; osrm.hold();
+    await page.evaluate(() => App.merge.openDialog("route", [0, 1], 0));
+    await page.waitForFunction(() => [].some.call(document.querySelectorAll(".fm-dialog button"), (b) => b.textContent === "Merge" && !b.disabled));
+    await page.locator(".fm-dialog .rf-action-primary").click();
+    await page.waitForFunction(() => /Routing connections/.test((document.querySelector(".fm-busy") || {}).textContent || ""));
+    await page.locator(".fm-dialog .rf-btn-sm", { hasText: "Cancel" }).click();
+    osrm.release(); await page.waitForTimeout(400);
+    check("Cancel button during routing also aborts cleanly", (await snapshot(page)) === before && (await pushes()) === p0);
+    osrm.mode = "ok";
+
+    // -- Points ("combine stops") --
+    const STOP_A = [-104.79, 38.80];
+    const pointFx = () => ({
+      routes: [{ name: "Route A", id: 21, coords: ROUTE_A, waypoints: ROUTE_A }, { name: "Route B", id: 22, coords: ROUTE_B, waypoints: ROUTE_B }],
+      points: [
+        { name: "Stop A", id: 41, at: STOP_A, refs: [{ featureType: "route", featureId: 21, name: "Route A" }], attrs: { stopId: "100", serviceAreaType: "walkshed", group: "G" } },
+        { name: "Stop B", id: 42, at: [-104.789, 38.80], refs: [{ featureType: "route", featureId: 21, name: "Route A (old)" }, { featureType: "route", featureId: 22, name: "Route B" }], attrs: { stopId: "200", serviceAreaType: "" } },
+        { name: "Stop C", id: 43, at: [-104.50, 38.50], refs: [], attrs: { stopId: "300" } } ]
+    });
+    await setFixture(page, pointFx());
+    before = await snapshot(page);
+    const pplan = await page.evaluate(() => { const p = App.merge.analyze("point", [0, 1], 0); return { ok: p.ok, summary: p.summary, warnings: p.warnings, discarded: p.discarded.map((d) => d.key) }; });
+    check("point plan: ok, says the stop stays at the primary's location", pplan.ok && pplan.summary.some((t) => /stays at that stop's location/.test(t)), pplan);
+    check("conflicting Stop IDs are a warning and listed as discarded", pplan.warnings.some((w) => /different Stop IDs/.test(w)) && pplan.discarded.includes("stopId"), pplan);
+    await page.evaluate(() => {
+      window.__calls = []; window.__orig = {};
+      ["dropPointWalksheds", "ensurePointWalksheds", "refreshBuffers"].forEach((n) => {
+        var o = App[n]; window.__orig[n] = o;
+        App[n] = function () { window.__calls.push(n + ":" + JSON.stringify([].slice.call(arguments))); return o && o.apply(this, arguments); };
+      });
+    });
+    p0 = await pushes();
+    res = await page.evaluate(() => App.merge.run("point", [0, 1], 0));
+    const calls = await page.evaluate(() => { Object.keys(window.__orig).forEach((n) => { App[n] = window.__orig[n]; }); return window.__calls; });
+    const pm = await page.evaluate(() => ({ n: App.points.length, names: App.points.map((p) => p.properties.name), at: App.points[0].geometry.coordinates, id: App.points[0].properties.pointIdx, a: App.points[0].properties.attributes, sel: App.getSelectedFeatures() }));
+    check("point merge ok: 2 points left, survivor Stop A keeps its ID and exact location", res.ok && pm.n === 2 && pm.names[0] === "Stop A" && pm.names[1] === "Stop C" && pm.id === 41 && JSON.stringify(pm.at) === JSON.stringify(STOP_A), { res, pm });
+    check("associatedRoutes is the de-duplicated union (primary's entry wins)",
+      JSON.stringify(pm.a.associatedRoutes.map((r) => r.featureId + ":" + r.name)) === JSON.stringify(["21:Route A", "22:Route B"]), pm.a);
+    check("walkshed-flagged primary keeps serviceAreaType; primary's stopId wins", pm.a.serviceAreaType === "walkshed" && pm.a.stopId === "100" && pm.a.group === "G", pm.a);
+    check("removed point's walkshed cache dropped by pointIdx; walksheds + buffers refreshed",
+      calls.includes("dropPointWalksheds:[[42]]") && calls.some((c) => c.indexOf("ensurePointWalksheds") === 0) && calls.some((c) => c.indexOf("refreshBuffers") === 0), calls);
+    check("survivor selected, one undo snapshot", pm.sel.length === 1 && pm.sel[0].type === "point" && pm.sel[0].index === 0 && (await pushes()) - p0 === 1, pm.sel);
+    await page.evaluate(() => App.undo.undo());
+    check("single Ctrl+Z restores the points exactly", (await snapshot(page)) === before);
+    // a circular-buffer primary is NOT turned into a walkshed by a walkshed donor
+    res = await page.evaluate(() => App.merge.run("point", [0, 1], 1));
+    const pc = await page.evaluate(() => ({ names: App.points.map((p) => p.properties.name), a: App.points[0].properties.attributes }));
+    check("circular-buffer primary stays circular when a walkshed stop is merged in", res.ok && pc.names[0] === "Stop B" && !pc.a.serviceAreaType, pc);
+    await page.evaluate(() => App.undo.undo());
+    check("the real App.dropPointWalksheds exists and tolerates unknown IDs", await page.evaluate(() => { App.dropPointWalksheds([999, 41]); return typeof App.dropPointWalksheds === "function"; }));
+
+    // -- Line + route (result is always a Line) --
+    const QC = [[-104.79, 38.80], [-104.785, 38.8005], [-104.78, 38.80]];
+    const mixFx = () => ({
+      lines: [
+        { name: "Line X", id: 11, coords: [[-104.80, 38.80], [-104.79, 38.80]], attrs: { mode: "Bus" } },
+        { name: "Line Y", id: 12, coords: [[-104.50, 38.50], [-104.49, 38.50]], attrs: {} },
+        { name: "Line Z", id: 13, coords: [[-104.78, 38.80], [-104.77, 38.80]], attrs: { group: "GZ" } } ],
+      routes: [{ name: "Route Q", id: 22, coords: QC, waypoints: [QC[0], QC[2]], color: "#ff0000", props: { _opacity: 40, _lineWidth: 2 }, attrs: { mode: "BRT", direction: "NB", notes: "rq" } }],
+      points: [
+        { name: "Stop 1", id: 41, at: [-104.785, 38.80], refs: [{ featureType: "route", featureId: 22, name: "Route Q" }] },
+        { name: "Stop 2", id: 42, at: [-104.78, 38.80], refs: [{ featureType: "line", featureId: 13, name: "Line Z" }, { featureType: "route", featureId: 22, name: "Route Q" }] },
+        { name: "Stop 3", id: 43, at: [-104.50, 38.50], refs: [{ featureType: "line", featureId: 12, name: "Line Y" }] } ]
+    });
+    await setFixture(page, mixFx());
+    before = await snapshot(page);
+    osrm.hits.length = 0;
+    const seqBefore = await page.evaluate(() => App.lines[0].properties.colorSeq);
+    const mixRefs = [{ type: "line", index: 0 }, { type: "route", index: 0 }, { type: "line", index: 2 }];
+    const mplan = await page.evaluate((refs) => { const p = App.merge.analyze("linemix", refs, { type: "route", index: 0 }); return { ok: p.ok, summary: p.summary, stops: p.stopsRepointed, prepare: typeof p.prepare }; }, mixRefs);
+    check("line+route plan: ok, says the result is a Line and snapping is removed, no routing step",
+      mplan.ok && mplan.prepare !== "function" && mplan.summary.some((t) => /result will be a Line with 5 vertices; street snapping will be removed/.test(t)), mplan);
+    p0 = await pushes();
+    res = await page.evaluate((refs) => App.merge.run("linemix", refs, { type: "route", index: 0 }), mixRefs);
+    let mx = await dump(page);
+    const ml = await page.evaluate(() => { var l = App.lines[0]; return { p: l.properties, c: l.geometry.coordinates, rb: App.routeBuffers.length, lb: App.lineBuffers.length }; });
+    check("route primary: the first selected LINE survives at its own index; route + other line removed",
+      res.ok && res.survivorType === "line" && res.survivorIndex === 0 && mx.nR === 0 && mx.nL === 2 && ml.p.lineIdx === 11 && ml.p.colorSeq === seqBefore, { res, mx });
+    check("survivor takes the route primary's name, color and appearance overrides",
+      ml.p.name === "Route Q" && ml.p.color === "#ff0000" && ml.p._opacity === 40 && ml.p._lineWidth === 2, ml.p);
+    check("attributes: primary wins, blanks filled from the others", ml.p.attributes.mode === "BRT" && ml.p.attributes.direction === "NB" && ml.p.attributes.notes === "rq" && ml.p.attributes.group === "GZ", ml.p.attributes);
+    check("geometry kept exactly; result is a LineString with `waypoints` = vertex count (5), no route waypoints array",
+      ml.c.length === 5 && ml.p.waypoints === 5 && typeof ml.p.waypoints === "number" && JSON.stringify(ml.c[2]) === JSON.stringify(QC[1]), ml);
+    check("stops that pointed at the removed route/line now point at the surviving LINE",
+      JSON.stringify(mx.stops) === JSON.stringify([["line:11:Route Q"], ["line:11:Route Q"], ["line:12:Line Y"]]), mx.stops);
+    check("survivor selected as a line; both layer types re-rendered; one undo snapshot; no routing",
+      mx.sel.length === 1 && mx.sel[0].type === "line" && mx.sel[0].index === 0 && ml.rb === 0 && ml.lb === 2 && (await pushes()) - p0 === 1 && osrm.hits.length === 0, { sel: mx.sel, ml });
+    await page.evaluate(() => App.undo.undo());
+    check("single Ctrl+Z restores the lines, the route and the stops exactly", (await snapshot(page)) === before);
+    // line primary, with a removed line sitting BEFORE the survivor in the array
+    const mixRefs2 = [{ type: "line", index: 2 }, { type: "route", index: 0 }, { type: "line", index: 0 }];
+    res = await page.evaluate((refs) => App.merge.run("linemix", refs, { type: "line", index: 2 }), mixRefs2);
+    mx = await dump(page);
+    const m2 = await page.evaluate(() => { var l = App.lines.filter((x) => x.properties.lineIdx === 13)[0]; return { name: l.properties.name, at: App.lines.indexOf(l) }; });
+    check("line primary survives in place; its index shifts correctly after the earlier line is removed",
+      res.ok && res.survivorType === "line" && res.survivorIndex === 1 && m2.at === 1 && m2.name === "Line Z" && mx.lineNames.join() === "Line Y,Line Z" && mx.nR === 0 && mx.sel[0].index === 1 && mx.sel[0].type === "line", { res, mx, m2 });
+    check("stops repointed from the route (and removed line) to the surviving line", JSON.stringify(mx.stops) === JSON.stringify([["line:13:Line Z"], ["line:13:Line Z"], ["line:12:Line Y"]]), mx.stops);
+    await page.evaluate(() => App.undo.undo());
+    check("undo restores (line-primary case)", (await snapshot(page)) === before);
+
+    // -- Real UI for the new types --
+    console.log("\n# Phase 3 - UI walkthrough");
+    await row("Line X").click();
+    await row("Route Q").click({ modifiers: ["Control"] });
+    await row("Route Q").click({ button: "right" });
+    let mt = await page.locator("#fp-context-menu button").allTextContents();
+    check("Merge… appears for a line + route selection", mt.some((t) => t.trim() === "Merge…"), mt);
+    await page.locator("#fp-context-menu button", { hasText: "Merge" }).click();
+    await page.waitForSelector(".fm-dialog .fm-list");
+    const mixDlg = await page.locator(".fm-dialog").textContent();
+    check("mixed dialog: title counts lines and routes, states the result is a Line and snapping is removed",
+      (await page.locator("#fmTitle").textContent()) === "Merge 2 Lines and Routes" && /result is always a Line/.test(mixDlg) && /street snapping will be removed/.test(mixDlg), mixDlg.slice(0, 400));
+    check("mixed dialog: right-clicked route is the default primary, rows are tagged by type",
+      await page.evaluate(() => document.querySelector('.fm-dialog input[name="fmPrimary"]:checked').closest("label").textContent.trim() === "Route Q (route)"));
+    await page.screenshot({ path: join(SHOT_DIR, "merge-dialog-linemix.png") });
+    await page.keyboard.press("Escape");
+    await row("Stop 1").click();
+    await row("Line X").click({ modifiers: ["Control"] });
+    await row("Line X").click({ button: "right" });
+    mt = await page.locator("#fp-context-menu button").allTextContents();
+    check("Merge… is NOT offered for a point + line selection", !mt.some((t) => /Merge/.test(t)), mt);
+    await page.keyboard.press("Escape"); await page.mouse.click(5, 5);
+    await row("Stop 1").click();
+    await row("Stop 2").click({ modifiers: ["Control"] });
+    await row("Stop 1").click({ button: "right" });
+    mt = await page.locator("#fp-context-menu button").allTextContents();
+    check("Merge… is offered for two points", mt.some((t) => t.trim() === "Merge…"), mt);
+    await page.locator("#fp-context-menu button", { hasText: "Merge" }).click();
+    await page.waitForSelector(".fm-dialog .fm-list");
+    check("point dialog title and intro", (await page.locator("#fmTitle").textContent()) === "Merge 2 Points" && /combined into one stop/.test(await page.locator(".fm-dialog").textContent()));
+    await page.screenshot({ path: join(SHOT_DIR, "merge-dialog-points.png") });
+    await page.keyboard.press("Escape");
+    // complete a real route merge through the dialog (OSRM mocked)
+    await setFixture(page, routeFx());
+    osrm.mode = "ok";
+    await row("Route A").click();
+    await row("Route B").click({ modifiers: ["Control"] });
+    await row("Route A").click({ button: "right" });
+    await page.locator("#fp-context-menu button", { hasText: "Merge" }).click();
+    await page.waitForSelector(".fm-dialog .fm-list");
+    check("route dialog title", (await page.locator("#fmTitle").textContent()) === "Merge 2 Routes");
+    await page.locator(".fm-dialog .rf-action-primary").click();
+    await page.waitForFunction(() => !document.querySelector(".fm-dialog"));
+    const ui = await page.evaluate(() => ({ n: App.routes.length, verts: App.routes[0].geometry.coordinates.length, wps: App.routes[0].properties.waypoints.length }));
+    check("clicking Merge in the dialog routes the connector, merges and closes", ui.n === 2 && ui.verts === 5 && ui.wps === 4, ui);
 
     // ================= END ASSERTIONS =================
   } finally {

@@ -678,6 +678,11 @@
   App._routeDrawingInProgress = function () { return currentWaypoints.length > 0; };
   App.insertRouteWaypoint = insertRouteWaypoint;
   App.rerouteFeature = rerouteFeature;
+  // Street-route a waypoint list exactly as drawing/editing does (local road
+  // network first, then the OSRM servers). Resolves to a coordinate array, or
+  // null when routing is unavailable (caller falls back to a straight line).
+  // Note: on total failure it also posts the "using straight line" status.
+  App.fetchRouteGeometry = function (waypoints) { return fetchRoute(waypoints); };
   App.refreshSavedWaypoints = function () {
     var src = App.map && App.map.getSource("routes-waypoints-saved");
     if (src) src.setData(savedWaypointsGeoJSON());

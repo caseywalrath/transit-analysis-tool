@@ -1,6 +1,6 @@
 # Feature Merge — implementation plan
 
-Status: in progress — Phase 1 (unique, stable feature IDs) and Phase 2 (merge engine, dialog, polygons and lines) are done. Phases are built in order; each phase is one or more commits
+Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) are done. Phases are built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 
 ## Goal
@@ -187,6 +187,15 @@ restores everything.
   Stops referencing any removed route or line are repointed to the surviving
   line. The dialog says "The result will be a Line with N vertices; street
   snapping will be removed."
+
+### Phase 3 — as built (decisions the plan left open)
+
+- Selection members are `{type, index}` refs; `linemix` (line + route) is its own strategy. Only a selection of lines and routes (both present) is "mixed"; any other mix is not offered.
+- Line + route joins gaps with **straight** connectors (the result is an unsnapped Line); only a pure route merge street-routes.
+- Cancel/Escape stay available while routing (they are the abort path); Merge and the primary radios are disabled. A late router response after cancel is discarded, and a fingerprint check refuses to commit if the selection changed during routing.
+- A reversed segment with a directional `direction` adds a dialog warning (lines, routes and line + route).
+- Points: `serviceAreaType` is primary-only (blank = "circular buffer" is a real choice, so a walkshed donor never flips it); stops more than 0.25 mi from the primary warn that their location is discarded.
+- Route primary in line + route: the surviving line takes `properties.color` literally (an empty/Automatic color stays Automatic and resolves from the line's own `colorSeq`).
 
 ## Phase 4 — Unmerge and stable IDs in modules
 

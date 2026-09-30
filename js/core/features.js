@@ -681,12 +681,12 @@
           options.push({ label: "Delete", action: function () { onDelete(); } });
         })(featureType, featureIndex, feature);
       }
-      // Merge… (2+ selected, all one mergeable type). The right-clicked row is
+      // Merge… (2+ selected: one mergeable type, or lines + routes). The right-clicked row is
       // the default primary — the feature that survives.
       var mergeSel = App.merge && App.merge.mergeableSelection(selected);
       if (mergeSel) {
         options.push({ label: "Merge\u2026", action: function () {
-          App.merge.openDialog(mergeSel.type, mergeSel.indices, featureIndex);
+          App.merge.openDialog(mergeSel.type, mergeSel.indices, mergeSel.primaryFor(featureType, featureIndex));
         }});
       }
       var anyInGroup = selected.some(function (s) {
