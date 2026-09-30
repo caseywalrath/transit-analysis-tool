@@ -1,6 +1,6 @@
 # Feature Merge — implementation plan
 
-Status: in progress. Phases are built in order; each phase is one or more commits
+Status: in progress — Phase 1 (unique, stable feature IDs) is done. Phases are built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 
 ## Goal

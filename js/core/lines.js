@@ -271,7 +271,7 @@
     var nWaypoints = currentCoords.length;
     var feature = {
       type: "Feature",
-      properties: { name: "Line " + idx, lineIdx: idx, waypoints: nWaypoints, color: "", colorSeq: App._nextColorSeq() },
+      properties: { name: "Line " + idx, lineIdx: App.nextFeatureId("line"), waypoints: nWaypoints, color: "", colorSeq: App._nextColorSeq() },
       geometry: { type: "LineString", coordinates: currentCoords.slice() }
     };
     lines.push(feature);
@@ -298,7 +298,7 @@
       type: "Feature",
       properties: {
         name: opts.name || ("Line " + idx),
-        lineIdx: idx,
+        lineIdx: App.nextFeatureId("line"),
         waypoints: coords.length,
         color: opts.color || "",
         colorSeq: App._nextColorSeq()
@@ -373,7 +373,7 @@
       type: "Feature",
       properties: {
         name: "Line " + idx,
-        lineIdx: idx,
+        lineIdx: App.nextFeatureId("line"),
         waypoints: src.properties.waypoints,
         color: src.properties.color || "",
         hidden: false
@@ -383,6 +383,9 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    // A copy with no explicit color needs its own palette slot (array position
+    // would drift whenever an earlier line is deleted).
+    if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();
     lines.push(copy);
     rebuildLineBuffers(lineBufferRadiusMiles);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

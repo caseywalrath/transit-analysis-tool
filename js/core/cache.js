@@ -236,6 +236,13 @@
       if (maxColorSeq >= 0) App._advanceColorSeqPast(maxColorSeq);
     }
 
+    // 2c. Make every feature ID unique and advance the per-type ID counters
+    // (docs/feature-merge-plan.md Phase 1). Idempotent: already-unique IDs
+    // (the normal case, including undo/redo) are left untouched. Imported
+    // features arrive with no ID and are stamped here. Stop links that pointed
+    // at a duplicated ID keep pointing at the first (older) feature.
+    if (typeof App.ensureFeatureIds === "function") App.ensureFeatureIds();
+
     // 3. Restore feature settings into App.featureSettings
     if (App.featureSettings) {
       var fs = App.featureSettings;

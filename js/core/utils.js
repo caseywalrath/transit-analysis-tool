@@ -4,7 +4,8 @@
 // Exports: setStatus, escapeHTML, escapeAttr, parseCSV, fillSelect,
 //          enableSelect, toNumberSafe, normalizeTractGEOID, guessHeader,
 //          VAR_META, GROUP_INFO, getMeta, getCheckboxGroups,
-//          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue
+//          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue,
+//          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds
 
 (function () {
   var App = window.App = window.App || {};
@@ -80,6 +81,91 @@
     if (featureType === "label") return "#1a202c";
     return "#2b6cb0"; // point, and any unrecognized type
   }
+
+  // --- Stable per-type feature IDs (docs/feature-merge-plan.md, Phase 1) ---
+  // Every drawn feature carries an integer ID in a per-type property
+  // (pointIdx / lineIdx / routeIdx / polyIdx). It is used to map a clicked map
+  // feature back to its array index and to link stops to routes
+  // (attributes.associatedRoutes[].featureId). IDs are handed out from a
+  // monotonic per-type counter, so they are never reused after a delete
+  // (the old `array.length + 1` scheme repeated IDs once anything was removed).
+  // Display names ("Route 3") are independent of the ID and unchanged.
+
+  App.FEATURE_ID_PROP = { point: "pointIdx", line: "lineIdx", route: "routeIdx", polygon: "polyIdx" };
+
+  var _featureIdCounters = { point: 1, line: 1, route: 1, polygon: 1 };
+
+  // Returns the next unused ID for a feature type and advances the counter.
+  function nextFeatureId(type) {
+    if (!App.FEATURE_ID_PROP[type]) throw new Error("nextFeatureId: unknown feature type " + type);
+    return _featureIdCounters[type]++;
+  }
+
+  function _isValidFeatureId(v) {
+    return typeof v === "number" && isFinite(v) && v >= 1 && Math.floor(v) === v;
+  }
+
+  // PURE (no DOM/map/turf — loaded directly by the golden harness).
+  // arraysByType = { point: [...], line: [...], route: [...], polygon: [...] }
+  // (any key may be absent). Walks each array in order and stamps a fresh ID
+  // on any feature whose ID is missing, not a positive integer, or duplicates
+  // an earlier feature of the same type — the first (older) occurrence keeps
+  // it. Fresh IDs start above every valid ID in that array. Mutates the
+  // features' properties; returns
+  //   { changes: [{ type, index, oldId, newId }], maxByType: { type: maxId } }.
+  // Idempotent: a second call on the same arrays changes nothing.
+  function assignFeatureIds(arraysByType) {
+    var changes = [];
+    var maxByType = {};
+    Object.keys(App.FEATURE_ID_PROP).forEach(function (type) {
+      var arr = (arraysByType && arraysByType[type]) || [];
+      var prop = App.FEATURE_ID_PROP[type];
+      var seen = {};
+      var max = 0;
+      var needsNew = [];
+      for (var i = 0; i < arr.length; i++) {
+        var props = arr[i] && arr[i].properties;
+        if (!props) continue;
+        var id = props[prop];
+        if (_isValidFeatureId(id) && !seen[id]) {
+          seen[id] = true;
+          if (id > max) max = id;
+        } else {
+          needsNew.push(i);
+        }
+      }
+      for (var n = 0; n < needsNew.length; n++) {
+        var idx = needsNew[n];
+        var p = arr[idx].properties;
+        var oldId = (p[prop] === undefined) ? null : p[prop];
+        p[prop] = ++max;
+        changes.push({ type: type, index: idx, oldId: oldId, newId: p[prop] });
+      }
+      maxByType[type] = max;
+    });
+    return { changes: changes, maxByType: maxByType };
+  }
+
+  // Runs assignFeatureIds over the live arrays and advances the counters past
+  // every ID in use. Called from cache.js applyState() after the features are
+  // pushed, which covers session restore, file import, shapefile/CSV/GeoJSON
+  // import and undo/redo. Returns the change list (empty when nothing moved).
+  // Limitation: a stop link (associatedRoutes[].featureId) that referenced a
+  // duplicated ID keeps pointing at the first (older) feature that holds it;
+  // the ambiguity cannot be resolved retroactively.
+  function ensureFeatureIds() {
+    var res = assignFeatureIds({
+      point: App.points, line: App.lines, route: App.routes, polygon: App.polygons
+    });
+    Object.keys(res.maxByType).forEach(function (type) {
+      if (res.maxByType[type] >= _featureIdCounters[type]) _featureIdCounters[type] = res.maxByType[type] + 1;
+    });
+    return res.changes;
+  }
+
+  App.nextFeatureId = nextFeatureId;
+  App._assignFeatureIds = assignFeatureIds;
+  App.ensureFeatureIds = ensureFeatureIds;
 
   App.resolveFeatureColor = resolveFeatureColor;
   App._nextColorSeq = nextColorSeq;

@@ -482,7 +482,7 @@
       type: "Feature",
       properties: {
         name: "Route " + idx,
-        routeIdx: idx,
+        routeIdx: App.nextFeatureId("route"),
         waypoints: currentWaypoints.slice(),
         color: "",
         colorSeq: App._nextColorSeq()
@@ -641,7 +641,7 @@
       type: "Feature",
       properties: {
         name: "Route " + idx,
-        routeIdx: idx,
+        routeIdx: App.nextFeatureId("route"),
         waypoints: offsetWaypoints,
         color: src.properties.color || "",
         hidden: false
@@ -651,6 +651,8 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    // Own palette slot when no explicit color (see duplicateLine).
+    if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();
     routes.push(copy);
     rebuildRouteBuffers(routeBufferRadiusMiles);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

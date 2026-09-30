@@ -243,7 +243,7 @@
 
     var feature = {
       type: "Feature",
-      properties: { name: "Polygon " + idx, polyIdx: idx, vertices: nVertices, color: "" },
+      properties: { name: "Polygon " + idx, polyIdx: App.nextFeatureId("polygon"), vertices: nVertices, color: "" },
       geometry: { type: "Polygon", coordinates: [ring] }
     };
     polygons.push(feature);
@@ -332,7 +332,7 @@
       type: "Feature",
       properties: {
         name: "Polygon " + idx,
-        polyIdx: idx,
+        polyIdx: App.nextFeatureId("polygon"),
         vertices: src.properties.vertices,
         color: src.properties.color || "",
         hidden: false

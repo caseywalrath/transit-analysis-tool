@@ -82,7 +82,7 @@
     var idx = points.length + 1;
     var feature = {
       type: "Feature",
-      properties: { name: "Point " + idx, pointIdx: idx, color: "" },
+      properties: { name: "Point " + idx, pointIdx: App.nextFeatureId("point"), color: "" },
       geometry: { type: "Point", coordinates: [lon, lat] }
     };
     points.push(feature);
@@ -103,7 +103,7 @@
       type: "Feature",
       properties: {
         name: opts.name || ("Point " + idx),
-        pointIdx: idx,
+        pointIdx: App.nextFeatureId("point"),
         color: ""
       },
       geometry: { type: "Point", coordinates: [lon, lat] }
@@ -214,7 +214,7 @@
       type: "Feature",
       properties: {
         name: "Point " + idx,
-        pointIdx: idx,
+        pointIdx: App.nextFeatureId("point"),
         color: src.properties.color || "",
         hidden: false
       },
