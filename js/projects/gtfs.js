@@ -187,7 +187,41 @@
     return clauses.length === 1 ? clauses[0] : ["all"].concat(clauses);
   }
 
+  // shape_id -> "Outbound" | "Inbound" | "" for one route's trips: GTFS
+  // direction_id 0 -> Outbound, 1 -> Inbound, only when EVERY trip of that
+  // route on that shape carries the same valid value; otherwise "" (blank —
+  // the user sets it). Plan Phase 3 "Copy all as grouped Service".
+  function shapeDirections(tripsRows, routeId) {
+    var seen = {};   // sid -> "0" | "1" | "?" (mixed / missing)
+    (tripsRows || []).forEach(function (t) {
+      if (!t || !t.shape_id || String(t.route_id) !== String(routeId)) return;
+      var d = String(t.direction_id == null ? "" : t.direction_id).trim();
+      if (d !== "0" && d !== "1") d = "?";
+      var sid = t.shape_id;
+      if (!(sid in seen)) seen[sid] = d;
+      else if (seen[sid] !== d) seen[sid] = "?";
+    });
+    var out = {};
+    Object.keys(seen).forEach(function (sid) {
+      out[sid] = seen[sid] === "0" ? "Outbound" : seen[sid] === "1" ? "Inbound" : "";
+    });
+    return out;
+  }
+
+  // base, or "base (2)", "base (3)" … — the first not in existingIds (array).
+  function uniqueServiceId(base, existingIds) {
+    var used = {};
+    (existingIds || []).forEach(function (k) { if (k != null) used[String(k).trim()] = true; });
+    base = String(base || "Service").trim() || "Service";
+    if (!used[base]) return base;
+    for (var n = 2; ; n++) {
+      if (!used[base + " (" + n + ")"]) return base + " (" + n + ")";
+    }
+  }
+
   App.gtfsBrowse = {
+    shapeDirections: shapeDirections,
+    uniqueServiceId: uniqueServiceId,
     naturalCompare: naturalCompare,
     buildRouteIndex: buildRouteIndex,
     filterRoutes: filterRoutes,
@@ -552,7 +586,8 @@
 
   // Copies one shape as an editable Line; returns the new line's array index,
   // or -1 when nothing was created. opts (optional): { multi: true } appends
-  // " – <shape_id>" to the name; { group } sets attributes.group.
+  // " – <shape_id>" to the name; { group } sets attributes.group;
+  // { serviceId, direction } set those attributes (grouped-Service copy).
   function copyShapeToLine(props, opts) {
     opts = opts || {};
     var shapeId = props.shape_id;
@@ -582,6 +617,8 @@
     var attrs = {};
     if (lineMode) attrs.mode = lineMode;
     if (opts.group) attrs.group = opts.group;
+    if (opts.serviceId) attrs.serviceId = opts.serviceId;
+    if (opts.direction) attrs.direction = opts.direction;
     var notesParts = [];
     if (props.route_id) notesParts.push("route_id: " + props.route_id);
     if (shapeId) notesParts.push("shape_id: " + shapeId);
@@ -1273,26 +1310,43 @@
     if (any) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 16 });
   };
 
-  // opts = { routeId, mode: "representative"|"each"|"shape", shapeId }.
+  // opts = { routeId, mode: "representative"|"each"|"shape"|"service", shapeId }.
+  // "service" copies every shape like "each" and also groups them as ONE
+  // transit Service: shared attributes.serviceId (route name, made unique)
+  // and a per-shape direction from GTFS direction_id when unambiguous.
   // Returns the array indices (into App.lines) of the created lines.
   App.gtfsCopy = function (opts) {
     opts = opts || {};
     var created = [];
     var route = opts.routeId != null ? findIndexRoute(opts.routeId) : null;
     var shapes = [];
+    var asService = opts.mode === "service";
     if (opts.mode === "shape") {
       if (opts.shapeId != null) shapes = [String(opts.shapeId)];
     } else if (route) {
-      if (opts.mode === "each") shapes = route.shapes.map(function (s) { return s.shape_id; });
+      if (opts.mode === "each" || asService) shapes = route.shapes.map(function (s) { return s.shape_id; });
       else { var rep = representativeShape(route); if (rep) shapes = [rep.shape_id]; }
     }
-    var multi = opts.mode === "each" && shapes.length > 1;
-    var group = multi && route && route.routeKey !== UNASSIGNED_KEY ? routeDisplayName(route) : "";
+    var multi = (opts.mode === "each" || asService) && shapes.length > 1;
+    var named = route && route.routeKey !== UNASSIGNED_KEY;
+    var group = (multi || asService) && named ? routeDisplayName(route) : "";
+    var serviceId = "", dirs = {};
+    if (asService && named) {
+      var existing = [];
+      (App.routes || []).concat(App.lines || []).forEach(function (f) {
+        var a = f && f.properties && f.properties.attributes;
+        if (a && a.serviceId) existing.push(a.serviceId);
+      });
+      serviceId = uniqueServiceId(routeDisplayName(route), existing);
+      var tripRows = (_gtfsData && _gtfsData.has("trips.txt")) ? _gtfsData.get("trips.txt").rows : [];
+      dirs = shapeDirections(tripRows, route.route_id);
+    }
     function copyAll() {
       shapes.forEach(function (sid) {
         var f = shapeFeature(sid);
         if (!f) return;
-        var idx = copyShapeToLine(f.properties, { multi: multi, group: group });
+        var idx = copyShapeToLine(f.properties, { multi: multi, group: group,
+          serviceId: serviceId, direction: serviceId ? (dirs[sid] || "") : "" });
         if (idx >= 0) created.push(idx);
       });
     }

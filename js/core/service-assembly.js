@@ -26,7 +26,7 @@
   "use strict";
   var App = window.App = window.App || {};
 
-  // Valid direction opposites for 2-pattern Services (sorted, "|"-joined key).
+  // Valid direction opposites for 2-pattern Services (3+ pattern Services have no pair rule) (sorted, "|"-joined key).
   var VALID_PAIR_KEYS = {
     "NB|SB":            true,
     "EB|WB":            true,
@@ -64,13 +64,18 @@
   function validateService(svc, runtimeMode) {
     var ps = svc.patterns;
 
-    // Hard error: 3+ patterns assigned to one Service
+    // 3+ patterns (docs/gtfs-route-browser-plan.md "Phase 3 design"): each
+    // pattern is costed as its own one-way trip stream, so the opposite-pair
+    // rule cannot apply. Instead every pattern needs a one-way direction —
+    // "Both" (also what a blank direction reads as) would be ambiguous.
     if (ps.length >= 3) {
-      svc.warnings.push({
-        level: "error",
-        msg: ps.length + " patterns assigned to this Service — v1 supports max 2. Split into separate Services."
+      ps.forEach(function (p) {
+        if (p.direction === "Both") {
+          svc.warnings.push({ level: "error",
+            msg: "\"" + p.name + "\" needs a one-way direction (NB/SB/EB/WB/Inbound/Outbound/Loop/CW/CCW) — " +
+                 "in a Service with 3+ patterns each pattern is one direction of travel." });
+        }
       });
-      return;
     }
 
     // 2-pattern: must be valid opposites

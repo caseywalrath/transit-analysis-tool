@@ -81,9 +81,10 @@ function feedFiles() {
   const pts = (id, x0, n) => Array.from({ length: n }, (_, i) => id + "," + (38.8 + i * 0.001) + "," + (-104.8 + x0 + i * 0.01) + "," + (i + 1)).join("\n");
   const shapes = "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n" +
     [pts("177198", 0, 6), pts("177198_A", 0, 4), pts("177202", 0.001, 5), pts("B1", 0.05, 4), pts("T10", 0.1, 3), pts("lonely", 0.2, 3)].join("\n") + "\n";
-  const t = (r, s, h, n) => Array.from({ length: n }, (_, i) => [r, "svc", r + "_" + s + "_" + i, h, s].join(",")).join("\n");
-  const trips = "route_id,service_id,trip_id,trip_headsign,shape_id\n" +
-    [t("red", "177198", "Downtown", 3), t("red", "177198_A", "Downtown", 1), t("red", "177202", "Loop", 4), t("blue", "B1", "North", 2), t("ten", "T10", "East", 1)].join("\n") + "\n";
+  // direction_id: 177198 all 0 (Outbound), 177198_A 1 (Inbound), 177202 mixed (blank).
+  const t = (r, s, h, n, d) => Array.from({ length: n }, (_, i) => [r, "svc", r + "_" + s + "_" + i, h, s, typeof d === "function" ? d(i) : (d == null ? "" : d)].join(",")).join("\n");
+  const trips = "route_id,service_id,trip_id,trip_headsign,shape_id,direction_id\n" +
+    [t("red", "177198", "Downtown", 3, 0), t("red", "177198_A", "Downtown", 1, 1), t("red", "177202", "Loop", 4, (i) => i % 2), t("blue", "B1", "North", 2), t("ten", "T10", "East", 1)].join("\n") + "\n";
   const routes = "route_id,route_short_name,route_long_name,route_type,route_color\n" +
     "ten,10,Ten Line,3,\nred,Red,Red Circulator,3,FF0000\nblue,,Blue Line,3,0000FF\n";
   const stops = "stop_id,stop_name,stop_lat,stop_lon\ns1,One,38.8,-104.8\n";
@@ -209,6 +210,37 @@ async function main() {
     check("unassigned shape copies under its shape_id", eq(made, [6]) && L[6].name === "lonely", L[6]);
     check("bad route -> nothing created", eq(await page.evaluate(() => App.gtfsCopy({ routeId: "nope", mode: "each" })), []));
 
+    console.log("\n# Copy all as grouped Service (Phase 3)");
+    const svcAttrs = () => page.evaluate(() => App.lines.map((l) => { const a = l.properties.attributes || {}; return { name: l.properties.name, group: a.group, serviceId: a.serviceId, direction: a.direction || "" }; }));
+    const svcN0 = await page.evaluate(() => App.lines.length);
+    made = await page.evaluate(() => App.gtfsCopy({ routeId: "red", mode: "service" }));
+    let S = (await svcAttrs()).slice(svcN0);
+    check("service copy -> 3 new lines", made.length === 3 && S.length === 3, made);
+    check("service copy: shared group + serviceId = route name", S.every((l) => l.group === "Red" && l.serviceId === "Red"), S);
+    check("service copy: direction from unambiguous direction_id, else blank",
+      eq(S.map((l) => [l.name, l.direction]), [["Red \u2013 177202", ""], ["Red \u2013 177198", "Outbound"], ["Red \u2013 177198_A", "Inbound"]]), S);
+    let svc = await page.evaluate(() => App.buildTransitServices().filter((x) => x.key === "service-Red").map((x) => ({ n: x.patterns.length, w: x.warnings.map((w) => w.msg) })));
+    check("buildTransitServices -> one 3-pattern Service", svc.length === 1 && svc[0].n === 3, svc);
+    check("blank direction -> 'needs a one-way direction' warning (Needs setup), no max-2 error",
+      svc[0] && svc[0].w.some((m) => /177202.*one-way direction/.test(m)) && !svc[0].w.some((m) => /max 2/.test(m)), svc);
+    made = await page.evaluate(() => App.gtfsCopy({ routeId: "red", mode: "service" }));
+    S = (await svcAttrs()).slice(svcN0 + 3);
+    check("second service copy gets a unique serviceId 'Red (2)'", made.length === 3 && S.every((l) => l.serviceId === "Red (2)" && l.group === "Red"), S);
+    await page.evaluate(() => App.undo.undo());
+    check("service copy is ONE undo step", (await page.evaluate(() => App.lines.length)) === svcN0 + 3);
+    // Fill in direction + bands + speed on the first copy -> a costable 3-pattern Service.
+    svc = await page.evaluate((n0) => {
+      App.lines.slice(n0, n0 + 3).forEach((l) => {
+        const a = l.properties.attributes;
+        if (!a.direction) a.direction = "Outbound";
+        a.avgSpeed = 12;
+        a.service = { weekday: [{ from: "6:00", to: "9:00", frequency: 30 }] };
+      });
+      return App.buildTransitServices().filter((x) => x.key === "service-Red").map((x) => ({ n: x.patterns.length, blocked: App.hasBlockingWarnings(x), w: x.warnings }));
+    }, svcN0);
+    check("set-up 3-pattern Service has no blocking warnings", svc.length === 1 && svc[0].n === 3 && !svc[0].blocked, svc);
+    await page.evaluate((n0) => { App.lines.splice(n0); App.renderLineLayers(); }, svcN0);
+
     console.log("\n# Session round trip + clear");
     await page.evaluate(() => { App.gtfsSetRouteHidden("ten", true); App.gtfsSetShapeHidden("B1", true); });
     const state = await page.evaluate(() => { const s = App.cache.collectState("full"); s.gtfsData = App.serializeGTFSData(); return JSON.parse(JSON.stringify(s)); });
@@ -307,7 +339,7 @@ async function main() {
     // Menus + copy.
     const before = await page.evaluate(() => App.lines.length);
     await redRow.click({ button: "right" });
-    check("right-click opens the route menu", eq(await page.locator("#fp-context-menu button").allTextContents(), ["Copy as line", "Copy each shape as a line", "Show only this", "Zoom to"]));
+    check("right-click opens the route menu", eq(await page.locator("#fp-context-menu button").allTextContents(), ["Copy as line", "Copy each shape as a line", "Copy all as grouped Service", "Show only this", "Zoom to"]));
     await page.locator("#fp-context-menu button", { hasText: "Copy each shape as a line" }).click();
     let nl = await page.evaluate((b) => App.lines.slice(b).map((l) => ({ n: l.properties.name, g: (l.properties.attributes || {}).group, c: l.properties.color })), before);
     check("copy each -> 3 lines, shared group, color", nl.length === 3 && nl.every((l) => l.g === "Red" && l.c.toLowerCase() === "#ff0000") && nl[0].n === "Red – 177202", nl);
@@ -315,7 +347,7 @@ async function main() {
     await page.evaluate(() => App.undo.undo());
     check("copy each is ONE undo step", (await page.evaluate(() => App.lines.length)) === before, await page.evaluate(() => App.lines.length));
     await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).locator(".lp-row-menu").evaluate((b) => b.click());
-    check("⋯ button opens the same menu", (await page.locator("#fp-context-menu button").count()) === 4);
+    check("⋯ button opens the same menu", (await page.locator("#fp-context-menu button").count()) === 5);
     await page.locator("#fp-context-menu button", { hasText: "Show only this" }).click();
     check("Show only this hides the other routes", JSON.stringify(await filt()).includes('"blue"') && !JSON.stringify(await filt()).includes('"red"'));
     await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show all" }).click();
@@ -386,7 +418,7 @@ async function main() {
     await page.keyboard.press("Enter");
     check("Enter on a focused route row toggles expand", (await page.locator(BR + " .lp-gtfs-shape").count()) === 0 || (await page.locator(BR + " .lp-gtfs-shapes").evaluate((e) => e.style.display)) === "none");
     await page.keyboard.press("Shift+F10");
-    check("Shift+F10 opens the row menu", (await page.locator("#fp-context-menu button").count()) === 4);
+    check("Shift+F10 opens the row menu", (await page.locator("#fp-context-menu button").count()) === 5);
     await page.keyboard.press("Escape");
     await page.mouse.click(600, 400);
 

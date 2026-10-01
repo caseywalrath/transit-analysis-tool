@@ -1,6 +1,6 @@
 # GTFS Route Browser — implementation plan
 
-Status: Phases 1, 2, 4 done; Phase 3 pending.
+Status: All phases done.
 
 ## Goal
 
@@ -129,6 +129,60 @@ user wants one editable "Red Line", or all variants grouped as one Service.
 - Then add route-row action "Copy all as grouped Service": copies every shape,
   sets shared `group` and `serviceId` = route name, direction left blank for the
   user (or GTFS `direction_id` → Outbound/Inbound when present and unambiguous).
+
+#### Phase 3 design (decided before coding)
+
+**Scope rule.** Every 1- and 2-pattern code path stays byte-for-byte the same;
+the new math runs only when a Service has **3 or more** patterns (`N ≥ 3`).
+Existing golden values must not move; new cases are added only.
+
+**Costing an N ≥ 3 Service (Route Costing `computeService`).** A 2-pattern
+Service is costed as one cycle = out + back + one layover, at the minimum
+headway. That "cycle" is meaningless for e.g. three variants of a circulator
+or two outbound branches + one inbound, so for N ≥ 3 each pattern is costed as
+**its own one-way trip stream**, no pair doubling:
+
+- Trips / revenue hours / miles: exactly as today — each pattern's own bands ×
+  its own one-way runtime / length (this loop was already per pattern).
+- Layover: charged **per one-way trip**, at half of what a cycle of two of that
+  pattern's trips would get: `computeLayoverHrs(2 × oneWay_p) / 2` — i.e.
+  `oneWay_p × pct` in percent mode and `layoverValue / 2` minutes in minutes
+  mode. This is the same per-trip layover a 2-pattern Service effectively pays
+  (its cycle layover spread over its 2 trips), so the two models agree.
+- Peak vehicles per day: `Σ_p (oneWay_p + layoverPerTrip_p) × 60 / minHeadway_p,day`
+  over the patterns that run that day (raw), rounded **once** with `ceil` (same
+  rounding as today). For a 2-pattern Service at one headway this sum equals
+  today's `cycleHrs × 60 / minHeadway`, so it is a strict generalization.
+- Summary fields: `rtMiles` = Σ lengths, `runTimeMin` = Σ one-ways, `layoverMin`
+  = Σ per-trip layovers, `cycleMin` = their sum, `tripsPerCycle` = N
+  (`cycles` = trips / N, informational only), `peakHeadwayMin` = min headway.
+- `computeRoundTrip` for N ≥ 3 returns Σ one-ways / Σ lengths (same shape as
+  the 2-pattern branch) for the header columns.
+
+**Validation for N ≥ 3 (`service-assembly.js validateService`).** The
+"max 2" hard error is removed. The opposite-direction pair rule cannot apply,
+so it is replaced by one honest rule: every pattern must have a **one-way**
+direction (NB/SB/EB/WB/Inbound/Outbound/Loop/CW/CCW). `Both` (which is also what
+a blank direction reads as) is an error in an N ≥ 3 Service, because each
+pattern is costed as one-way and "Both" would silently halve its cost. Repeated
+directions (two Outbound variants) are allowed. The runtime and service-band
+checks apply unchanged.
+
+**Trip Builder.** N ≥ 3 → one column per pattern, in pattern order (stable
+sort by the existing direction rank). Label = the direction; when a direction
+appears on more than one pattern the label becomes `"<direction> · <pattern
+name>"` so the columns are distinguishable. The day grid shows at most 3
+columns per row and wraps the rest.
+
+**"Copy all as grouped Service" (gtfs.js `App.gtfsCopy({routeId, mode:"service"})`).**
+Copies every shape of the route in one undo step, sets shared
+`attributes.group` and `attributes.serviceId` = route display name (made unique
+with " (2)", " (3)" … if a Service id is already in use), and `direction` from
+GTFS `trips.direction_id` when every trip on that shape agrees (0 → Outbound,
+1 → Inbound), otherwise blank. A blank direction makes the Service show
+**"Needs setup"** in Trip Builder / a skipped row in Route Costing until the
+user sets directions — honest rather than guessing. No bands/speed are copied,
+so a fresh copy always needs setup (bands + speed/run time) anyway.
 
 ### Phase 4 — Map right-click improvements · Sonnet
 

@@ -64,6 +64,17 @@ export default {
     { id: "filterexpr/routes-only", call: "App.gtfsBrowse.buildVisibilityFilter", args: [["red", "blue"], []] },
     { id: "filterexpr/shapes-only", call: "App.gtfsBrowse.buildVisibilityFilter", args: [{}, { "177198": true, B1: false }] },
     { id: "filterexpr/both", call: "App.gtfsBrowse.buildVisibilityFilter", args: [["red"], ["B1"]] },
-    { id: "filterexpr/unassigned-route", call: "App.gtfsBrowse.buildVisibilityFilter", args: [["__unassigned__"], []] }
+    { id: "filterexpr/unassigned-route", call: "App.gtfsBrowse.buildVisibilityFilter", args: [["__unassigned__"], []] },
+    // --- Phase 3: grouped-Service copy helpers ---
+    { id: "dirs/agree-mixed-missing", call: "App.gtfsBrowse.shapeDirections", args: [[
+      { route_id: "red", shape_id: "a", direction_id: "0" }, { route_id: "red", shape_id: "a", direction_id: 0 },
+      { route_id: "red", shape_id: "b", direction_id: "1" },
+      { route_id: "red", shape_id: "c", direction_id: "0" }, { route_id: "red", shape_id: "c", direction_id: "1" },
+      { route_id: "red", shape_id: "d" },
+      { route_id: "red", shape_id: "e", direction_id: "1" }, { route_id: "red", shape_id: "e", direction_id: "" },
+      { route_id: "blue", shape_id: "a", direction_id: "1" }
+    ], "red"] },
+    { id: "serviceid/free", call: "App.gtfsBrowse.uniqueServiceId", args: ["Red", ["Blue"]] },
+    { id: "serviceid/taken", call: "App.gtfsBrowse.uniqueServiceId", args: ["Red", ["Red", "Red (2)", " Blue "]] }
   ]
 };

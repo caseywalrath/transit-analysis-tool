@@ -7,7 +7,7 @@
 // which the harness stubs as a no-op.
 
 export default {
-  scripts: ["js/projects/trip-builder.js"],
+  scripts: ["js/core/service-assembly.js", "js/projects/trip-builder.js"],
   cases: [
     // --- parseHHMMtoMin: "H:MM" -> minutes-from-midnight (NaN on bad) ------
     { id: "parseHHMM/valid", call: "App._tbTest.parseHHMMtoMin", args: ["6:30"] },
@@ -31,5 +31,29 @@ export default {
     },
     { id: "merge/single", call: "App._tbTest.mergeIntervals", args: [[{ from: 100, to: 200 }]] },
     { id: "merge/empty", call: "App._tbTest.mergeIntervals", args: [[]] },
+    // --- 3+ pattern Services (docs/gtfs-route-browser-plan.md Phase 3) ----
+    {
+      id: "columns/three-pattern-repeated-direction",
+      call: "App._tbTest.resolveColumnLabels",
+      args: [{ patterns: [
+        { name: "Red A", direction: "Inbound" },
+        { name: "Red B", direction: "Outbound" },
+        { name: "Red C", direction: "Inbound" },
+      ] }],
+    },
+    {
+      id: "columns/two-pattern-reference",
+      call: "App._tbTest.resolveColumnLabels",
+      args: [{ patterns: [{ name: "S", direction: "SB" }, { name: "N", direction: "NB" }] }],
+    },
+    {
+      id: "trips/three-pattern",
+      call: "App._tbTest.generateAllTrips",
+      args: [{ patterns: [
+        { name: "A", direction: "Outbound", runTime: 20, service: { weekday: [{ from: "6:00", to: "7:00", frequency: 30 }] } },
+        { name: "B", direction: "Outbound", avgSpeed: 12, lengthMiles: 3, service: { weekday: [{ from: "6:15", to: "7:00", frequency: 45 }] } },
+        { name: "C", direction: "Inbound", runTime: 25, service: { weekday: [{ from: "23:30", to: "0:30", frequency: 30 }], saturday: [{ from: "8:00", to: "9:00", frequency: 60 }] } },
+      ] }],
+    },
   ],
 };

@@ -34,5 +34,526 @@
     ]
   },
   "layover/percent": 0.1,
-  "layover/minutes": 0.2
+  "layover/minutes": 0.2,
+  "roundTrip/three-pattern": {
+    "rtHrs": 1.3333333333333333,
+    "rtMiles": 15,
+    "oneWays": [
+      0.5,
+      0.3333333333333333,
+      0.5
+    ]
+  },
+  "service/three-pattern-minutes-layover": {
+    "name": "Red",
+    "key": "service-Red",
+    "isGroup": true,
+    "skipped": false,
+    "warnings": [],
+    "patternCount": 3,
+    "directionSummary": "Outbound + Outbound + Inbound",
+    "rtMiles": 15,
+    "oneWayHrs": [
+      0.5,
+      0.3333333333333333,
+      0.5
+    ],
+    "runTimeMin": 80,
+    "cycleMin": 95,
+    "layoverMin": 15,
+    "tripsPerCycle": 3,
+    "peakHeadwayMin": 15,
+    "perDay": {
+      "weekday": {
+        "minHeadway": 15,
+        "trips": 72,
+        "revHrs": 35,
+        "miles": 384,
+        "cycles": 24,
+        "layoverHrs": 6,
+        "deadheadHrs": 3.5,
+        "platHrs": 44.5,
+        "cost": 5340,
+        "annualCost": 1361700,
+        "peakVehiclesRaw": 4.916666666666667,
+        "peakVehiclesRounded": 5,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": 60,
+        "trips": 20,
+        "revHrs": 10,
+        "miles": 110,
+        "cycles": 6.666666666666667,
+        "layoverHrs": 1.6666666666666665,
+        "deadheadHrs": 1,
+        "platHrs": 12.666666666666666,
+        "cost": 1520,
+        "annualCost": 79040,
+        "peakVehiclesRaw": 1.1666666666666667,
+        "peakVehiclesRounded": 2,
+        "hasService": true
+      },
+      "sunday": {
+        "minHeadway": 60,
+        "trips": 10,
+        "revHrs": 5,
+        "miles": 50,
+        "cycles": 3.3333333333333335,
+        "layoverHrs": 0.8333333333333333,
+        "deadheadHrs": 0.5,
+        "platHrs": 6.333333333333333,
+        "cost": 760,
+        "annualCost": 44080,
+        "peakVehiclesRaw": 0.5833333333333334,
+        "peakVehiclesRounded": 1,
+        "hasService": true
+      }
+    },
+    "daily": {
+      "weekday": {
+        "minHeadway": 15,
+        "trips": 72,
+        "revHrs": 35,
+        "miles": 384,
+        "cycles": 24,
+        "layoverHrs": 6,
+        "deadheadHrs": 3.5,
+        "platHrs": 44.5,
+        "cost": 5340,
+        "annualCost": 1361700,
+        "peakVehiclesRaw": 4.916666666666667,
+        "peakVehiclesRounded": 5,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": 60,
+        "trips": 20,
+        "revHrs": 10,
+        "miles": 110,
+        "cycles": 6.666666666666667,
+        "layoverHrs": 1.6666666666666665,
+        "deadheadHrs": 1,
+        "platHrs": 12.666666666666666,
+        "cost": 1520,
+        "annualCost": 79040,
+        "peakVehiclesRaw": 1.1666666666666667,
+        "peakVehiclesRounded": 2,
+        "hasService": true
+      },
+      "sunday": {
+        "minHeadway": 60,
+        "trips": 10,
+        "revHrs": 5,
+        "miles": 50,
+        "cycles": 3.3333333333333335,
+        "layoverHrs": 0.8333333333333333,
+        "deadheadHrs": 0.5,
+        "platHrs": 6.333333333333333,
+        "cost": 760,
+        "annualCost": 44080,
+        "peakVehiclesRaw": 0.5833333333333334,
+        "peakVehiclesRounded": 1,
+        "hasService": true
+      }
+    },
+    "annual": {
+      "revHrs": 9735,
+      "platHrs": 12373.5,
+      "layoverHrs": 1665,
+      "deadheadHrs": 973.5,
+      "cost": 1484820,
+      "trips": 19980,
+      "miles": 106540
+    },
+    "peakVehiclesRaw": 4.916666666666667,
+    "peakVehiclesRounded": 5,
+    "bandBreakdown": [
+      {
+        "day": "weekday",
+        "patternName": "Red A",
+        "patternIdx": 0,
+        "from": "6:00",
+        "to": "9:00",
+        "hours": 3,
+        "headwayMin": 15,
+        "trips": 12,
+        "revHrs": 6
+      },
+      {
+        "day": "weekday",
+        "patternName": "Red A",
+        "patternIdx": 0,
+        "from": "9:00",
+        "to": "18:00",
+        "hours": 9,
+        "headwayMin": 30,
+        "trips": 18,
+        "revHrs": 9
+      },
+      {
+        "day": "weekday",
+        "patternName": "Red B",
+        "patternIdx": 1,
+        "from": "6:00",
+        "to": "9:00",
+        "hours": 3,
+        "headwayMin": 30,
+        "trips": 6,
+        "revHrs": 2
+      },
+      {
+        "day": "weekday",
+        "patternName": "Red C",
+        "patternIdx": 2,
+        "from": "6:00",
+        "to": "18:00",
+        "hours": 12,
+        "headwayMin": 20,
+        "trips": 36,
+        "revHrs": 18
+      },
+      {
+        "day": "saturday",
+        "patternName": "Red A",
+        "patternIdx": 0,
+        "from": "8:00",
+        "to": "18:00",
+        "hours": 10,
+        "headwayMin": 60,
+        "trips": 10,
+        "revHrs": 5
+      },
+      {
+        "day": "saturday",
+        "patternName": "Red C",
+        "patternIdx": 2,
+        "from": "8:00",
+        "to": "18:00",
+        "hours": 10,
+        "headwayMin": 60,
+        "trips": 10,
+        "revHrs": 5
+      },
+      {
+        "day": "sunday",
+        "patternName": "Red C",
+        "patternIdx": 2,
+        "from": "8:00",
+        "to": "18:00",
+        "hours": 10,
+        "headwayMin": 60,
+        "trips": 10,
+        "revHrs": 5
+      }
+    ]
+  },
+  "service/three-pattern-percent-layover": {
+    "name": "Loop",
+    "key": "service-Loop",
+    "isGroup": true,
+    "skipped": false,
+    "warnings": [],
+    "patternCount": 3,
+    "directionSummary": "CW + CCW + Loop",
+    "rtMiles": 17,
+    "oneWayHrs": [
+      0.5,
+      0.5,
+      0.75
+    ],
+    "runTimeMin": 105,
+    "cycleMin": 120.75000000000001,
+    "layoverMin": 15.749999999999996,
+    "tripsPerCycle": 3,
+    "peakHeadwayMin": 20,
+    "perDay": {
+      "weekday": {
+        "minHeadway": 20,
+        "trips": 24,
+        "revHrs": 13,
+        "miles": 128,
+        "cycles": 8,
+        "layoverHrs": 1.95,
+        "deadheadHrs": 0,
+        "platHrs": 14.95,
+        "cost": 1495,
+        "annualCost": 381225,
+        "peakVehiclesRaw": 3.7375,
+        "peakVehiclesRounded": 4,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      },
+      "sunday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      }
+    },
+    "daily": {
+      "weekday": {
+        "minHeadway": 20,
+        "trips": 24,
+        "revHrs": 13,
+        "miles": 128,
+        "cycles": 8,
+        "layoverHrs": 1.95,
+        "deadheadHrs": 0,
+        "platHrs": 14.95,
+        "cost": 1495,
+        "annualCost": 381225,
+        "peakVehiclesRaw": 3.7375,
+        "peakVehiclesRounded": 4,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      },
+      "sunday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      }
+    },
+    "annual": {
+      "revHrs": 3315,
+      "platHrs": 3812.25,
+      "layoverHrs": 497.25,
+      "deadheadHrs": 0,
+      "cost": 381225,
+      "trips": 6120,
+      "miles": 32640
+    },
+    "peakVehiclesRaw": 3.7375,
+    "peakVehiclesRounded": 4,
+    "bandBreakdown": [
+      {
+        "day": "weekday",
+        "patternName": "L1",
+        "patternIdx": 0,
+        "from": "22:00",
+        "to": "2:00",
+        "hours": 4,
+        "headwayMin": 30,
+        "trips": 8,
+        "revHrs": 4
+      },
+      {
+        "day": "weekday",
+        "patternName": "L2",
+        "patternIdx": 1,
+        "from": "6:00",
+        "to": "10:00",
+        "hours": 4,
+        "headwayMin": 20,
+        "trips": 12,
+        "revHrs": 6
+      },
+      {
+        "day": "weekday",
+        "patternName": "L3",
+        "patternIdx": 2,
+        "from": "6:00",
+        "to": "10:00",
+        "hours": 4,
+        "headwayMin": 60,
+        "trips": 4,
+        "revHrs": 3
+      }
+    ]
+  },
+  "service/two-pattern-reference": {
+    "name": "P",
+    "key": "service-P",
+    "isGroup": true,
+    "skipped": false,
+    "warnings": [],
+    "patternCount": 2,
+    "directionSummary": "NB + SB",
+    "rtMiles": 12,
+    "oneWayHrs": [
+      0.5,
+      0.5
+    ],
+    "runTimeMin": 60,
+    "cycleMin": 70,
+    "layoverMin": 10,
+    "tripsPerCycle": 2,
+    "peakHeadwayMin": 15,
+    "perDay": {
+      "weekday": {
+        "minHeadway": 15,
+        "trips": 24,
+        "revHrs": 12,
+        "miles": 144,
+        "cycles": 12,
+        "layoverHrs": 2,
+        "deadheadHrs": 1.2000000000000002,
+        "platHrs": 15.2,
+        "cost": 1824,
+        "annualCost": 465120,
+        "peakVehiclesRaw": 4.666666666666667,
+        "peakVehiclesRounded": 5,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      },
+      "sunday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      }
+    },
+    "daily": {
+      "weekday": {
+        "minHeadway": 15,
+        "trips": 24,
+        "revHrs": 12,
+        "miles": 144,
+        "cycles": 12,
+        "layoverHrs": 2,
+        "deadheadHrs": 1.2000000000000002,
+        "platHrs": 15.2,
+        "cost": 1824,
+        "annualCost": 465120,
+        "peakVehiclesRaw": 4.666666666666667,
+        "peakVehiclesRounded": 5,
+        "hasService": true
+      },
+      "saturday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      },
+      "sunday": {
+        "minHeadway": null,
+        "trips": 0,
+        "revHrs": 0,
+        "miles": 0,
+        "cycles": 0,
+        "layoverHrs": 0,
+        "deadheadHrs": 0,
+        "platHrs": 0,
+        "cost": 0,
+        "annualCost": 0,
+        "peakVehiclesRaw": 0,
+        "peakVehiclesRounded": 0,
+        "hasService": false
+      }
+    },
+    "annual": {
+      "revHrs": 3060,
+      "platHrs": 3876,
+      "layoverHrs": 510,
+      "deadheadHrs": 306.00000000000006,
+      "cost": 465120,
+      "trips": 6120,
+      "miles": 36720
+    },
+    "peakVehiclesRaw": 4.666666666666667,
+    "peakVehiclesRounded": 5,
+    "bandBreakdown": [
+      {
+        "day": "weekday",
+        "patternName": "P N",
+        "patternIdx": 0,
+        "from": "6:00",
+        "to": "9:00",
+        "hours": 3,
+        "headwayMin": 15,
+        "trips": 12,
+        "revHrs": 6
+      },
+      {
+        "day": "weekday",
+        "patternName": "P S",
+        "patternIdx": 1,
+        "from": "6:00",
+        "to": "9:00",
+        "hours": 3,
+        "headwayMin": 15,
+        "trips": 12,
+        "revHrs": 6
+      }
+    ]
+  }
 }

@@ -23,5 +23,142 @@
       "to": 200
     }
   ],
-  "merge/empty": []
+  "merge/empty": [],
+  "columns/three-pattern-repeated-direction": [
+    {
+      "direction": "Outbound",
+      "label": "Outbound",
+      "patternName": "Red B"
+    },
+    {
+      "direction": "Inbound",
+      "label": "Inbound · Red A",
+      "patternName": "Red A"
+    },
+    {
+      "direction": "Inbound",
+      "label": "Inbound · Red C",
+      "patternName": "Red C"
+    }
+  ],
+  "columns/two-pattern-reference": [
+    {
+      "direction": "NB",
+      "label": "NB",
+      "patternName": "N"
+    },
+    {
+      "direction": "SB",
+      "label": "SB",
+      "patternName": "S"
+    }
+  ],
+  "trips/three-pattern": {
+    "weekday": [
+      {
+        "direction": "Outbound",
+        "label": "Outbound · A",
+        "withAsterisk": false,
+        "patternName": "A",
+        "runtimeMin": 20,
+        "trips": [
+          {
+            "startMin": 360,
+            "endMin": 380
+          },
+          {
+            "startMin": 390,
+            "endMin": 410
+          }
+        ]
+      },
+      {
+        "direction": "Outbound",
+        "label": "Outbound · B",
+        "withAsterisk": false,
+        "patternName": "B",
+        "runtimeMin": 15,
+        "trips": [
+          {
+            "startMin": 375,
+            "endMin": 390
+          }
+        ]
+      },
+      {
+        "direction": "Inbound",
+        "label": "Inbound",
+        "withAsterisk": false,
+        "patternName": "C",
+        "runtimeMin": 25,
+        "trips": [
+          {
+            "startMin": 1410,
+            "endMin": 1435
+          },
+          {
+            "startMin": 1440,
+            "endMin": 1465
+          }
+        ]
+      }
+    ],
+    "saturday": [
+      {
+        "direction": "Outbound",
+        "label": "Outbound · A",
+        "withAsterisk": false,
+        "patternName": "A",
+        "runtimeMin": 20,
+        "trips": []
+      },
+      {
+        "direction": "Outbound",
+        "label": "Outbound · B",
+        "withAsterisk": false,
+        "patternName": "B",
+        "runtimeMin": 15,
+        "trips": []
+      },
+      {
+        "direction": "Inbound",
+        "label": "Inbound",
+        "withAsterisk": false,
+        "patternName": "C",
+        "runtimeMin": 25,
+        "trips": [
+          {
+            "startMin": 480,
+            "endMin": 505
+          }
+        ]
+      }
+    ],
+    "sunday": [
+      {
+        "direction": "Outbound",
+        "label": "Outbound · A",
+        "withAsterisk": false,
+        "patternName": "A",
+        "runtimeMin": 20,
+        "trips": []
+      },
+      {
+        "direction": "Outbound",
+        "label": "Outbound · B",
+        "withAsterisk": false,
+        "patternName": "B",
+        "runtimeMin": 15,
+        "trips": []
+      },
+      {
+        "direction": "Inbound",
+        "label": "Inbound",
+        "withAsterisk": false,
+        "patternName": "C",
+        "runtimeMin": 25,
+        "trips": []
+      }
+    ]
+  }
 }

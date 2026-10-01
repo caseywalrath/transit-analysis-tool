@@ -95,7 +95,7 @@
   }
 
   // ---- Direction column resolver (Q4 + Q6 ordering) ----
-  // Returns one entry per Start/End table column (1 or 2 columns per Service).
+  // Returns one entry per Start/End table column (1 or 2 columns per Service; one per pattern for 3+).
 
   // Order rank for column display per Q6:
   //   NB before SB, EB before WB, Inbound before Outbound, CW before CCW,
@@ -113,7 +113,23 @@
     var cols = [];
     var ps = svc.patterns;
 
-    if (ps.length === 2) {
+    if (ps.length >= 3) {
+      // 3+ patterns (docs/gtfs-route-browser-plan.md "Phase 3 design"): one
+      // column per pattern. A direction shared by several patterns gets the
+      // pattern name appended so the columns stay distinguishable.
+      var dirCount = {};
+      ps.forEach(function (p) { dirCount[p.direction] = (dirCount[p.direction] || 0) + 1; });
+      ps.forEach(function (p) {
+        cols.push({
+          direction:    p.direction,
+          label:        dirCount[p.direction] > 1 ? (p.direction + " \u00b7 " + p.name) : p.direction,
+          withAsterisk: false,
+          color:        p.color,
+          patternName:  p.name,
+          pattern:      p
+        });
+      });
+    } else if (ps.length === 2) {
       // Paired — one column per pattern, label = each pattern's actual direction.
       ps.forEach(function (p) {
         cols.push({
@@ -264,7 +280,7 @@
       var blocked    = App.hasBlockingWarnings(svc);
       var isSelected = (svc.key === _selectedKey);
       var typeBadge  = svc.isGroup
-        ? '<span class="rc-pill rc-pill-group">Paired</span>'
+        ? '<span class="rc-pill rc-pill-group">' + (svc.patterns.length >= 3 ? 'Grouped' : 'Paired') + '</span>'
         : '<span class="rc-pill rc-pill-solo">Solo</span>';
       // The chip and the warning tooltip both key off hasBlockingWarnings(),
       // so a blocked row gets one signal (the chip, carrying the tooltip)
@@ -492,7 +508,12 @@
     App._tbTest = {
       parseHHMMtoMin: parseHHMMtoMin,
       formatMin: formatMin,
-      mergeIntervals: mergeIntervals
+      mergeIntervals: mergeIntervals,
+      // Column labels/order only (pattern objects are plain JSON in tests).
+      resolveColumnLabels: function (svc) {
+        return resolveColumns(svc).map(function (c) { return { direction: c.direction, label: c.label, patternName: c.patternName }; });
+      },
+      generateAllTrips: function (svc) { return generateAllTrips(svc); }
     };
   }
 
@@ -608,7 +629,7 @@
 
     var stripeColor = (svc.patterns[0] && svc.patterns[0].color) || "#888";
     var typeBadge = svc.isGroup
-      ? '<span class="rc-pill rc-pill-group">Paired</span>'
+      ? '<span class="rc-pill rc-pill-group">' + (svc.patterns.length >= 3 ? 'Grouped' : 'Paired') + '</span>'
       : '<span class="rc-pill rc-pill-solo">Solo</span>';
 
     var caret = _detailsOpen ? "&#9662;" : "&#9656;"; // ▾ / ▸
@@ -909,7 +930,7 @@
       rendered++;
       html += '<div class="tb-day-section">';
       html += '<div class="tb-day-label">' + d.label + '</div>';
-      html += '<div class="tb-day-grid" style="grid-template-columns:repeat(' + cols.length + ',minmax(0,1fr));">';
+      html += '<div class="tb-day-grid" style="grid-template-columns:repeat(' + Math.min(cols.length, 3) + ',minmax(0,1fr));">';
 
       cols.forEach(function (col, ci) {
         html += '<div class="tb-direction-table-wrap">';

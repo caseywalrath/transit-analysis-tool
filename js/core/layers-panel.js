@@ -1017,6 +1017,7 @@
     return [
       { label: "Copy as line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "representative" }); } },
       { label: "Copy each shape as a line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "each" }); } },
+      { label: "Copy all as grouped Service", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "service" }); } },
       { label: "Show only this", action: function () { App.gtfsShowOnly([r.routeKey]); } },
       { label: "Zoom to", action: function () { App.gtfsZoomTo({ routeId: r.routeKey }); } }
     ];
