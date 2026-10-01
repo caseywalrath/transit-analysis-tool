@@ -7,6 +7,8 @@
 // An L-shaped line along latitude 38.8 then north.
 const L = [[-104.80, 38.80], [-104.79, 38.80], [-104.78, 38.80], [-104.78, 38.81]];
 // A route that goes east then comes back west 0.001 deg north (passes the same spot twice).
+// A closed loop (ends ~15 ft apart) with a vertex per corner.
+const LOOP = [[-104.80, 38.80], [-104.79, 38.80], [-104.79, 38.81], [-104.80, 38.81], [-104.80005, 38.80]];
 const BACK = [[-104.80, 38.800], [-104.78, 38.800], [-104.78, 38.801], [-104.80, 38.801]];
 
 export default {
@@ -66,6 +68,27 @@ export default {
     { id: "name/first-free", call: "App.splitGeom.uniqueName", args: ["Route 4", ["Route 4", "Route 4 (2)"]] },
     { id: "name/start-at", call: "App.splitGeom.uniqueName", args: ["Red", ["Red"], 3] },
     { id: "name/blank-base", call: "App.splitGeom.uniqueName", args: ["  ", []] },
-    { id: "length/L", call: "App.splitGeom.lengthMi", args: [L] }
+    { id: "length/L", call: "App.splitGeom.lengthMi", args: [L] },
+
+    // ---- Phase 2: sectionBetween / joinPieces / cutSection / waypointCut ----
+    { id: "section/between-two-cuts", call: "App.splitGeom.sectionBetween", args: [L, { segIndex: 0, t: 0.5 }, { segIndex: 2, t: 0.5 }] },
+    { id: "section/order-independent", call: "App.splitGeom.sectionBetween", args: [L, { segIndex: 2, t: 0.5 }, { segIndex: 0, t: 0.5 }] },
+    { id: "section/same-segment", call: "App.splitGeom.sectionBetween", args: [L, { segIndex: 1, t: 0.25 }, { segIndex: 1, t: 0.75 }] },
+    { id: "section/vertex-to-vertex", call: "App.splitGeom.sectionBetween", args: [L, { segIndex: 1, t: 0 }, { segIndex: 2, t: 0 }] },
+    { id: "join/duplicate-dropped", call: "App.splitGeom.joinPieces", args: [[[0, 0], [1, 1]], [[1, 1], [2, 2]]] },
+    { id: "join/gap-kept", call: "App.splitGeom.joinPieces", args: [[[0, 0], [1, 1]], [[1.001, 1], [2, 2]]] },
+    { id: "cutSection/open-three-pieces", call: "App.splitGeom.cutSection", args: [L, null, [{ segIndex: 0, t: 0.5 }, { segIndex: 2, t: 0.5 }], false] },
+    { id: "cutSection/open-first-cut-on-start", call: "App.splitGeom.cutSection", args: [L, null, [{ segIndex: 0, t: 0 }, { segIndex: 1, t: 0.5 }], false] },
+    { id: "cutSection/open-second-cut-on-end", call: "App.splitGeom.cutSection", args: [L, null, [{ segIndex: 1, t: 0.5 }, { segIndex: 2, t: 1 }], false] },
+    { id: "cutSection/open-with-waypoints", call: "App.splitGeom.cutSection",
+      args: [L, [L[0], L[1], L[2], L[3]], [{ segIndex: 0, t: 0.5 }, { segIndex: 2, t: 0.5 }], false] },
+    { id: "cutSection/loop-rest-is-one-piece", call: "App.splitGeom.cutSection", args: [LOOP, null, [{ segIndex: 1, t: 0.5 }, { segIndex: 2, t: 0.5 }], true] },
+    { id: "cutSection/loop-with-waypoints", call: "App.splitGeom.cutSection",
+      args: [LOOP, [LOOP[0], LOOP[1], LOOP[2], LOOP[3], LOOP[4]], [{ segIndex: 1, t: 0.5 }, { segIndex: 2, t: 0.5 }], true] },
+    { id: "wpcut/interior-waypoint", call: "App.splitGeom.waypointCut", args: [L, [L[0], L[2], L[3]], 1] },
+    { id: "wpcut/off-line-waypoint", call: "App.splitGeom.waypointCut", args: [L, [L[0], [-104.7852, 38.8004], L[3]], 1] },
+    { id: "wpcut/self-overlap-second-pass", call: "App.splitGeom.waypointCut", args: [BACK, [BACK[0], [-104.79, 38.8], [-104.79, 38.801], BACK[3]], 2] },
+    { id: "wp/off-line-waypoint-at-cut-is-replaced", call: "App.splitGeom.partitionWaypoints",
+      args: [L, [L[0], [-104.7852, 38.8004], L[3]], [{ segIndex: 1, t: 0.48 }]] }
   ]
 };

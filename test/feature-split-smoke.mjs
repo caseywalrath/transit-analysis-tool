@@ -265,6 +265,181 @@ async function main() {
     await page.keyboard.press("Escape");
     check("Escape cancels with nothing changed", await page.evaluate(() => !document.querySelector(".fm-dialog") && App.lines.length === 2));
 
+
+    // ================= PHASE 2 =================
+    const px = (ll) => page.evaluate((ll) => { const p = App.map.project(ll); const r = App.map.getCanvas().getBoundingClientRect();
+      return { x: r.left + p.x, y: r.top + p.y }; }, ll);
+    const view = async (c, z) => { await page.evaluate(({ c, z }) => App.map.jumpTo({ center: c, zoom: z }), { c, z }); await page.waitForTimeout(600); };
+    const menuItems = () => page.evaluate(() => Array.from(document.querySelectorAll("#fp-context-menu button")).map((b) => b.textContent));
+    const clickMenu = (label) => page.evaluate((label) => Array.from(document.querySelectorAll("#fp-context-menu button")).find((b) => b.textContent === label).click(), label);
+    const previewLayers = () => page.evaluate(() => ({ src: !!App.map.getSource("split-preview"), line: !!App.map.getLayer("split-preview-line"), cut: !!App.map.getLayer("split-preview-cut") }));
+    const close = (a, b, tol = 1e-5) => Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]) < tol;
+
+    console.log("\n# Split out section: line (real right-click menu, preview, click, dialog)");
+    await loadFixture(page);
+    await view([-104.785, 38.803], 14);
+    const snap0 = await snapshot(page);
+    await page.evaluate(() => { window.__pushes = 0; });
+    const A = await px([-104.795, 38.80]), B = await px([-104.78, 38.805]);
+    await page.mouse.click(A.x, A.y, { button: "right" });
+    await page.waitForTimeout(200);
+    let items2 = await menuItems();
+    check("menu: 'Split out section…' directly after 'Split here'", items2.indexOf("Split out section…") === items2.indexOf("Split here") + 1 && items2.indexOf("Split here") > 0, items2);
+    await clickMenu("Split out section…");
+    await page.waitForTimeout(100);
+    check("pick mode armed: drawMode split-pick, preview layers exist", await page.evaluate(() => App.drawMode === "split-pick" && App.split.isPicking()) &&
+      (await previewLayers()).cut);
+    await page.mouse.move(B.x - 30, B.y + 10);
+    await page.mouse.move(B.x, B.y, { steps: 4 });
+    await page.waitForTimeout(150);
+    const pv = await page.evaluate(() => { const d = App.map.getSource("split-preview")._data || App.map.getSource("split-preview").serialize().data;
+      const ids = App.map.getStyle().layers.map((l) => l.id);
+      return { feats: d.features.map((f) => ({ k: f.properties.kind, n: f.geometry.coordinates.length, c: f.geometry.coordinates })),
+               aboveLines: ids.indexOf("split-preview-line") > ids.indexOf("lines-layer"), last: ids.slice(-2) }; });
+    const sec = pv.feats.find((f) => f.k === "section");
+    check("preview highlights the stretch from the first point to the cursor (4 coords through 2 vertices); marker at the first cut; drawn above lines",
+      sec && sec.n === 4 && pv.feats.some((f) => f.k === "cut") && pv.aboveLines && close(sec.c[1], LINE[1]) && close(sec.c[2], LINE[2]), pv);
+    await page.keyboard.press("l"); await page.keyboard.press("r");
+    check("tool shortcuts do not fire during pick mode", await page.evaluate(() => App.drawMode === "split-pick"));
+    await page.mouse.click(B.x, B.y);
+    await page.waitForTimeout(150);
+    const d2 = await page.evaluate(() => ({ open: !!document.querySelector(".fm-dialog"), mode: App.drawMode, picking: App.split.isPicking(),
+      names: Array.from(document.querySelectorAll(".fs-piece-row input")).map((i) => i.value) }));
+    check("second click opens the dialog with 3 pieces; mode ended; preview layers removed", d2.open && d2.names.length === 3 && d2.mode === null &&
+      !d2.picking && (await previewLayers()).src === false && (await previewLayers()).line === false, d2);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const s1 = await page.evaluate(() => ({ n: App.lines.length, sel: App.getSelectedFeatures(), mid: App.lines[2].geometry.coordinates,
+      a: App.lines[0].geometry.coordinates, last: App.lines[3].geometry.coordinates, pushes: window.__pushes,
+      names: App.lines.map((l) => l.properties.name) }));
+    // lines array: [Blue (first piece), Blue (2) (the fixture's other line), section, last piece]
+    check("3 pieces; the middle piece (the section) is the one selected; one undo snapshot",
+      s1.n === 4 && s1.sel.length === 1 && s1.sel[0].index === 2 && s1.pushes === 1, s1);
+    check("section geometry: cut -> two vertices -> cut; first piece ends at the first cut; last starts at the second", s1.mid.length === 4 &&
+      close(s1.mid[0], [-104.795, 38.80], 1e-3) && close(s1.mid[1], LINE[1]) && close(s1.mid[2], LINE[2]) && close(s1.mid[3], [-104.78, 38.805], 1e-3) &&
+      JSON.stringify(s1.mid[0]) === JSON.stringify(s1.a[1]) && JSON.stringify(s1.mid[3]) === JSON.stringify(s1.last[0]), s1);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+    check("Undo restores the session exactly", (await snapshot(page)) === snap0);
+
+    console.log("\n# Split out section: cancel paths and refused points");
+    await page.mouse.click(A.x, A.y, { button: "right" }); await page.waitForTimeout(150);
+    await clickMenu("Split out section…"); await page.waitForTimeout(100);
+    await page.mouse.move(B.x, B.y, { steps: 3 }); await page.waitForTimeout(120);
+    await page.mouse.click(A.x, A.y); await page.waitForTimeout(150); // same spot as the first point
+    check("second point on the first point is refused; still picking; no dialog",
+      await page.evaluate(() => App.split.isPicking() && !document.querySelector(".fm-dialog") && App.lines.length === 2));
+    await page.keyboard.press("Escape"); await page.waitForTimeout(100);
+    const esc = await page.evaluate(() => ({ mode: App.drawMode, picking: App.split.isPicking(), dlg: !!document.querySelector(".fm-dialog"), n: App.lines.length }));
+    const escL = await previewLayers();
+    check("Escape cancels: no preview layers/source left, drawMode cleared, nothing changed", esc.mode === null && !esc.picking && !esc.dlg &&
+      !escL.src && !escL.line && !escL.cut && (await snapshot(page)) === snap0, { esc, escL });
+    await page.mouse.click(A.x, A.y, { button: "right" }); await page.waitForTimeout(150);
+    await clickMenu("Split out section…"); await page.waitForTimeout(100);
+    await page.mouse.move(B.x, B.y, { steps: 3 }); await page.waitForTimeout(100);
+    await page.mouse.click(B.x, B.y - 120, { button: "right" }); await page.waitForTimeout(150);
+    const rc = await previewLayers();
+    check("right-click cancels and cleans the layers", await page.evaluate(() => !App.split.isPicking() && App.drawMode === null) && !rc.src && !rc.line);
+
+    console.log("\n# Split out section: ends");
+    const endPlan = await page.evaluate(() => { const p = App.split.analyze("line", 0, [[-104.79999, 38.80], [-104.785, 38.80]]);
+      return { ok: p.ok, n: p.pieces.length, sec: p.sectionPiece, errs: p.errors }; });
+    check("a point on the start end gives 2 pieces; the section is piece 1 (first)", endPlan.ok && endPlan.n === 2 && endPlan.sec === 0, endPlan);
+    const endPlan2 = await page.evaluate(() => { const p = App.split.analyze("line", 0, [[-104.785, 38.80], [-104.78, 38.80999]]);
+      return { ok: p.ok, n: p.pieces.length, sec: p.sectionPiece }; });
+    check("a point on the far end gives 2 pieces; the section is the last piece", endPlan2.ok && endPlan2.n === 2 && endPlan2.sec === 1, endPlan2);
+    check("both points at the two ends, or the same spot: refused", await page.evaluate(() =>
+      !App.split.analyze("line", 0, [[-104.79999, 38.80], [-104.78, 38.80999]]).ok && !App.split.analyze("line", 0, [[-104.785, 38.80], [-104.785, 38.80]]).ok));
+    const endRun = await page.evaluate(() => { const r = App.split.run("line", 0, [[-104.79999, 38.80], [-104.785, 38.80]]);
+      return { ok: r.ok, n: App.lines.length, sel: App.getSelectedFeatures().length, first: App.lines[0].geometry.coordinates.length }; });
+    check("end-section run: 2 pieces, the section (first piece) selected", endRun.ok && endRun.n === 3 && endRun.sel === 1, endRun);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+
+    console.log("\n# Split out section: route");
+    const c1 = [-104.795, 38.82], c2 = [-104.775, 38.82];
+    const rsec = await page.evaluate(({ c1, c2 }) => { const p = App.split.analyze("route", 0, [c1, c2]);
+      return { ok: p.ok, n: p.pieces.length, sec: p.sectionPiece, wps: p.pieces.map((x) => x.waypoints), rt: p.pieces.map((x) => x.runTime), errs: p.errors }; }, { c1, c2 });
+    check("route: 3 pieces, waypoints partitioned with cut points as shared ends",
+      rsec.ok && rsec.n === 3 && rsec.sec === 1 && rsec.wps[1].length === 3 && close(rsec.wps[1][1], ROUTE[2]) && close(rsec.wps[0][rsec.wps[0].length - 1], rsec.wps[1][0]) &&
+      close(rsec.wps[1][2], rsec.wps[2][0]), rsec);
+    await view([-104.785, 38.82], 14);
+    await page.evaluate(({ c1, c2 }) => { App.split.startSectionPick("route", 0, c1); }, { c1, c2 });
+    const P2 = await px(c2);
+    await page.mouse.move(P2.x, P2.y, { steps: 3 }); await page.waitForTimeout(120);
+    await page.mouse.click(P2.x, P2.y); await page.waitForTimeout(150);
+    await page.keyboard.press("Enter"); await page.waitForTimeout(200);
+    const rr = await page.evaluate(() => ({ n: App.routes.length, sel: App.getSelectedFeatures(), mid: App.routes[2].geometry.coordinates, mw: App.routes[2].properties.waypoints,
+      mr: App.routes[2].properties.attributes.runTime }));
+    check("route section split via the pick: appended section piece selected, with its own waypoints",
+      rr.n === 4 && rr.sel.length === 1 && rr.sel[0].index === 2 && rr.mid.length === 4 && rr.mw.length === 3, rr);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+
+    console.log("\n# Split out section: loop");
+    await page.evaluate(() => { var st = App.cache.collectState("full"); st.lines.push({ type: "Feature",
+      properties: { name: "Loop", lineIdx: 9, waypoints: 5, color: "", attributes: { runTime: 40 } },
+      geometry: { type: "LineString", coordinates: [[-104.8, 38.85], [-104.79, 38.85], [-104.79, 38.86], [-104.8, 38.86], [-104.80005, 38.85]] } });
+      App.cache.applyState(st); });
+    await view([-104.795, 38.855], 14);
+    const LA = await px([-104.795, 38.85]), LB = await px([-104.79, 38.855]);
+    await page.mouse.click(LA.x, LA.y, { button: "right" }); await page.waitForTimeout(150);
+    const loopItems = await menuItems();
+    check("loop: 'Split here' hidden, 'Split out section…' offered", !loopItems.includes("Split here") && loopItems.includes("Split out section…"), loopItems);
+    await clickMenu("Split out section…"); await page.waitForTimeout(100);
+    await page.mouse.move(LB.x, LB.y, { steps: 3 }); await page.waitForTimeout(120);
+    await page.mouse.click(LB.x, LB.y); await page.waitForTimeout(150);
+    const lp = await page.evaluate(() => ({ open: !!document.querySelector(".fm-dialog"), n: document.querySelectorAll(".fs-piece-row").length }));
+    check("loop dialog: 2 pieces (the rest is joined into one)", lp.open && lp.n === 2, lp);
+    await page.keyboard.press("Enter"); await page.waitForTimeout(200);
+    const lr = await page.evaluate(() => { const l0 = App.lines[2], l1 = App.lines[3];
+      return { n: App.lines.length, rest: l0.geometry.coordinates, sec: l1.geometry.coordinates, rt: [l0.properties.attributes.runTime, l1.properties.attributes.runTime],
+               sel: App.getSelectedFeatures().length, names: [l0.properties.name, l1.properties.name] }; });
+    check("loop result: rest keeps the feature, starts at the second point, runs through the loop start; section is the new feature and is selected",
+      lr.n === 4 && lr.rest.length === 6 && close(lr.rest[0], lr.sec[lr.sec.length - 1]) && close(lr.rest[lr.rest.length - 1], lr.sec[0]) &&
+      lr.sel === 1 && lr.names[1] === "Loop (2)" && Math.abs(lr.rt[0] + lr.rt[1] - 40) < 1e-9, lr);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+
+    console.log("\n# Split at this node (vertex-edit menu)");
+    await loadFixture(page);
+    await view([-104.785, 38.81], 14);
+    const nodeBefore = await snapshot(page);
+    await page.evaluate(() => App.selectFeature("line", 0));
+    await page.waitForTimeout(150);
+    const V1 = await px(LINE[1]), V0 = await px(LINE[0]);
+    await page.mouse.click(V0.x, V0.y, { button: "right" }); await page.waitForTimeout(150);
+    const endMenu = await page.evaluate(() => Array.from(document.querySelectorAll("#vertex-ctx-menu button")).map((b) => b.textContent));
+    check("end vertex: no 'Split at this node'", endMenu.length >= 1 && !endMenu.includes("Split at this node"), endMenu);
+    await page.mouse.click(5, 5); await page.waitForTimeout(100);
+    await page.mouse.click(V1.x, V1.y, { button: "right" }); await page.waitForTimeout(150);
+    const midMenu = await page.evaluate(() => Array.from(document.querySelectorAll("#vertex-ctx-menu button")).map((b) => b.textContent));
+    check("interior vertex: 'Split at this node' next to 'Delete node'", midMenu[0] === "Delete node" && midMenu[1] === "Split at this node", midMenu);
+    await page.evaluate(() => document.getElementById("vertex-ctx-split").click());
+    await page.waitForTimeout(150);
+    const nd = await page.evaluate(() => ({ dlg: !!document.querySelector(".fm-dialog"), editing: App._editing, names: document.querySelectorAll(".fs-piece-row").length }));
+    check("dialog opens after leaving vertex-edit mode, 2 pieces", nd.dlg && nd.editing === null && nd.names === 2, nd);
+    await page.keyboard.press("Enter"); await page.waitForTimeout(200);
+    const nl = await page.evaluate(() => ({ a: App.lines[0].geometry.coordinates, b: App.lines[2].geometry.coordinates }));
+    check("line node split: cut exactly at the vertex (no new vertex)", JSON.stringify(nl.a) === JSON.stringify([LINE[0], LINE[1]]) &&
+      JSON.stringify(nl.b) === JSON.stringify([LINE[1], LINE[2], LINE[3]]), nl);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+    check("node split then Undo restores exactly", (await snapshot(page)) === nodeBefore);
+
+    await view([-104.785, 38.82], 14);
+    await page.evaluate(() => App.selectFeature("route", 0));
+    await page.waitForTimeout(150);
+    const W1 = await px(ROUTE[2]);
+    await page.mouse.click(W1.x, W1.y, { button: "right" }); await page.waitForTimeout(150);
+    const rMenu = await page.evaluate(() => Array.from(document.querySelectorAll("#vertex-ctx-menu button")).map((b) => b.textContent));
+    check("route interior waypoint: 'Split at this node' offered", rMenu.includes("Split at this node"), rMenu);
+    await page.evaluate(() => document.getElementById("vertex-ctx-split").click());
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Enter"); await page.waitForTimeout(200);
+    const rn = await page.evaluate(() => ({ a: App.routes[0].geometry.coordinates, b: App.routes[2].geometry.coordinates,
+      aw: App.routes[0].properties.waypoints, bw: App.routes[2].properties.waypoints }));
+    check("route node split: pieces meet exactly at the waypoint's geometry position; waypoints are [first, node] / [node, last]",
+      JSON.stringify(rn.a) === JSON.stringify([ROUTE[0], ROUTE[1], ROUTE[2]]) && JSON.stringify(rn.b) === JSON.stringify([ROUTE[2], ROUTE[3]]) &&
+      JSON.stringify(rn.aw) === JSON.stringify([ROUTE[0], ROUTE[2]]) && JSON.stringify(rn.bw) === JSON.stringify([ROUTE[2], ROUTE[3]]), rn);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
+    // ================= END PHASE 2 =================
+
     console.log("\n# Reload persistence");
     await page.evaluate(() => App.split.run("line", 0, [{ segIndex: 2, t: 0 }]));
     await page.evaluate(() => App.cache.save && App.cache.save());

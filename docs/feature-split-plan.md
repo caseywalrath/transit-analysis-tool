@@ -1,6 +1,6 @@
 # Feature Split (lines and routes) — design plan
 
-Status: Phase 1 (Split here for lines and routes) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phases 2-3 not started.
+Status: Phases 1 (Split here) and 2 (Split out section…, loops, Split at this node) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phase 3 not started.
 
 ## Goal
 
@@ -189,8 +189,11 @@ The engine, `App.split.analyze(type, index, cuts)`, returns a plan
    `test/feature-split-smoke.mjs`. It checks that split followed by Merge gives
    identical coordinates, and that split followed by Undo restores the session
    exactly.
-2. **Split out section…** The two-point pick mode with preview, splitting loops,
-   and **Split at this node** in the vertex menu.
+2. **Split out section…** *(Done.)* The two-point pick mode with preview, splitting loops,
+   and **Split at this node** in the vertex menu. Loop rule: the stretch between the
+   two points (in line order) becomes the new feature; the rest is joined through the
+   loop start into one piece that keeps the original feature and begins at the second
+   point. A point within ~30 ft of an end of an open line counts as that end (2 pieces).
 3. **Module awareness.** The `registerFeatureUsage` hook and its warnings in
    both the Split and Merge dialogs, plus "also split the opposite direction"
    for paired Services.

@@ -348,6 +348,10 @@
       (canDel ? "" : " disabled") + ">" +
       (canDel ? "Delete node" : "Delete node (minimum reached)") +
       "</button>";
+    // Split at this node — interior vertices of lines / interior waypoints of routes (not loops).
+    var canSplit = (featureType === "line" || featureType === "route") && App.split && typeof App.split.nodeCut === "function" &&
+      !!App.split.nodeCut(featureType, featureIndex, vertexIdx);
+    if (canSplit) _ctxMenu.innerHTML += "<button id=\"vertex-ctx-split\">Split at this node</button>";
 
     _ctxMenu.style.display = "block";
     _ctxMenu.style.left = x + "px";
@@ -357,6 +361,14 @@
       hideVertexCtxMenu();
       if (canDel) deleteVertex(featureType, featureIndex, vertexIdx);
     });
+
+    if (canSplit) {
+      document.getElementById("vertex-ctx-split").addEventListener("click", function () {
+        hideVertexCtxMenu();
+        exitEditMode(); // leave vertex-edit mode (hides handles, clears selection) before the dialog opens
+        App.split.splitAtNode(featureType, featureIndex, vertexIdx);
+      });
+    }
 
     // Close menu on any next click outside
     setTimeout(function () {
@@ -844,6 +856,10 @@
             { label: "Split here", hidden: !((featureType === "line" || featureType === "route") && App.split &&
                 App.split.canSplitAt(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat])), action: function () {
                 App.split.openDialog(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat]);
+            }},
+            // Split out section… — two-point pick (the right-click spot is the first point); offered on every line/route, the only split on a loop.
+            { label: "Split out section\u2026", hidden: !((featureType === "line" || featureType === "route") && App.split && App.split.startSectionPick), action: function () {
+                App.split.startSectionPick(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat]);
             }},
             // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
             { label: "Unmerge\u2026", hidden: !(App.merge && App.merge.hasHistory(featureType, featureIndex)), action: function () {

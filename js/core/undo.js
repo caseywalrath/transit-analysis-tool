@@ -43,6 +43,14 @@
     _restoring = true;
     try {
       App.cache.applyState(state);
+      // A selected / vertex-edited feature that no longer exists after the restore
+      // (e.g. undoing a split that selected a new piece) would leave orphan handles.
+      var arrays = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons };
+      var stale = function (type, idx) { var a = arrays[type]; return !a || !a[idx]; };
+      var ed = App._editing, sel = App._selected;
+      if ((ed && ed.featureType && stale(ed.featureType, ed.featureIndex)) || (sel && sel.type && stale(sel.type, sel.index))) {
+        if (typeof App.exitEditMode === "function") App.exitEditMode();
+      }
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       App.cache.save();
     } finally {

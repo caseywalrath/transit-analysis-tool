@@ -185,11 +185,67 @@
         k++;
       }
       var cp = k < cutPos.length ? cutPos[k] : null;
-      var nearCut = (cp && distFt(w, cp.point) < 3) || (k > 0 && distFt(w, cutPos[k - 1].point) < 3);
+      var nearCut = (cp && (distFt(w, cp.point) < 3 || Math.abs(pos - cp.pos) < EPS_T)) ||
+                    (k > 0 && (distFt(w, cutPos[k - 1].point) < 3 || Math.abs(pos - cutPos[k - 1].pos) < EPS_T));
       if (!nearCut) out[k].push(w.slice());
     });
     while (k < cutPos.length) { out[k].push(cutPos[k].point.slice()); out.push([cutPos[k].point.slice()]); k++; }
     return out;
+  }
+
+  // Join two consecutive coordinate (or waypoint) arrays end to start. A
+  // duplicate join vertex (within ~1 m / 3.3 ft) is dropped.
+  function joinPieces(first, second) {
+    var a = cloneCoords(first), b = cloneCoords(second);
+    if (a.length && b.length && distFt(a[a.length - 1], b[0]) < 3.3) b.shift();
+    return a.concat(b);
+  }
+
+  // The stretch of the line between two positions ({segIndex, t}, any order):
+  // the first cut point, every vertex strictly between, the second cut point.
+  function sectionBetween(coords, c1, c2) {
+    if (!Array.isArray(coords) || coords.length < 2 || !c1 || !c2) return [];
+    var a = posOf(c1) <= posOf(c2) ? c1 : c2, b = a === c1 ? c2 : c1;
+    function pt(c) { var p = lerp(coords[c.segIndex], coords[c.segIndex + 1], Math.max(0, Math.min(1, +c.t || 0))); return [round7(p[0]), round7(p[1])]; }
+    var out = [pt(a)];
+    for (var i = a.segIndex + 1; i <= b.segIndex; i++) {
+      if (i > posOf(a) + EPS_T && i < posOf(b) - EPS_T) out.push(coords[i].slice());
+    }
+    out.push(pt(b));
+    return out;
+  }
+
+  // Two-cut "Split out section". Cuts may sit exactly on an end (the caller
+  // trims near-end cuts to {segIndex:0,t:0} / {segIndex:n-2,t:1}), giving 2
+  // pieces instead of 3. For a LOOP (ends meet) the stretch between the two
+  // cuts becomes the section and the rest — the part before the first cut
+  // joined through the loop's start to the part after the second — is ONE
+  // piece that begins at the second cut. Returns
+  // { pieces: [coords…], waypoints: [wp…] | null, sectionPiece }.
+  // Non-loop: pieces are in line order; sectionPiece is 0 when the first cut is
+  // on the start, else 1. Loop: pieces = [rest, section], sectionPiece = 1.
+  function cutSection(coords, waypoints, cuts, loop) {
+    var pieces = cutAt(coords, cuts);
+    var wps = waypoints ? partitionWaypoints(coords, waypoints, cuts) : null;
+    var sorted = (cuts || []).slice().sort(function (a, b) { return posOf(a) - posOf(b); });
+    if (loop && pieces.length === 3) {
+      pieces = [joinPieces(pieces[2], pieces[0]), pieces[1]];
+      if (wps) wps = [joinPieces(wps[2], wps[0]), wps[1]];
+      return { pieces: pieces, waypoints: wps, sectionPiece: 1 };
+    }
+    var startOnEnd = sorted.length > 0 && posOf(sorted[0]) <= EPS_T;
+    return { pieces: pieces, waypoints: wps, sectionPiece: pieces.length > 1 && !startOnEnd ? 1 : 0 };
+  }
+
+  // The cut for route waypoint k: its position on the geometry, placed exactly
+  // as partitionWaypoints places it (searching forward from the previous one).
+  function waypointCut(coords, waypoints, k) {
+    var prev = 0, loc = null;
+    for (var i = 0; i <= k && i < (waypoints || []).length; i++) {
+      loc = locate(coords, waypoints[i], undefined, { fromPos: prev });
+      if (loc) prev = loc.segIndex + loc.t;
+    }
+    return loc ? { segIndex: loc.segIndex, t: loc.t } : null;
   }
 
   // Divide a run time (minutes) between pieces in proportion to their lengths,
@@ -269,7 +325,11 @@
     assignStops: assignStops,
     isLoop: isLoop,
     uniqueName: uniqueName,
-    lengthMi: lengthMi
+    lengthMi: lengthMi,
+    joinPieces: joinPieces,
+    sectionBetween: sectionBetween,
+    cutSection: cutSection,
+    waypointCut: waypointCut
   };
 
   /* =====================================================================
@@ -385,24 +445,56 @@
     plan.cuts = resolved;
 
     var loop = isLoop(coords, LOOP_FT);
-    if (loop && resolved.length < 2) {
+    var isSection = resolved.length >= 2;
+    if (loop && !isSection) {
       plan.errors.push("'" + plan.name + "' is a loop (its ends meet), so one cut only opens it. Use Split out section… instead.");
       return plan;
     }
-    var total = lengthMi(coords), prevAlong = 0;
+    var total = lengthMi(coords), nC = coords.length;
+    // Split out section on an open line: a point within ~30 ft of an end counts
+    // as that end (the section runs to it), giving 2 pieces instead of 3.
+    var atEnd = [];
+    if (isSection && !loop) {
+      resolved = resolved.map(function (c) {
+        var al = alongMi(coords, c) * FT_PER_MI;
+        if (al < END_GUARD_FT) { atEnd.push(true); return { segIndex: 0, t: 0 }; }
+        if (total * FT_PER_MI - al < END_GUARD_FT) { atEnd.push(true); return { segIndex: nC - 2, t: 1 }; }
+        atEnd.push(false); return c;
+      });
+      plan.cuts = resolved;
+    }
+    var interior = 0, prevAlong = 0;
     for (var i = 0; i < resolved.length; i++) {
+      if (atEnd[i]) continue;
       var along = alongMi(coords, resolved[i]);
       if ((along - prevAlong) * FT_PER_MI < END_GUARD_FT || (total - along) * FT_PER_MI < END_GUARD_FT) {
-        plan.errors.push("That cut is too close to " + (i > 0 && (along - prevAlong) * FT_PER_MI < END_GUARD_FT ? "the other cut" : "an end") +
-          " of '" + plan.name + "' — a piece would have almost no length.");
+        var nearOther = interior > 0 && (along - prevAlong) * FT_PER_MI < END_GUARD_FT;
+        plan.errors.push(nearOther
+          ? "The two points are too close together (or the same spot) on '" + plan.name + "' — the section would have almost no length."
+          : "That cut is too close to an end of '" + plan.name + "' — a piece would have almost no length.");
         return plan;
       }
-      prevAlong = along;
+      prevAlong = along; interior++;
+    }
+    if (isSection && !loop && interior === 0) {
+      plan.errors.push(posOf(resolved[0]) === posOf(resolved[1])
+        ? "The two points are the same spot — pick two different places."
+        : "Those points cover the whole " + type + " — there is nothing to split off.");
+      return plan;
     }
 
-    var pieceCoords = cutAt(coords, resolved);
-    if (pieceCoords.length !== resolved.length + 1) { plan.errors.push("The cut did not produce separate pieces."); return plan; }
-    var pieceWps = type === "route" ? partitionWaypoints(coords, props.waypoints || [], resolved) : null;
+    var pieceCoords, pieceWps, sectionPiece = -1;
+    if (isSection) {
+      var cs = cutSection(coords, type === "route" ? (props.waypoints || []) : null, resolved, loop);
+      pieceCoords = cs.pieces; pieceWps = cs.waypoints; sectionPiece = cs.sectionPiece;
+      if (pieceCoords.length !== (loop ? 2 : interior + 1)) { plan.errors.push("The cut did not produce separate pieces."); return plan; }
+    } else {
+      pieceCoords = cutAt(coords, resolved);
+      if (pieceCoords.length !== resolved.length + 1) { plan.errors.push("The cut did not produce separate pieces."); return plan; }
+      pieceWps = type === "route" ? partitionWaypoints(coords, props.waypoints || [], resolved) : null;
+    }
+    plan.sectionPiece = sectionPiece;
+    plan.loop = loop;
     var lengths = pieceCoords.map(lengthMi);
     var runTimes = splitRunTime(attrs.runTime, lengths);
 
@@ -437,6 +529,12 @@
     var linked = plan.featureId != null ? stopsLinkedTo(type, plan.featureId) : [];
     var assign = assignStops(linked.map(function (pt) { return { id: pt.properties.pointIdx, at: pt.geometry.coordinates }; }),
       pieceCoords, STOP_TOL_FT);
+    if (loop && pieceCoords.length === 2) { // the second cut is the rest piece's start / section's end
+      var c2 = pieceCoords[1][pieceCoords[1].length - 1];
+      assign.forEach(function (a, n) {
+        if (distFt(linked[n].geometry.coordinates, c2) <= STOP_TOL_FT && a.pieces.length < 2) a.pieces = [0, 1];
+      });
+    }
     plan.stops = assign.map(function (a, n) { return { pointId: a.id, name: linked[n].properties.name || "", pieces: a.pieces }; });
     plan.stops.forEach(function (st) {
       if (st.pieces.length > 1) plan.stopsBoth++;
@@ -547,8 +645,12 @@
     }
     if (typeof App.onFeatureDelete === "function") App.onFeatureDelete(); // exit edit, clear selection, panel, notify, save
     if (typeof App.selectFeature === "function") {
-      App.selectFeature(type, indices[0]);
-      if (typeof App.toggleMultiSelect === "function") indices.slice(1).forEach(function (i) { App.toggleMultiSelect(type, i); });
+      if (plan.sectionPiece >= 0) {
+        App.selectFeature(type, indices[plan.sectionPiece]); // Split out section: select the section
+      } else {
+        App.selectFeature(type, indices[0]);
+        if (typeof App.toggleMultiSelect === "function") indices.slice(1).forEach(function (i) { App.toggleMultiSelect(type, i); });
+      }
     }
     var msg = "Split '" + plan.name + "' into " + indices.length + " " + type + "s — Ctrl+Z to undo";
     if (typeof App.setStatus === "function") App.setStatus(msg);
@@ -606,6 +708,11 @@
         row.appendChild(el("span", "fs-piece-len", fmtMi(p.lengthMi)));
         sec.appendChild(row);
       });
+      if (plan.sectionPiece >= 0) {
+        sec.appendChild(el("div", "fm-hint", plan.loop
+          ? "Part 2 is the section you picked. Part 1 is the rest of the loop, rejoined through its start, so it now begins at the second point."
+          : "Part " + (plan.sectionPiece + 1) + " is the section you picked."));
+      }
       body.appendChild(sec);
 
       if (plan.serviceId) {
@@ -663,12 +770,173 @@
     return plan;
   }
 
+  /* =====================================================================
+     Split out section… — two-point pick mode (Phase 2)
+     ===================================================================== */
+
+  var PICK_MODE = "split-pick";
+  var PV_SRC = "split-preview", PV_LINE = "split-preview-line", PV_CUT = "split-preview-cut";
+  var _pick = null; // { type, id, cut1, raf, last, onMove, onClick, onCtx, onKey, onDocClick }
+
+  function pickIndex() {
+    if (!_pick) return -1;
+    var arr = arrayFor(_pick.type) || [];
+    for (var i = 0; i < arr.length; i++) if (arr[i].properties && arr[i].properties[ID_PROP[_pick.type]] === _pick.id) return i;
+    return -1;
+  }
+
+  function previewData(section, cutPt) {
+    var feats = [];
+    if (section && section.length >= 2) feats.push({ type: "Feature", properties: { kind: "section" }, geometry: { type: "LineString", coordinates: section } });
+    if (cutPt) feats.push({ type: "Feature", properties: { kind: "cut" }, geometry: { type: "Point", coordinates: cutPt } });
+    return { type: "FeatureCollection", features: feats };
+  }
+
+  // Create (or re-create after a basemap/style reload) the preview source+layers
+  // on top of everything drawn.
+  function ensurePreviewLayers() {
+    var map = App.map;
+    if (!map) return false;
+    if (!map.getSource(PV_SRC)) map.addSource(PV_SRC, { type: "geojson", data: previewData(null, null) });
+    if (!map.getLayer(PV_LINE)) map.addLayer({ id: PV_LINE, type: "line", source: PV_SRC, filter: ["==", ["get", "kind"], "section"],
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#f97316", "line-width": 7, "line-opacity": 0.9 } });
+    if (!map.getLayer(PV_CUT)) map.addLayer({ id: PV_CUT, type: "circle", source: PV_SRC, filter: ["==", ["get", "kind"], "cut"],
+      paint: { "circle-radius": 7, "circle-color": "#f97316", "circle-stroke-width": 2.5, "circle-stroke-color": "#ffffff" } });
+    return true;
+  }
+
+  function removePreviewLayers() {
+    var map = App.map;
+    if (!map) return;
+    try {
+      if (map.getLayer(PV_LINE)) map.removeLayer(PV_LINE);
+      if (map.getLayer(PV_CUT)) map.removeLayer(PV_CUT);
+      if (map.getSource(PV_SRC)) map.removeSource(PV_SRC);
+    } catch (e) { /* map mid-teardown */ }
+  }
+
+  function cutPoint(coords, c) {
+    var p = lerp(coords[c.segIndex], coords[c.segIndex + 1], c.t);
+    return [round7(p[0]), round7(p[1])];
+  }
+
+  function updatePreview() {
+    if (!_pick) return;
+    _pick.raf = 0;
+    var i = pickIndex();
+    if (i < 0) { cancelPick(); return; }
+    var coords = arrayFor(_pick.type)[i].geometry.coordinates;
+    var c2 = _pick.last ? resolveCut(coords, _pick.last) : null;
+    var section = c2 ? sectionBetween(coords, _pick.cut1, c2) : null;
+    if (!ensurePreviewLayers()) return;
+    App.map.getSource(PV_SRC).setData(previewData(section, cutPoint(coords, _pick.cut1)));
+  }
+
+  // Leave pick mode and remove everything it added. Safe to call when idle.
+  function cancelPick(silent) {
+    var pk = _pick;
+    if (!pk) return false;
+    _pick = null;
+    if (pk.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(pk.raf);
+    if (App.map) {
+      App.map.off("mousemove", pk.onMove);
+      App.map.off("click", pk.onClick);
+      App.map.off("contextmenu", pk.onCtx);
+    }
+    document.removeEventListener("keydown", pk.onKey, true);
+    document.removeEventListener("click", pk.onDocClick, true);
+    removePreviewLayers();
+    if (App.drawMode === PICK_MODE) {
+      App.drawMode = null;
+      if (App.map) App.map.getCanvas().style.cursor = "grab";
+    }
+    if (!silent && typeof App.setStatus === "function") App.setStatus("Ready");
+    return true;
+  }
+
+  // Enter the two-point pick: `where` (the right-click location, or a cut) is
+  // the first point; the next map click sets the second and opens the dialog.
+  function startSectionPick(type, index, where) {
+    var arr = arrayFor(type), f = arr && arr[index];
+    if (!f || !f.geometry || f.geometry.type !== "LineString" || f.geometry.coordinates.length < 2 || !App.map) return false;
+    cancelPick(true);
+    var kit = App.merge && App.merge._dialogKit;
+    if (kit && kit.isOpen()) kit.closeDialog();
+    var coords = f.geometry.coordinates;
+    var cut1 = resolveCut(coords, where);
+    if (!cut1) return false;
+    if (typeof App.deactivateVertexEdit === "function") App.deactivateVertexEdit(); // hide vertex handles, keep the selection
+    var pk = { type: type, id: f.properties[ID_PROP[type]], cut1: cut1, raf: 0, last: null };
+    pk.onMove = function (e) {
+      pk.last = [e.lngLat.lng, e.lngLat.lat];
+      if (!pk.raf) pk.raf = (typeof requestAnimationFrame === "function" ? requestAnimationFrame : function (fn) { return setTimeout(fn, 16); })(updatePreview);
+    };
+    pk.onClick = function (e) {
+      if (e.originalEvent && e.originalEvent.button > 0) return;
+      var i = pickIndex();
+      if (i < 0) { cancelPick(); return; }
+      var cuts = [cut1, resolveCut(arrayFor(type)[i].geometry.coordinates, [e.lngLat.lng, e.lngLat.lat])];
+      var plan = analyze(type, i, cuts);
+      if (!plan.ok) { // stay in the mode so the user can pick a better second point
+        if (typeof App.setStatus === "function") App.setStatus(plan.errors[0] + " (Esc to cancel)");
+        return;
+      }
+      cancelPick(true);
+      openDialog(type, i, cuts);
+    };
+    pk.onCtx = function (e) { if (e.preventDefault) e.preventDefault(); cancelPick(); };
+    pk.onKey = function (e) {
+      if (e.key !== "Escape") return;
+      e.preventDefault(); e.stopPropagation();
+      cancelPick();
+    };
+    pk.onDocClick = function (e) { // a toolbar tool button ends the mode (its own handler then runs)
+      if (e.target && e.target.closest && e.target.closest(".tool-btn")) cancelPick(true);
+    };
+    _pick = pk;
+    App.drawMode = PICK_MODE;
+    App.map.getCanvas().style.cursor = "crosshair";
+    App.map.on("mousemove", pk.onMove);
+    App.map.on("click", pk.onClick);
+    App.map.on("contextmenu", pk.onCtx);
+    document.addEventListener("keydown", pk.onKey, true);
+    document.addEventListener("click", pk.onDocClick, true);
+    if (ensurePreviewLayers()) App.map.getSource(PV_SRC).setData(previewData(null, cutPoint(coords, cut1)));
+    if (typeof App.setStatus === "function") App.setStatus("Click the second point of the section to split out (Esc or right-click to cancel)");
+    return true;
+  }
+
+  // Can "Split at this node" be offered for vertex/waypoint vertexIdx? (vertex-edit menu)
+  // Lines: any interior vertex. Routes: any interior waypoint. Never on a loop
+  // (one cut on a loop only opens it — use Split out section…).
+  function nodeCut(type, index, vertexIdx) {
+    var arr = arrayFor(type), f = arr && arr[index];
+    if (!f || !f.geometry || f.geometry.type !== "LineString") return null;
+    var coords = f.geometry.coordinates;
+    if (coords.length < 3 || isLoop(coords, LOOP_FT)) return null;
+    if (type === "line") return vertexIdx > 0 && vertexIdx < coords.length - 1 ? { segIndex: vertexIdx, t: 0 } : null;
+    var wps = f.properties.waypoints || [];
+    if (!(vertexIdx > 0 && vertexIdx < wps.length - 1)) return null;
+    return waypointCut(coords, wps, vertexIdx);
+  }
+
+  function splitAtNode(type, index, vertexIdx) {
+    var c = nodeCut(type, index, vertexIdx);
+    if (!c) return null;
+    return openDialog(type, index, [c]);
+  }
+
   App.split = {
     analyze: analyze,
     run: run,
     openDialog: openDialog,
     closeDialog: closeDialog,
     canSplitAt: canSplitAt,
+    startSectionPick: startSectionPick,
+    cancelPick: cancelPick,
+    isPicking: function () { return !!_pick; },
+    nodeCut: nodeCut,
+    splitAtNode: splitAtNode,
     resolveCut: resolveCut,
     isDialogOpen: function () { return !!_me && !!(App.merge && App.merge._dialogKit.isCurrent(_me)); }
   };

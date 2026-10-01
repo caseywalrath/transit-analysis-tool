@@ -794,6 +794,7 @@
       if (e.key === "Escape" && App.popup.isOpen()) {
         App.popup.close();
       }
+      if (App.drawMode === "split-pick") return; // Split out section… pick: no undo/redo/delete until it ends
       var tag = e.target.tagName;
       // Ctrl+Z / Cmd+Z = Undo
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
@@ -833,6 +834,7 @@
     document.addEventListener("keydown", function (e) {
       // Never hijack typing, dropdown navigation, or modifier combos (Ctrl+Z etc.).
       var tag = e.target.tagName;
+      if (App.drawMode === "split-pick") return; // Split out section… pick mode owns the keyboard
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
