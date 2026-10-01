@@ -325,6 +325,62 @@ async function main() {
     const last = await page.evaluate(() => { const l = App.lines[App.lines.length - 1]; return { n: l.properties.name, g: (l.properties.attributes || {}).group, notes: (l.properties.attributes || {}).notes }; });
     check("shape copy -> single name, no group, notes carry shape_id", last.n === "Red" && !last.g && /177198_A/.test(last.notes), last);
 
+    // ---- Phase 4: map right-click menu ----
+    console.log("\n# Map right-click menu");
+    const rightClickAt = async (lng, lat, zoom) => {
+      const pt = await page.evaluate(async ([lng, lat, zoom]) => {
+        App.map.jumpTo({ center: [lng, lat], zoom });
+        await new Promise((r) => App.map.once("idle", r));
+        const p = App.map.project([lng, lat]);
+        const r = App.map.getCanvas().getBoundingClientRect();
+        return { x: r.left + p.x, y: r.top + p.y };
+      }, [lng, lat, zoom]);
+      await page.mouse.move(pt.x, pt.y);
+      await page.mouse.click(pt.x, pt.y, { button: "right" });
+      await page.waitForSelector("#fp-context-menu button", { timeout: 5000 });
+    };
+    const menuTexts = () => page.locator("#fp-context-menu > *").allTextContents();
+    const hlJson = () => page.evaluate(() => JSON.stringify(App.map.getFilter("gtfs-shapes-hl")));
+    await page.evaluate(() => { App.gtfsHighlight(null); });
+    // One route under the cursor: no header, trips desc.
+    await rightClickAt(-104.78, 38.802, 9);
+    check("single-route menu: shapes by trips desc, no header", eq(await menuTexts(), [
+      "Copy as line: Red \u00b7 177202 \u00b7 4 trips", "Copy as line: Red \u00b7 177198 \u00b7 3 trips", "Copy as line: Red \u00b7 177198_A \u00b7 1 trip"]), await menuTexts());
+    const items = page.locator("#fp-context-menu button");
+    const base = await hlJson(); // whatever the Layers panel has pinned (earlier tests may leave a pin)
+    await items.nth(1).hover();
+    check("hover highlights that shape", (await hlJson()).includes('"177198"') && !(await hlJson()).includes("177198_A"), await hlJson());
+    await page.mouse.move(5, 5);
+    check("leaving the item restores the prior highlight", (await hlJson()) === base, await hlJson());
+    await items.nth(2).hover();
+    await page.mouse.click(600, 20);
+    check("closing the menu (outside click) restores highlight", (await page.locator("#fp-context-menu").count()) === 0 && (await hlJson()) === base, await hlJson());
+    // Real pin from the Layers panel.
+    await page.evaluate(() => { const t = document.querySelector('.fp-tab-btn[data-fptab="layers"]'); if (t) t.click(); });
+    const blueRow = page.locator(BR + " .lp-gtfs-route", { hasText: "Blue" });
+    await blueRow.click();
+    check("Layers panel pin highlights Blue's route", (await hlJson()).includes("blue"), await hlJson());
+    await rightClickAt(-104.78, 38.802, 9);
+    await page.locator("#fp-context-menu button").nth(0).hover();
+    check("hover shows the shape over the pin", (await hlJson()).includes("177202"));
+    await page.keyboard.press("Escape");
+    await page.mouse.click(600, 20);
+    check("close restores the pinned (route) highlight", (await hlJson()).includes("blue"), await hlJson());
+    await blueRow.click();
+    // Multiple routes: headers.
+    await rightClickAt(-104.75, 38.8025, 7);
+    const mt = await menuTexts();
+    check("multi-route menu has route headers (Red, Blue Line)", ["Red", "Blue Line"].every((n) => mt.includes(n)), mt);
+    const redHdr = mt.indexOf("Red");
+    check("shapes sit under their route header", mt[redHdr + 1].startsWith("Copy as line: Red \u00b7 177202"), mt);
+    // Click -> line created.
+    const nBefore = await page.evaluate(() => App.lines.length);
+    await page.locator("#fp-context-menu button", { hasText: "177202" }).click();
+    const created = await page.evaluate(() => ({ n: App.lines.length, name: App.lines[App.lines.length - 1].properties.name, notes: App.lines[App.lines.length - 1].properties.attributes.notes }));
+    check("click creates a line for that shape", created.n === nBefore + 1 && created.name === "Red" && /177202/.test(created.notes), created);
+    check("highlight restored after click", !(await hlJson()).includes("177202"), await hlJson());
+    await page.evaluate(() => App.gtfsShowAll());
+
     // Keyboard.
     await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).focus();
     await page.keyboard.press("Enter");

@@ -706,30 +706,49 @@
 
         var lngLat = e.lngLat;
         var multiple = feats.length > 1;
-        var flagged = isStop ? {} : flagDuplicateShapes(feats);
         var options = [];
 
-        feats.forEach(function (f, idx) {
-          var props = f.properties;
-          if (isStop) {
+        if (isStop) {
+          feats.forEach(function (f) {
+            var props = f.properties;
             options.push({
               label: multiple ? "Copy As Point: " + stopName(props) : "Copy As Point",
               action: function () { copyStopToPoint(props, lngLat); }
             });
-          } else {
-            var label = "Copy As Line";
-            if (multiple) {
-              var headsign = shapeHeadsign(props);
-              label += ": " + shapeName(props) +
-                       (headsign ? " → " + headsign : "") +
-                       (flagged[idx] ? " [" + props.shape_id + "]" : "");
-            }
-            options.push({
-              label: label,
-              action: function () { copyShapeToLine(props); }
+          });
+        } else {
+          // Group shapes by route (first-seen order), most trips first within
+          // a route; a route heading appears only when 2+ routes are present.
+          var groups = [], byRoute = {};
+          feats.forEach(function (f) {
+            var rk = f.properties.route_id || "";
+            if (!byRoute[rk]) { byRoute[rk] = { name: shapeName(f.properties), items: [] }; groups.push(byRoute[rk]); }
+            byRoute[rk].items.push({ props: f.properties, trips: shapeTripCount(f.properties.shape_id) });
+          });
+          groups.forEach(function (g) {
+            g.items.sort(function (a, b) { return (b.trips || 0) - (a.trips || 0); });
+            if (groups.length > 1) options.push({ divider: true, label: g.name });
+            g.items.forEach(function (it) {
+              var props = it.props, label = "Copy as line";
+              if (multiple) {
+                var nm = shapeName(props);
+                label += ": " + (nm === props.shape_id ? nm : nm + " \u00b7 " + props.shape_id) +
+                         (it.trips ? " \u00b7 " + it.trips + (it.trips === 1 ? " trip" : " trips") : "");
+              }
+              options.push({
+                label: label,
+                action: function () { copyShapeToLine(props); },
+                // Preview-highlight on hover; restore the Layers-panel pin
+                // (or clear) when the pointer leaves or the menu closes.
+                onHover: function (entering) {
+                  if (entering) App.gtfsHighlight({ shapeId: props.shape_id });
+                  else if (typeof App.gtfsRestoreHighlight === "function") App.gtfsRestoreHighlight();
+                  else App.gtfsHighlight(null);
+                }
+              });
             });
-          }
-        });
+          });
+        }
 
         if (typeof App.showContextMenu === "function") {
           App.showContextMenu(
@@ -754,6 +773,14 @@
   // Given the overlapping feature array, return a set (object) of indexes whose
   // name + headsign collides with another entry — those need a shape_id suffix
   // so the listed entries stay distinguishable even without a headsign.
+  function shapeTripCount(shapeId) {
+    if (!_routeIndex) return 0;
+    var n = 0;
+    _routeIndex.forEach(function (r) {
+      r.shapes.forEach(function (sh) { if (sh.shape_id === shapeId) n += sh.tripCount; });
+    });
+    return n;
+  }
   function flagDuplicateShapes(feats) {
     var counts = {}, keys = [];
     for (var i = 0; i < feats.length; i++) {

@@ -312,10 +312,26 @@
 
   var _ctxMenu = null;
 
+  // Optional per-item hook: `onHover(isEntering)` is called with true on
+  // mouseenter/focus and false on mouseleave/blur. It is also called with
+  // false if the menu closes (item click, outside click, or being replaced by
+  // another menu) while an item is still hovered, so callers can always undo a
+  // hover preview. Items without it behave exactly as before.
+  function closeContextMenu(menu) {
+    if (!menu) return;
+    if (typeof menu._endHover === "function") menu._endHover();
+    menu.remove();
+    if (_ctxMenu === menu) _ctxMenu = null;
+  }
+
   function showContextMenu(x, y, options) {
-    if (_ctxMenu) _ctxMenu.remove();
+    if (_ctxMenu) closeContextMenu(_ctxMenu);
     var menu = document.createElement("div");
     menu.id = "fp-context-menu";
+    var hoverEnd = null;
+    menu._endHover = function () {
+      if (hoverEnd) { var f = hoverEnd; hoverEnd = null; f(); }
+    };
     options.forEach(function (opt) {
       // Divider: a plain hairline separator, or (with a label) a section
       // heading row. Neither is clickable.
@@ -336,10 +352,20 @@
         if (opt.checked) btn.classList.add("fp-ctx-checked");
       }
       btn.textContent = opt.label;
+      if (typeof opt.onHover === "function") {
+        var enter = function () {
+          menu._endHover();
+          hoverEnd = function () { opt.onHover(false); };
+          opt.onHover(true);
+        };
+        btn.addEventListener("mouseenter", enter);
+        btn.addEventListener("focus", enter);
+        btn.addEventListener("mouseleave", menu._endHover);
+        btn.addEventListener("blur", menu._endHover);
+      }
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        menu.remove();
-        _ctxMenu = null;
+        closeContextMenu(menu);
         opt.action();
       });
       menu.appendChild(btn);
@@ -354,7 +380,7 @@
     menu.style.top  = Math.max(4, top)  + "px";
     setTimeout(function () {
       document.addEventListener("click", function close(e) {
-        if (!menu.contains(e.target)) { menu.remove(); _ctxMenu = null; }
+        if (!menu.contains(e.target)) closeContextMenu(menu);
         document.removeEventListener("click", close);
       });
     }, 0);

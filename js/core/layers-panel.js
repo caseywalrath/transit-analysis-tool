@@ -1004,6 +1004,9 @@
   function gtfsRestoreHighlight() {
     if (typeof App.gtfsHighlight === "function") App.gtfsHighlight(_gtfsUI.pinned);
   }
+  // Public: re-apply the Layers panel's pinned GTFS highlight (or clear it).
+  // Used by the map right-click menu to undo its hover preview.
+  App.gtfsRestoreHighlight = gtfsRestoreHighlight;
   function gtfsCopyAndSelect(opts) {
     var created = (typeof App.gtfsCopy === "function" && App.gtfsCopy(opts)) || [];
     if (created.length && typeof App.selectFeature === "function") App.selectFeature("line", created[0]);
