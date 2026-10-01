@@ -1,6 +1,6 @@
 # Feature Merge — implementation plan
 
-Status: in progress — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines) and Phase 3 (routes, points, line + route) and Phase 4a (Unmerge) are done; Phase 4b part 1 (shared `featureRef`/`resolveFeatureRef` helpers, service-assembly solo keys, Route Costing, Trip Builder, Title VI) is done; Phase 4b part 2 (TPI, Ridership Forecasting, Corridor Scoring, Transit Coverage, Feature Area Analysis) is not started. Phases are built in order; each phase is one or more commits
+Status: complete — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines), Phase 3 (routes, points, line + route), Phase 4a (Unmerge) and Phase 4b (module references by stable ID: part 1 = shared `featureRef`/`resolveFeatureRef` helpers, service-assembly solo keys, Route Costing, Trip Builder, Title VI; part 2 = TPI, Ridership Forecasting, Corridor Scoring, Transit Coverage, Feature Area Analysis) are all done. Phases were built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 
 ## Goal
@@ -238,6 +238,15 @@ Forecasting, Transit Coverage, Feature Area Analysis saved selections /
 corridor dropdowns; `service-assembly.js` solo Service keys
 (`"solo-route-<index>"`) used by Route Costing and Trip Builder persisted state.
 Run-time index arrays rebuilt from checkboxes at run time can stay as indices.
+
+### Phase 4b part 2 — as built (decisions the plan left open)
+
+- **Checklists** are remembered by ref, not index. TPI, Corridor Scoring and Transit Coverage store the features the user **unchecked** (`uncheckedFeatures: [{type,id}]`) so newly drawn features default to checked, matching their old "unknown row = checked" rebuild rule; Feature Area Analysis keeps its original "checked filter, null = all" semantics as an array of checked refs (`featureRefs`). A module's in-memory list is updated only by checkbox handlers, so a rebuild/restore never re-reads stale DOM. The old Corridor Scoring / Transit Coverage "re-apply `_saved…` on every open" step is gone (the rebuild reads the remembered refs directly).
+- **Corridor selections** (`"route:12"`) now mean the stable ID everywhere (TPI `_selectedCorridor`, RF `_selectedCorridor`, dropdown option values). TPI's results carry `bufferByRef` (`"type:id"` → run buffer) so the corridor filter doesn't read the run-time-indexed `bufferSet`; RF converts the ID to a run-time index only to call `RM.computeSegments` (`corridorIndexKey()`, `route:-1` when the feature is gone so the engine returns nothing instead of falling back to "all").
+- **Per-route result rows** (`RidershipModel.computePerRouteCDI`, segments) carry `featureId` next to the positional `featureIndex`; CS/RF/TC lookups (map layer, exports, CDI by corridor, shared-pool refit, projections) match by `featureId`. No golden value moved (these functions are not golden-covered). Saved rows drop `featureIndex`; on restore it is recomputed from the ID.
+- **RF** filters are `{ routeIds, lineIds }`; `markStale()` no longer nulls them "because indices may have shifted". Rows whose feature is gone are kept (they still hold the calibration numbers) but are skipped by the corridor dropdown, the map layer and geometry exports.
+- **Legacy sessions** (TPI none→v2, CS v1→v2, TC v1→v2, FA none→v2, RF v1–v3→v4) are converted inside each `apply()` hook, where saved indices still match the live arrays. A deleted-feature row restored from a v2+ session marks Corridor Scoring stale.
+- **RF calibration JSON import is best-effort.** The file is standalone: files that carry `featureId`s resolve by ID (correct when re-imported into the project they came from, wrong/skipped otherwise); legacy files (indices only) resolve by position against whatever is drawn now. Rows that don't resolve keep their numbers but can't be picked as a corridor.
 
 ## Docs
 

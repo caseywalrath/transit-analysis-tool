@@ -12,6 +12,9 @@
 // reversal, reload persistence, exports omitting `_mergedFrom`).
 // Phase 4b-1 covers module references by stable ID (Route Costing, Trip Builder,
 // Title VI: survive delete/merge of earlier features, reload, legacy index sessions).
+// Phase 4b-2 does the same for TPI, Ridership Forecasting, Corridor Scoring,
+// Transit Coverage and Feature Area Analysis (checklists, corridor dropdowns,
+// restored per-route results, legacy index sessions).
 // Later phases append
 // more `await check(...)` groups in the "ASSERTIONS" section below.
 // Screenshots of the dialog are written to $MERGE_SHOT_DIR (default: os tmpdir).
@@ -1308,6 +1311,297 @@ async function main() {
       await page.evaluate(() => TitleVI.findMissingRefs(App.cache.collectState("light").moduleState["title-vi"].scenarios[0]).length === 1), alts[1]);
     check("Title VI legacy restore is saved back as v3", (await modState("title-vi")).version === 3);
 
+
+    // ---- Phase 4b-2: TPI, Ridership Forecasting, Corridor Scoring, Transit Coverage, Feature Area Analysis ----
+    console.log("\n# Phase 4b-2 - module references by stable ID (analysis modules)");
+
+    const fx42 = () => ({
+      routes: [
+        solo("Alpha", 10, 38.80), solo("Bravo", 11, 38.82), solo("Charlie", 12, 38.84), solo("Delta", 13, 38.86)
+      ],
+      lines: [
+        { name: "L-One", id: 20, coords: [[-104.60, 38.70], [-104.50, 38.71]], attrs: {} },
+        { name: "L-Two", id: 21, coords: [[-104.60, 38.72], [-104.50, 38.73]], attrs: {} }
+      ],
+      polygons: [
+        { name: "PolyA", id: 30, rings: [square(-104.90, 38.70, 0.05, 0.05)] },
+        { name: "PolyB", id: 31, rings: [square(-104.80, 38.70, 0.05, 0.05)] },
+        { name: "PolyC", id: 32, rings: [square(-104.70, 38.70, 0.05, 0.05)] }
+      ]
+    });
+    // Replace one module's saved state (keeping every other module's) and re-apply the session.
+    const applyMod = (id, data) => page.evaluate(([id, data]) => {
+      var st = JSON.parse(JSON.stringify(App.cache.collectState("full")));
+      st.moduleState = st.moduleState || {};
+      st.moduleState[id] = data;
+      App.cache.applyState(st);
+    }, [id, data]);
+    const checkedIn = (sel) => page.evaluate((sel) => Array.prototype.filter.call(document.querySelectorAll(sel + " input[type=checkbox]"), (b) => b.checked)
+      .map((b) => b.closest(".rf-feature-check-row").querySelector("label").textContent.trim()).sort(), sel);
+    const delRoute = (name) => page.evaluate(async (name) => {
+      App.removeRoute(App.routes.findIndex((r) => r.properties.name === name)); await App.notifyProject();
+    }, name);
+    const mergeRoutes = (a, b) => page.evaluate(async ([a, b]) => {
+      var ai = App.routes.findIndex((r) => r.properties.name === a), bi = App.routes.findIndex((r) => r.properties.name === b);
+      var r = await App.merge.run("route", [ai, bi], ai); await App.notifyProject(); return r && r.ok !== false;
+    }, [a, b]);
+    const openMod = async (id) => { await page.evaluate((id) => App.openModulePopup(id), id); await settle(500); };
+    const selText = (id) => page.evaluate((id) => { var s = document.getElementById(id); return s ? { value: s.value, text: s.selectedIndex >= 0 ? s.options[s.selectedIndex].textContent : null } : null; }, id);
+    const ALL_ROUTES = ["Alpha", "Bravo", "Charlie", "Delta"];
+    osrm.mode = "ok";
+
+    // -- Transit Propensity --
+    await setFixture(page, fx42());
+    await applyMod("tpi", { schemaVersion: 2, selectedCorridor: "route:12",
+      uncheckedFeatures: [{ type: "route", id: 11 }, { type: "polygon", id: 30 }] });
+    await openMod("transit-propensity");
+    check("TPI: restored checklist unchecks exactly Bravo and PolyA", JSON.stringify((await checkedIn("#tpiFeatureChecklist")).filter((n) => !["L-One", "L-Two", "PolyB", "PolyC"].includes(n))) === JSON.stringify(["Alpha", "Charlie", "Delta"]) &&
+      (await checkedIn("#tpiFeatureChecklist")).includes("PolyB") && !(await checkedIn("#tpiFeatureChecklist")).includes("PolyA"), await checkedIn("#tpiFeatureChecklist"));
+    let sel = await selText("tpiCorridorSelect");
+    check("TPI: restored corridor is Charlie (route:12)", sel.value === "route:12" && sel.text === "Charlie", sel);
+    await delRoute("Alpha");
+    await settle(300);
+    let chk = await checkedIn("#tpiFeatureChecklist");
+    check("TPI: deleting an earlier route keeps Bravo/PolyA unchecked and the rest checked", !chk.includes("Bravo") && !chk.includes("PolyA") &&
+      chk.includes("Charlie") && chk.includes("Delta") && chk.includes("PolyB") && chk.includes("L-One"), chk);
+    sel = await selText("tpiCorridorSelect");
+    check("TPI: deleting an earlier route keeps the corridor on Charlie", sel.value === "route:12" && sel.text === "Charlie", sel);
+    check("TPI: merging later routes keeps the corridor on the surviving Charlie and the Bravo uncheck", await mergeRoutes("Charlie", "Delta") &&
+      (await selText("tpiCorridorSelect")).text === "Charlie" && !(await checkedIn("#tpiFeatureChecklist")).includes("Bravo"), [await selText("tpiCorridorSelect"), await checkedIn("#tpiFeatureChecklist")]);
+    // user changes through the real checkbox handler persist by ID
+    await page.evaluate(() => { var b = Array.prototype.find.call(document.querySelectorAll("#tpiFeatureChecklist input"), (x) => x.closest(".rf-feature-check-row").querySelector("label").textContent === "L-Two");
+      b.checked = false; b.dispatchEvent(new Event("change")); });
+    let tpiSt = await modState("tpi");
+    check("TPI: persisted state is v2 with unchecked refs + corridor by ID", tpiSt.schemaVersion === 2 && tpiSt.selectedCorridor === "route:12" &&
+      JSON.stringify(tpiSt.uncheckedFeatures.map((r) => r.type + ":" + r.id).sort()) === JSON.stringify(["line:21", "polygon:30", "route:11"]), tpiSt);
+    await closeModule();
+    await reloadApp();
+    await openMod("transit-propensity");
+    chk = await checkedIn("#tpiFeatureChecklist");
+    check("TPI: after reload the same features are unchecked and the corridor is still Charlie", !chk.includes("Bravo") && !chk.includes("PolyA") && !chk.includes("L-Two") &&
+      chk.includes("Charlie") && (await selText("tpiCorridorSelect")).text === "Charlie", [chk, await selText("tpiCorridorSelect")]);
+    await delRoute("Charlie");
+    await settle(300);
+    check("TPI: deleting the corridor's feature resets the dropdown to all features", (await selText("tpiCorridorSelect")).value === "all");
+    await closeModule();
+    // legacy (v1, indices)
+    await setFixture(page, fx42());
+    await applyMod("tpi", { weights: undefined, selectedCorridor: "route:2",
+      tpiFeatureFilter: { routeIndices: [0, 1], lineIndices: [0], pointIndices: [], polygonIndices: [0, 1, 2] } });
+    await openMod("transit-propensity");
+    chk = await checkedIn("#tpiFeatureChecklist");
+    check("TPI legacy restore: index filter -> checked Alpha, Bravo, L-One, all polygons", JSON.stringify(chk) === JSON.stringify(["Alpha", "Bravo", "L-One", "PolyA", "PolyB", "PolyC"]), chk);
+    sel = await selText("tpiCorridorSelect");
+    check("TPI legacy restore: corridor \"route:2\" -> Charlie by ID", sel.value === "route:12" && sel.text === "Charlie", sel);
+    check("TPI legacy restore: saved back as v2", (await modState("tpi")).schemaVersion === 2);
+    await closeModule();
+
+    // -- Corridor Scoring --
+    await setFixture(page, fx42());
+    await applyMod("corridor-scoring", { version: 2, uncheckedFeatures: [{ type: "route", id: 11 }, { type: "line", id: 21 }] });
+    await openMod("corridor-scoring");
+    chk = await checkedIn("#csFeatureList");
+    check("Corridor Scoring: restored checklist unchecks Bravo and L-Two only", JSON.stringify(chk) === JSON.stringify(["Alpha", "Charlie", "Delta", "L-One"]), chk);
+    await delRoute("Alpha");
+    await settle(300);
+    chk = await checkedIn("#csFeatureList");
+    check("Corridor Scoring: deleting an earlier route keeps the same unchecked features", JSON.stringify(chk) === JSON.stringify(["Charlie", "Delta", "L-One"]), chk);
+    check("Corridor Scoring: merging later routes keeps Bravo/L-Two unchecked", await mergeRoutes("Charlie", "Delta") &&
+      JSON.stringify(await checkedIn("#csFeatureList")) === JSON.stringify(["Charlie", "L-One"]), await checkedIn("#csFeatureList"));
+    await closeModule();
+    let csSt = await modState("corridor-scoring");
+    check("Corridor Scoring: persisted state is v2 with unchecked refs by ID", csSt.version === 2 &&
+      JSON.stringify(csSt.uncheckedFeatures.map((r) => r.type + ":" + r.id).sort()) === JSON.stringify(["line:21", "route:11"]), csSt.uncheckedFeatures);
+    await reloadApp();
+    await openMod("corridor-scoring");
+    check("Corridor Scoring: after reload the same features are checked", JSON.stringify(await checkedIn("#csFeatureList")) === JSON.stringify(["Charlie", "L-One"]), await checkedIn("#csFeatureList"));
+    await closeModule();
+
+    // Restored scored results: the map layer and exports resolve rows by ID.
+    const csRow = (name, id, type, extra) => Object.assign({ name, featureType: type || "route", featureId: id, cdi: 3.1, classification: "Medium", geoCount: 4,
+      lengthMiles: 2, factorBreakdown: {}, compositeRange: { min: 1, max: 4 } }, extra || {});
+    const csMap = () => page.evaluate(() => { var src = App.map.getSource("corridor-scoring-routes"); if (!src) return null;
+      return src.serialize().data.features.map((f) => ({ name: f.properties.name, c0: f.geometry.coordinates[0].join(",") })); });
+    const geomOf = (name) => page.evaluate((name) => { var f = App.routes.concat(App.lines).find((x) => x.properties.name === name); return f.geometry.coordinates[0].join(","); }, name);
+    await setFixture(page, fx42());
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });   // Alpha gone: Bravo/Charlie/Delta now at 0/1/2
+    await applyMod("corridor-scoring", { version: 2, uncheckedFeatures: [], geoLevel: "bg", year: "2022", apportionByArea: false,
+      lastSummary: { geoLevel: "bg", year: "2022", apportionByArea: false, bufferMiles: 0.5, weights: {}, featureRefs: [],
+        routeCDIs: [csRow("Charlie", 12), csRow("Bravo", 11), csRow("Ghost", 99)] } });
+    await settle(300);
+    let cm = await csMap();
+    check("Corridor Scoring v2 restore: map draws Charlie and Bravo from THEIR geometry; a deleted feature is skipped",
+      cm && cm.length === 2 && cm.find((f) => f.name === "Charlie").c0 === await geomOf("Charlie") && cm.find((f) => f.name === "Bravo").c0 === await geomOf("Bravo"), cm);
+    await openMod("corridor-scoring");
+    check("Corridor Scoring v2 restore: a row whose feature is gone marks the results stale (exports disabled)",
+      await page.evaluate(() => document.getElementById("csExportCSV").disabled && /re-run/i.test(document.getElementById("csStatus").textContent)));
+    await closeModule();
+    // legacy v1: rows saved with featureIndex only (positions at save time)
+    await setFixture(page, fx42());
+    await applyMod("corridor-scoring", { version: 1, featureFilter: { routeIndices: [1, 2], lineIndices: [0] }, geoLevel: "bg", year: "2022",
+      lastSummary: { geoLevel: "bg", year: "2022", apportionByArea: false, bufferMiles: 0.5, weights: {}, featureFilter: { routeIndices: [1, 3], lineIndices: [] },
+        routeCDIs: [csRow("Bravo", undefined, "route", { featureId: undefined, featureIndex: 1 }), csRow("Delta", undefined, "route", { featureId: undefined, featureIndex: 3 }),
+          csRow("L-Two", undefined, "line", { featureId: undefined, featureIndex: 1 })] } });
+    await settle(300);
+    cm = await csMap();
+    check("Corridor Scoring legacy restore: featureIndex rows draw the right features (Bravo, Delta, L-Two)",
+      cm && cm.length === 3 &&
+      cm.find((f) => f.name === "Bravo").c0 === await geomOf("Bravo") && cm.find((f) => f.name === "Delta").c0 === await geomOf("Delta") &&
+      cm.find((f) => f.name === "L-Two").c0 === await geomOf("L-Two"), cm);
+    csSt = await modState("corridor-scoring");
+    check("Corridor Scoring legacy restore: saved back as v2 with featureId rows, unchecked = everything not in the old filter",
+      csSt.version === 2 && JSON.stringify(csSt.lastSummary.routeCDIs.map((r) => r.featureId)) === JSON.stringify([11, 13, 21]) &&
+      csSt.lastSummary.routeCDIs.every((r) => r.featureIndex === undefined) &&
+      JSON.stringify(csSt.uncheckedFeatures.map((r) => r.type + ":" + r.id).sort()) === JSON.stringify(["line:21", "route:10", "route:13"]), csSt);
+    await closeModule();
+
+    // -- Transit Coverage --
+    await setFixture(page, fx42());
+    await applyMod("transit-coverage", { version: 2, settings: {}, uncheckedFeatures: [{ type: "route", id: 11 }, { type: "polygon", id: 31 }] });
+    await openMod("transit-coverage");
+    check("Transit Coverage: restored checklists uncheck Bravo and PolyB only", JSON.stringify(await checkedIn("#tcFeatureList")) === JSON.stringify(["Alpha", "Charlie", "Delta", "L-One", "L-Two"]) &&
+      JSON.stringify(await checkedIn("#tcAreaList")) === JSON.stringify(["PolyA", "PolyC"]), [await checkedIn("#tcFeatureList"), await checkedIn("#tcAreaList")]);
+    await delRoute("Alpha");
+    await page.evaluate(async () => { App.removePolygon(0); await App.notifyProject(); });   // PolyA too
+    await settle(300);
+    check("Transit Coverage: deleting earlier route + polygon keeps the same selection",
+      JSON.stringify(await checkedIn("#tcFeatureList")) === JSON.stringify(["Charlie", "Delta", "L-One", "L-Two"]) &&
+      JSON.stringify(await checkedIn("#tcAreaList")) === JSON.stringify(["PolyC"]), [await checkedIn("#tcFeatureList"), await checkedIn("#tcAreaList")]);
+    check("Transit Coverage: merging later routes keeps Bravo unchecked", await mergeRoutes("Charlie", "Delta") &&
+      JSON.stringify(await checkedIn("#tcFeatureList")) === JSON.stringify(["Charlie", "L-One", "L-Two"]), await checkedIn("#tcFeatureList"));
+    await closeModule();
+    let tcSt = await modState("transit-coverage");
+    check("Transit Coverage: persisted state is v2, unchecked refs by ID (deleted PolyA pruned)", tcSt.version === 2 &&
+      JSON.stringify(tcSt.uncheckedFeatures.map((r) => r.type + ":" + r.id).sort()) === JSON.stringify(["polygon:31", "route:11"]), tcSt.uncheckedFeatures);
+    await reloadApp();
+    await openMod("transit-coverage");
+    check("Transit Coverage: after reload the same selection holds", JSON.stringify(await checkedIn("#tcFeatureList")) === JSON.stringify(["Charlie", "L-One", "L-Two"]) &&
+      JSON.stringify(await checkedIn("#tcAreaList")) === JSON.stringify(["PolyC"]), [await checkedIn("#tcFeatureList"), await checkedIn("#tcAreaList")]);
+    await closeModule();
+    await setFixture(page, fx42());
+    await applyMod("transit-coverage", { version: 1, settings: {}, selections: { routeIndices: [0, 2], lineIndices: [1], polygonIndices: [0, 2] },
+      lastSummary: { geoLevel: "bg", year: "2022", bufferMiles: 0.5, dayType: "weekday", thresholdMin: null, popTotal: 1, popCovered: 1, popThreshold: null,
+        jobsTotal: null, jobsCovered: null, jobsThreshold: null,
+        headwayRows: [{ name: "Charlie", featureType: "route", featureIndex: 2, peakHeadway: 30, qualifies: false }, { name: "L-Two", featureType: "line", featureIndex: 1, peakHeadway: null, qualifies: false }] } });
+    await openMod("transit-coverage");
+    check("Transit Coverage legacy restore: index selections -> Alpha, Charlie, L-Two / PolyA, PolyC",
+      JSON.stringify(await checkedIn("#tcFeatureList")) === JSON.stringify(["Alpha", "Charlie", "L-Two"]) &&
+      JSON.stringify(await checkedIn("#tcAreaList")) === JSON.stringify(["PolyA", "PolyC"]), [await checkedIn("#tcFeatureList"), await checkedIn("#tcAreaList")]);
+    tcSt = await modState("transit-coverage");
+    check("Transit Coverage legacy restore: headway rows get featureId (Charlie=12, L-Two=21), saved as v2",
+      tcSt.version === 2 && JSON.stringify(tcSt.lastSummary.headwayRows.map((r) => r.featureId)) === JSON.stringify([12, 21]) && tcSt.lastSummary.headwayRows.every((r) => r.featureIndex === undefined), tcSt.lastSummary);
+    await closeModule();
+
+    // -- Feature Area Analysis --
+    await setFixture(page, fx42());
+    await applyMod("buffer-summary", { schemaVersion: 2, featureRefs: [{ type: "route", id: 11 }, { type: "route", id: 12 }, { type: "polygon", id: 31 }] });
+    await openMod("buffer-summary");
+    check("Feature Area Analysis: restored checklist checks exactly Bravo, Charlie, PolyB", JSON.stringify(await checkedIn("#basFeatureChecklist")) === JSON.stringify(["Bravo", "Charlie", "PolyB"]), await checkedIn("#basFeatureChecklist"));
+    await delRoute("Alpha");
+    await settle(300);
+    check("Feature Area Analysis: deleting an earlier route keeps the same checked features", JSON.stringify(await checkedIn("#basFeatureChecklist")) === JSON.stringify(["Bravo", "Charlie", "PolyB"]), await checkedIn("#basFeatureChecklist"));
+    check("Feature Area Analysis: merging later routes keeps Bravo checked and Delta unchecked", await mergeRoutes("Charlie", "Delta") &&
+      JSON.stringify(await checkedIn("#basFeatureChecklist")) === JSON.stringify(["Bravo", "Charlie", "PolyB"]), await checkedIn("#basFeatureChecklist"));
+    await closeModule();
+    let basSt = await modState("buffer-summary");
+    check("Feature Area Analysis: persisted state is v2 refs by ID", basSt.schemaVersion === 2 &&
+      JSON.stringify(basSt.featureRefs.map((r) => r.type + ":" + r.id).sort()) === JSON.stringify(["polygon:31", "route:11", "route:12"]), basSt.featureRefs);
+    await reloadApp();
+    await openMod("buffer-summary");
+    check("Feature Area Analysis: after reload the same features are checked", JSON.stringify(await checkedIn("#basFeatureChecklist")) === JSON.stringify(["Bravo", "Charlie", "PolyB"]), await checkedIn("#basFeatureChecklist"));
+    await closeModule();
+    await setFixture(page, fx42());
+    await applyMod("buffer-summary", { featureFilter: { routeIndices: [1, 3], lineIndices: [], pointIndices: [], polygonIndices: [2] } });
+    await openMod("buffer-summary");
+    check("Feature Area Analysis legacy restore: index filter -> Bravo, Delta, PolyC", JSON.stringify(await checkedIn("#basFeatureChecklist")) === JSON.stringify(["Bravo", "Delta", "PolyC"]), await checkedIn("#basFeatureChecklist"));
+    await closeModule();
+
+    // -- Ridership Forecasting --
+    const rfRow = (name, id, type, extra) => Object.assign({ name, featureType: type || "route", featureId: id, cdi: 3.2, classification: "Medium", geoCount: 3, lengthMiles: 4,
+      factorBreakdown: {}, compositeRange: { min: 1, max: 4 } }, extra || {});
+    const tinyTpi = { geoLevel: "bg", year: "2022", geoids: ["1"], geos: [{ type: "Feature", properties: { GEOID: "1" },
+      geometry: { type: "Polygon", coordinates: [square(-104.9, 38.7, 0.5, 0.2)] } }], effectiveWeights: {}, tractFallbackFactors: [], apportionByArea: false,
+      scores: { "1": { composite: 3 } }, factorScores: {}, rawValues: {} };
+    const rfLines = () => page.evaluate(() => { var src = App.map.getSource("rf-corridor-cdi"); if (!src) return null;
+      return src.serialize().data.features.map((f) => ({ name: f.properties.name, c0: f.geometry.coordinates[0].join(",") })); });
+    await setFixture(page, fx42());
+    await applyMod("rf", { _schemaVersion: 4, selectedCorridor: "route:12", demandUseSameSystem: true,
+      calibFeatureFilter: { routeIds: [11, 12], lineIds: [21] }, demandFeatureFilter: { routeIds: [12, 13], lineIds: [] },
+      perRouteCDI: [rfRow("Bravo", 11), rfRow("Charlie", 12), rfRow("L-Two", 21, "line"), rfRow("Ghost", 99)],
+      systemResult: { systemCDI: { value: 3, scored: 1, total: 1 }, geoLevel: "bg", year: "2022", tpiResult: tinyTpi } });
+    await settle(300);
+    let rl = await rfLines();
+    check("RF v4 restore: corridor lines drawn from the right features (Bravo, Charlie, L-Two); the deleted one is skipped",
+      rl && rl.length === 3 && rl.find((f) => f.name === "Charlie").c0 === await geomOf("Charlie") && rl.find((f) => f.name === "Bravo").c0 === await geomOf("Bravo") &&
+      rl.find((f) => f.name === "L-Two").c0 === await geomOf("L-Two"), rl);
+    await delRoute("Alpha");
+    await openMod("ridership-forecasting");
+    check("RF: calibration checklist shows the last-run filter (Bravo, Charlie, L-Two) after an earlier route is deleted",
+      JSON.stringify(await checkedIn("#rfCalibFeatureList")) === JSON.stringify(["Bravo", "Charlie", "L-Two"]), await checkedIn("#rfCalibFeatureList"));
+    sel = await selText("rfCorridorSelect");
+    check("RF: corridor dropdown still targets Charlie and lists only features that still exist", sel.value === "route:12" && sel.text.indexOf("Charlie") === 0 &&
+      await page.evaluate(() => Array.prototype.map.call(document.getElementById("rfCorridorSelect").options, (o) => o.value).join()) === "route:11,route:12,line:21", sel);
+    check("RF: merging later routes keeps the corridor on the surviving Charlie", await mergeRoutes("Charlie", "Delta") && (await selText("rfCorridorSelect")).value === "route:12");
+    await closeModule();
+    let rfSt = await modState("rf");
+    check("RF: persisted state is v4 (corridor + filters + per-route rows by stable ID, no stale featureIndex)", rfSt._schemaVersion === 4 && rfSt.selectedCorridor === "route:12" &&
+      JSON.stringify(rfSt.calibFeatureFilter) === JSON.stringify({ routeIds: [11, 12], lineIds: [21] }) &&
+      rfSt.perRouteCDI.every((r) => Number.isFinite(r.featureId) && r.featureIndex === undefined), rfSt);
+    await reloadApp();
+    rfSt = await modState("rf");   // autosave is "light" (no geometry), so only the references are checked here
+    check("RF: after reload the corridor, filters and per-route rows are unchanged", rfSt.selectedCorridor === "route:12" &&
+      JSON.stringify(rfSt.calibFeatureFilter) === JSON.stringify({ routeIds: [11, 12], lineIds: [21] }) &&
+      JSON.stringify(rfSt.perRouteCDI.map((r) => r.featureId)) === JSON.stringify([11, 12, 21, 99]), rfSt.perRouteCDI);
+    // legacy session (v3, indices)
+    await setFixture(page, fx42());
+    await applyMod("rf", { _schemaVersion: 3, selectedCorridor: "route:2", demandUseSameSystem: true,
+      calibFeatureFilter: { routeIndices: [1, 2], lineIndices: [1] }, demandFeatureFilter: { routeIndices: [2, 3], lineIndices: [] },
+      perRouteCDI: [rfRow("Bravo", undefined, "route", { featureId: undefined, featureIndex: 1 }), rfRow("Delta", undefined, "route", { featureId: undefined, featureIndex: 3 }),
+        rfRow("Nowhere", undefined, "route", { featureId: undefined, featureIndex: 77 })],
+      systemResult: { systemCDI: { value: 3, scored: 1, total: 1 }, geoLevel: "bg", year: "2022", tpiResult: tinyTpi } });
+    await settle(300);
+    rfSt = await modState("rf");
+    check("RF legacy restore: corridor \"route:2\" -> route:12; filters -> IDs; rows get featureId (unresolvable stays null)",
+      rfSt._schemaVersion === 4 && rfSt.selectedCorridor === "route:12" &&
+      JSON.stringify(rfSt.calibFeatureFilter) === JSON.stringify({ routeIds: [11, 12], lineIds: [21] }) &&
+      JSON.stringify(rfSt.demandFeatureFilter) === JSON.stringify({ routeIds: [12, 13], lineIds: [] }) &&
+      JSON.stringify(rfSt.perRouteCDI.map((r) => r.featureId)) === JSON.stringify([11, 13, null]), rfSt);
+    rl = await rfLines();
+    check("RF legacy restore: corridor lines drawn for the right features (Bravo, Delta), unresolvable row skipped",
+      rl && rl.length === 2 && rl.find((f) => f.name === "Bravo").c0 === await geomOf("Bravo") && rl.find((f) => f.name === "Delta").c0 === await geomOf("Delta"), rl);
+    // calibration file import: ID rows resolve by ID, legacy rows best-effort by position
+    await openMod("ridership-forecasting");
+    const importCalib = (json) => page.evaluate(async (json) => {
+      var inp = document.getElementById("rfCalibImportFile");
+      var dt = new DataTransfer(); dt.items.add(new File([json], "calib.json", { type: "application/json" }));
+      inp.files = dt.files; inp.dispatchEvent(new Event("change"));
+    }, json);
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });   // Alpha gone: Bravo now index 0
+    await importCalib(JSON.stringify({ type: "ridership-calibration", version: 2, calibration: { factor: 1, n: 3, rSquared: 0.9, method: "ratio" },
+      featureFilter: { routeIds: [11, 13], lineIds: [] },
+      perRouteCDI: [rfRow("Bravo", 11), rfRow("Delta", 13)] }));
+    await settle(400);
+    check("RF calibration import (ID file): rows and filter resolve by ID after an earlier route was deleted",
+      await page.evaluate(() => Array.prototype.map.call(document.getElementById("rfCorridorSelect").options, (o) => o.value).join()) === "route:11,route:13", await selText("rfCorridorSelect"));
+    await importCalib(JSON.stringify({ type: "ridership-calibration", version: 2, calibration: { factor: 1, n: 3, rSquared: 0.9, method: "ratio" },
+      featureFilter: { routeIndices: [0, 1], lineIndices: [] },
+      perRouteCDI: [rfRow("Bravo", undefined, "route", { featureId: undefined, featureIndex: 0 }), rfRow("Delta", undefined, "route", { featureId: undefined, featureIndex: 9 })] }));
+    await settle(400);
+    check("RF calibration import (legacy file): best-effort by position — in-range index resolves, out-of-range row is skipped",
+      await page.evaluate(() => Array.prototype.map.call(document.getElementById("rfCorridorSelect").options, (o) => o.value).join()) === "route:11", await selText("rfCorridorSelect"));
+
+    // Engine: per-route results carry the stable featureId next to the positional featureIndex.
+    await setFixture(page, fx42());
+    await page.evaluate(async () => { App.removeRoute(0); await App.notifyProject(); });
+    const engine = await page.evaluate(() => {
+      var tpi = { rawValues: new Map([["pop_density", new Map()]]), scores: new Map(), factorScores: new Map(), geos: [] };
+      var filter = { routeIndices: [1, 2], lineIndices: [1] };
+      var rows = RidershipModel.computePerRouteCDI(tpi, filter, App.buildAnalysisBufferSet(filter, 0.5));
+      return rows.map((r) => [r.name, r.featureType, r.featureIndex, r.featureId]);
+    });
+    check("RidershipModel.computePerRouteCDI rows carry featureId (Charlie=12 at index 1, Delta=13, L-Two=21)",
+      JSON.stringify(engine) === JSON.stringify([["Charlie", "route", 1, 12], ["Delta", "route", 2, 13], ["L-Two", "line", 1, 21]]), engine);
+    await closeModule();
 
     // ================= END ASSERTIONS =================
   } finally {
