@@ -6,7 +6,9 @@
 //          VAR_META, GROUP_INFO, getMeta, getCheckboxGroups,
 //          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue,
 //          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds,
-//          featureRef, resolveFeatureRef, featureById
+//          featureRef, resolveFeatureRef, featureById, featureRefKey,
+//          parseFeatureRefKey, migrateIndexRefKey, indexFilterToRefs,
+//          uncheckedRefsFromIndexFilter
 
 (function () {
   var App = window.App = window.App || {};
@@ -224,6 +226,66 @@
     return i < 0 ? null : _liveArrays()[type][i];
   }
 
+  // PURE. A ref as a "type:id" string — the form modules use as a <select>
+  // option value or checkbox key ("route:12" is route ID 12, NOT array index 12).
+  function featureRefKey(ref) {
+    return ref && App.FEATURE_ID_PROP[ref.type] && _isValidFeatureId(ref.id) ? ref.type + ":" + ref.id : "";
+  }
+
+  // PURE. Inverse of featureRefKey → { type, id } or null (malformed, unknown
+  // type, or a non-integer id). "all" and "" parse to null.
+  function parseFeatureRefKey(str) {
+    if (typeof str !== "string") return null;
+    var m = /^([a-z]+):(\d+)$/.exec(str);
+    if (!m || !App.FEATURE_ID_PROP[m[1]]) return null;
+    var ref = { type: m[1], id: parseInt(m[2], 10) };
+    return _isValidFeatureId(ref.id) ? ref : null;
+  }
+
+  // PURE. Legacy "type:<array index>" string ("route:3", as older sessions saved
+  // corridor selections) → the ID-based "type:<id>" key, resolved against
+  // arraysByType. "" when the index points at nothing. Only valid at the moment a
+  // legacy session is applied, when saved indices still match the live arrays.
+  function migrateIndexRefKeyIn(arraysByType, str) {
+    if (typeof str !== "string") return "";
+    var m = /^([a-z]+):(\d+)$/.exec(str);
+    if (!m) return "";
+    return featureRefKey(featureRefIn(arraysByType, m[1], parseInt(m[2], 10)));
+  }
+
+  // PURE. Legacy index filter { routeIndices, lineIndices, pointIndices,
+  // polygonIndices } (any key may be absent) → array of { type, id } refs for the
+  // features those indices name. Indices that resolve to nothing are dropped.
+  function indexFilterToRefsIn(arraysByType, filter) {
+    var out = [];
+    if (!filter) return out;
+    [["route", "routeIndices"], ["line", "lineIndices"],
+     ["point", "pointIndices"], ["polygon", "polygonIndices"]].forEach(function (pair) {
+      (filter[pair[1]] || []).forEach(function (i) {
+        var ref = featureRefIn(arraysByType, pair[0], i);
+        if (ref) out.push(ref);
+      });
+    });
+    return out;
+  }
+
+  // PURE. Legacy CHECKED-index filter → refs of the features of `types` that the
+  // filter leaves UNchecked (everything live not named by it). Modules remember a
+  // checklist as its unchecked refs so newly drawn features default to checked.
+  function uncheckedRefsFromIndexFilterIn(arraysByType, filter, types) {
+    var checked = {};
+    indexFilterToRefsIn(arraysByType, filter).forEach(function (r) { checked[featureRefKey(r)] = true; });
+    var out = [];
+    (types || []).forEach(function (type) {
+      var arr = (arraysByType && arraysByType[type]) || [];
+      for (var i = 0; i < arr.length; i++) {
+        var ref = featureRefIn(arraysByType, type, i);
+        if (ref && !checked[featureRefKey(ref)]) out.push(ref);
+      }
+    });
+    return out;
+  }
+
   App.nextFeatureId = nextFeatureId;
   App.getFeatureIdCounters = getFeatureIdCounters;
   App.advanceFeatureIdCounters = advanceFeatureIdCounters;
@@ -233,6 +295,16 @@
   App.featureById = featureById;
   App._featureRefIn = featureRefIn;
   App._resolveRefIn = resolveRefIn;
+  App.featureRefKey = featureRefKey;
+  App.parseFeatureRefKey = parseFeatureRefKey;
+  App._migrateIndexRefKeyIn = migrateIndexRefKeyIn;
+  App._indexFilterToRefsIn = indexFilterToRefsIn;
+  App.migrateIndexRefKey = function (str) { return migrateIndexRefKeyIn(_liveArrays(), str); };
+  App._uncheckedRefsFromIndexFilterIn = uncheckedRefsFromIndexFilterIn;
+  App.uncheckedRefsFromIndexFilter = function (filter, types) {
+    return uncheckedRefsFromIndexFilterIn(_liveArrays(), filter, types);
+  };
+  App.indexFilterToRefs = function (filter) { return indexFilterToRefsIn(_liveArrays(), filter); };
   App.ensureFeatureIds = ensureFeatureIds;
 
   App.resolveFeatureColor = resolveFeatureColor;

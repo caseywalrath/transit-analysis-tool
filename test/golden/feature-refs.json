@@ -29,5 +29,55 @@
   "svckey/new-format-passes-through": "solo-route-id3",
   "svckey/paired-passes-through": "service-Route 5",
   "svckey/non-string": null,
-  "svckey/legacy-target-without-id": null
+  "svckey/legacy-target-without-id": null,
+  "key/format": "route:9",
+  "key/bad-ref": "",
+  "key/null": "",
+  "parse/route": {
+    "type": "route",
+    "id": 12
+  },
+  "parse/all": null,
+  "parse/empty": null,
+  "parse/unknown-type": null,
+  "parse/zero-id-invalid": null,
+  "idxkey/upgraded": "route:4",
+  "idxkey/line-upgraded": "line:2",
+  "idxkey/out-of-range": "",
+  "idxkey/all": "",
+  "idxfilter/mixed": [
+    {
+      "type": "route",
+      "id": 3
+    },
+    {
+      "type": "route",
+      "id": 9
+    },
+    {
+      "type": "line",
+      "id": 5
+    }
+  ],
+  "unchecked/from-checked-filter": [
+    {
+      "type": "route",
+      "id": 3
+    },
+    {
+      "type": "route",
+      "id": 9
+    }
+  ],
+  "unchecked/null-filter-all-unchecked": [
+    {
+      "type": "line",
+      "id": 2
+    },
+    {
+      "type": "line",
+      "id": 5
+    }
+  ],
+  "idxfilter/null": []
 }
