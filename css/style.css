@@ -6433,3 +6433,51 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 }
 .mn-detail-raw strong { color: #1a202c; }
 
+
+/* --- GTFS route browser (Layers tab, under the "GTFS routes" row) --- */
+.lp-gtfs-browser { padding: 2px 0 var(--space-2) var(--space-2); }
+.lp-gtfs-filter { width: 100%; box-sizing: border-box; margin-bottom: var(--space-1); font-size: var(--text-sm); }
+.lp-gtfs-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-1); }
+.lp-gtfs-actions .rf-btn-sm { padding: 2px var(--space-2); font-size: var(--text-xs); white-space: nowrap; }
+.lp-gtfs-actions .rf-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+.lp-gtfs-route { padding-left: 0; }
+.lp-gtfs-route > .lp-caret { padding: 0; }
+.lp-gtfs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+/* Two-line text block: name on top, details muted beneath; both ellipsize. */
+.lp-gtfs-text { flex: 1; min-width: 0; }
+.lp-gtfs-title { display: block; }
+.lp-gtfs-sub {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-gtfs-shape { padding-left: var(--space-4); }
+.lp-gtfs-route:focus-visible,
+.lp-gtfs-shape:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.lp-row.lp-gtfs-pinned { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+/* Always-visible eye + menu: the hidden state must read at a glance. */
+.lp-gtfs-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.lp-gtfs-btn:hover { color: var(--accent); background: var(--surface-hover); }
+.lp-gtfs-btn:focus-visible { outline: 2px solid var(--accent); }
+.lp-gtfs-btn.lp-eye-off { color: var(--text-disabled); }

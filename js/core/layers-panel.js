@@ -978,6 +978,310 @@
     render();
   }
 
+  // ---- GTFS route browser (under the "GTFS routes" reference row) ----
+  // Reads the Phase 1 API in js/projects/gtfs.js (App.gtfsRouteIndex & co).
+  // UI state lives here so it survives render() rebuilds; filter typing and
+  // expand/collapse only touch the browser's own list, never the whole panel.
+  var GTFS_ROW_ID = "gtfs-shapes-layer";
+  var GTFS_MAX_ROUTES = 200;
+  var _gtfsUI = { open: false, filter: "", expanded: {}, pinned: null, indexRef: null };
+
+  function gtfsIndex() {
+    return (typeof App.gtfsRouteIndex === "function") ? App.gtfsRouteIndex() : null;
+  }
+  function gtfsSyncFeed() {
+    var idx = gtfsIndex();
+    if (idx !== _gtfsUI.indexRef) {
+      _gtfsUI.indexRef = idx;
+      _gtfsUI.expanded = {};
+      _gtfsUI.pinned = null;
+      _gtfsUI.filter = "";
+    }
+    return idx;
+  }
+  function gtfsRouteName(r) { return r.short || r.long || r.route_id || ""; }
+  function gtfsPinKey(t) { return t ? (t.shapeId != null ? "s:" + t.shapeId : "r:" + t.routeId) : null; }
+  function gtfsRestoreHighlight() {
+    if (typeof App.gtfsHighlight === "function") App.gtfsHighlight(_gtfsUI.pinned);
+  }
+  function gtfsCopyAndSelect(opts) {
+    var created = (typeof App.gtfsCopy === "function" && App.gtfsCopy(opts)) || [];
+    if (created.length && typeof App.selectFeature === "function") App.selectFeature("line", created[0]);
+    if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    refreshLayersPanel();
+  }
+  function gtfsRouteMenu(r) {
+    return [
+      { label: "Copy as line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "representative" }); } },
+      { label: "Copy each shape as a line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "each" }); } },
+      { label: "Show only this", action: function () { App.gtfsShowOnly([r.routeKey]); } },
+      { label: "Zoom to", action: function () { App.gtfsZoomTo({ routeId: r.routeKey }); } }
+    ];
+  }
+  function gtfsShapeMenu(r, s) {
+    return [
+      { label: "Copy as line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "shape", shapeId: s.shape_id }); } },
+      { label: "Show only this route", action: function () { App.gtfsShowOnly([r.routeKey]); } },
+      { label: "Zoom to", action: function () { App.gtfsZoomTo({ shapeId: s.shape_id }); } }
+    ];
+  }
+
+  // Shared row behavior: hover/focus highlight, click pins, double-click zooms,
+  // right-click / ContextMenu key / Shift+F10 opens the menu.
+  function gtfsWireRow(row, target, menuFn, onEnter) {
+    row.tabIndex = 0;
+    function hl() { if (typeof App.gtfsHighlight === "function") App.gtfsHighlight(target); }
+    row.addEventListener("mouseenter", hl);
+    row.addEventListener("focus", hl);
+    row.addEventListener("mouseleave", gtfsRestoreHighlight);
+    row.addEventListener("blur", gtfsRestoreHighlight);
+    row.addEventListener("click", function () {
+      _gtfsUI.pinned = (gtfsPinKey(_gtfsUI.pinned) === gtfsPinKey(target)) ? null : target;
+      gtfsRestoreHighlight();
+      row.classList.toggle("lp-gtfs-pinned", !!_gtfsUI.pinned && gtfsPinKey(_gtfsUI.pinned) === gtfsPinKey(target));
+      gtfsMarkPinned();
+    });
+    row.addEventListener("dblclick", function () {
+      _gtfsUI.pinned = target;
+      gtfsRestoreHighlight();
+      gtfsMarkPinned();
+      if (typeof App.gtfsZoomTo === "function") App.gtfsZoomTo(target);
+    });
+    function openMenuAt(x, y) { if (typeof App.showContextMenu === "function") App.showContextMenu(x, y, menuFn()); }
+    row.addEventListener("contextmenu", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      openMenuAt(e.clientX, e.clientY);
+    });
+    row.addEventListener("keydown", function (e) {
+      if (e.target !== row) return;
+      if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+        e.preventDefault();
+        var b = row.getBoundingClientRect();
+        openMenuAt(b.left + 24, b.bottom);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (onEnter) onEnter(); else row.click();
+      }
+    });
+    row.dataset.pin = gtfsPinKey(target);
+    if (_gtfsUI.pinned && gtfsPinKey(_gtfsUI.pinned) === row.dataset.pin) row.classList.add("lp-gtfs-pinned");
+  }
+  function gtfsMarkPinned() {
+    var pk = gtfsPinKey(_gtfsUI.pinned);
+    document.querySelectorAll("#fp-tab-layers .lp-gtfs-browser [data-pin]").forEach(function (el) {
+      el.classList.toggle("lp-gtfs-pinned", !!pk && el.dataset.pin === pk);
+    });
+  }
+
+  function gtfsChip(cls, svg, title, label, handler) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = cls + " lp-gtfs-btn";
+    b.innerHTML = svg;
+    b.title = title;
+    b.setAttribute("aria-label", label);
+    b.addEventListener("click", function (e) { e.stopPropagation(); handler(e); });
+    return b;
+  }
+
+  function buildGtfsShapeRow(r, s, hs) {
+    var routeHidden = !!hs.routes[r.routeKey];
+    var hidden = routeHidden || !!hs.shapes[s.shape_id];
+    var row = document.createElement("div");
+    row.className = "lp-row lp-gtfs-shape" + (hidden ? " lp-row-hidden" : "");
+    var subParts = [s.lengthMi.toFixed(1) + " mi", s.tripCount + (s.tripCount === 1 ? " trip" : " trips")];
+    if (s.headsigns && s.headsigns[0]) subParts.push(s.headsigns[0]);
+    var text = document.createElement("div");
+    text.className = "lp-gtfs-text";
+    var title = document.createElement("div");
+    title.className = "lp-row-label lp-gtfs-title";
+    title.textContent = s.shape_id;
+    var sub = document.createElement("div");
+    sub.className = "lp-gtfs-sub";
+    sub.textContent = subParts.join(" \u00b7 ");
+    text.appendChild(title);
+    text.appendChild(sub);
+    text.title = s.shape_id + " \u00b7 " + subParts.join(" \u00b7 ") +
+      (s.headsigns && s.headsigns.length > 1 ? " (+" + (s.headsigns.length - 1) + " more headsigns)" : "");
+    row.appendChild(text);
+    var eyeTitle = routeHidden ? "Route hidden — show route" : (hidden ? "Show shape" : "Hide shape");
+    row.appendChild(gtfsChip("lp-gtfs-eye" + (hidden ? " lp-eye-off" : ""), hidden ? EYE_OFF_SVG : EYE_SVG, eyeTitle,
+      (hidden ? "Show shape " : "Hide shape ") + s.shape_id, function () {
+        if (routeHidden) App.gtfsSetRouteHidden(r.routeKey, false);
+        else App.gtfsSetShapeHidden(s.shape_id, !hs.shapes[s.shape_id]);
+      }));
+    var menu = gtfsChip("lp-row-menu", MENU_SVG, "More", "More actions for shape " + s.shape_id, function (e) {
+      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, gtfsShapeMenu(r, s));
+    });
+    row.appendChild(menu);
+    gtfsWireRow(row, { shapeId: s.shape_id }, function () { return gtfsShapeMenu(r, s); });
+    return row;
+  }
+
+  function buildGtfsRouteBlock(r, hs) {
+    var block = document.createElement("div");
+    block.className = "lp-gtfs-route-block";
+    var hidden = !!hs.routes[r.routeKey];
+    var name = gtfsRouteName(r);
+    var open = !!_gtfsUI.expanded[r.routeKey];
+
+    var row = document.createElement("div");
+    row.className = "lp-row lp-row-sub lp-gtfs-route" + (hidden ? " lp-row-hidden" : "");
+
+    var caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "lp-caret" + (open ? " open" : "");
+    caret.innerHTML = "&#9662;";
+    caret.tabIndex = -1;
+    caret.setAttribute("aria-label", "Toggle shapes for " + name);
+    caret.setAttribute("aria-expanded", open ? "true" : "false");
+    row.appendChild(caret);
+
+    var dot = document.createElement("span");
+    dot.className = "lp-gtfs-dot";
+    if (r.color) dot.style.background = r.color;
+    row.appendChild(dot);
+
+    var n = r.shapes.length;
+    var countText = "(" + n + (n === 1 ? " shape)" : " shapes)");
+    var text = document.createElement("div");
+    text.className = "lp-gtfs-text";
+    var title = document.createElement("div");
+    title.className = "lp-row-label lp-gtfs-title";
+    title.textContent = name;
+    var sub = document.createElement("div");
+    sub.className = "lp-gtfs-sub";
+    var count = document.createElement("span");
+    count.className = "lp-gtfs-count";
+    count.textContent = countText;
+    sub.appendChild(count);
+    if (r.short && r.long) sub.appendChild(document.createTextNode(" " + r.long));
+    text.appendChild(title);
+    text.appendChild(sub);
+    text.title = (r.short && r.long ? r.short + " \u2013 " + r.long : name) + " " + countText;
+    row.appendChild(text);
+
+    row.appendChild(gtfsChip("lp-gtfs-eye" + (hidden ? " lp-eye-off" : ""), hidden ? EYE_OFF_SVG : EYE_SVG,
+      hidden ? "Show route" : "Hide route", (hidden ? "Show route " : "Hide route ") + name, function () {
+        App.gtfsSetRouteHidden(r.routeKey, !hs.routes[r.routeKey]);
+      }));
+    row.appendChild(gtfsChip("lp-row-menu", MENU_SVG, "More", "More actions for route " + name, function (e) {
+      if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, gtfsRouteMenu(r));
+    }));
+
+    var body = null;
+    function setOpen(o) {
+      if (o) _gtfsUI.expanded[r.routeKey] = true; else delete _gtfsUI.expanded[r.routeKey];
+      caret.classList.toggle("open", o);
+      caret.setAttribute("aria-expanded", o ? "true" : "false");
+      if (o && !body) {          // lazy: shape rows are built on first expand
+        body = document.createElement("div");
+        body.className = "lp-gtfs-shapes";
+        r.shapes.forEach(function (s) { body.appendChild(buildGtfsShapeRow(r, s, hs)); });
+        block.appendChild(body);
+      }
+      if (body) body.style.display = o ? "" : "none";
+    }
+    function toggle() { setOpen(!_gtfsUI.expanded[r.routeKey]); }
+    caret.addEventListener("click", function (e) { e.stopPropagation(); toggle(); });
+    gtfsWireRow(row, { routeId: r.routeKey }, function () { return gtfsRouteMenu(r); }, toggle);
+
+    block.appendChild(row);
+    if (open) setOpen(true);
+    return block;
+  }
+
+  function gtfsFilteredRoutes() {
+    var idx = gtfsIndex() || [];
+    return (App.gtfsBrowse && App.gtfsBrowse.filterRoutes) ? App.gtfsBrowse.filterRoutes(idx, _gtfsUI.filter) : idx;
+  }
+
+  function renderGtfsList(listEl, onchange) {
+    listEl.innerHTML = "";
+    var hsRaw = (typeof App.gtfsHiddenState === "function") ? App.gtfsHiddenState() : { routes: [], shapes: [] };
+    var hs = { routes: {}, shapes: {} };
+    hsRaw.routes.forEach(function (k) { hs.routes[k] = true; });
+    hsRaw.shapes.forEach(function (k) { hs.shapes[k] = true; });
+    var matches = gtfsFilteredRoutes();
+    matches.slice(0, GTFS_MAX_ROUTES).forEach(function (r) { listEl.appendChild(buildGtfsRouteBlock(r, hs)); });
+    if (!matches.length) {
+      var none = document.createElement("div");
+      none.className = "lp-empty";
+      none.textContent = "No routes match.";
+      listEl.appendChild(none);
+    } else if (matches.length > GTFS_MAX_ROUTES) {
+      var more = document.createElement("div");
+      more.className = "lp-empty lp-gtfs-more";
+      more.textContent = "Showing " + GTFS_MAX_ROUTES + " of " + matches.length + " — refine the filter";
+      listEl.appendChild(more);
+    }
+    if (onchange) onchange(matches);
+  }
+
+  function buildGtfsBrowser() {
+    var wrap = document.createElement("div");
+    wrap.className = "lp-gtfs-browser";
+
+    var filter = document.createElement("input");
+    filter.type = "search";
+    filter.className = "fp-attr-input lp-gtfs-filter";
+    filter.placeholder = "Filter routes or shapes…";
+    filter.setAttribute("aria-label", "Filter GTFS routes and shapes");
+    filter.value = _gtfsUI.filter;
+    wrap.appendChild(filter);
+
+    var actions = document.createElement("div");
+    actions.className = "lp-gtfs-actions";
+    function actBtn(text, title, fn) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "rf-btn-sm";
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener("click", fn);
+      actions.appendChild(b);
+      return b;
+    }
+    actBtn("Show all", "Show every GTFS route", function () { App.gtfsShowAll(); });
+    actBtn("Hide all", "Hide every GTFS route", function () { App.gtfsShowOnly([]); });
+    var onlyBtn = actBtn("Show only filtered", "Show only the routes matching the filter", function () {
+      App.gtfsShowOnly(gtfsFilteredRoutes().map(function (r) { return r.routeKey; }));
+    });
+    wrap.appendChild(actions);
+
+    var list = document.createElement("div");
+    list.className = "lp-gtfs-list";
+    wrap.appendChild(list);
+
+    function sync(matches) { onlyBtn.disabled = !_gtfsUI.filter.trim() || !matches.length; }
+    renderGtfsList(list, sync);
+    filter.addEventListener("input", function () {
+      _gtfsUI.filter = filter.value;
+      renderGtfsList(list, sync);   // list only — the input keeps focus + caret
+    });
+    return wrap;
+  }
+
+  // Adds the expand caret to the "GTFS routes" layer row and returns the
+  // browser element to place beneath it (null when collapsed).
+  function decorateGtfsRow(row, entry) {
+    var open = _gtfsUI.open;
+    var caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "lp-caret" + (open ? " open" : "");
+    caret.innerHTML = "&#9662;";
+    caret.setAttribute("aria-label", "Toggle route browser");
+    caret.setAttribute("aria-expanded", open ? "true" : "false");
+    caret.title = "Browse routes";
+    caret.addEventListener("click", function (e) {
+      e.stopPropagation();
+      _gtfsUI.open = !_gtfsUI.open;
+      render();
+    });
+    row.insertBefore(caret, row.children[1] || null);
+    return open ? buildGtfsBrowser() : null;
+  }
+
   // ---- Band scaffolding ----
   function buildBand(title) {
     var band = document.createElement("div");
@@ -1164,6 +1468,13 @@
   function render() {
     var host = document.getElementById("fp-tab-layers");
     if (!host) return;
+    // Keep scroll position and an in-progress filter edit across the rebuild.
+    var scroller = host.closest ? host.closest(".fp-content") : null;
+    var scrollTop = scroller ? scroller.scrollTop : 0;
+    var ae = document.activeElement;
+    var refocus = ae && ae.classList && ae.classList.contains("lp-gtfs-filter")
+      ? { s: ae.selectionStart, e: ae.selectionEnd } : null;
+    var gtfsFeed = gtfsSyncFeed();
     host.innerHTML = "";
 
     // Drawn
@@ -1216,13 +1527,25 @@
     if (refPresent.length) {
       var rBand = buildBand("Reference / Imported");
       refPresent.forEach(function (e) {
-        rBand.appendChild(buildLayerRow(e, "reference", _refOrder, getRef));
+        var lrow = buildLayerRow(e, "reference", _refOrder, getRef);
+        rBand.appendChild(lrow);
+        if (e.id === GTFS_ROW_ID && gtfsFeed && gtfsFeed.length) {
+          var browser = decorateGtfsRow(lrow, e);
+          if (browser) rBand.appendChild(browser);
+        }
       });
       host.appendChild(rBand);
     }
 
     // Basemap
     host.appendChild(buildBasemapBand());
+
+    if (scroller) scroller.scrollTop = scrollTop;
+    if (refocus) {
+      var f = host.querySelector(".lp-gtfs-filter");
+      if (f) { f.focus(); try { f.setSelectionRange(refocus.s, refocus.e); } catch (err) {} }
+    }
+    if (gtfsFeed) gtfsRestoreHighlight();
   }
 
   function refreshLayersPanel() {

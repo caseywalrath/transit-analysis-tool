@@ -9,13 +9,14 @@
   var _redoStack = [];
   var MAX_STACK = 50;
   var _restoring = false;
+  var _batchDepth = 0;
 
   function snapshot() {
     return JSON.parse(JSON.stringify(App.cache.collectState("light")));
   }
 
   function push() {
-    if (_restoring) return;
+    if (_restoring || _batchDepth > 0) return;
     _undoStack.push(snapshot());
     if (_undoStack.length > MAX_STACK) _undoStack.shift();
     _redoStack.length = 0;
@@ -59,10 +60,19 @@
     if (redoBtn) redoBtn.disabled = (_redoStack.length === 0);
   }
 
+  // Run fn as ONE undo step: one snapshot now, and every push() inside fn is a
+  // no-op (e.g. several App.addLineFromCoords calls). Returns fn's result.
+  function batch(fn) {
+    push();
+    _batchDepth++;
+    try { return fn(); } finally { _batchDepth--; }
+  }
+
   function isRestoring() { return _restoring; }
 
   App.undo = {
     push: push,
+    batch: batch,
     undo: undo,
     redo: redo,
     canUndo: function () { return _undoStack.length > 0; },

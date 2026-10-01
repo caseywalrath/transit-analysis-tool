@@ -223,6 +223,124 @@ async function main() {
     check("restore rebuilds the index and re-applies hidden sets", restored.n === 4 && eq(restored.h, { routes: ["ten"], shapes: ["B1"] }) && restored.f && restored.f[0] === "all", restored);
     await page.evaluate(() => App.clearGTFS());
 
+
+    // ================= Phase 2: Layers tab UI =================
+    console.log("\n# Layers tab route browser (real UI)");
+    await page.evaluate(async (files) => {
+      const zip = new JSZip();
+      Object.keys(files).forEach((k) => zip.file(k, files[k]));
+      await App.loadGTFSFile(await zip.generateAsync({ type: "blob" }));
+    }, feedFiles());
+    await page.waitForFunction("App.gtfsRouteIndex()", { timeout: 15000 });
+    await page.click('[data-fptab="layers"]');
+    const BR = "#fp-tab-layers .lp-gtfs-browser";
+    check("browser collapsed by default", (await page.locator(BR).count()) === 0);
+    const gtfsRow = page.locator("#fp-tab-layers .lp-row", { hasText: "GTFS routes" }).first();
+    await gtfsRow.locator(".lp-caret").click();
+    check("caret expands the browser", (await page.locator(BR).count()) === 1);
+    check("routes listed in index order", eq(await page.locator(BR + " .lp-gtfs-route .lp-gtfs-title").evaluateAll((els) => els.map((e) => e.textContent)), ["10", "Blue Line", "Red", "Unassigned shapes"]));
+    check("shape rows are lazy (none built yet)", (await page.locator(BR + " .lp-gtfs-shape").count()) === 0);
+    check("route row shows '(3 shapes)' and color dot", (await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).locator(".lp-gtfs-count").textContent()) === "(3 shapes)" &&
+      (await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).locator(".lp-gtfs-dot").evaluate((e) => getComputedStyle(e).backgroundColor)) === "rgb(255, 0, 0)");
+
+    // Filter: typing keeps focus; list only re-renders.
+    const filterIn = page.locator(BR + " .lp-gtfs-filter");
+    await filterIn.click();
+    await page.keyboard.type("1771");
+    check("filter keeps focus while typing", await page.evaluate(() => document.activeElement && document.activeElement.classList.contains("lp-gtfs-filter")));
+    check("filter by shape_id narrows to Red", eq(await page.locator(BR + " .lp-gtfs-route .lp-gtfs-title").evaluateAll((els) => els.map((e) => e.textContent)), ["Red"]));
+    check("'Show only filtered' enabled with filter", await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show only filtered" }).isEnabled());
+    await filterIn.fill("");
+    check("blank filter lists all 4 again + only-filtered disabled", (await page.locator(BR + " .lp-gtfs-route").count()) === 4 && !(await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show only filtered" }).isEnabled()));
+
+    // Expand a route (lazy shapes), hover highlight.
+    const redRow = page.locator(BR + " .lp-gtfs-route", { hasText: "Red" });
+    await redRow.locator(".lp-caret").click();
+    check("expanding builds the 3 shape rows in order", eq(await page.locator(BR + " .lp-gtfs-shape .lp-row-label").evaluateAll((els) => els.map((e) => e.textContent.split(" · ")[0])), ["177202", "177198", "177198_A"]));
+    check("shape row text has length, trips, headsign", /^177202\d+\.\d mi · 4 trips · Loop$/.test(await page.locator(BR + " .lp-gtfs-shape").first().locator(".lp-gtfs-text").textContent()));
+    await redRow.hover();
+    check("hover route row highlights the route", JSON.stringify(await hl("gtfs-shapes-hl")).includes("route_id") && JSON.stringify(await hl("gtfs-shapes-hl")).includes("red"));
+    await page.locator(BR + " .lp-gtfs-shape").nth(1).hover();
+    check("hover shape row highlights the shape", JSON.stringify(await hl("gtfs-shapes-hl")).includes("177198") && !JSON.stringify(await hl("gtfs-shapes-hl")).includes("route_id"));
+    await page.mouse.move(5, 5);
+    check("mouse leave clears highlight", JSON.stringify(await hl("gtfs-shapes-hl")).includes("none"));
+
+    // Click pins; survives refresh; second click unpins.
+    await page.locator(BR + " .lp-gtfs-shape").nth(1).click();
+    check("click pins the shape highlight after mouse leaves", await (async () => { await page.mouse.move(5, 5); return JSON.stringify(await hl("gtfs-shapes-hl")).includes("177198"); })());
+
+    // State survives a rebuild; scroll preserved.
+    await page.evaluate(() => { document.querySelector("#fp-tab-layers").closest(".fp-content").scrollTop = 40; });
+    await page.evaluate(() => App.refreshLayersPanel());
+    check("expand state survives refreshLayersPanel", (await page.locator(BR + " .lp-gtfs-shape").count()) === 3);
+    check("pinned highlight + pinned row class survive refresh", JSON.stringify(await hl("gtfs-shapes-hl")).includes("177198") && (await page.locator(BR + " .lp-gtfs-pinned").count()) === 1);
+    await filterIn.fill("red");
+    await page.evaluate(() => App.refreshLayersPanel());
+    check("filter text survives refreshLayersPanel", (await page.locator(BR + " .lp-gtfs-filter").inputValue()) === "red");
+    await page.locator(BR + " .lp-gtfs-filter").focus();
+    await page.evaluate(() => App.refreshLayersPanel());
+    check("filter keeps focus through a rebuild", await page.evaluate(() => document.activeElement && document.activeElement.classList.contains("lp-gtfs-filter")));
+    await page.locator(BR + " .lp-gtfs-filter").fill("");
+    check("scroll position survives rebuild (when scrollable)", await page.evaluate(() => { const c = document.querySelector("#fp-tab-layers").closest(".fp-content"); const want = Math.min(40, c.scrollHeight - c.clientHeight); return Math.abs(c.scrollTop - want) <= 1; }));
+
+    // Eye toggles drive the main layer filter.
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Blue Line" }).hover();
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Blue Line" }).locator(".lp-gtfs-eye").click();
+    check("route eye hides it on the map layer", JSON.stringify(await filt()).includes('"blue"'), await filt());
+    check("hidden route row is dimmed with an eye-off icon", await page.locator(BR + " .lp-gtfs-route", { hasText: "Blue Line" }).evaluate((r) => r.classList.contains("lp-row-hidden") && !!r.querySelector(".lp-eye-off")));
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).hover();
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).locator(".lp-gtfs-eye").click();
+    check("hidden route dims its shape rows too", (await page.locator(BR + " .lp-gtfs-shape.lp-row-hidden").count()) === 3);
+    await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show all" }).click();
+    check("Show all clears the filter + dimming", (await filt()) == null && (await page.locator(BR + " .lp-row-hidden").count()) === 0);
+    await page.locator(BR + " .lp-gtfs-shape").first().hover();
+    await page.locator(BR + " .lp-gtfs-shape").first().locator(".lp-gtfs-eye").click();
+    check("shape eye hides just that shape", JSON.stringify(await filt()).includes("177202") && !JSON.stringify(await filt()).includes('"red"'), await filt());
+    await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Hide all" }).click();
+    check("Hide all hides every route", (await page.locator(BR + " .lp-gtfs-route.lp-row-hidden").count()) === 4);
+    await filterIn.fill("blue");
+    await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show only filtered" }).click();
+    check("Show only filtered shows just Blue", (await page.locator(BR + " .lp-gtfs-route:not(.lp-row-hidden)").count()) === 1 && !JSON.stringify(await filt()).includes('"blue"'));
+    await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show all" }).click();
+    await filterIn.fill("");
+
+    // Menus + copy.
+    const before = await page.evaluate(() => App.lines.length);
+    await redRow.click({ button: "right" });
+    check("right-click opens the route menu", eq(await page.locator("#fp-context-menu button").allTextContents(), ["Copy as line", "Copy each shape as a line", "Show only this", "Zoom to"]));
+    await page.locator("#fp-context-menu button", { hasText: "Copy each shape as a line" }).click();
+    let nl = await page.evaluate((b) => App.lines.slice(b).map((l) => ({ n: l.properties.name, g: (l.properties.attributes || {}).group, c: l.properties.color })), before);
+    check("copy each -> 3 lines, shared group, color", nl.length === 3 && nl.every((l) => l.g === "Red" && l.c.toLowerCase() === "#ff0000") && nl[0].n === "Red – 177202", nl);
+    check("first new line is selected", await page.evaluate(() => App.isFeatureSelected("line", App.lines.length - 3)));
+    await page.evaluate(() => App.undo.undo());
+    check("copy each is ONE undo step", (await page.evaluate(() => App.lines.length)) === before, await page.evaluate(() => App.lines.length));
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).locator(".lp-row-menu").evaluate((b) => b.click());
+    check("⋯ button opens the same menu", (await page.locator("#fp-context-menu button").count()) === 4);
+    await page.locator("#fp-context-menu button", { hasText: "Show only this" }).click();
+    check("Show only this hides the other routes", JSON.stringify(await filt()).includes('"blue"') && !JSON.stringify(await filt()).includes('"red"'));
+    await page.locator(BR + " .lp-gtfs-actions button", { hasText: "Show all" }).click();
+    await page.locator(BR + " .lp-gtfs-shape").nth(2).click({ button: "right" });
+    check("shape menu has 3 entries", eq(await page.locator("#fp-context-menu button").allTextContents(), ["Copy as line", "Show only this route", "Zoom to"]));
+    await page.locator("#fp-context-menu button", { hasText: "Copy as line" }).click();
+    const last = await page.evaluate(() => { const l = App.lines[App.lines.length - 1]; return { n: l.properties.name, g: (l.properties.attributes || {}).group, notes: (l.properties.attributes || {}).notes }; });
+    check("shape copy -> single name, no group, notes carry shape_id", last.n === "Red" && !last.g && /177198_A/.test(last.notes), last);
+
+    // Keyboard.
+    await page.locator(BR + " .lp-gtfs-route", { hasText: "Red" }).focus();
+    await page.keyboard.press("Enter");
+    check("Enter on a focused route row toggles expand", (await page.locator(BR + " .lp-gtfs-shape").count()) === 0 || (await page.locator(BR + " .lp-gtfs-shapes").evaluate((e) => e.style.display)) === "none");
+    await page.keyboard.press("Shift+F10");
+    check("Shift+F10 opens the row menu", (await page.locator("#fp-context-menu button").count()) === 4);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(600, 400);
+
+    // >200 routes cap, via the real list renderer.
+    check("no 'Showing N of' note when under the cap", (await page.locator(BR + " .lp-gtfs-more").count()) === 0);
+
+    await page.screenshot({ path: process.env.GTFS_SHOT || "/tmp/gtfs-browser-shot.png", clip: { x: 1180, y: 0, width: 220, height: 900 } });
+    await page.evaluate(() => App.clearGTFS());
+    check("browser disappears when the feed is cleared", (await page.locator(BR).count()) === 0);
+
     // ================= END =================
   } finally {
     if (browser) await browser.close().catch(() => {});

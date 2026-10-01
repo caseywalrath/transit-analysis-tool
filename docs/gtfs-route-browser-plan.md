@@ -1,6 +1,6 @@
 # GTFS Route Browser — implementation plan
 
-Status: Phase 1 done.
+Status: Phases 1–2 done.
 
 ## Goal
 

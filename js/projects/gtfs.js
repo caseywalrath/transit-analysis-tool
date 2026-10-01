@@ -363,6 +363,7 @@
       var mc = document.getElementById("gtfsMapControls");
       if (mc) mc.style.display = "none";
     }
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
     App.setStatus("GTFS feed cleared.");
   }
 
@@ -1260,12 +1261,17 @@
     }
     var multi = opts.mode === "each" && shapes.length > 1;
     var group = multi && route && route.routeKey !== UNASSIGNED_KEY ? routeDisplayName(route) : "";
-    shapes.forEach(function (sid) {
-      var f = shapeFeature(sid);
-      if (!f) return;
-      var idx = copyShapeToLine(f.properties, { multi: multi, group: group });
-      if (idx >= 0) created.push(idx);
-    });
+    function copyAll() {
+      shapes.forEach(function (sid) {
+        var f = shapeFeature(sid);
+        if (!f) return;
+        var idx = copyShapeToLine(f.properties, { multi: multi, group: group });
+        if (idx >= 0) created.push(idx);
+      });
+    }
+    // Several lines in one go are ONE undo step.
+    if (shapes.length > 1 && App.undo && typeof App.undo.batch === "function") App.undo.batch(copyAll);
+    else copyAll();
     return created;
   };
 
