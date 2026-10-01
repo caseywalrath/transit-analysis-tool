@@ -1,6 +1,6 @@
 # Feature Split (lines and routes) — design plan
 
-Status: proposal — nothing built yet.
+Status: Phase 1 (Split here for lines and routes) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phases 2-3 not started.
 
 ## Goal
 
@@ -183,7 +183,7 @@ The engine, `App.split.analyze(type, index, cuts)`, returns a plan
 
 ## Phases
 
-1. **Split here.** Lines and routes: pure helpers plus golden tests, engine,
+1. **Split here.** *(Done.)* Lines and routes: pure helpers plus golden tests, engine,
    dialog, attribute/Service/stop rules, undo, and the map menu item. A browser
    smoke test is added to `test/feature-merge-smoke.mjs`, or a new
    `test/feature-split-smoke.mjs`. It checks that split followed by Merge gives

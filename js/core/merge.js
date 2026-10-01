@@ -1295,10 +1295,15 @@
   // Keyboard: Escape closes; Tab stays inside; no key reaches the app's global
   // shortcuts (draw tools, Delete, Ctrl+Z) while the dialog is open. Mounts the
   // overlay and registers it as THE open dialog. Returns the dialog record.
-  function installDialog(overlay, box) {
+  // onEnter (optional, used by the split dialog): called for Enter pressed
+  // anywhere in the dialog except on a button.
+  function installDialog(overlay, box, onEnter) {
     function onKey(e) {
       if (!_dlg) return;
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDialog(); return; }
+      if (e.key === "Enter" && onEnter && !(e.target && e.target.tagName === "BUTTON")) {
+        e.preventDefault(); e.stopPropagation(); onEnter(); return;
+      }
       if (e.key === "Tab") {
         var f = box.querySelectorAll("input:not(:disabled), button:not(:disabled)");
         if (!f.length) return;
@@ -1541,6 +1546,18 @@
     openUnmergeDialog: openUnmergeDialog,
     closeDialog: closeDialog,
     isDialogOpen: function () { return !!_dlg; },
-    _strategies: STRATEGIES
+    _strategies: STRATEGIES,
+    // Shared .fm-* dialog shell, reused by js/core/split.js. One dialog at a
+    // time across merge, unmerge and split (closeDialog closes whichever is open).
+    _dialogKit: {
+      el: el,
+      renderList: renderList,
+      buildShell: buildShell,
+      buildActions: buildActions,
+      installDialog: installDialog,
+      closeDialog: closeDialog,
+      isOpen: function () { return !!_dlg; },
+      isCurrent: function (d) { return !!d && _dlg === d; }
+    }
   };
 })();

@@ -840,6 +840,11 @@
                 var fn = dupFns[featureType];
                 if (typeof fn === "function") fn(featureIndex);
             }},
+            // Split here — lines/routes only; hidden on loops and within ~30 ft of an end.
+            { label: "Split here", hidden: !((featureType === "line" || featureType === "route") && App.split &&
+                App.split.canSplitAt(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat])), action: function () {
+                App.split.openDialog(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat]);
+            }},
             // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
             { label: "Unmerge\u2026", hidden: !(App.merge && App.merge.hasHistory(featureType, featureIndex)), action: function () {
                 App.merge.openUnmergeDialog(featureType, featureIndex);
