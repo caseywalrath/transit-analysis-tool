@@ -1199,8 +1199,7 @@
     var controlsEl = headerEl.querySelector(".fp-attr-popup-controls");
     var existingSwatch = controlsEl.querySelector(".fp-attr-popup-swatch");
     if (existingSwatch) existingSwatch.remove();
-    var featureColor = feature.properties.color ||
-      (typeof App.getTypeDefaultColor === "function" ? App.getTypeDefaultColor(featureType) : "#999");
+    var featureColor = App.resolveFeatureColor(featureType, feature);
     var hdrSwatch = document.createElement("button");
     hdrSwatch.className = "fp-attr-popup-swatch";
     hdrSwatch.style.background = featureColor;
@@ -1210,8 +1209,7 @@
       sw.addEventListener("click", function (e) {
         e.stopPropagation();
         if (typeof App.openColorPicker === "function") {
-          App.openColorPicker(sw, feat.properties.color || sw.style.background, function (newColor) {
-            feat.properties.color = newColor;
+          App.openColorPicker(sw, App.resolveFeatureColor(ft, feat), function (newColor) {
             sw.style.background = newColor;
             if (typeof App.updateFeatureColor === "function") App.updateFeatureColor(ft, fi, newColor);
           });
@@ -1398,6 +1396,15 @@
     return out;
   };
   App.isAttrPopupOpen   = function () { return !!(_popupEl && _popupEl.style.display !== "none"); };
+  // Re-read the header swatch after a color change made elsewhere (e.g. a
+  // type-wide color set in the Layers tab).
+  App.refreshAttrPopupColor = function () {
+    if (!App.isAttrPopupOpen() || !_popupEl) return;
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
+    var feat = arr && arr[_currentIdx];
+    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
+    if (feat && sw) sw.style.background = App.resolveFeatureColor(_currentType, feat);
+  };
   App.getAttrPopupFeature = function () {
     if (!App.isAttrPopupOpen()) return null;
     return { featureType: _currentType, featureIndex: _currentIdx };

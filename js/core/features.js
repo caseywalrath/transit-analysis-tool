@@ -243,6 +243,22 @@
       if (typeof App.updateLabelAppearance === "function") App.updateLabelAppearance(featureIndex);
     }
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+  };
+
+  // Type-wide color from the Layers tab (nc = a hex color, or null/"" for
+  // Automatic). Last action wins: every feature of the type drops its own
+  // color so it inherits the new setting. One undo step covers all of it.
+  App.setTypeColor = function (featureType, nc) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    if (!App.sectionColors) App.sectionColors = {};
+    App.sectionColors[featureType] = nc || null;
+    App.clearFeatureColorOverrides(featureType);
+    rerenderForType(featureType);
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    refreshFeaturePanel();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    if (typeof App.refreshAttrPopupColor === "function") App.refreshAttrPopupColor();
   };
 
   /* ---- Default color helper ---- */
@@ -598,22 +614,23 @@
     typeIcon.innerHTML = TYPE_ICON_SVGS[featureType] || "";
     typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[featureType] || featureType) + " color";
     typeIcon.setAttribute("aria-label", typeIcon.title);
-    var _currentColor = feature.properties.color || getTypeDefaultColor(featureType);
+    var _currentColor = App.resolveFeatureColor(featureType, feature);
     typeIcon.style.color = _currentColor;
-    (function (btn, ft, fi) {
+    (function (btn, ft, fi, feat) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         if (typeof App.openColorPicker !== "function") return;
-        var curColor = btn.style.color || getTypeDefaultColor(ft);
+        var curColor = App.resolveFeatureColor(ft, feat);
         App.openColorPicker(btn, curColor, function (newColor) {
           if (typeof App.updateFeatureColor === "function") {
             App.updateFeatureColor(ft, fi, newColor);
           }
           btn.style.color = newColor;
           if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+          if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
         });
       });
-    })(typeIcon, featureType, featureIndex);
+    })(typeIcon, featureType, featureIndex, feature);
 
     var input = document.createElement("span");
     input.className = "fp-name";
@@ -874,7 +891,7 @@
     });
 
     // Color swatch — applies color to all features in the group
-    var firstColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
+    var firstColor = App.resolveFeatureColor(items[0].type, items[0].feature);
     header.style.borderLeftColor = firstColor;
     var sw = document.createElement("button");
     sw.className = "fp-swatch fp-item-swatch";
@@ -883,7 +900,7 @@
     sw.setAttribute("aria-label", "Change color for group " + groupName);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
-      var curColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
+      var curColor = App.resolveFeatureColor(items[0].type, items[0].feature);
       App.openColorPicker(sw, curColor, function (newColor) {
         sw.style.background = newColor;
         header.style.borderLeftColor = newColor;

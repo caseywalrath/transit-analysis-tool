@@ -337,7 +337,22 @@
     return out;
   };
 
+  // "Last action wins" (docs/feature-color-sync-plan.md): a type-wide color
+  // chosen in the Layers tab must reach every feature of that type, so each
+  // feature's own override is cleared and it inherits the type setting again.
+  // Does not re-render or push undo -- App.setTypeColor (features.js) does both.
+  // Labels are excluded (they have their own section color control).
+  function clearFeatureColorOverrides(featureType) {
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[featureType];
+    var n = 0;
+    (arr || []).forEach(function (f) {
+      if (f && f.properties && f.properties.color) { f.properties.color = ""; n++; }
+    });
+    return n;
+  }
+
   App.resolveFeatureColor = resolveFeatureColor;
+  App.clearFeatureColorOverrides = clearFeatureColorOverrides;
   App._nextColorSeq = nextColorSeq;
   App._advanceColorSeqPast = advanceColorSeqPast;
 

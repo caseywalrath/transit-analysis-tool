@@ -638,13 +638,11 @@
     sw.type = "button";
     sw.className = "as-swatch";
     sw.title = "Change color";
-    sw.style.background = feature.properties.color ||
-      (typeof App.getTypeDefaultColor === "function" ? App.getTypeDefaultColor(featureType) : "#999");
+    sw.style.background = App.resolveFeatureColor(featureType, feature);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
       if (typeof App.openColorPicker !== "function") return;
-      App.openColorPicker(sw, feature.properties.color || sw.style.background, function (newColor) {
-        feature.properties.color = newColor;
+      App.openColorPicker(sw, App.resolveFeatureColor(featureType, feature), function (newColor) {
         sw.style.background = newColor;
         if (typeof App.updateFeatureColor === "function") {
           App.updateFeatureColor(featureType, featureIndex, newColor);

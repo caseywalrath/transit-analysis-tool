@@ -1,6 +1,6 @@
 # Feature color sync — plan
 
-Status: **plan only, nothing implemented yet.**
+Status: **implemented** (see `test/feature-color-smoke.mjs`).
 Builds on `docs/feature-color-system-plan.md` (the color cascade).
 
 ## What the user asked for

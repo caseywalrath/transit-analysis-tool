@@ -195,6 +195,25 @@
       svg.appendChild(c);
     } else if (type === "line" || type === "route") {
       var lColor = App.getTypeDefaultColor ? App.getTypeDefaultColor(type) : "#e53e3e";
+      if (!(App.sectionColors && App.sectionColors[type])) {
+        // Automatic: each feature keeps its own palette color, so the preview
+        // is the same rainbow the swatch beside it shows.
+        var defs = document.createElementNS(SVG_NS, "defs");
+        var grad = document.createElementNS(SVG_NS, "linearGradient");
+        var gid = "lp-prev-grad-" + type;
+        grad.setAttribute("id", gid);
+        grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0"); grad.setAttribute("x2", "1"); grad.setAttribute("y2", "0");
+        var stops = App.FEATURE_COLORS.slice(0, 6);
+        stops.forEach(function (c, i) {
+          var st = document.createElementNS(SVG_NS, "stop");
+          st.setAttribute("offset", (i / (stops.length - 1)).toFixed(3));
+          st.setAttribute("stop-color", c);
+          grad.appendChild(st);
+        });
+        defs.appendChild(grad);
+        svg.appendChild(defs);
+        lColor = "url(#" + gid + ")";
+      }
       var w = Math.max(1, (fs[type + "LineWidth"] || 1) * 3);
       var lOp = (fs[type + "Opacity"] != null ? fs[type + "Opacity"] : 100) / 100;
       var l = document.createElementNS(SVG_NS, "line");
@@ -861,7 +880,7 @@
       render();
     });
 
-    var firstColor = items[0].feature.properties.color || App.getTypeDefaultColor(items[0].type);
+    var firstColor = App.resolveFeatureColor(items[0].type, items[0].feature);
     header.style.borderLeftColor = firstColor;
     function changeGroupColor(anchorEl) {
       App.openColorPicker(anchorEl, firstColor, function (nc) {
@@ -1302,8 +1321,7 @@
   function resetTypeStyle(t) {
     t.controls.forEach(function (ctl) {
       if (ctl.kind === "color") {
-        if (App.sectionColors) App.sectionColors[t.type] = null;
-        App.rerenderForType(t.type);
+        App.setTypeColor(t.type, null);
       } else {
         App.featureSettings[ctl.key] = ctl.def;
       }
@@ -1387,10 +1405,7 @@
         sw.addEventListener("click", function (e) {
           e.stopPropagation();
           App.openColorPicker(sw, App.getTypeDefaultColor(t.type), function (nc) {
-            if (!App.sectionColors) App.sectionColors = {};
-            App.sectionColors[t.type] = nc;
-            App.rerenderForType(t.type);
-            if (App.cache && typeof App.cache.save === "function") App.cache.save();
+            App.setTypeColor(t.type, nc);
             render();
           });
         });
@@ -1405,9 +1420,7 @@
           clearColorBtn.setAttribute("aria-label", "Reset " + t.label + " color to Automatic");
           clearColorBtn.addEventListener("click", function (e) {
             e.stopPropagation();
-            if (App.sectionColors) App.sectionColors[t.type] = null;
-            App.rerenderForType(t.type);
-            if (App.cache && typeof App.cache.save === "function") App.cache.save();
+            App.setTypeColor(t.type, null);
             render();
           });
           controlWrap.appendChild(clearColorBtn);
