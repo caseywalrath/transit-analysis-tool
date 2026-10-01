@@ -801,10 +801,10 @@
 
     // ---- Right-click: vertex deletion (priority) or feature attributes ----
     map.on("contextmenu", function (e) {
-      if (App.drawMode) return;
+      if (App.drawMode && App.drawMode !== "box-select") return;
 
       // Priority 1: vertex handle hit during vertex-edit mode → delete vertex
-      if (editState && editState.type === "vertex-edit") {
+      if (!App.drawMode && editState && editState.type === "vertex-edit") {
         var editHits = safeQuery(e.point, [EDIT_LAYER]);
         if (editHits.length > 0) {
           e.preventDefault();
@@ -835,6 +835,20 @@
       else if (layerId === "routes-layer")   { featureType = "route";    featureIndex = findRouteIndex(hit); }
       else if (layerId === "polygons-fill")  { featureType = "polygon";  featureIndex = findPolygonIndex(hit); }
       if (featureType === null || featureIndex < 0) return;
+
+      // Group menu: right-click on a member of a 2+ selection keeps the selection.
+      var curSel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+      if (curSel.length >= 2 && typeof App.isFeatureSelected === "function" &&
+          App.isFeatureSelected(featureType, featureIndex) && App.bulkFeatures &&
+          typeof App.showContextMenu === "function" && App.bulkFeatures.usable(curSel).length) {
+        var gSel = App.merge && App.merge.mergeableSelection(curSel);
+        var gMerge = gSel ? { label: "Merge\u2026", action: function () {
+          App.merge.openDialog(gSel.type, gSel.indices, gSel.primaryFor(featureType, featureIndex));
+        }} : null;
+        App.showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY,
+          App.bulkFeatures.groupMenuItems(curSel, gMerge));
+        return;
+      }
 
       if (typeof App.selectFeature === "function") App.selectFeature(featureType, featureIndex);
 

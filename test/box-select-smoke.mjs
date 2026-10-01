@@ -191,6 +191,83 @@ async function main() {
     await page.mouse.move(700, 450); await page.mouse.down(); await page.mouse.move(800, 500, { steps: 8 }); await page.mouse.up();
     await page.waitForTimeout(200);
     check("map pans normally after the tool is off", JSON.stringify(await page.evaluate(() => App.map.getCenter().toArray())) !== JSON.stringify(before));
+
+    console.log("\n# Group actions");
+    await page.keyboard.press("Escape"); // make sure the tool state is known
+    await page.evaluate(() => { App.exitDrawMode && App.exitDrawMode(); App.setSelection && App.setSelection([]); });
+    await page.evaluate(() => App.map.jumpTo({ center: [-104.79, 38.806], zoom: 14 }));
+    await loadFixture(page);
+    await page.waitForTimeout(300);
+    const menuTexts = (pg) => pg.evaluate(() => Array.from(document.querySelectorAll("#fp-context-menu button")).map((b) => b.textContent));
+    const clickMenu = async (pg, label) => { await pg.locator("#fp-context-menu button", { hasText: label }).first().click(); await pg.waitForTimeout(150); };
+    const rclick = async (pg, lng, lat) => { const p = await px(pg, lng, lat); await pg.mouse.click(p[0], p[1], { button: "right" }); await pg.waitForTimeout(150); };
+    const counts = () => page.evaluate(() => [App.points.length, App.lines.length, App.polygons.length]);
+    const names = () => page.evaluate(() => [].concat(App.points, App.lines, App.polygons).map((f) => f.properties.name + "#" + (f.properties.pointIdx || f.properties.lineIdx || f.properties.polyIdx)).sort().join(","));
+    const hiddenN = () => page.evaluate(() => [].concat(App.points, App.lines, App.polygons).filter((f) => f.properties.hidden).length);
+
+    // 3 features: point 1, line 1, line 2 (tool on)
+    await page.click('.tool-btn[data-mode="box-select"]');
+    await drag(page, [-104.803, 38.814], [-104.797, 38.804]);
+    check("fixture: 3 selected", (await sel(page)) === "line:0,line:1,point:0", await sel(page));
+    await rclick(page, -104.800, 38.810);
+    let m = await menuTexts(page);
+    check("tool on: group menu items", m.includes("Zoom to selection") && m.includes("Hide 3") && m.includes("Delete 3 features…"), m);
+    check("selection kept after right-click", (await sel(page)) === "line:0,line:1,point:0", await sel(page));
+    check("2 lines + point: no Merge", !m.includes("Merge…"), m);
+    await clickMenu(page, "Hide 3");
+    check("Hide 3 hides all three", (await hiddenN()) === 3, await hiddenN());
+    await page.evaluate(() => App.undo.undo());
+    check("one undo shows all again", (await hiddenN()) === 0, await hiddenN());
+
+    // tool off
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => App.setSelection([{ type: "point", index: 0 }, { type: "line", index: 0 }, { type: "line", index: 1 }]));
+    check("tool off now", await page.evaluate(() => App.drawMode === null));
+    await rclick(page, -104.800, 38.810);
+    m = await menuTexts(page);
+    check("tool off: group menu items", m.includes("Hide 3") && m.includes("Delete 3 features…"), m);
+
+    // Delete dialog: cancel, then confirm
+    const nm0 = await names();
+    const cnt0 = await counts();
+    await clickMenu(page, "Delete 3 features");
+    check("delete opens a dialog", await page.evaluate(() => !!document.querySelector(".fm-dialog")));
+    await page.locator(".fm-dialog button", { hasText: "Cancel" }).first().click();
+    await page.waitForTimeout(100);
+    check("Cancel deletes nothing", JSON.stringify(await counts()) === JSON.stringify(cnt0) && (await names()) === nm0);
+    await rclick(page, -104.800, 38.810);
+    await clickMenu(page, "Delete 3 features");
+    await page.locator(".fm-dialog button", { hasText: /^Delete$/ }).first().click();
+    await page.waitForTimeout(150);
+    check("Delete removes exactly 3", JSON.stringify(await counts()) === JSON.stringify([1, 0, 1]), await counts());
+    check("the right ones remain", (await names()) === "Point 2#2,Polygon 1#1", await names());
+    await page.evaluate(() => App.undo.undo());
+    check("one undo restores names and IDs", (await names()) === nm0 && JSON.stringify(await counts()) === JSON.stringify(cnt0), await names());
+
+    // Delete key
+    await page.evaluate(() => { App.setSelection([{ type: "point", index: 0 }, { type: "point", index: 1 }]); document.activeElement && document.activeElement.blur(); });
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(150);
+    check("Delete key opens the dialog", await page.evaluate(() => !!document.querySelector(".fm-dialog")));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    check("Escape closes it, nothing deleted", (await page.evaluate(() => !document.querySelector(".fm-dialog"))) && JSON.stringify(await counts()) === JSON.stringify(cnt0));
+
+    // Features pane
+    await page.evaluate(() => App.setSelection([{ type: "point", index: 0 }, { type: "point", index: 1 }]));
+    await page.waitForTimeout(150);
+    await page.locator(".fp-item", { hasText: "Point 1" }).first().click({ button: "right" });
+    await page.waitForTimeout(150);
+    m = await menuTexts(page);
+    check("Features pane: Hide 2 / Delete 2", m.includes("Hide 2") && m.includes("Delete 2 features…"), m);
+    check("Features pane: two points offer Merge…", m.includes("Merge…"), m);
+    await page.mouse.click(5, 5);
+
+    // Mergeable pair on the map: 2 lines
+    await page.evaluate(() => App.setSelection([{ type: "line", index: 0 }, { type: "line", index: 1 }]));
+    await rclick(page, -104.80, 38.8125);
+    m = await menuTexts(page);
+    check("map menu: 2 lines show Merge…", m.includes("Merge…") && m.includes("Hide 2"), m);
   } finally {
     if (browser) await browser.close();
     server.kill();

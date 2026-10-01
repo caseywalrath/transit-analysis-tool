@@ -242,6 +242,7 @@ async function main() {
     await page.waitForTimeout(800);
     const xy = await page.evaluate(() => { const p = App.map.project([-104.785, 38.80]); const r = App.map.getCanvas().getBoundingClientRect();
       return { x: r.left + p.x, y: r.top + p.y }; });
+    await page.evaluate(() => App.setSelection([])); // a 2+ selection would show the group menu
     await page.mouse.click(xy.x, xy.y, { button: "right" });
     await page.waitForTimeout(200);
     const items = await page.evaluate(() => Array.from(document.querySelectorAll("#fp-context-menu button")).map((b) => b.textContent));
@@ -281,6 +282,7 @@ async function main() {
     const snap0 = await snapshot(page);
     await page.evaluate(() => { window.__pushes = 0; });
     const A = await px([-104.795, 38.80]), B = await px([-104.78, 38.805]);
+    await page.evaluate(() => App.setSelection([])); // a 2+ selection would show the group menu
     await page.mouse.click(A.x, A.y, { button: "right" });
     await page.waitForTimeout(200);
     let items2 = await menuItems();
@@ -322,6 +324,7 @@ async function main() {
     check("Undo restores the session exactly", (await snapshot(page)) === snap0);
 
     console.log("\n# Split out section: cancel paths and refused points");
+    await page.evaluate(() => App.setSelection([])); // a 2+ selection would show the group menu
     await page.mouse.click(A.x, A.y, { button: "right" }); await page.waitForTimeout(150);
     await clickMenu("Split out section…"); await page.waitForTimeout(100);
     await page.mouse.move(B.x, B.y, { steps: 3 }); await page.waitForTimeout(120);
@@ -333,6 +336,7 @@ async function main() {
     const escL = await previewLayers();
     check("Escape cancels: no preview layers/source left, drawMode cleared, nothing changed", esc.mode === null && !esc.picking && !esc.dlg &&
       !escL.src && !escL.line && !escL.cut && (await snapshot(page)) === snap0, { esc, escL });
+    await page.evaluate(() => App.setSelection([])); // a 2+ selection would show the group menu
     await page.mouse.click(A.x, A.y, { button: "right" }); await page.waitForTimeout(150);
     await clickMenu("Split out section…"); await page.waitForTimeout(100);
     await page.mouse.move(B.x, B.y, { steps: 3 }); await page.waitForTimeout(100);
@@ -380,6 +384,7 @@ async function main() {
       App.cache.applyState(st); });
     await view([-104.795, 38.855], 14);
     const LA = await px([-104.795, 38.85]), LB = await px([-104.79, 38.855]);
+    await page.evaluate(() => App.setSelection([])); // a 2+ selection would show the group menu
     await page.mouse.click(LA.x, LA.y, { button: "right" }); await page.waitForTimeout(150);
     const loopItems = await menuItems();
     check("loop: 'Split here' hidden, 'Split out section…' offered", !loopItems.includes("Split here") && loopItems.includes("Split out section…"), loopItems);

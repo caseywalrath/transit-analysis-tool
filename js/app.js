@@ -824,6 +824,19 @@
           else if (ft === "polygon") App.removePolygon(fi);
           if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
           e.preventDefault();
+          return;
+        }
+        // Delete on a feature selection → confirm dialog (one undo step).
+        if (tag === "SELECT" || (App.drawMode && App.drawMode !== "box-select")) return;
+        // Analysis panels are non-modal: only a key pressed inside one is ignored.
+        if (e.target && e.target.closest && e.target.closest("#module-popup, #fp-attr-popup, #fp-mini-popup")) return;
+        if (App.merge && App.merge.isDialogOpen && App.merge.isDialogOpen()) return;
+        if (App.bulkFeatures && typeof App.getSelectedFeatures === "function") {
+          var bsel = App.bulkFeatures.usable(App.getSelectedFeatures());
+          if (bsel.length) {
+            App.bulkFeatures.confirmRemove(bsel);
+            e.preventDefault();
+          }
         }
       }
     });

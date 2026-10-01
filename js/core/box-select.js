@@ -337,6 +337,159 @@
   window.addEventListener("blur", endDrag);
   }
 
+  // ---- Group actions on a multi-selection (Phase 3): App.bulkFeatures ----
+  // Shared by the map right-click menu (editing.js), the Features-pane
+  // right-click menu (features.js) and the Delete key (app.js). `list` is
+  // [{type, index}]; labels and anything stale are ignored.
+
+  var ARRAYS = { point: "points", line: "lines", route: "routes", polygon: "polygons" };
+  var REMOVE = { point: "removePoint", line: "removeLine", route: "removeRoute", polygon: "removePolygon" };
+  var NOUN = { point: ["point", "points"], line: ["line", "lines"], route: ["route", "routes"], polygon: ["polygon", "polygons"] };
+
+  function featureOf(s) {
+    var arr = ARRAYS[s.type] && App[ARRAYS[s.type]];
+    return arr && s.index >= 0 && s.index < arr.length ? arr[s.index] : null;
+  }
+
+  function usable(list) {
+    return (list || []).filter(function (s) { return !!featureOf(s); });
+  }
+
+  function typesOf(list) {
+    var t = {};
+    list.forEach(function (s) { t[s.type] = true; });
+    return Object.keys(t);
+  }
+
+  // "2 points, 1 line"
+  function describe(list) {
+    var n = {};
+    list.forEach(function (s) { n[s.type] = (n[s.type] || 0) + 1; });
+    return ["point", "line", "route", "polygon"].filter(function (t) { return n[t]; })
+      .map(function (t) { return n[t] + " " + NOUN[t][n[t] === 1 ? 0 : 1]; }).join(", ");
+  }
+
+  function afterChange(types) {
+    types.forEach(function (t) { if (typeof App.rerenderForType === "function") App.rerenderForType(t); });
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+  }
+
+  // True when the menu item should read "Hide" (any selected feature visible).
+  function anyVisible(list) {
+    return usable(list).some(function (s) { return !featureOf(s).properties.hidden; });
+  }
+
+  function setHidden(list, hidden) {
+    list = usable(list);
+    if (!list.length) return;
+    if (App.undo) App.undo.push();
+    list.forEach(function (s) { featureOf(s).properties.hidden = !!hidden; });
+    afterChange(typesOf(list));
+    App.setStatus((hidden ? "Hid " : "Showed ") + describe(list));
+  }
+
+  // One undo step. Splices each type from the highest index down so earlier
+  // removals never shift a later target; then the same housekeeping a single
+  // delete runs (App.onFeatureDelete: exit edit mode, clear selection,
+  // refresh, notify modules, save).
+  function remove(list) {
+    list = usable(list);
+    if (!list.length) return;
+    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
+      var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
+      if (pf && list.some(function (s) { return s.type === pf.featureType && s.index === pf.featureIndex; })) App.closeAttrPopup();
+    }
+    var text = describe(list);
+    var pointIds = list.filter(function (s) { return s.type === "point"; })
+      .map(function (s) { return featureOf(s).properties.pointIdx; });
+    var sorted = list.slice().sort(function (a, b) { return b.index - a.index; });
+    function run() {
+      sorted.forEach(function (s) {
+        var fn = App[REMOVE[s.type]];
+        if (typeof fn === "function") fn(s.index);
+      });
+    }
+    if (App.undo && typeof App.undo.batch === "function") App.undo.batch(run); else run();
+    if (pointIds.length && typeof App.dropPointWalksheds === "function") App.dropPointWalksheds(pointIds);
+    if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    App.setStatus("Deleted " + text);
+  }
+
+  function zoomTo(list) {
+    list = usable(list);
+    if (!list.length || !App.map || typeof turf === "undefined") return;
+    var fc = { type: "FeatureCollection", features: list.map(featureOf) };
+    var b = turf.bbox(fc);
+    if (b[0] === b[2] && b[1] === b[3]) {
+      App.map.flyTo({ center: [b[0], b[1]], zoom: Math.max(App.map.getZoom(), 14), duration: 500 });
+    } else {
+      App.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, duration: 500 });
+    }
+  }
+
+  // Module references to the features about to be deleted (Title VI, RF, …).
+  function usageFor(list) {
+    var warn = [], info = [];
+    if (typeof App.describeFeatureUsage !== "function") return { warn: warn, info: info };
+    list.forEach(function (s) {
+      var f = featureOf(s), idProp = App.FEATURE_ID_PROP && App.FEATURE_ID_PROP[s.type];
+      var id = idProp ? f.properties[idProp] : null;
+      if (id == null) return;
+      var name = f.properties.name || describe([s]);
+      App.describeFeatureUsage(s.type, id).forEach(function (u) {
+        (u.severity === "warn" ? warn : info).push(name + " — " + u.label);
+      });
+    });
+    return { warn: warn, info: info };
+  }
+
+  // Confirm, then remove. Uses the Merge/Split dialog shell.
+  function confirmRemove(list) {
+    list = usable(list);
+    if (!list.length) return;
+    var kit = App.merge && App.merge._dialogKit;
+    if (!kit) { if (window.confirm("Delete " + describe(list) + "?")) remove(list); return; }
+    if (kit.isOpen()) kit.closeDialog();
+    if (typeof App.closeContextMenu === "function") App.closeContextMenu();
+    var n = list.length;
+    var shell = kit.buildShell("Delete " + n + (n === 1 ? " feature" : " features") + "?");
+    var body = kit.el("div", "fm-section");
+    body.appendChild(kit.el("div", null, "This deletes " + describe(list) + ". You can undo it with Ctrl+Z."));
+    shell.box.appendChild(body);
+    kit.renderUsage(shell.box, usageFor(list), "Also used by");
+    var acts = kit.buildActions(shell.box, "Delete");
+    acts.cancelBtn.addEventListener("click", function () { kit.closeDialog(); });
+    acts.okBtn.addEventListener("click", function () { kit.closeDialog(); remove(list); });
+    kit.installDialog(shell.overlay, shell.box, function () { kit.closeDialog(); remove(list); });
+    acts.okBtn.focus();
+  }
+
+  // Menu items for a group (2+ selected). `mergeItem` (optional) is inserted
+  // after Zoom, so each caller keeps its own Merge primary logic.
+  function groupMenuItems(list, mergeItem) {
+    list = usable(list);
+    var n = list.length, vis = anyVisible(list);
+    var items = [{ label: "Zoom to selection", action: function () { zoomTo(list); } }];
+    if (mergeItem) items.push(mergeItem);
+    items.push({ label: (vis ? "Hide " : "Show ") + n, action: function () { setHidden(list, vis); } });
+    items.push({ label: "Delete " + n + (n === 1 ? " feature" : " features") + "\u2026", action: function () { confirmRemove(list); } });
+    return items;
+  }
+
+  App.bulkFeatures = {
+    usable: usable,
+    describe: describe,
+    anyVisible: anyVisible,
+    setHidden: setHidden,
+    remove: remove,
+    confirmRemove: confirmRemove,
+    zoomTo: zoomTo,
+    groupMenuItems: groupMenuItems
+  };
+
   App.boxSelect = {
     isActive: isActive,
     isDragging: function () { return !!_drag; },

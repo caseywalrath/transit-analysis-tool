@@ -731,10 +731,15 @@
       // Merge… (2+ selected: one mergeable type, or lines + routes). The right-clicked row is
       // the default primary — the feature that survives.
       var mergeSel = App.merge && App.merge.mergeableSelection(selected);
-      if (mergeSel) {
-        options.push({ label: "Merge\u2026", action: function () {
-          App.merge.openDialog(mergeSel.type, mergeSel.indices, mergeSel.primaryFor(featureType, featureIndex));
-        }});
+      var mergeItem = mergeSel ? { label: "Merge\u2026", action: function () {
+        App.merge.openDialog(mergeSel.type, mergeSel.indices, mergeSel.primaryFor(featureType, featureIndex));
+      }} : null;
+      // 2+ selected: Zoom to selection, Merge…, Hide N, Delete N… (labels are ignored by bulkFeatures).
+      var bulkUsable = selected.length >= 2 && App.bulkFeatures ? App.bulkFeatures.usable(selected) : [];
+      if (bulkUsable.length) {
+        App.bulkFeatures.groupMenuItems(selected, mergeItem).forEach(function (it) { options.push(it); });
+      } else if (mergeItem) {
+        options.push(mergeItem);
       }
       var anyInGroup = selected.some(function (s) {
         var feat = getFeatureByTypeIndex(s.type, s.index);
