@@ -6487,3 +6487,26 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 .fs-piece-len { color: var(--text-secondary); font-size: var(--text-xs); white-space: nowrap; }
 .fs-piece-svc { white-space: nowrap; margin-top: 0; }
 .fs-opposite-body { margin: var(--space-1) 0 0 var(--space-5); }
+
+/* ---- Box select tool (js/core/box-select.js) ---- */
+.box-select-rect {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  border: 1.5px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.box-select-rect.box-select-within { border-style: solid; }
+.box-select-badge {
+  position: absolute;
+  pointer-events: none;
+  z-index: 6;
+  padding: 2px var(--space-2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
