@@ -228,6 +228,48 @@
     return undefined;
   }
 
+  // Colors resolve through the layer color cascade
+  // (docs/layer-color-customization-plan.md). Only the fallback color
+  // changes — a feed that ships its own route_color keeps using it
+  // regardless of the palette, and circle-color stays the fixed white fill
+  // of a hollow marker (not a data encoding).
+  function gtfsShapesColorExpr() {
+    var colors = App.resolveLayerColors && App.resolveLayerColors("gtfs-shapes");
+    var fallback = (colors && colors[0]) || "#718096";
+    return [
+      "case",
+      ["all",
+        ["has", "route_color"],
+        ["!=", ["get", "route_color"], ""],
+        ["!=", ["downcase", ["get", "route_color"]], "ffffff"]
+      ],
+      ["concat", "#", ["get", "route_color"]],
+      fallback
+    ];
+  }
+  function gtfsStopsStrokeColor() {
+    var colors = App.resolveLayerColors && App.resolveLayerColors("gtfs-stops");
+    return (colors && colors[0]) || "#718096";
+  }
+
+  // Re-applies paint properties for whichever GTFS layers are currently on
+  // the map, without touching _gtfsData or rebuilding features, so a
+  // palette change is instant. No-op when a feed hasn't been loaded.
+  function repaintGtfsLayers() {
+    var map = App.map;
+    if (!map) return;
+    if (map.getLayer("gtfs-shapes-layer")) {
+      map.setPaintProperty("gtfs-shapes-layer", "line-color", gtfsShapesColorExpr());
+    }
+    if (map.getLayer("gtfs-stops-layer")) {
+      map.setPaintProperty("gtfs-stops-layer", "circle-stroke-color", gtfsStopsStrokeColor());
+    }
+  }
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("gtfs-shapes", repaintGtfsLayers);
+    App.registerLayerRepainter("gtfs-stops", repaintGtfsLayers);
+  }
+
   function addMapLayers() {
     var map = App.map;
     if (!map) return;
@@ -250,16 +292,7 @@
         source: "gtfs-shapes",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": [
-            "case",
-            ["all",
-              ["has", "route_color"],
-              ["!=", ["get", "route_color"], ""],
-              ["!=", ["downcase", ["get", "route_color"]], "ffffff"]
-            ],
-            ["concat", "#", ["get", "route_color"]],
-            "#718096"
-          ],
+          "line-color": gtfsShapesColorExpr(),
           "line-width":   2,
           "line-opacity": 0.65,
           "line-dasharray": [4, 2]
@@ -280,7 +313,7 @@
         paint: {
           "circle-radius":       4,
           "circle-color":        "#ffffff",
-          "circle-stroke-color": "#718096",
+          "circle-stroke-color": gtfsStopsStrokeColor(),
           "circle-stroke-width": 1.5,
           "circle-opacity":      0.85
         }

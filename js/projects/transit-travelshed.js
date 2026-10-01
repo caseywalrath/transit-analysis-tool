@@ -33,6 +33,9 @@
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdgeKm is
+                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
+                            // as walkSpeedMph above and the connector snap-tolerance input.
 
   var _settings     = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   var _origin        = null;   // [lng, lat] | null — probe pattern, not an App.points feature
@@ -576,7 +579,7 @@
     if (spacing && +spacing.value > 0) _settings.stopSpacingMi = +spacing.value;
 
     var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value;
+    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value / FT_PER_KM; // ft input -> km stored
 
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode && (shedMode.value === "transit" || shedMode.value === "door")) _settings.shedMode = shedMode.value;
@@ -593,6 +596,18 @@
     updateWalkCapInputsEnabled();
 
     if (App.cache && App.cache.save) App.cache.save();
+  }
+
+  // Snap tolerance is global state, not a module setting — write straight to
+  // App.networkSettings and re-run the connector overlay, per
+  // docs/network-connectors-plan.md §2 "Known conflict". Shared with Walkshed.
+  function onSnapTolChange() {
+    var el = document.getElementById("tsSnapTol");
+    if (!el || !(+el.value > 0)) return;
+    if (App.networkSettings) App.networkSettings.snapToleranceFt = +el.value;
+    if (App.cache && App.cache.save) App.cache.save();
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+    markStale();
   }
 
   // The three cap inputs are only meaningful in "transit" mode — gray them
@@ -633,7 +648,12 @@
     if (spacing) spacing.value = _settings.stopSpacingMi;
 
     var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge) maxEdge.value = _settings.maxEdgeKm;
+    if (maxEdge) maxEdge.value = Math.round(_settings.maxEdgeKm * FT_PER_KM); // km stored -> ft displayed
+
+    // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — see
+    // onSnapTolChange() above.
+    var snapTol = document.getElementById("tsSnapTol");
+    if (snapTol && App.networkSettings) snapTol.value = App.networkSettings.snapToleranceFt;
 
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode) shedMode.value = _settings.shedMode;
@@ -718,7 +738,32 @@
 
   // 3-class Blues, innermost (band 0 = shortest budget) darkest — the repo's
   // only other `step`/classed color expression precedent is corridor-scoring.js.
-  var TS_COLOR_EXPR = ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
+  // Resolved through the layer color cascade
+  // (docs/layer-color-customization-plan.md); guarded so a missing
+  // layer-palettes.js script tag degrades to the original hardcoded colors
+  // rather than throwing.
+  function tsColorExpr() {
+    if (typeof window.LayerPalette === "undefined") {
+      return ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
+    }
+    var colors = App.resolveLayerColors("transit-travelshed") || ["#1d4ed8", "#3b82f6", "#93c5fd"];
+    return window.LayerPalette.matchExpr("band", colors);
+  }
+
+  // Re-applies paint properties from the current cascade without re-running
+  // the analysis, so a palette change is instant. No-op when the layers
+  // aren't currently on the map.
+  function repaintTravelshedLayers() {
+    fillTravelshedLegendColors();
+    var map = App.map;
+    if (!map || !map.getLayer(TS_FILL_LAYER)) return;
+    var expr = tsColorExpr();
+    map.setPaintProperty(TS_FILL_LAYER, "fill-color", expr);
+    map.setPaintProperty(TS_LINE_LAYER, "line-color", expr);
+  }
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("transit-travelshed", repaintTravelshedLayers);
+  }
 
   function renderTravelshedLayers(rings) {
     var map = App.map;
@@ -734,15 +779,16 @@
       map.addSource(TS_SOURCE, { type: "geojson", data: fc });
       map.addLayer({
         id: TS_FILL_LAYER, type: "fill", source: TS_SOURCE,
-        paint: { "fill-color": TS_COLOR_EXPR, "fill-opacity": 0.35 }
+        paint: { "fill-color": tsColorExpr(), "fill-opacity": 0.35 }
       });
       map.addLayer({
         id: TS_LINE_LAYER, type: "line", source: TS_SOURCE,
         layout: { "line-join": "round" },
-        paint: { "line-color": TS_COLOR_EXPR, "line-width": 1.5, "line-opacity": 0.9 }
+        paint: { "line-color": tsColorExpr(), "line-width": 1.5, "line-opacity": 0.9 }
       });
     } else {
       map.getSource(TS_SOURCE).setData(fc);
+      repaintTravelshedLayers(); // pick up a palette changed while results were on screen
     }
   }
 
@@ -754,6 +800,18 @@
     if (map.getSource(TS_SOURCE))    map.removeSource(TS_SOURCE);
   }
 
+  // Smallest band (band 0 = shortest budget) first, matching
+  // App.resolveLayerColors("transit-travelshed")'s array order — no
+  // reversal needed here, unlike TPI/Corridor Scoring's high-first legends.
+  function fillTravelshedLegendColors() {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("transit-travelshed")) ||
+      ["#1d4ed8", "#3b82f6", "#93c5fd"];
+    for (var i = 0; i < 3; i++) {
+      var sw = document.getElementById("tsLegendSw" + i);
+      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+    }
+  }
+
   // Widget options (position/width/title) only apply at creation, so this is
   // safe to call on every run — an already-shown widget just becomes visible
   // again and we re-fill its labels either way.
@@ -762,6 +820,7 @@
     await App.popup.showFloatingWidget("ts-legend", "projects/transit-travelshed-legend.html", {
       position: "bottom-left", width: 200, title: "Transit Travelshed"
     });
+    fillTravelshedLegendColors();
     for (var i = 0; i < 3; i++) {
       var row = document.getElementById("tsLegendRow" + i);
       var label = document.getElementById("tsLegendLabel" + i);
@@ -807,6 +866,37 @@
       "</p>" +
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
+      "</p>" +
+      connectionReportHTML() +
+      coverageReportHTML();
+  }
+
+  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // only rendered when at least one walk connector exists. Styled with the
+  // module's existing warning color (#b45309) when a connector end isn't
+  // joined to the network. Shared logic with Walkshed's identical footer line.
+  function connectionReportHTML() {
+    var summary = typeof App.getConnectorReportSummary === "function"
+      ? App.getConnectorReportSummary() : null;
+    if (!summary) return "";
+    var color = summary.warn ? "#b45309" : "var(--muted)";
+    return '<p class="tiny" style="margin-top:6px;color:' + color + ';">' +
+      escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "") +
+      "</p>";
+  }
+
+  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
+  // only rendered when a network is loaded — absent, not "0%", when there
+  // isn't one. Shared logic with Walkshed's identical footer line.
+  function coverageReportHTML() {
+    var summary = typeof App.getSidewalkCoverageSummary === "function"
+      ? App.getSidewalkCoverageSummary() : null;
+    if (!summary) return "";
+    var color = summary.warn ? "#b45309" : "var(--muted)";
+    return '<p class="tiny" style="margin-top:6px;color:' + color + ';">' +
+      escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "") +
       "</p>";
   }
 
@@ -1182,6 +1272,9 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
     });
+
+    var snapEl = document.getElementById("tsSnapTol");
+    if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
 
     var waitBtn = document.getElementById("tsWaitInfoBtn");
     var waitText = document.getElementById("tsWaitInfoText");

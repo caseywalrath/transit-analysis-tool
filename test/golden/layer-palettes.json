@@ -1,0 +1,185 @@
+{
+  "rampColors/blues-n3-forward": [
+    "#afb2bb",
+    "#6baed6",
+    "#08519c"
+  ],
+  "rampColors/blues-n3-reversed": [
+    "#08519c",
+    "#6baed6",
+    "#afb2bb"
+  ],
+  "rampColors/blues-n4-forward": [
+    "#afb2bb",
+    "#a1b7c4",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/blues-n5-forward": [
+    "#eff3ff",
+    "#bdd7e7",
+    "#6baed6",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/blues-n1-middle": [
+    "#6baed6"
+  ],
+  "rampColors/blues-n0-empty": [],
+  "rampColors/blues-n-greater-than-5": [
+    "#eff3ff",
+    "#bdd7e7",
+    "#6baed6",
+    "#3182bd",
+    "#08519c"
+  ],
+  "rampColors/unknown-palette-null": null,
+  "rampColors/gray-n3-forward-light-end-clamped": [
+    "#b4b4b4",
+    "#969696",
+    "#252525"
+  ],
+  "rampColors/gray-n3-reversed-light-end-clamped": [
+    "#252525",
+    "#969696",
+    "#b4b4b4"
+  ],
+  "rampColors/viridis-n3-unaffected": [
+    "#440154",
+    "#21918c",
+    "#fde725"
+  ],
+  "matchExpr/3-colors": [
+    "match",
+    [
+      "get",
+      "bandIdx"
+    ],
+    0,
+    "#1e40af",
+    1,
+    "#3b82f6",
+    "#93c5fd"
+  ],
+  "matchExpr/1-color": [
+    "match",
+    [
+      "get",
+      "cdi"
+    ],
+    "#16a34a"
+  ],
+  "matchExpr/empty-colors-fallback": "#888888",
+  "familyOf/known-sequential": "sequential",
+  "familyOf/known-diverging": "diverging",
+  "familyOf/unknown-null": null,
+  "allows/absent-allow-permits-anything": true,
+  "allows/matching-family": true,
+  "allows/non-matching-family": false,
+  "list/null-allow-everything": [
+    {
+      "id": "blues",
+      "label": "Blues",
+      "family": "sequential"
+    },
+    {
+      "id": "greens",
+      "label": "Greens",
+      "family": "sequential"
+    },
+    {
+      "id": "heat",
+      "label": "Heat",
+      "family": "sequential"
+    },
+    {
+      "id": "viridis",
+      "label": "Viridis",
+      "family": "sequential"
+    },
+    {
+      "id": "plasma",
+      "label": "Plasma",
+      "family": "sequential"
+    },
+    {
+      "id": "inferno",
+      "label": "Inferno",
+      "family": "sequential"
+    },
+    {
+      "id": "magma",
+      "label": "Magma",
+      "family": "sequential"
+    },
+    {
+      "id": "cividis",
+      "label": "Cividis",
+      "family": "sequential"
+    },
+    {
+      "id": "gray",
+      "label": "Grayscale",
+      "family": "sequential"
+    },
+    {
+      "id": "rdbu",
+      "label": "Red–Blue",
+      "family": "diverging"
+    },
+    {
+      "id": "quality",
+      "label": "Red–Green",
+      "family": "diverging"
+    }
+  ],
+  "list/diverging-only": [
+    {
+      "id": "rdbu",
+      "label": "Red–Blue",
+      "family": "diverging"
+    },
+    {
+      "id": "quality",
+      "label": "Red–Green",
+      "family": "diverging"
+    }
+  ],
+  "gradientColors/black-to-white-n2-endpoints": [
+    "#000000",
+    "#ffffff"
+  ],
+  "gradientColors/black-to-white-n3-midpoint": [
+    "#000000",
+    "#808080",
+    "#ffffff"
+  ],
+  "gradientColors/red-to-blue-n5": [
+    "#ff0000",
+    "#bf0040",
+    "#800080",
+    "#4000bf",
+    "#0000ff"
+  ],
+  "gradientColors/uneven-channels-n4-rounding": [
+    "#1e40af",
+    "#456cc9",
+    "#6c99e3",
+    "#93c5fd"
+  ],
+  "gradientColors/n1-returns-midpoint": [
+    "#808080"
+  ],
+  "gradientColors/n0-empty": [],
+  "gradientColors/shorthand-hex-accepted": [
+    "#ff0000",
+    "#800080",
+    "#0000ff"
+  ],
+  "gradientColors/missing-endpoint-null": null,
+  "gradientColors/malformed-endpoint-null": null,
+  "rgba/opaque-default-alpha": "rgba(147, 197, 253, 1)",
+  "rgba/with-alpha": "rgba(29, 78, 216, 0.35)",
+  "rgba/shorthand-hex": "rgba(170, 187, 204, 0.5)",
+  "rgba/malformed-null": null
+}

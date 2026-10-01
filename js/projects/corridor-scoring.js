@@ -490,8 +490,14 @@
     // a missing/non-numeric cdi now takes buildStepColorExpr's typeof-based
     // noDataColor path instead of the old "coalesce to -1, add a 0 break"
     // sentinel, which drew the same gray for the same case.
+    // Colors resolve through the layer color cascade
+    // (docs/layer-color-customization-plan.md) — restricted to diverging
+    // palettes only by the "corridor-scoring" spec's allow list, so this can
+    // never become an unreadable sequential ramp.
+    var csColors = (App.resolveLayerColors && App.resolveLayerColors("corridor-scoring")) ||
+      ["#C53030", "#C05621", "#D69E2E", "#276749"];
     var colorExpr = App.choropleth.buildStepColorExpr(
-      "cdi", [2, 3, 4], ["#C53030", "#C05621", "#D69E2E", "#276749"], "rgba(180,180,180,0.7)"
+      "cdi", [2, 3, 4], csColors, "rgba(180,180,180,0.7)"
     );
 
     if (!map.getSource(CS_SOURCE)) {
@@ -527,6 +533,7 @@
       });
     } else {
       map.getSource(CS_SOURCE).setData(fc);
+      map.setPaintProperty(CS_LINE_LAYER, "line-color", colorExpr); // pick up a palette changed while results were on screen
     }
   }
 
@@ -535,6 +542,41 @@
     if (!map) return;
     if (map.getLayer(CS_LINE_LAYER)) map.removeLayer(CS_LINE_LAYER);
     if (map.getSource(CS_SOURCE))    map.removeSource(CS_SOURCE);
+  }
+
+  // The legend lists high quality first (>= 4 High at top) while
+  // App.resolveLayerColors("corridor-scoring") runs low -> high, so the
+  // fill iterates the colors array reversed.
+  function fillCsLegendColors() {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("corridor-scoring")) ||
+      ["#C53030", "#C05621", "#D69E2E", "#276749"];
+    for (var i = 0; i < 4; i++) {
+      var sw = document.getElementById("csLegendSw" + i);
+      if (sw) sw.style.background = colors[colors.length - 1 - i] || colors[0];
+    }
+  }
+
+  // Shows (or re-shows) the cs-legend widget and fills its swatch colors
+  // once the widget's DOM has actually mounted — showFloatingWidget is
+  // async on first creation but synchronous when the widget already
+  // exists, so this handles both without forcing every caller to await.
+  function showCsLegend() {
+    var p = App.popup.showFloatingWidget("cs-legend", "projects/corridor-scoring-legend.html", {
+      position: "bottom-left", width: 180, title: "Corridor Score"
+    });
+    if (p && typeof p.then === "function") p.then(fillCsLegendColors);
+    else fillCsLegendColors();
+  }
+
+  // Re-renders from the last result (cheap — geometry is already resolved,
+  // no Census calls) so a palette change picked up from the Layers panel
+  // repaints instantly, and refreshes the legend swatches in place. No-op
+  // when nothing has been scored yet.
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("corridor-scoring", function () {
+      if (_lastResult) renderMapChoropleth(_lastResult);
+      fillCsLegendColors();
+    });
   }
 
   // ---- Factor breakdown (per-corridor expansion) ----
@@ -781,11 +823,7 @@
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
       renderMapChoropleth(_lastResult);
       if (App.popup && App.popup.showFloatingWidget) {
-        App.popup.showFloatingWidget("cs-legend", "projects/corridor-scoring-legend.html", {
-          position: "bottom-left",
-          width: 180,
-          title: "Corridor Score"
-        });
+        showCsLegend();
       }
       setExportButtonsEnabled(true);
     } catch (err) {
@@ -898,7 +936,7 @@
           if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("cs-legend");
         } else {
           if (App.popup && App.popup.showFloatingWidget) {
-            App.popup.showFloatingWidget("cs-legend", "projects/corridor-scoring-legend.html", { position: "bottom-left", width: 180, title: "Corridor Score" });
+            showCsLegend();
           }
         }
       });
@@ -1099,9 +1137,7 @@
     }
     renderMapChoropleth(_lastResult);
     if (App.popup && App.popup.showFloatingWidget) {
-      App.popup.showFloatingWidget("cs-legend", "projects/corridor-scoring-legend.html", {
-        position: "bottom-left", width: 180, title: "Corridor Score"
-      });
+      showCsLegend();
     }
   }
 

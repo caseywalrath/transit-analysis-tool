@@ -36,11 +36,43 @@
     { key: "runTime",   label: "Run time",  type: "number", unit: "min", placeholder: "e.g. 45" }
   ];
 
+  // Fired when a Line's Walk network role changes (Not part of network ↔ Walk
+  // connector). Stub in Phase 2 of docs/network-connectors-plan.md — Phase 4
+  // makes App.refreshNetworkConnectors() actually reweld the graph.
+  function onNetworkRoleChange() {
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+  }
+
+  // Returns a shallow copy of `fields` with `section` set on every entry, so
+  // the attributes popup renders a `.fp-attr-section` header before the first
+  // field of that section. Used to visually separate Lines' transit-route
+  // fields (which every Line inherits from Routes, even though most Lines in
+  // this app are NOT transit routes) from the Walk network field below.
+  function withSection(fields, section) {
+    return fields.map(function (f) {
+      var copy = {};
+      for (var k in f) copy[k] = f[k];
+      copy.section = section;
+      return copy;
+    });
+  }
+
+  // Lines share every Route field (a Line can be attributed as a transit
+  // pattern too) plus one Walk network field Routes never get — Routes
+  // already follow existing streets, so "connect this to the walk network"
+  // is meaningless for them. See docs/network-connectors-plan.md §2.
+  var LINE_FIELDS = withSection(ROUTE_FIELDS, "Transit service").concat([
+    { key: "networkRole", label: "Walk network", type: "select", section: "Walk network",
+      options: ["", "connector"],
+      optionLabels: { "": "Not part of network", "connector": "Walk connector" },
+      onChange: onNetworkRoleChange }
+  ]);
+
   // Field definitions per feature type.
   // Supported types: "text", "number", "select", "checkboxes"
   var ATTR_FIELDS = {
     route: ROUTE_FIELDS,
-    line:  ROUTE_FIELDS,
+    line:  LINE_FIELDS,
     point: [
       { key: "group",            label: "Group",    type: "text", placeholder: "e.g. North Corridor", groupPicker: true, hidden: true },
       { key: "serviceAreaType",  label: "Service area", type: "select",
@@ -1279,10 +1311,21 @@
     });
     body.appendChild(buildRow("Name", nameInput, null));
 
-    // Type-specific fields
+    // Type-specific fields. A field carrying a new `section` value gets a
+    // small header row before it — used by Lines to visually separate
+    // "Transit service" fields (inherited from Routes) from "Walk network"
+    // fields (Lines only). Fields with no `section` render exactly as before.
     var fields = ATTR_FIELDS[featureType] || [];
+    var lastSection = null;
     fields.forEach(function (field) {
       if (field.hidden) return;
+      if (field.section && field.section !== lastSection) {
+        var sectionHeader = document.createElement("div");
+        sectionHeader.className = "fp-attr-section";
+        sectionHeader.textContent = field.section;
+        body.appendChild(sectionHeader);
+        lastSection = field.section;
+      }
       var result = buildFieldInput(field, attrs, feature, featureType);
       body.appendChild(buildRow(field.label, result.el, result.unit));
     });

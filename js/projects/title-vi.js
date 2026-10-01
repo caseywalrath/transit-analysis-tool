@@ -428,6 +428,9 @@
       var card = buildAlterationCard(i, alt);
       container.appendChild(card);
     }
+    // Cards are rebuilt from scratch here (the one choke point every caller
+    // goes through), so their loss/gain swatches need re-tinting each time.
+    fillSwatchColors();
   }
 
   function buildAlterationCard(idx, alt) {
@@ -842,6 +845,57 @@
 
   // ---- Map overlay for impacted area ----
 
+  // Colors resolve through the layer style cascade (Phase 7 of
+  // docs/layer-color-customization-plan.md) — a categorical spec with two
+  // classes, [loss, gain]. Both the fill and the outline of each class share
+  // one color, so a class is one swatch, not two. The fallback array is
+  // byte-identical to the spec's defaultColors so a missing layer-palettes.js
+  // degrades to the original red/green rather than throwing.
+  var TVI_DEFAULT_COLORS = ["#e53e3e", "#38a169"];
+  function tviColors() {
+    return (typeof App.resolveLayerColors === "function" &&
+            App.resolveLayerColors("title-vi")) || TVI_DEFAULT_COLORS;
+  }
+
+  // The loss/gain swatches next to each alteration card's computed metrics
+  // are styled by CSS class, so they'd keep showing red/green after a recolor
+  // — the in-panel equivalent of a legend lying about the map. There can be
+  // one pair per alteration card, so this fills every instance.
+  function fillSwatchColors() {
+    if (typeof window.LayerPalette === "undefined") return;
+    var c = tviColors();
+    [[".tvi-loss-swatch", c[0]], [".tvi-gain-swatch", c[1]]].forEach(function (pair) {
+      var bg = window.LayerPalette.rgba(pair[1], 0.4);
+      var els = document.querySelectorAll(pair[0]);
+      for (var i = 0; i < els.length; i++) {
+        if (bg) els[i].style.background = bg;
+        els[i].style.borderColor = pair[1];
+      }
+    });
+  }
+
+  // Paint-only refresh across whichever of the four layers are on the map,
+  // plus the in-panel swatches. No re-analysis — a palette change is instant.
+  function repaintOverlay() {
+    var map = App.map;
+    if (!map) return;
+    var c = tviColors();
+    var byLayer = [
+      ["tvi-impacted-fill", "fill-color", c[0]],
+      ["tvi-impacted-outline", "line-color", c[0]],
+      ["tvi-gain-fill", "fill-color", c[1]],
+      ["tvi-gain-outline", "line-color", c[1]]
+    ];
+    byLayer.forEach(function (L) {
+      if (map.getLayer(L[0])) map.setPaintProperty(L[0], L[1], L[2]);
+    });
+    fillSwatchColors();
+  }
+
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("title-vi", repaintOverlay);
+  }
+
   function renderImpactedArea(geometry) {
     clearOverlay();
     var map = App.map;
@@ -850,18 +904,19 @@
       : geometry.type === "Feature" ? { type: "FeatureCollection", features: [geometry] }
       : { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: geometry }] };
 
+    var c = tviColors();
     map.addSource("tvi-impacted", { type: "geojson", data: geojson });
     map.addLayer({
       id: "tvi-impacted-fill",
       type: "fill",
       source: "tvi-impacted",
-      paint: { "fill-color": "#e53e3e", "fill-opacity": 0.15 }
+      paint: { "fill-color": c[0], "fill-opacity": 0.15 }
     });
     map.addLayer({
       id: "tvi-impacted-outline",
       type: "line",
       source: "tvi-impacted",
-      paint: { "line-color": "#e53e3e", "line-width": 2, "line-opacity": 0.6 }
+      paint: { "line-color": c[0], "line-width": 2, "line-opacity": 0.6 }
     });
 
     // Also render service gain areas (green) from alterations
@@ -894,19 +949,21 @@
       ? { type: "FeatureCollection", features: [gainUnion] }
       : { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: gainUnion }] };
 
+    var gc = tviColors();
     map.addSource("tvi-gain", { type: "geojson", data: gainGeojson });
     map.addLayer({
       id: "tvi-gain-fill",
       type: "fill",
       source: "tvi-gain",
-      paint: { "fill-color": "#38a169", "fill-opacity": 0.15 }
+      paint: { "fill-color": gc[1], "fill-opacity": 0.15 }
     });
     map.addLayer({
       id: "tvi-gain-outline",
       type: "line",
       source: "tvi-gain",
-      paint: { "line-color": "#38a169", "line-width": 2, "line-opacity": 0.6 }
+      paint: { "line-color": gc[1], "line-width": 2, "line-opacity": 0.6 }
     });
+    fillSwatchColors();
   }
 
   function clearOverlay() {

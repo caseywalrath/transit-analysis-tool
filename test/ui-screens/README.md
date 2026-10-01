@@ -100,7 +100,9 @@ in `index.html`, re-fetch the matching file here so the two stay in sync:
 npm pack maplibre-gl@<new-version>   # extract, copy dist/maplibre-gl.{js,css}
 ```
 
-and update both the `VENDOR_MAP` entry in `capture.mjs` and the table above.
+and update both the `VENDOR_MAP` entry in `test/browser/harness.mjs` (the
+shared source of truth for every browser test, not just this one) and the
+table above.
 
 ## Known, expected "skip": `#sidebar-wrap`
 
