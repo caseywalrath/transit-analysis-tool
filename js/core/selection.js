@@ -19,7 +19,7 @@
 // Exports: App.initHighlightLayers, App.setHoveredFeature, App.clearHover,
 //          App.selectFeature, App.toggleMultiSelect, App.shiftSelectFeature,
 //          App.clearSelection, App.applyPanelHighlight, App.isFeatureSelected,
-//          App.getSelectedFeatures
+//          App.getSelectedFeatures, App.setSelection
 
 (function () {
   var App = window.App = window.App || {};
@@ -369,6 +369,27 @@
     if (typeof App.refreshSavedWaypoints === "function") App.refreshSavedWaypoints();
   }
 
+  // Replace the whole selection with a de-duplicated copy of list
+  // ([{type, index}]). One item behaves exactly like selectFeature (including
+  // vertex-edit); an empty list is the same as clearSelection. Used by box select.
+  function setSelection(list) {
+    var out = [];
+    (list || []).forEach(function (s) {
+      if (s && !out.some(function (o) { return o.type === s.type && o.index === s.index; })) {
+        out.push({ type: s.type, index: s.index });
+      }
+    });
+    if (!out.length) { clearSelection(); return; }
+    if (out.length === 1) { selectFeature(out[0].type, out[0].index); return; }
+    _multiSelected = out;
+    _anchor = { type: out[0].type, index: out[0].index };
+    _hovered = null;
+    syncSelectedCompat();
+    updateHighlightSources();
+    applyPanelHighlight();
+    syncVertexEditing();
+  }
+
   // ---- Expose ----
 
   App._selected           = null; // kept in sync via syncSelectedCompat()
@@ -379,6 +400,7 @@
   App.toggleMultiSelect   = toggleMultiSelect;
   App.shiftSelectFeature  = shiftSelectFeature;
   App.clearSelection      = clearSelection;
+  App.setSelection        = setSelection;
   App.applyPanelHighlight = applyPanelHighlight;
   App.isFeatureSelected   = isSelected;
   App.getSelectedFeatures = function () { return _multiSelected.slice(); };
