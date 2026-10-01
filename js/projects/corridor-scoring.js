@@ -15,7 +15,10 @@
 
   var _weights           = TPI ? TPI.getDefaultWeights() : {};
   var _pendingWeights    = null;   // temp copy while Adjust Weights modal is open (Step 2)
-  var _featureFilter     = null;   // { routeIndices, lineIndices } or null (= all)
+  // Checklist selection is remembered as the features the user UNCHECKED, by stable
+  // { type, id } ref (Phase 4b) — array positions shift when an earlier feature is
+  // deleted or merged. Anything not listed (including newly drawn features) is checked.
+  var _uncheckedRefs     = [];
   var _lastResult        = null;   // { routeCDIs, geoLevel, year, apportionByArea, unionPolygon, weights } (Step 3+)
   var _stale             = false;
   var _running           = false;
@@ -55,6 +58,47 @@
     if (toggle) toggle.checked = _useDisplayBuffers;
   }
 
+  // Record which checklist rows are unchecked (by ID). Called from checkbox change
+  // handlers only — never from a rebuild, so a restored selection isn't overwritten
+  // by stale DOM.
+  function captureChecklistSelection() {
+    var el = document.getElementById("csFeatureList");
+    if (!el) return;
+    var boxes = el.querySelectorAll("input[type=checkbox]");
+    if (!boxes.length) return;
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) continue;
+      var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
+    }
+    _uncheckedRefs = out;
+    if (App.cache && App.cache.save) App.cache.save();
+  }
+
+  function isRefUnchecked(type, id) {
+    for (var i = 0; i < _uncheckedRefs.length; i++) {
+      if (_uncheckedRefs[i].type === type && _uncheckedRefs[i].id === id) return true;
+    }
+    return false;
+  }
+
+  // Checked rows as stable refs (for the filter captured at a run).
+  function getCheckedRefs() {
+    var el = document.getElementById("csFeatureList");
+    var out = [];
+    if (!el) return out;
+    var boxes = el.querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].checked) continue;
+      var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
+    }
+    return out;
+  }
+
+  // Run-time index filter from the live checkboxes (indices are only used within
+  // the run; nothing stores this).
   function getFeatureFilter() {
     var el = document.getElementById("csFeatureList");
     var routeIndices = [], lineIndices = [];
@@ -78,20 +122,13 @@
     var el = document.getElementById("csFeatureList");
     if (!el) return;
 
-    // Capture current check state before rebuilding
-    var prevState = {};
-    var prev = el.querySelectorAll("input[type=checkbox]");
-    for (var pi = 0; pi < prev.length; pi++) {
-      prevState[prev[pi].getAttribute("data-type") + ":" + prev[pi].getAttribute("data-idx")] = prev[pi].checked;
-    }
-
     el.innerHTML = "";
     var hasFeatures = false;
 
     function addRow(type, idx, name, badge) {
       hasFeatures = true;
-      var key = type + ":" + idx;
-      var checked = (key in prevState) ? prevState[key] : true;
+      var ref = App.featureRef(type, idx);
+      var checked = !(ref && isRefUnchecked(type, ref.id));
       var row = document.createElement("div");
       row.className = "rf-feature-check-row";
 
@@ -99,6 +136,7 @@
       cb.type = "checkbox";
       cb.setAttribute("data-type", type);
       cb.setAttribute("data-idx", String(idx));
+      if (ref) cb.setAttribute("data-feature-id", String(ref.id));
       cb.checked = checked;
 
       var lbl = document.createElement("label");
@@ -109,8 +147,8 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; markStale(); });
-      cb.addEventListener("change", markStale);
+      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
@@ -373,7 +411,7 @@
         i + 1,
         _csvField(r.name),
         r.featureType || "",
-        r.featureIndex != null ? r.featureIndex : "",
+        liveIndexOf(r) >= 0 ? liveIndexOf(r) : "",
         Number.isFinite(r.cdi) ? r.cdi.toFixed(4) : "",
         _csvField(r.classification || ""),
         Number.isFinite(r.lengthMiles) ? r.lengthMiles.toFixed(4) : "",
@@ -400,8 +438,8 @@
 
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var src = getFeatureSourceGeom(r.featureType, r.featureIndex);
-      if (!src || !src.geometry) continue;
+      var src = getFeatureSourceGeom(r.featureType, r.featureId);
+      if (!src || !src.geometry) continue;   // feature deleted since the run
       features.push({
         type: "Feature",
         geometry: src.geometry,
@@ -411,7 +449,7 @@
           classification:   r.classification || "N/A",
           rank:             i + 1,
           featureType:      r.featureType,
-          featureIndex:     r.featureIndex,
+          featureIndex:     liveIndexOf(r),
           lengthMiles:      Number.isFinite(r.lengthMiles) ? parseFloat(r.lengthMiles.toFixed(4)) : null,
           geoCount:         r.geoCount != null ? r.geoCount : null,
           compositeRange:   r.compositeRange || null,
@@ -446,10 +484,16 @@
   var CS_SOURCE      = "corridor-scoring-routes";
   var CS_LINE_LAYER  = "corridor-scoring-routes-layer";
 
-  function getFeatureSourceGeom(featureType, idx) {
-    if (featureType === "route") return (App.routes && App.routes[idx]) || null;
-    if (featureType === "line")  return (App.lines  && App.lines[idx])  || null;
-    return null;
+  // Source feature for a scored row, resolved by stable ID (null once deleted).
+  function getFeatureSourceGeom(featureType, featureId) {
+    if (featureType !== "route" && featureType !== "line") return null;
+    return App.featureById(featureType, featureId);
+  }
+
+  // A row's CURRENT array index (-1 when its feature no longer exists). The
+  // row's own featureIndex is only the position at run time and goes stale.
+  function liveIndexOf(r) {
+    return App.resolveFeatureRef({ type: r.featureType, id: r.featureId });
   }
 
   function buildScoredFeatureCollection(result) {
@@ -457,7 +501,7 @@
     var rows = (result && result.routeCDIs) || [];
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var src = getFeatureSourceGeom(r.featureType, r.featureIndex);
+      var src = getFeatureSourceGeom(r.featureType, r.featureId);
       if (!src || !src.geometry) continue;
       features.push({
         type: "Feature",
@@ -468,7 +512,7 @@
           classification: r.classification || "N/A",
           rank:           i + 1,
           featureType:    r.featureType,
-          featureIndex:   r.featureIndex
+          featureId:      r.featureId
         }
       });
     }
@@ -729,6 +773,7 @@
       _useDisplayBuffers = !!(document.getElementById("csUseDisplayBuffers") || {}).checked;
 
       var featureFilter = getFeatureFilter();
+      var featureRefs   = getCheckedRefs();
 
       var unionPolygon  = buildUnionFromFilter(featureFilter);
 
@@ -767,7 +812,7 @@
         apportionByArea: _apportionByArea,
         bufferMiles:     _bufferMiles,
         unionPolygon:    unionPolygon,
-        featureFilter:   featureFilter,
+        featureRefs:     featureRefs,
         weights:         Object.assign({}, _weights)
       };
       _stale = false;
@@ -842,6 +887,7 @@
       selectAll.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#csFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -850,6 +896,7 @@
       selectNone.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#csFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -918,7 +965,6 @@
     syncBufferControl();
 
     buildFeatureChecklist();
-    if (_featureFilter) applyFeatureFilterToCheckboxes(_featureFilter);
     renderInputs(false);
     updateLodesWarnings();
 
@@ -976,35 +1022,19 @@
     updateLodesWarnings();
   }
 
-  // ---- Apply a saved feature filter to the DOM checklist ----
-
-  function applyFeatureFilterToCheckboxes(filter) {
-    var el = document.getElementById("csFeatureList");
-    if (!el || !filter) return;
-    var routeSet = new Set((filter.routeIndices || []).map(Number));
-    var lineSet  = new Set((filter.lineIndices  || []).map(Number));
-    var boxes = el.querySelectorAll("input[type=checkbox]");
-    for (var i = 0; i < boxes.length; i++) {
-      var cb = boxes[i];
-      var type = cb.getAttribute("data-type");
-      var idx  = parseInt(cb.getAttribute("data-idx"), 10);
-      if (type === "route") cb.checked = routeSet.has(idx);
-      if (type === "line")  cb.checked = lineSet.has(idx);
-    }
-  }
-
   // ---- Session persistence ----
 
   function saveCsState(mode) {
-    // Prefer the live checklist state if the popup is initialized.
-    var currentFilter = document.getElementById("csFeatureList") ? getFeatureFilter() : _featureFilter;
+    // Schema v2: checklist + last-run selection by stable feature ID (v1 = array
+    // indices, migrated in restoreCsState). _uncheckedRefs is kept current by the
+    // checkbox handlers, so it is the live state even while the popup is open.
     var data = {
-      version:         1,
+      version:         2,
       weights:         Object.assign({}, _weights),
       apportionByArea: _apportionByArea,
       bufferMiles:     _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
-      featureFilter:   currentFilter ? JSON.parse(JSON.stringify(currentFilter)) : null,
+      uncheckedFeatures: _uncheckedRefs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; }),
       geoLevel:        null,
       year:            null,
       lastSummary:     null,
@@ -1022,12 +1052,12 @@
         apportionByArea: _lastResult.apportionByArea,
         bufferMiles:     _lastResult.bufferMiles,
         weights:         Object.assign({}, _lastResult.weights || {}),
-        featureFilter:   _lastResult.featureFilter || null,
+        featureRefs:     (_lastResult.featureRefs || []).slice(),
         routeCDIs:       (_lastResult.routeCDIs || []).map(function (r) {
           return {
             name:            r.name,
             featureType:     r.featureType,
-            featureIndex:    r.featureIndex,
+            featureId:       r.featureId,
             cdi:             r.cdi,
             classification:  r.classification,
             geoCount:        r.geoCount,
@@ -1056,7 +1086,20 @@
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
-    if (data.featureFilter !== undefined) _featureFilter = data.featureFilter;
+
+    // v1 sessions saved array indices (checked-filter + per-row featureIndex).
+    // Features are restored in saved order and given IDs before module hooks run,
+    // so an old index still names the right feature RIGHT NOW — convert to IDs here.
+    var legacy = !(data.version >= 2);
+    if (legacy) {
+      _uncheckedRefs = data.featureFilter
+        ? App.uncheckedRefsFromIndexFilter(data.featureFilter, ["route", "line"]) : [];
+    } else {
+      _uncheckedRefs = Array.isArray(data.uncheckedFeatures) ? data.uncheckedFeatures.filter(function (r) {
+        return r && App.featureRefKey(r);
+      }) : [];
+    }
+    if (document.getElementById("csFeatureList")) buildFeatureChecklist();
 
     var geoLevelEl = document.getElementById("csGeoLevel");
     var yearEl     = document.getElementById("csYearSelect");
@@ -1078,8 +1121,19 @@
         fakeTpi.__restoredSystemAverages = data.full.systemFactorAverages;
       }
     }
+    var missing = false;
+    var restoredRows = (s.routeCDIs || []).map(function (r) {
+      var row = Object.assign({}, r);
+      if (legacy || !row.featureId) {
+        var ref = App.featureRef(row.featureType, row.featureIndex);
+        row.featureId = ref ? ref.id : null;
+      }
+      delete row.featureIndex;
+      if (App.resolveFeatureRef({ type: row.featureType, id: row.featureId }) < 0) missing = true;
+      return row;
+    });
     _lastResult = {
-      routeCDIs:       s.routeCDIs || [],
+      routeCDIs:       restoredRows,
       tpiResult:       fakeTpi,
       systemCDI:       null,
       geoLevel:        s.geoLevel,
@@ -1087,15 +1141,18 @@
       apportionByArea: s.apportionByArea,
       bufferMiles:     s.bufferMiles != null ? s.bufferMiles : App.ANALYSIS_BUFFER_DEFAULT_MILES,
       unionPolygon:    null,
-      featureFilter:   s.featureFilter || null,
+      featureRefs:     legacy ? App.indexFilterToRefs(s.featureFilter) : (s.featureRefs || []),
       weights:         Object.assign({}, s.weights || _weights)
     };
-    _stale = false;
+    // A scored corridor whose feature was deleted since the save can't be drawn or
+    // exported: show what survives, flagged stale so the user re-scores.
+    _stale = missing;
 
     // Render table + map immediately (popup may or may not be open).
     if (isPopupVisible()) {
       renderResultsTable(_lastResult);
-      setExportButtonsEnabled(true);
+      setExportButtonsEnabled(!_stale);
+      if (_stale) markStale();
     }
     renderMapChoropleth(_lastResult);
     if (App.popup && App.popup.showFloatingWidget) {

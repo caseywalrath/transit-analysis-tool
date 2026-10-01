@@ -14,8 +14,12 @@
   var _lastResult = null;
   var _weights = TPI.getDefaultWeights();
   var _pendingWeights = null;     // temporary copy while Adjust Weights modal is open
-  var _tpiFeatureFilter = null;   // { routeIndices, lineIndices, pointIndices, polygonIndices } or null (= all)
-  var _selectedCorridor = "all";  // "all" | "route:N" | "line:N" | "point:N" | "polygon:N"
+  // Checklist selection is remembered as the features the user UNCHECKED, by stable
+  // { type, id } ref (Phase 4b) — array positions shift when an earlier feature is
+  // deleted or merged. Anything not listed (including newly drawn features) is
+  // checked. Run-time index arrays are still built from the live checkboxes.
+  var _uncheckedRefs = [];
+  var _selectedCorridor = "all";  // "all" | "route:<id>" | "line:<id>" | "point:<id>" | "polygon:<id>" (stable IDs, NOT array indices)
   var _stale = false;
   var _running = false;
   var _rescoreTimer = null;
@@ -55,6 +59,46 @@
     return set.union;
   }
 
+  // Record which checklist rows are unchecked (by ID). Called from every checkbox
+  // change handler — never from a rebuild, so a restored selection isn't overwritten
+  // by stale DOM.
+  function captureChecklistSelection() {
+    var el = document.getElementById("tpiFeatureChecklist");
+    if (!el) return;
+    var boxes = el.querySelectorAll("input[type=checkbox]");
+    if (!boxes.length) return;
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) continue;
+      var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
+    }
+    _uncheckedRefs = out;
+    if (App.cache && App.cache.save) App.cache.save();
+  }
+
+  function isRefUnchecked(type, id) {
+    for (var i = 0; i < _uncheckedRefs.length; i++) {
+      if (_uncheckedRefs[i].type === type && _uncheckedRefs[i].id === id) return true;
+    }
+    return false;
+  }
+
+  // { "route:<id>": bufferPolygon, ... } for every feature in an analysis buffer set.
+  // byType is keyed by run-time array index; convert while those indices are live.
+  function bufferSetByRef(set) {
+    var out = {};
+    if (!set || !set.byType) return out;
+    Object.keys(set.byType).forEach(function (type) {
+      var group = set.byType[type] || {};
+      Object.keys(group).forEach(function (idx) {
+        var key = App.featureRefKey(App.featureRef(type, parseInt(idx, 10)));
+        if (key && group[idx]) out[key] = group[idx];
+      });
+    });
+    return out;
+  }
+
   function getFeatureFilter() {
     var el = document.getElementById("tpiFeatureChecklist");
     var routeIndices = [], lineIndices = [], pointIndices = [], polygonIndices = [];
@@ -84,20 +128,13 @@
     var el = document.getElementById("tpiFeatureChecklist");
     if (!el) return;
 
-    // Capture current check state before rebuilding
-    var prevState = {};
-    var prev = el.querySelectorAll("input[type=checkbox]");
-    for (var pi = 0; pi < prev.length; pi++) {
-      prevState[prev[pi].getAttribute("data-type") + ":" + prev[pi].getAttribute("data-idx")] = prev[pi].checked;
-    }
-
     el.innerHTML = "";
     var hasFeatures = false;
 
     function addRow(type, idx, name, badge) {
       hasFeatures = true;
-      var key = type + ":" + idx;
-      var checked = (key in prevState) ? prevState[key] : true;
+      var ref = App.featureRef(type, idx);
+      var checked = !(ref && isRefUnchecked(type, ref.id));
       var row = document.createElement("div");
       row.className = "rf-feature-check-row";
 
@@ -105,6 +142,7 @@
       cb.type = "checkbox";
       cb.setAttribute("data-type", type);
       cb.setAttribute("data-idx", String(idx));
+      if (ref) cb.setAttribute("data-feature-id", String(ref.id));
       cb.checked = checked;
 
       var lbl = document.createElement("label");
@@ -115,8 +153,8 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; markStale(); });
-      cb.addEventListener("change", markStale);
+      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
@@ -146,7 +184,7 @@
   function buildCorridorDropdown() {
     var sel = document.getElementById("tpiCorridorSelect");
     if (!sel) return;
-    var prev = sel.value;
+    var prev = _selectedCorridor;   // a stable "type:<id>" key (restored sessions set it before the DOM exists)
     sel.innerHTML = '<option value="all">All features (system-wide)</option>';
 
     var routes   = App.routes   || [];
@@ -157,25 +195,25 @@
 
     for (var ri = 0; ri < routes.length; ri++) {
       opt = document.createElement("option");
-      opt.value = "route:" + ri;
+      opt.value = App.featureRefKey(App.featureRef("route", ri));
       opt.textContent = (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1));
       sel.appendChild(opt);
     }
     for (var li = 0; li < lines.length; li++) {
       opt = document.createElement("option");
-      opt.value = "line:" + li;
+      opt.value = App.featureRefKey(App.featureRef("line", li));
       opt.textContent = (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1));
       sel.appendChild(opt);
     }
     for (var si = 0; si < pts.length; si++) {
       opt = document.createElement("option");
-      opt.value = "point:" + si;
+      opt.value = App.featureRefKey(App.featureRef("point", si));
       opt.textContent = (pts[si].properties && pts[si].properties.name) || ("Point " + (si + 1));
       sel.appendChild(opt);
     }
     for (var gi = 0; gi < polys.length; gi++) {
       opt = document.createElement("option");
-      opt.value = "polygon:" + gi;
+      opt.value = App.featureRefKey(App.featureRef("polygon", gi));
       opt.textContent = (polys[gi].properties && polys[gi].properties.name) || ("Polygon " + (gi + 1));
       sel.appendChild(opt);
     }
@@ -193,10 +231,9 @@
 
   function getGeosInCorridor(result, corridor) {
     if (!corridor || corridor === "all") return result.geos;
-    var parts = corridor.split(":");
-    var type  = parts[0];
-    var idx   = parseInt(parts[1], 10);
-    var bufferPoly = (result && result.bufferSet) ? result.bufferSet.get(type, idx) : null;
+    // Buffers are looked up by stable "type:<id>" key (captured at run time), so a
+    // feature deleted or merged since the run can't shift this onto another one.
+    var bufferPoly = (result && result.bufferByRef) ? result.bufferByRef[corridor] : null;
     if (!bufferPoly) return result.geos;
     return result.geos.filter(function (geo) {
       try { return turf.booleanIntersects(geo, bufferPoly); } catch (e) { return false; }
@@ -601,6 +638,7 @@
       result.year        = year;
       result.bufferMiles = _bufferMiles;
       result.bufferSet   = _lastBufferSet;
+      result.bufferByRef = bufferSetByRef(_lastBufferSet);
       _lastResult     = result;
       _stale          = false;
 
@@ -1036,6 +1074,7 @@
       selectAllLink.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tpiFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -1044,6 +1083,7 @@
       selectNoneLink.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tpiFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -1157,12 +1197,13 @@
 
   function saveTpiState(mode) {
     var data = {
+      schemaVersion:    2,   // v2: corridor + checklist selection by stable feature ID (v1 = array indices)
       weights:          Object.assign({}, _weights),
       apportionByArea:  _apportionByArea,
       bufferMiles:      _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
       selectedCorridor: _selectedCorridor,
-      tpiFeatureFilter: _tpiFeatureFilter ? JSON.parse(JSON.stringify(_tpiFeatureFilter)) : null
+      uncheckedFeatures: _uncheckedRefs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; })
     };
     if (!_lastResult) return data;
     var tpi = _lastResult;
@@ -1190,8 +1231,26 @@
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
-    if (data.selectedCorridor) _selectedCorridor = data.selectedCorridor;
-    if (data.tpiFeatureFilter !== undefined) _tpiFeatureFilter = data.tpiFeatureFilter;
+    // Legacy (v1) sessions saved array indices. Features are restored in saved order
+    // and given IDs before module hooks run, so an old index still names the right
+    // feature RIGHT NOW — convert to IDs here.
+    if (data.schemaVersion >= 2) {
+      _selectedCorridor = (data.selectedCorridor && App.parseFeatureRefKey(data.selectedCorridor)) ? data.selectedCorridor : "all";
+      _uncheckedRefs = Array.isArray(data.uncheckedFeatures) ? data.uncheckedFeatures.filter(function (r) {
+        return r && App.featureRefKey(r);
+      }) : [];
+    } else {
+      _selectedCorridor = (data.selectedCorridor && App.migrateIndexRefKey(data.selectedCorridor)) || "all";
+      _uncheckedRefs = [];
+      if (data.tpiFeatureFilter) {
+        // v1 stored the CHECKED indices (never actually written by the module, but
+        // honor it): everything not in the filter is unchecked.
+        _uncheckedRefs = App.uncheckedRefsFromIndexFilter(data.tpiFeatureFilter, ["route", "line", "point", "polygon"]);
+      }
+    }
+    // The popup DOM may already exist (session import while open): rebuild from the
+    // restored selection.
+    if (document.getElementById("tpiFeatureChecklist")) buildFeatureChecklist();
 
     var bufferMilesEl = document.getElementById("tpiBufferMiles");
     if (bufferMilesEl) bufferMilesEl.value = String(_bufferMiles);

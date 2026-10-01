@@ -17,7 +17,11 @@
   var _stale            = false;
   var _running          = false;
   var _initialized       = false;
-  var _savedSelections   = null;  // { routeIndices, lineIndices, polygonIndices } restored from session cache (Step 7)
+  // Checklist selection (transit features AND service-area polygons) is remembered as
+  // the features the user UNCHECKED, by stable { type, id } ref (Phase 4b) — array
+  // positions shift when an earlier feature is deleted or merged. Anything not listed
+  // (including newly drawn features) is checked.
+  var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
 
   // ---- DOM guard: only touch DOM when popup is open for this module ----
@@ -26,26 +30,64 @@
     return App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "transit-coverage";
   }
 
+  // ---- Checklist selection memory (by stable ID) ----
+
+  // Record which rows of BOTH checklists are unchecked. Called from checkbox change
+  // handlers only — never from a rebuild, so a restored selection isn't overwritten
+  // by stale DOM.
+  function captureChecklistSelection() {
+    var out = [];
+    var seen = false;
+    ["tcFeatureList", "tcAreaList"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var boxes = el.querySelectorAll("input[type=checkbox]");
+      if (boxes.length) seen = true;
+      for (var i = 0; i < boxes.length; i++) {
+        if (boxes[i].checked) continue;
+        var fid = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+        if (Number.isFinite(fid)) out.push({ type: boxes[i].getAttribute("data-type"), id: fid });
+      }
+    });
+    if (!seen) return;
+    _uncheckedRefs = out;
+    if (App.cache && App.cache.save) App.cache.save();
+  }
+
+  function isRefUnchecked(type, id) {
+    for (var i = 0; i < _uncheckedRefs.length; i++) {
+      if (_uncheckedRefs[i].type === type && _uncheckedRefs[i].id === id) return true;
+    }
+    return false;
+  }
+
+  // Stable refs of the currently checked rows in one checklist.
+  function checkedRefsIn(containerId) {
+    var el = document.getElementById(containerId);
+    var out = [];
+    if (!el) return out;
+    var boxes = el.querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].checked) continue;
+      var fid = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(fid)) out.push({ type: boxes[i].getAttribute("data-type"), id: fid });
+    }
+    return out;
+  }
+
   // ---- Feature checklist (routes + lines) ----
 
   function buildFeatureChecklist() {
     var el = document.getElementById("tcFeatureList");
     if (!el) return;
 
-    // Capture current check state before rebuilding
-    var prevState = {};
-    var prev = el.querySelectorAll("input[type=checkbox]");
-    for (var pi = 0; pi < prev.length; pi++) {
-      prevState[prev[pi].getAttribute("data-type") + ":" + prev[pi].getAttribute("data-idx")] = prev[pi].checked;
-    }
-
     el.innerHTML = "";
     var hasFeatures = false;
 
     function addRow(type, idx, name, badge) {
       hasFeatures = true;
-      var key = type + ":" + idx;
-      var checked = (key in prevState) ? prevState[key] : true;
+      var ref = App.featureRef(type, idx);
+      var checked = !(ref && isRefUnchecked(type, ref.id));
       var row = document.createElement("div");
       row.className = "rf-feature-check-row";
 
@@ -53,6 +95,7 @@
       cb.type = "checkbox";
       cb.setAttribute("data-type", type);
       cb.setAttribute("data-idx", String(idx));
+      if (ref) cb.setAttribute("data-feature-id", String(ref.id));
       cb.checked = checked;
 
       var lbl = document.createElement("label");
@@ -63,8 +106,8 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; markStale(); });
-      cb.addEventListener("change", markStale);
+      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
@@ -97,19 +140,13 @@
     var el = document.getElementById("tcAreaList");
     if (!el) return;
 
-    var prevState = {};
-    var prev = el.querySelectorAll("input[type=checkbox]");
-    for (var pi = 0; pi < prev.length; pi++) {
-      prevState[prev[pi].getAttribute("data-idx")] = prev[pi].checked;
-    }
-
     el.innerHTML = "";
     var hasAreas = false;
 
     function addRow(idx, name) {
       hasAreas = true;
-      var key = String(idx);
-      var checked = (key in prevState) ? prevState[key] : true;
+      var ref = App.featureRef("polygon", idx);
+      var checked = !(ref && isRefUnchecked("polygon", ref.id));
       var row = document.createElement("div");
       row.className = "rf-feature-check-row";
 
@@ -117,6 +154,7 @@
       cb.type = "checkbox";
       cb.setAttribute("data-type", "polygon");
       cb.setAttribute("data-idx", String(idx));
+      if (ref) cb.setAttribute("data-feature-id", String(ref.id));
       cb.checked = checked;
 
       var lbl = document.createElement("label");
@@ -127,8 +165,8 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = "P";
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; markStale(); });
-      cb.addEventListener("change", markStale);
+      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
@@ -175,35 +213,6 @@
       polygonIndices.push(parseInt(cb.getAttribute("data-idx"), 10));
     }
     return { polygonIndices: polygonIndices };
-  }
-
-  function applySelections(sel) {
-    if (!sel) return;
-    var routeSet = new Set((sel.routeIndices   || []).map(Number));
-    var lineSet  = new Set((sel.lineIndices    || []).map(Number));
-    var polySet  = new Set((sel.polygonIndices || []).map(Number));
-
-    var featEl = document.getElementById("tcFeatureList");
-    if (featEl) {
-      var featBoxes = featEl.querySelectorAll("input[type=checkbox]");
-      for (var i = 0; i < featBoxes.length; i++) {
-        var cb   = featBoxes[i];
-        var type = cb.getAttribute("data-type");
-        var idx  = parseInt(cb.getAttribute("data-idx"), 10);
-        if (type === "route") cb.checked = routeSet.has(idx);
-        if (type === "line")  cb.checked = lineSet.has(idx);
-      }
-    }
-
-    var areaEl = document.getElementById("tcAreaList");
-    if (areaEl) {
-      var areaBoxes = areaEl.querySelectorAll("input[type=checkbox]");
-      for (var j = 0; j < areaBoxes.length; j++) {
-        var acb  = areaBoxes[j];
-        var aidx = parseInt(acb.getAttribute("data-idx"), 10);
-        acb.checked = polySet.has(aidx);
-      }
-    }
   }
 
   // ---- LODES warning icon visibility ----
@@ -389,6 +398,11 @@
       ? App.buildDisplayBufferSet(sel)
       : App.buildAnalysisBufferSet(sel, miles);
 
+    function featureIdOf(type, idx) {
+      var ref = App.featureRef(type, idx);
+      return ref ? ref.id : null;
+    }
+
     function processFeature(type, idx, feature) {
       if (!feature) return;
       var name = (feature.properties && feature.properties.name) ||
@@ -397,7 +411,7 @@
       var peak = computePeakHeadway(attrs.service, dayType);
       var qualifies = thresholdMin != null && peak != null && peak <= thresholdMin;
       headwayRows.push({
-        name: name, featureType: type, featureIndex: idx,
+        name: name, featureType: type, featureId: featureIdOf(type, idx),
         peakHeadway: peak, qualifies: qualifies
       });
 
@@ -593,7 +607,7 @@
         headwayRows: headwayRows,
         coverageClipped: coverageClipped, thresholdClipped: thresholdClipped,
         serviceAreaUnion: serviceAreaUnion,
-        featSel: featSel, areaSel: areaSel
+        featRefs: checkedRefsIn("tcFeatureList"), areaRefs: checkedRefsIn("tcAreaList")
       };
       _stale = false;
 
@@ -869,6 +883,7 @@
       featSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -877,6 +892,7 @@
       featSelectNone.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -887,6 +903,7 @@
       areaSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -895,6 +912,7 @@
       areaSelectNone.addEventListener("click", function (e) {
         e.preventDefault();
         document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        captureChecklistSelection();
         markStale();
       });
     }
@@ -914,7 +932,6 @@
     buildFeatureChecklist();
     buildAreaChecklist();
     syncBufferControl();
-    if (_savedSelections) applySelections(_savedSelections);
     updateLodesWarnings();
     renderInputs(_lastResult ? undefined : false);
 
@@ -999,24 +1016,13 @@
     settings.year = yearEl ? yearEl.value
       : (_lastResult ? _lastResult.year : null);
 
-    // Prefer the live checklist state if the popup is initialized.
-    var selections;
-    if (document.getElementById("tcFeatureList")) {
-      var featSel = getSelectedFeatures();
-      var areaSel = getSelectedAreas();
-      selections = {
-        routeIndices:   featSel.routeIndices,
-        lineIndices:    featSel.lineIndices,
-        polygonIndices: areaSel.polygonIndices
-      };
-    } else {
-      selections = _savedSelections || { routeIndices: [], lineIndices: [], polygonIndices: [] };
-    }
-
+    // Schema v2: selection by stable feature ID (v1 = checked array indices,
+    // migrated in restoreTcState). _uncheckedRefs is kept current by the checkbox
+    // handlers, so it is the live state even while the popup is open.
     var data = {
-      version:     1,
+      version:     2,
       settings:    settings,
-      selections:  JSON.parse(JSON.stringify(selections)),
+      uncheckedFeatures: _uncheckedRefs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; }),
       lastSummary: null
     };
 
@@ -1034,7 +1040,12 @@
         jobsTotal:       _lastResult.jobsTotal,
         jobsCovered:     _lastResult.jobsCovered,
         jobsThreshold:   _lastResult.jobsThreshold,
-        headwayRows:     _lastResult.headwayRows || []
+        headwayRows:     (_lastResult.headwayRows || []).map(function (r) {
+          return {
+            name: r.name, featureType: r.featureType, featureId: r.featureId,
+            peakHeadway: r.peakHeadway, qualifies: r.qualifies
+          };
+        })
       };
     }
 
@@ -1044,7 +1055,24 @@
   function restoreTcState(data) {
     if (!data) return;
 
-    if (data.selections) _savedSelections = data.selections;
+    // v1 sessions saved CHECKED array indices (and per-row featureIndex). Features
+    // are restored in saved order and given IDs before module hooks run, so an old
+    // index still names the right feature RIGHT NOW — convert to IDs here.
+    var legacy = !(data.version >= 2);
+    if (legacy) {
+      _uncheckedRefs = [];
+      if (data.selections) {
+        var sel = data.selections;
+        _uncheckedRefs = App.uncheckedRefsFromIndexFilter({
+          routeIndices: sel.routeIndices, lineIndices: sel.lineIndices, polygonIndices: sel.polygonIndices
+        }, ["route", "line", "polygon"]);
+      }
+    } else {
+      _uncheckedRefs = Array.isArray(data.uncheckedFeatures) ? data.uncheckedFeatures.filter(function (r) {
+        return r && App.featureRefKey(r);
+      }) : [];
+    }
+    if (document.getElementById("tcFeatureList")) { buildFeatureChecklist(); buildAreaChecklist(); }
 
     var settings = data.settings || {};
 
@@ -1080,13 +1108,21 @@
       jobsTotal:        s.jobsTotal,
       jobsCovered:      s.jobsCovered,
       jobsThreshold:    s.jobsThreshold,
-      headwayRows:      s.headwayRows || [],
+      headwayRows:      (s.headwayRows || []).map(function (r) {
+        var row = Object.assign({}, r);
+        if (legacy || !row.featureId) {
+          var ref = App.featureRef(row.featureType, row.featureIndex);
+          row.featureId = ref ? ref.id : null;
+        }
+        delete row.featureIndex;
+        return row;
+      }),
       // Geometry is not persisted — Re-run regenerates it.
       coverageClipped:  null,
       thresholdClipped: null,
       serviceAreaUnion: null,
-      featSel:          null,
-      areaSel:          null
+      featRefs:         null,
+      areaRefs:         null
     };
     _stale = false;
 

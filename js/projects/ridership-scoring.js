@@ -72,6 +72,15 @@
   // Wraps TPI.computeTPI(), adds segment analysis and CDI aggregate
   // =========================================================================
 
+  // Stable ID of the drawn feature at array position `index` (null if unknown).
+  // Per-route results carry it alongside the positional featureIndex so callers
+  // can re-find the feature after deletions/merges shift the arrays
+  // (docs/feature-merge-plan.md, Phase 4b).
+  function featureIdAt(type, index) {
+    var ref = App.featureRef ? App.featureRef(type, index) : null;
+    return ref ? ref.id : null;
+  }
+
   // Build a union polygon from a subset of drawn features' buffers.
   // featureFilter: { routeIndices: [0,2,...], lineIndices: [1,3,...] }
   // bufferSet (optional): an App.buildAnalysisBufferSet() result — when given,
@@ -211,6 +220,7 @@
           name: (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1)),
           type: "route",
           index: ri,
+          id: featureIdAt("route", ri),
           buffer: rBuf
         });
       }
@@ -225,6 +235,7 @@
           name: (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1)),
           type: "line",
           index: li,
+          id: featureIdAt("line", li),
           buffer: lBuf
         });
       }
@@ -312,7 +323,8 @@
       results.push({
         name: feat.name,
         featureType: feat.type,
-        featureIndex: feat.index,
+        featureIndex: feat.index,   // position at run time — goes stale; look features up by featureId
+        featureId: feat.id,
         cdi: cdi,
         classification: classifyCDI({ value: cdi }).label,
         geoCount: geoCount,
@@ -504,6 +516,7 @@
         segments.push({
           featureType:    item.type,
           routeIndex:     item.index,
+          featureId:      featureIdAt(item.type, item.index),
           segmentIndex:   ci,
           geometry:       chunk.geometry,
           bufferGeometry: segBuffer.geometry,
