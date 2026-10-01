@@ -336,6 +336,7 @@
   function closeContextMenu(menu) {
     if (!menu) return;
     if (typeof menu._endHover === "function") menu._endHover();
+    if (typeof menu._unlisten === "function") menu._unlisten();
     menu.remove();
     if (_ctxMenu === menu) _ctxMenu = null;
   }
@@ -394,12 +395,18 @@
     var top  = Math.min(y, window.innerHeight - mh - 8);
     menu.style.left = Math.max(4, left) + "px";
     menu.style.top  = Math.max(4, top)  + "px";
-    setTimeout(function () {
-      document.addEventListener("click", function close(e) {
-        if (!menu.contains(e.target)) closeContextMenu(menu);
-        document.removeEventListener("click", close);
-      });
-    }, 0);
+    // Close on the next mouse press outside the menu, or on Escape. Listening
+    // starts immediately: the right-click that opened the menu has already had
+    // its mousedown, so it cannot close it. (A click listener added after a
+    // setTimeout could miss a fast outside click and leave the menu open.)
+    function onDown(e) { if (!menu.contains(e.target)) closeContextMenu(menu); }
+    function onKey(e) { if (e.key === "Escape") closeContextMenu(menu); }
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    menu._unlisten = function () {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
   }
 
   /* ---- Group / ungroup helpers ---- */
@@ -1464,6 +1471,7 @@
 
   App.refreshFeaturePanel = refreshFeaturePanel;
   App.getTypeDefaultColor = getTypeDefaultColor;
+  App.closeContextMenu = function () { closeContextMenu(_ctxMenu); };
   App.showContextMenu     = showContextMenu;
   App.rerenderForType     = rerenderForType;
   // Shared with the Layers panel so it can list/group drawn features

@@ -181,7 +181,8 @@
     container: "map",
     style: rasterStyle,
     center: [-104.9903, 39.7392],
-    zoom: 10
+    zoom: 10,
+    boxZoom: false // Shift+drag is box select (js/core/box-select.js)
   });
   map.scrollZoom.setWheelZoomRate(1 / 900); // half the default (1/450) for finer zoom granularity
   // ---- Default cursor: grab hand ----

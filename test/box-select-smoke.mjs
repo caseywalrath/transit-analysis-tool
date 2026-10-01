@@ -268,6 +268,24 @@ async function main() {
     await rclick(page, -104.80, 38.8125);
     m = await menuTexts(page);
     check("map menu: 2 lines show Merge…", m.includes("Merge…") && m.includes("Hide 2"), m);
+    console.log("\n# Shift+drag with the tool off (Phase 4)");
+    await loadFixture(page);
+    await page.evaluate(() => { App.exitDrawMode(); App.setSelection([]); App.map.jumpTo({ center: [-104.79, 38.806], zoom: 14 }); });
+    await page.waitForTimeout(200);
+    const v0 = await page.evaluate(() => [App.map.getCenter().toArray(), App.map.getZoom()]);
+    await drag(page, [-104.803, 38.814], [-104.797, 38.8095], ["Shift"]);
+    check("Shift+drag selects without the tool (replace)", (await sel(page)) === "line:1,point:0", await sel(page));
+    check("tool stays off", await page.evaluate(() => App.drawMode === null));
+    check("map neither panned nor box-zoomed", JSON.stringify(await page.evaluate(() => [App.map.getCenter().toArray(), App.map.getZoom()])) === JSON.stringify(v0));
+    await drag(page, [-104.782, 38.812], [-104.778, 38.808], ["Shift"]);
+    check("a second Shift+drag replaces", (await sel(page)) === "point:1", await sel(page));
+    await drag(page, [-104.782, 38.812], [-104.778, 38.808], ["Shift", "Control"]);
+    check("Shift+Ctrl+drag removes", (await sel(page)) === "", await sel(page));
+    const before4 = await page.evaluate(() => App.map.getCenter().toArray());
+    await page.mouse.move(700, 450); await page.mouse.down(); await page.mouse.move(800, 500, { steps: 8 }); await page.mouse.up();
+    await page.waitForTimeout(200);
+    check("plain drag still pans", JSON.stringify(await page.evaluate(() => App.map.getCenter().toArray())) !== JSON.stringify(before4));
+
   } finally {
     if (browser) await browser.close();
     server.kill();

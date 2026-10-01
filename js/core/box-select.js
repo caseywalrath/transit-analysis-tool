@@ -249,9 +249,19 @@
     _drag = null;
   }
 
+  // Phase 4: Shift+drag starts a box even with the tool off (no other draw
+  // mode active). MapLibre's own Shift+drag box zoom is disabled in map.js.
+  function shiftStart(e) {
+    return e.shiftKey && !App.drawMode;
+  }
+
   function onMouseDown(e) {
-    if (!isActive() || !inMap(e)) return;
-    if (e.button !== 0) return; // right-click falls through to the map's contextmenu
+    if (!inMap(e) || e.button !== 0) return; // right-click falls through to the map's contextmenu
+    var viaShift = !isActive() && shiftStart(e);
+    if (!isActive() && !viaShift) return;
+    // This handler stops the event before the context menu's own outside-press
+    // listener can see it, so close any open menu here.
+    if (typeof App.closeContextMenu === "function") App.closeContextMenu();
     e.preventDefault();
     e.stopPropagation();
     endDrag();
@@ -265,7 +275,7 @@
     container.appendChild(rectEl);
     container.appendChild(badgeEl);
     _drag = { x0: p[0], y0: p[1], x1: p[0], y1: p[1], rectEl: rectEl, badgeEl: badgeEl,
-              cache: buildCache(), raf: 0 };
+              cache: buildCache(), raf: 0, viaShift: viaShift };
   }
 
   function onMouseMove(e) {
@@ -282,7 +292,10 @@
     e.stopPropagation();
     var p = localXY(e);
     _drag.x1 = p[0]; _drag.y1 = p[1];
-    var op = e.shiftKey ? "add" : (e.ctrlKey || e.metaKey) ? "remove" : "replace";
+    // A Shift+drag started with the tool off: Shift was the trigger, so it
+    // replaces (Ctrl still removes).
+    var op = (e.ctrlKey || e.metaKey) ? "remove" : (e.shiftKey && !_drag.viaShift) ? "add" : "replace";
+    if (_drag.viaShift) _swallowNextClick = true;
     var mode = e.altKey ? "within" : "touch";
     var r;
     if (isClick()) {
@@ -311,8 +324,15 @@
 
   // While the tool is on, the map gets no click/dblclick either (dblclick
   // would zoom; click would run draw-mode handlers).
+  var _swallowNextClick = false;
   function swallow(e) {
-    if (isActive() && inMap(e)) { e.stopPropagation(); e.preventDefault(); }
+    if (!inMap(e)) return;
+    if (e.type === "click" && _swallowNextClick) {
+      _swallowNextClick = false;
+      e.stopPropagation(); e.preventDefault();
+      return;
+    }
+    if (isActive()) { e.stopPropagation(); e.preventDefault(); }
   }
 
   function onKeyDown(e) {

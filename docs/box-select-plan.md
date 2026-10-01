@@ -1,6 +1,6 @@
 # Box select (drag to select) — plan
 
-Status: **proposed**.
+Status: **Phases 1-4 implemented**; Phase 5 (final tests/docs/screenshots) in progress.
 
 ## What the user asked for
 
