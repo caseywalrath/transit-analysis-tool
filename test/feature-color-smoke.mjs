@@ -120,6 +120,8 @@ const previewStroke = (page, label) => page.evaluate((label) => {
   var groups = Array.prototype.slice.call(document.querySelectorAll(".lp-style-group"));
   var g = groups.filter((x) => (x.querySelector(".lp-row-label") || {}).textContent === label)[0];
   if (!g) return "no-group";
+  var segs = g.querySelectorAll(".lp-style-preview .lp-preview-seg");
+  if (segs.length) return "rainbow:" + segs.length + ":" + new Set(Array.prototype.map.call(segs, (x) => x.getAttribute("stroke"))).size;
   var l = g.querySelector(".lp-style-preview line");
   return l ? l.getAttribute("stroke") : "no-line";
 }, label);
@@ -185,8 +187,8 @@ async function main() {
     console.log("\n# Layers pane: preview");
     await page.click('.fp-tab-btn[data-fptab="layers"]');
     await page.waitForTimeout(300);
-    check("Lines preview is a gradient while Automatic", /^url\(#/.test(await previewStroke(page, "Lines")), await previewStroke(page, "Lines"));
-    check("Routes preview is a gradient while Automatic", /^url\(#/.test(await previewStroke(page, "Routes")), await previewStroke(page, "Routes"));
+    check("Lines preview is six rainbow segments while Automatic", /^rainbow:6:6$/.test(await previewStroke(page, "Lines")), await previewStroke(page, "Lines"));
+    check("Routes preview is six rainbow segments while Automatic", /^rainbow:6:6$/.test(await previewStroke(page, "Routes")), await previewStroke(page, "Routes"));
 
     console.log("\n# Attributes pop-up swatch");
     await page.evaluate(() => App.openAttrPopup("line", 1, App.lines[1]));
@@ -236,7 +238,7 @@ async function main() {
     const expect = [];
     for (let i = 0; i < 3; i++) expect.push(await mapColor(page, "line", i));
     check("every line is back on its rainbow color (including the custom red one)", JSON.stringify(after) === JSON.stringify(expect) && new Set(after).size === 3, { after, expect });
-    check("Lines preview is a gradient again", /^url\(#/.test(await previewStroke(page, "Lines")));
+    check("Lines preview is six rainbow segments again", /^rainbow:6:6$/.test(await previewStroke(page, "Lines")));
 
     console.log("\n# Points and polygons follow the same rule");
     await page.evaluate(() => {

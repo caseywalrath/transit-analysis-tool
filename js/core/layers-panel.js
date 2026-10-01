@@ -195,32 +195,31 @@
       svg.appendChild(c);
     } else if (type === "line" || type === "route") {
       var lColor = App.getTypeDefaultColor ? App.getTypeDefaultColor(type) : "#e53e3e";
+      var lw = Math.max(1, (fs[type + "LineWidth"] || 1) * 3);
+      var lOp = (fs[type + "Opacity"] != null ? fs[type + "Opacity"] : 100) / 100;
       if (!(App.sectionColors && App.sectionColors[type])) {
         // Automatic: each feature keeps its own palette color, so the preview
-        // is the same rainbow the swatch beside it shows.
-        var defs = document.createElementNS(SVG_NS, "defs");
-        var grad = document.createElementNS(SVG_NS, "linearGradient");
-        var gid = "lp-prev-grad-" + type;
-        grad.setAttribute("id", gid);
-        grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0"); grad.setAttribute("x2", "1"); grad.setAttribute("y2", "0");
-        var stops = App.FEATURE_COLORS.slice(0, 6);
-        stops.forEach(function (c, i) {
-          var st = document.createElementNS(SVG_NS, "stop");
-          st.setAttribute("offset", (i / (stops.length - 1)).toFixed(3));
-          st.setAttribute("stop-color", c);
-          grad.appendChild(st);
+        // is a line of consecutive segments in the rainbow palette. (Segments,
+        // not an SVG gradient: a gradient on a perfectly horizontal line has
+        // a zero-height bounding box and paints nothing.)
+        var cols = App.FEATURE_COLORS.slice(0, 6);
+        var segW = 34 / cols.length;
+        cols.forEach(function (col, i) {
+          var seg = document.createElementNS(SVG_NS, "line");
+          seg.setAttribute("x1", (3 + i * segW).toFixed(2)); seg.setAttribute("y1", "8");
+          seg.setAttribute("x2", (3 + (i + 1) * segW).toFixed(2)); seg.setAttribute("y2", "8");
+          seg.setAttribute("stroke", col); seg.setAttribute("stroke-width", lw); seg.setAttribute("stroke-opacity", lOp);
+          seg.setAttribute("stroke-linecap", "butt");
+          seg.setAttribute("class", "lp-preview-seg");
+          svg.appendChild(seg);
         });
-        defs.appendChild(grad);
-        svg.appendChild(defs);
-        lColor = "url(#" + gid + ")";
+      } else {
+        var l = document.createElementNS(SVG_NS, "line");
+        l.setAttribute("x1", "3"); l.setAttribute("y1", "8"); l.setAttribute("x2", "37"); l.setAttribute("y2", "8");
+        l.setAttribute("stroke", lColor); l.setAttribute("stroke-width", lw); l.setAttribute("stroke-opacity", lOp);
+        l.setAttribute("stroke-linecap", "round");
+        svg.appendChild(l);
       }
-      var w = Math.max(1, (fs[type + "LineWidth"] || 1) * 3);
-      var lOp = (fs[type + "Opacity"] != null ? fs[type + "Opacity"] : 100) / 100;
-      var l = document.createElementNS(SVG_NS, "line");
-      l.setAttribute("x1", "3"); l.setAttribute("y1", "8"); l.setAttribute("x2", "37"); l.setAttribute("y2", "8");
-      l.setAttribute("stroke", lColor); l.setAttribute("stroke-width", w); l.setAttribute("stroke-opacity", lOp);
-      l.setAttribute("stroke-linecap", "round");
-      svg.appendChild(l);
     } else if (type === "polygon") {
       var gColor = App.getTypeDefaultColor ? App.getTypeDefaultColor("polygon") : "#b0c4de";
       var gFill = (fs.polygonFillOpacity != null ? fs.polygonFillOpacity : 15) / 100;
