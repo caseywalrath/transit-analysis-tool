@@ -6485,3 +6485,5 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 .fs-piece-row { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
 .fs-piece-row input[type="text"] { flex: 1 1 auto; min-width: 0; }
 .fs-piece-len { color: var(--text-secondary); font-size: var(--text-xs); white-space: nowrap; }
+.fs-piece-svc { white-space: nowrap; margin-top: 0; }
+.fs-opposite-body { margin: var(--space-1) 0 0 var(--space-5); }

@@ -944,5 +944,75 @@
         38.81
       ]
     ]
+  ],
+  "opp/match-one-cut": {
+    "ok": true,
+    "reason": "",
+    "cuts": [
+      {
+        "segIndex": 1,
+        "t": 0.23076923076895048,
+        "distFt": 182.6
+      }
+    ],
+    "worstFt": 183
+  },
+  "opp/match-two-cuts-sorted-along-opposite": {
+    "ok": true,
+    "reason": "",
+    "cuts": [
+      {
+        "segIndex": 0,
+        "t": 0.2499999999998224,
+        "distFt": 182.6
+      },
+      {
+        "segIndex": 0,
+        "t": 0.7500000000001777,
+        "distFt": 182.6
+      }
+    ],
+    "worstFt": 183
+  },
+  "opp/too-far": {
+    "ok": false,
+    "reason": "far",
+    "cuts": [],
+    "worstFt": 1096
+  },
+  "opp/near-an-end": {
+    "ok": false,
+    "reason": "end",
+    "cuts": [],
+    "worstFt": 185
+  },
+  "opp/two-cuts-too-close": {
+    "ok": false,
+    "reason": "close",
+    "cuts": [],
+    "worstFt": 183
+  },
+  "opp/empty": {
+    "ok": false,
+    "reason": "far",
+    "cuts": [],
+    "worstFt": 0
+  },
+  "pair/reversed-two": [
+    1,
+    0
+  ],
+  "pair/reversed-three": [
+    2,
+    1,
+    0
+  ],
+  "pair/more-opposite-than-ours": [
+    0,
+    -1
+  ],
+  "midpoint/l-shape": [
+    -104.7835843,
+    38.8
   ]
 }

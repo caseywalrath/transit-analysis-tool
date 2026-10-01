@@ -1163,6 +1163,20 @@
 
   // ---- Register module ----
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      if (typeof App.buildTransitServices !== "function") return [];
+      var svcs = App.buildTransitServices() || [];
+      for (var i = 0; i < svcs.length; i++) {
+        var s = svcs[i];
+        if (!(s.patterns || []).some(function (p) { return p.featureType === type && p.featureId === id; })) continue;
+        if (_tripsByService && _tripsByService[s.key]) return ["Trip Builder · generated trips for '" + s.name + "' (they will need regenerating)"];
+      }
+      return [];
+    }, { module: "Trip Builder", severity: "info" });
+  }
+
   App.registerModule({
     id:         "trip-builder",
     name:       "Trip Builder",

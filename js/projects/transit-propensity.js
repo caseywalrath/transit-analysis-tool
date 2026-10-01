@@ -1289,6 +1289,16 @@
 
   // ---- Register as analysis module ----
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      var key = type + ":" + id, out = [];
+      if (_selectedCorridor === key) out.push("Transit Propensity · selected analysis corridor");
+      else if (_lastResult && _lastResult.bufferByRef && _lastResult.bufferByRef[key]) out.push("Transit Propensity · part of the last results (they will show as stale)");
+      return out;
+    }, { module: "Transit Propensity", severity: "info" });
+  }
+
   App.registerModule({
     id:         "transit-propensity",
     name:       "Transit Propensity Index",

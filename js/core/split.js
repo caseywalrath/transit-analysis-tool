@@ -316,6 +316,71 @@
     }
   }
 
+  // Phase 3: "also split the opposite direction". For each cut point
+  // ([lng, lat]) find the nearest position on the opposite feature's line.
+  // Rejected (ok:false) when a point is farther than maxFt (default 300) from
+  // that line, or lands within endGuardFt (default 30) of one of its ends or of
+  // another matched cut (a piece would have no length). Returns
+  // { ok, reason: "" | "far" | "end" | "close", cuts: [{segIndex, t, distFt}]
+  //   (sorted along the opposite line), worstFt }.
+  function matchOppositeCuts(oppCoords, cutPoints, maxFt, endGuardFt) {
+    var max = maxFt > 0 ? maxFt : 300, guard = endGuardFt > 0 ? endGuardFt : 30;
+    var out = { ok: false, reason: "", cuts: [], worstFt: 0 };
+    if (!Array.isArray(oppCoords) || oppCoords.length < 2 || !(cutPoints || []).length) { out.reason = "far"; return out; }
+    var total = lengthMi(oppCoords) * FT_PER_MI;
+    var locs = [];
+    for (var i = 0; i < cutPoints.length; i++) {
+      var loc = locate(oppCoords, cutPoints[i]);
+      if (!loc) { out.reason = "far"; return out; }
+      out.worstFt = Math.max(out.worstFt, loc.distFt);
+      locs.push(loc);
+    }
+    out.worstFt = Math.round(out.worstFt);
+    if (out.worstFt > max) { out.reason = "far"; return out; }
+    locs.sort(function (a, b) { return posOf(a) - posOf(b); });
+    var prev = 0;
+    for (var k = 0; k < locs.length; k++) {
+      var al = locs[k].alongMi * FT_PER_MI;
+      if (al < guard || total - al < guard) { out.reason = "end"; return out; }
+      if (k > 0 && al - prev < guard) { out.reason = "close"; return out; }
+      prev = al;
+    }
+    out.cuts = locs.map(function (l) { return { segIndex: l.segIndex, t: l.t, distFt: Math.round(l.distFt * 10) / 10 }; });
+    out.ok = true;
+    return out;
+  }
+
+  // The point halfway along a polyline.
+  function midpointOf(coords) {
+    var half = lengthMi(coords) / 2, d = 0;
+    for (var i = 1; i < coords.length; i++) {
+      var s = distMi(coords[i - 1], coords[i]);
+      if (d + s >= half && s > 0) { var p = lerp(coords[i - 1], coords[i], (half - d) / s); return [round7(p[0]), round7(p[1])]; }
+      d += s;
+    }
+    return coords[0].slice();
+  }
+
+  // Pair each opposite piece with the piece of ours it runs alongside: the one
+  // nearest to its midpoint, each of ours used once (greedy, closest pair
+  // first). The opposite direction runs the other way, so its piece order is
+  // usually reversed. Returns [ourPieceIndex for each opposite piece] (-1 when
+  // there are more opposite pieces than ours).
+  function pairPieces(ourPieces, oppPieces) {
+    var cand = [];
+    (oppPieces || []).forEach(function (op, j) {
+      var m = midpointOf(op);
+      (ourPieces || []).forEach(function (ou, k) { cand.push({ j: j, k: k, d: distToLineFt(m, ou) }); });
+    });
+    cand.sort(function (a, b) { return a.d - b.d || a.j - b.j || a.k - b.k; });
+    var res = (oppPieces || []).map(function () { return -1; }), usedK = {};
+    cand.forEach(function (c) {
+      if (res[c.j] >= 0 || usedK[c.k]) return;
+      res[c.j] = c.k; usedK[c.k] = true;
+    });
+    return res;
+  }
+
   App.splitGeom = {
     cutAt: cutAt,
     locate: locate,
@@ -329,7 +394,10 @@
     joinPieces: joinPieces,
     sectionBetween: sectionBetween,
     cutSection: cutSection,
-    waypointCut: waypointCut
+    waypointCut: waypointCut,
+    matchOppositeCuts: matchOppositeCuts,
+    pairPieces: pairPieces,
+    midpointOf: midpointOf
   };
 
   /* =====================================================================
@@ -343,6 +411,21 @@
   var STOP_TOL_FT = 50;    // stop this close to a cut links to both pieces
   var SNAP_PX = 10;        // snap the cut to a vertex this close on screen
   var SNAP_FT_FALLBACK = 25;
+  var OPP_MAX_FT = 300;    // opposite-direction cut must be this close to ours
+  var OPPOSITES = { "NB|SB": true, "EB|WB": true, "Inbound|Outbound": true, "CCW|CW": true };
+  function isOppositePair(a, b) { return !!OPPOSITES[[trimStr(a), trimStr(b)].sort().join("|")]; }
+  function dirOf(f) { return trimStr(f && f.properties && f.properties.attributes && f.properties.attributes.direction); }
+
+  // Module references (App.describeFeatureUsage) worded for a split: the
+  // feature keeps its ID on part 1, so a reference now covers part 1 only.
+  function usageForSplit(type, id, name) {
+    var out = { warn: [], info: [] };
+    if (typeof App.describeFeatureUsage !== "function" || id == null) return out;
+    App.describeFeatureUsage(type, id).forEach(function (u) {
+      (u.severity === "warn" ? out.warn : out.info).push(u.label + " — after the split this refers to part 1 of '" + name + "' only.");
+    });
+    return out;
+  }
 
   function arrayFor(type) { return type === "line" ? App.lines : type === "route" ? App.routes : null; }
   function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
@@ -400,7 +483,7 @@
       (arrayFor(t) || []).forEach(function (f, i) {
         if (t === type && i === index) return;
         var a = f.properties && f.properties.attributes;
-        if (a && trimStr(a.serviceId) === serviceId) out.push(f);
+        if (a && trimStr(a.serviceId) === serviceId) out.push({ feature: f, type: t, index: i });
       });
     });
     return out;
@@ -417,6 +500,51 @@
     return ids;
   }
 
+  // The "also split the opposite direction" option for a paired Service:
+  // the mate's matching cut(s) by nearest position to each of our interior cut
+  // points (<= OPP_MAX_FT), its own plan, and which of our pieces each of its
+  // pieces runs alongside (its order is usually reversed). ->
+  // { available, reason, type, index, featureId, name, direction, plan, pairOf }
+  function analyzeOpposite(plan, coords, mate) {
+    var mf = mate.feature;
+    var o = { available: false, reason: "", type: mate.type, index: mate.index,
+              featureId: mf.properties[ID_PROP[mate.type]], name: mf.properties.name || (TYPE_LABEL[mate.type] + " " + (mate.index + 1)),
+              direction: dirOf(mf), plan: null, pairOf: [] };
+    var mc = mf.geometry && mf.geometry.coordinates;
+    if (!Array.isArray(mc) || mc.length < 2) { o.reason = "'" + o.name + "' has no line to split."; return o; }
+    if (isLoop(mc, LOOP_FT)) { o.reason = "'" + o.name + "' is a loop, so it can't be split to match."; return o; }
+    var n = coords.length;
+    var pts = plan.cuts.filter(function (c) { var q = posOf(c); return q > EPS_T && q < n - 1 - EPS_T; })
+      .map(function (c) { return cutPoint(coords, c); });
+    var m = matchOppositeCuts(mc, pts, OPP_MAX_FT, END_GUARD_FT);
+    if (!m.ok) {
+      o.reason = m.reason === "far"
+        ? "'" + o.name + "' doesn't pass within " + OPP_MAX_FT + " ft of the cut point" + (pts.length > 1 ? "s" : "") + " (nearest " + m.worstFt + " ft)."
+        : m.reason === "end"
+          ? "The matching point on '" + o.name + "' is too close to one of its ends."
+          : "The two matching points on '" + o.name + "' are too close together.";
+      return o;
+    }
+    var op = analyze(mate.type, mate.index, m.cuts.map(function (c) { return { segIndex: c.segIndex, t: c.t }; }), { noOpposite: true });
+    if (!op.ok) { o.reason = op.errors[0] || "'" + o.name + "' can't be split there."; return o; }
+    if (op.pieces.length !== plan.pieces.length) { o.reason = "'" + o.name + "' would not split into the same number of pieces."; return o; }
+    o.plan = op;
+    o.pairOf = pairPieces(plan.pieces.map(function (p) { return p.coords; }), op.pieces.map(function (p) { return p.coords; }));
+    if (o.pairOf.indexOf(-1) >= 0) { o.reason = "The pieces of '" + o.name + "' could not be matched to these."; o.plan = null; return o; }
+    o.available = true;
+    return o;
+  }
+
+  // Service ids for the opposite feature's pieces: each takes the id of the
+  // piece of ours it runs alongside, under the same Service choice.
+  function oppositeServiceIds(plan, service) {
+    var o = plan.opposite;
+    return o.pairOf.map(function (k) {
+      if (service === "same" || k === 0) return plan.serviceId;
+      return service === "none" ? "" : plan.newServiceIds[k - 1];
+    });
+  }
+
   // analyze(type, index, cuts) -> plan. cuts: an array of {segIndex, t} or
   // click locations ([lng, lat] / {lng, lat}); a single cut may be passed bare.
   // Phase 2 passes two cuts for "Split out section…". Never mutates anything.
@@ -424,7 +552,8 @@
   //          pieces: [{coords, waypoints, lengthMi, name, runTime}],
   //          stops: [{pointId, name, pieces}], stopsMoved, stopsBoth,
   //          serviceId, newServiceIds, hasHistory, summary }
-  function analyze(type, index, cuts) {
+  function analyze(type, index, cuts, opts) {
+    opts = opts || {};
     var plan = { ok: false, errors: [], warnings: [], summary: [], type: type, index: index, pieces: [], stops: [],
                  stopsMoved: 0, stopsBoth: 0, serviceId: "", newServiceIds: [], hasHistory: false, cuts: [] };
     var arr = arrayFor(type);
@@ -519,9 +648,14 @@
       }
       var mates = serviceMates(type, index, plan.serviceId);
       if (mates.length) {
-        plan.warnings.push("'" + plan.name + "' is one pattern of Service '" + plan.serviceId + "' (with " +
-          mates.map(function (m) { return "'" + (m.properties.name || "") + "'"; }).join(", ") +
-          "). The opposite direction has not been split, so the pair will now cover only part 1.");
+        var pairWarn = "'" + plan.name + "' is one pattern of Service '" + plan.serviceId + "' (with " +
+          mates.map(function (m) { return "'" + (m.feature.properties.name || "") + "'"; }).join(", ") +
+          "). The opposite direction has not been split, so the pair will now cover only part 1.";
+        if (!opts.noOpposite && mates.length === 1 && !loop && isOppositePair(dirOf(f), dirOf(mates[0].feature))) {
+          plan.opposite = analyzeOpposite(plan, coords, mates[0]);
+        }
+        if (plan.opposite && plan.opposite.available) plan.pairWarning = pairWarn; // shown only while the option is off
+        else plan.warnings.push(pairWarn);
       }
     }
 
@@ -540,6 +674,9 @@
       if (st.pieces.length > 1) plan.stopsBoth++;
       else if (st.pieces[0] !== 0) plan.stopsMoved++;
     });
+
+    // Module references (Phase 3 hook)
+    plan.usage = usageForSplit(type, plan.featureId, plan.name);
 
     // History
     plan.hasHistory = !!props._mergedFrom;
@@ -564,30 +701,13 @@
     return plan;
   }
 
-  // The undoable operation. Call as run(type, index, cuts, choices) or
-  // run(plan, choices). choices (optional): { names: [..per piece],
-  // service: "new" (default) | "none" | "same" }. Synchronous. Returns
-  // { ok, type, indices: [first, ...new], ids, message } | { ok:false, errors }.
-  function run(a, b, c, d) {
-    var type, index, cuts, choices;
-    if (a && typeof a === "object") { type = a.type; index = a.index; cuts = a.cuts; choices = b; }
-    else { type = a; index = b; cuts = c; choices = d; }
-    choices = choices || {};
-    var plan = analyze(type, index, cuts);
-    if (!plan.ok) return { ok: false, errors: plan.errors };
-    if (a && typeof a === "object" && a.featureId !== plan.featureId) {
-      return { ok: false, errors: ["The feature changed. Nothing was split."] };
-    }
+  // Mutate one feature per plan (no undo, no re-render). serviceIds
+  // (optional): an explicit serviceId per piece (the opposite-direction split).
+  function applyPlan(plan, names, service, serviceIds) {
+    var type = plan.type, index = plan.index;
     var arr = arrayFor(type);
     var f = arr[index];
     var idProp = ID_PROP[type];
-    var names = plan.pieces.map(function (p, k) {
-      var n = choices.names && trimStr(choices.names[k]);
-      return n || p.name;
-    });
-    var service = choices.service === "none" || choices.service === "same" ? choices.service : "new";
-
-    if (App.undo && !App.undo.isRestoring()) App.undo.push(); // ONE snapshot
 
     var base = clone(f.properties);
     delete base._mergedFrom;
@@ -598,6 +718,7 @@
     f.geometry = { type: "LineString", coordinates: plan.pieces[0].coords };
     f.properties.waypoints = plan.pieces[0].waypoints;
     if (plan.pieces[0].runTime != null && f.properties.attributes) f.properties.attributes.runTime = plan.pieces[0].runTime;
+    if (serviceIds && f.properties.attributes) f.properties.attributes.serviceId = serviceIds[0];
 
     var indices = [index], ids = [plan.featureId], newRefs = [null];
     for (var k = 1; k < plan.pieces.length; k++) {
@@ -610,7 +731,8 @@
       if (!p.color && typeof App._nextColorSeq === "function") p.colorSeq = App._nextColorSeq();
       if (p.attributes) {
         if (plan.pieces[k].runTime != null) p.attributes.runTime = plan.pieces[k].runTime;
-        if (plan.serviceId) {
+        if (serviceIds) p.attributes.serviceId = serviceIds[k];
+        else if (plan.serviceId) {
           if (service === "new") p.attributes.serviceId = plan.newServiceIds[k - 1];
           else if (service === "none") p.attributes.serviceId = "";
         }
@@ -637,13 +759,61 @@
       });
       pt.properties.attributes.associatedRoutes = next;
     });
+    return { indices: indices, ids: ids };
+  }
+
+  // The undoable operation. Call as run(type, index, cuts, choices) or
+  // run(plan, choices). choices (optional): { names: [..per piece],
+  // service: "new" (default) | "none" | "same", opposite: true (also split the
+  // paired opposite-direction feature at the matching point, same undo step;
+  // its pieces take the Service id of the piece of ours they run alongside),
+  // oppositeNames: [..] }. Synchronous. Returns { ok, type, indices: [first,
+  // ...new], ids, opposite: {type, indices, ids} | null, message } | { ok:false, errors }.
+  function run(a, b, c, d) {
+    var type, index, cuts, choices;
+    if (a && typeof a === "object") { type = a.type; index = a.index; cuts = a.cuts; choices = b; }
+    else { type = a; index = b; cuts = c; choices = d; }
+    choices = choices || {};
+    var plan = analyze(type, index, cuts);
+    if (!plan.ok) return { ok: false, errors: plan.errors };
+    if (a && typeof a === "object" && a.featureId !== plan.featureId) {
+      return { ok: false, errors: ["The feature changed. Nothing was split."] };
+    }
+    var opp = null;
+    if (choices.opposite) {
+      opp = plan.opposite;
+      if (!opp || !opp.available) return { ok: false, errors: [(opp && opp.reason) || "There is no opposite direction to split."] };
+      if (a && typeof a === "object" && a.opposite && a.opposite.featureId !== opp.featureId) {
+        return { ok: false, errors: ["The opposite direction changed. Nothing was split."] };
+      }
+    }
+    var names = plan.pieces.map(function (p, k) {
+      var n = choices.names && trimStr(choices.names[k]);
+      return n || p.name;
+    });
+    var service = choices.service === "none" || choices.service === "same" ? choices.service : "new";
+
+    if (App.undo && !App.undo.isRestoring()) App.undo.push(); // ONE snapshot (both directions)
+
+    var res = applyPlan(plan, names, service, null);
+    var oppRes = null;
+    if (opp) {
+      var oNames = opp.plan.pieces.map(function (p, k) {
+        var n = choices.oppositeNames && trimStr(choices.oppositeNames[k]);
+        return n || p.name;
+      });
+      oppRes = applyPlan(opp.plan, oNames, service, plan.serviceId ? oppositeServiceIds(plan, service) : null);
+      oppRes.type = opp.type;
+    }
 
     if (typeof App.closeAttrPopup === "function" && typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) App.closeAttrPopup();
     if (typeof App.rerenderForType === "function") {
       App.rerenderForType(type);
-      if (plan.stops.length) App.rerenderForType("point");
+      if (opp && opp.type !== type) App.rerenderForType(opp.type);
+      if (plan.stops.length || (opp && opp.plan.stops.length)) App.rerenderForType("point");
     }
     if (typeof App.onFeatureDelete === "function") App.onFeatureDelete(); // exit edit, clear selection, panel, notify, save
+    var indices = res.indices;
     if (typeof App.selectFeature === "function") {
       if (plan.sectionPiece >= 0) {
         App.selectFeature(type, indices[plan.sectionPiece]); // Split out section: select the section
@@ -652,9 +822,10 @@
         if (typeof App.toggleMultiSelect === "function") indices.slice(1).forEach(function (i) { App.toggleMultiSelect(type, i); });
       }
     }
-    var msg = "Split '" + plan.name + "' into " + indices.length + " " + type + "s — Ctrl+Z to undo";
+    var msg = "Split '" + plan.name + "' into " + indices.length + " " + type + "s" +
+      (opp ? " and '" + opp.name + "' into " + oppRes.indices.length : "") + " — Ctrl+Z to undo";
     if (typeof App.setStatus === "function") App.setStatus(msg);
-    return { ok: true, type: type, indices: indices, ids: ids, message: msg };
+    return { ok: true, type: type, indices: indices, ids: res.ids, opposite: oppRes, message: msg };
   }
 
   /* =====================================================================
@@ -689,7 +860,8 @@
     var body = el("div", "fm-body");
     box.appendChild(body);
 
-    var nameInputs = [], svcChoice = { value: "new" };
+    var nameInputs = [], oppNameInputs = [], svcChoice = { value: "new" }, oppChoice = { checked: false };
+    var refreshOpp = function () {};
     if (!plan.ok) {
       var eb = el("div", "fm-note fm-note-error");
       eb.setAttribute("role", "alert");
@@ -729,7 +901,7 @@
           var row = el("label", "fm-radio-row");
           var rb = document.createElement("input");
           rb.type = "radio"; rb.name = "fsService"; rb.value = o[0]; rb.checked = o[0] === "new";
-          rb.addEventListener("change", function () { if (rb.checked) svcChoice.value = o[0]; });
+          rb.addEventListener("change", function () { if (rb.checked) { svcChoice.value = o[0]; refreshOpp(); } });
           row.appendChild(rb);
           row.appendChild(el("span", "fm-radio-name", o[1]));
           grp.appendChild(row);
@@ -737,6 +909,50 @@
         ss.appendChild(grp);
         ss.appendChild(el("div", "fm-hint", "Part 1 keeps Service '" + plan.serviceId + "'."));
         body.appendChild(ss);
+      }
+      if (plan.opposite) {
+        var o = plan.opposite;
+        var os = el("div", "fm-section fs-opposite");
+        var orow = el("label", "fm-radio-row");
+        var cb = document.createElement("input");
+        cb.type = "checkbox"; cb.id = "fsOpposite"; cb.disabled = !o.available;
+        orow.appendChild(cb);
+        orow.appendChild(el("span", "fm-radio-name", "Also split the opposite direction ('" + o.name + "', " + o.direction + ") at the matching point"));
+        os.appendChild(orow);
+        if (!o.available) {
+          os.appendChild(el("div", "fm-hint fs-opposite-why", "Not available: " + o.reason));
+        }
+        var oBody = el("div", "fs-opposite-body");
+        oBody.style.display = "none";
+        os.appendChild(oBody);
+        var pairNote = plan.pairWarning ? el("div", "fm-note fm-note-warn fs-pair-warn", plan.pairWarning) : null;
+        if (o.available) {
+          o.plan.pieces.forEach(function (p, j) {
+            var row = el("label", "fs-piece-row");
+            var inp = document.createElement("input");
+            inp.type = "text"; inp.className = "fp-attr-input"; inp.value = p.name;
+            inp.setAttribute("aria-label", "Name of opposite part " + (j + 1));
+            oppNameInputs.push(inp);
+            row.appendChild(inp);
+            row.appendChild(el("span", "fs-piece-len", fmtMi(p.lengthMi)));
+            var sv = el("span", "fm-hint fs-piece-svc");
+            row.appendChild(sv);
+            oBody.appendChild(row);
+          });
+          oBody.appendChild(el("div", "fm-hint", "It runs the other way, so each of its parts pairs with the part of '" + plan.name +
+            "' it runs alongside (part " + o.pairOf.map(function (k) { return k + 1; }).join(", part ") + ")."));
+          if (o.plan.usage) kit.renderUsage(oBody, o.plan.usage, "'" + o.name + "' is also used by");
+          refreshOpp = function () {
+            oBody.style.display = oppChoice.checked ? "" : "none";
+            if (pairNote) pairNote.style.display = oppChoice.checked ? "none" : "";
+            var ids = oppositeServiceIds(plan, svcChoice.value);
+            oBody.querySelectorAll(".fs-piece-svc").forEach(function (sp, j) { sp.textContent = ids[j] ? "Service '" + ids[j] + "'" : "no Service"; });
+          };
+          cb.addEventListener("change", function () { oppChoice.checked = cb.checked; refreshOpp(); });
+          refreshOpp();
+        }
+        body.appendChild(os);
+        if (pairNote) body.appendChild(pairNote);
       }
       if (plan.summary.length) {
         var rs = el("div", "fm-section");
@@ -749,6 +965,7 @@
         kit.renderList(wb, plan.warnings);
         body.appendChild(wb);
       }
+      if (plan.usage && kit.renderUsage) kit.renderUsage(body, plan.usage);
     }
     box.appendChild(el("div", "fm-footnote", "You can undo this with Ctrl+Z until you reload the page."));
     var acts = kit.buildActions(box, "Split");
@@ -756,7 +973,8 @@
 
     function doSplit() {
       if (!plan.ok) return;
-      var res = run(plan, { names: nameInputs.map(function (i) { return i.value; }), service: svcChoice.value });
+      var res = run(plan, { names: nameInputs.map(function (i) { return i.value; }), service: svcChoice.value,
+        opposite: oppChoice.checked, oppositeNames: oppNameInputs.map(function (i) { return i.value; }) });
       if (res && res.ok) { closeDialog(); return; }
       var e2 = el("div", "fm-note fm-note-error", "Split failed: " + ((res && res.errors && res.errors.join(" ")) || "unknown error"));
       e2.setAttribute("role", "alert");

@@ -89,6 +89,25 @@ export default {
     { id: "wpcut/off-line-waypoint", call: "App.splitGeom.waypointCut", args: [L, [L[0], [-104.7852, 38.8004], L[3]], 1] },
     { id: "wpcut/self-overlap-second-pass", call: "App.splitGeom.waypointCut", args: [BACK, [BACK[0], [-104.79, 38.8], [-104.79, 38.801], BACK[3]], 2] },
     { id: "wp/off-line-waypoint-at-cut-is-replaced", call: "App.splitGeom.partitionWaypoints",
-      args: [L, [L[0], [-104.7852, 38.8004], L[3]], [{ segIndex: 1, t: 0.48 }]] }
+      args: [L, [L[0], [-104.7852, 38.8004], L[3]], [{ segIndex: 1, t: 0.48 }]] },
+
+    // ---- Phase 3: opposite-direction matching ----
+    // OPP runs the other way along L, ~180 ft north (0.0005 deg).
+    { id: "opp/match-one-cut", call: "App.splitGeom.matchOppositeCuts", args: [[[-104.78, 38.81], [-104.7805, 38.8005], [-104.80, 38.8005]], [[-104.785, 38.80]], 300, 30] },
+    { id: "opp/match-two-cuts-sorted-along-opposite", call: "App.splitGeom.matchOppositeCuts", args: [[[-104.78, 38.8005], [-104.80, 38.8005]], [[-104.795, 38.80], [-104.785, 38.80]]] },
+    { id: "opp/too-far", call: "App.splitGeom.matchOppositeCuts", args: [[[-104.78, 38.803], [-104.80, 38.803]], [[-104.79, 38.80]], 300, 30] },
+    { id: "opp/near-an-end", call: "App.splitGeom.matchOppositeCuts", args: [[[-104.79, 38.8005], [-104.80, 38.8005]], [[-104.7899, 38.80]], 300, 30] },
+    { id: "opp/two-cuts-too-close", call: "App.splitGeom.matchOppositeCuts", args: [[[-104.78, 38.8005], [-104.80, 38.8005]], [[-104.79, 38.80], [-104.79003, 38.80]], 300, 30] },
+    { id: "opp/empty", call: "App.splitGeom.matchOppositeCuts", args: [[], [[-104.79, 38.80]]] },
+    { id: "pair/reversed-two", call: "App.splitGeom.pairPieces", args: [
+      [[[-104.80, 38.80], [-104.79, 38.80]], [[-104.79, 38.80], [-104.78, 38.80]]],
+      [[[-104.78, 38.8005], [-104.79, 38.8005]], [[-104.79, 38.8005], [-104.80, 38.8005]]]] },
+    { id: "pair/reversed-three", call: "App.splitGeom.pairPieces", args: [
+      [[[-104.80, 38.80], [-104.79, 38.80]], [[-104.79, 38.80], [-104.785, 38.80]], [[-104.785, 38.80], [-104.78, 38.80]]],
+      [[[-104.78, 38.8005], [-104.785, 38.8005]], [[-104.785, 38.8005], [-104.79, 38.8005]], [[-104.79, 38.8005], [-104.80, 38.8005]]]] },
+    { id: "pair/more-opposite-than-ours", call: "App.splitGeom.pairPieces", args: [
+      [[[-104.80, 38.80], [-104.78, 38.80]]],
+      [[[-104.78, 38.8005], [-104.79, 38.8005]], [[-104.79, 38.8005], [-104.80, 38.8005]]]] },
+    { id: "midpoint/l-shape", call: "App.splitGeom.midpointOf", args: [L] },
   ]
 };

@@ -1,6 +1,6 @@
 # Feature Split (lines and routes) — design plan
 
-Status: Phases 1 (Split here) and 2 (Split out section…, loops, Split at this node) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phase 3 not started.
+Status: Phases 1 (Split here) and 2 (Split out section…, loops, Split at this node) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phase 3 (module awareness, opposite direction) done.
 
 ## Goal
 
@@ -194,9 +194,13 @@ The engine, `App.split.analyze(type, index, cuts)`, returns a plan
    two points (in line order) becomes the new feature; the rest is joined through the
    loop start into one piece that keeps the original feature and begins at the second
    point. A point within ~30 ft of an end of an open line counts as that end (2 pieces).
-3. **Module awareness.** The `registerFeatureUsage` hook and its warnings in
+3. **Module awareness.** *(Done.)* The `registerFeatureUsage` hook and its warnings in
    both the Split and Merge dialogs, plus "also split the opposite direction"
-   for paired Services.
+   for paired Services. Opposite rule: offered when the `serviceId` has exactly one other
+   pattern with the opposite direction (neither a loop); its cut(s) are the nearest positions
+   to our cut points, refused beyond ~300 ft or within ~30 ft of its end; each of its pieces
+   takes the serviceId of the piece of ours it runs alongside (its order is reversed), so the
+   pieces form valid pairs; both splits are one undo step.
 
 Update `CLAUDE.md` (File Structure, Script Load Order, `split.js` API) in each
 phase, as merge did.

@@ -1164,6 +1164,19 @@
 
   // ---- Register as analysis module ----
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      var rows = (_lastResult && _lastResult.routeCDIs) || [];
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i] && rows[i].featureType === type && rows[i].featureId === id) {
+          return ["Corridor Scoring · ranked in the last results (they will show as stale)"];
+        }
+      }
+      return [];
+    }, { module: "Corridor Scoring", severity: "info" });
+  }
+
   App.registerModule({
     id:         "corridor-scoring",
     name:       "Corridor Scoring",

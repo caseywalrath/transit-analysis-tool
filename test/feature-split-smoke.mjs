@@ -440,6 +440,81 @@ async function main() {
     await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(500);
     // ================= END PHASE 2 =================
 
+    // ================= PHASE 3 =================
+    console.log("\n# Phase 3: module usage warnings + opposite-direction split");
+    await loadFixture(page);
+    const far = await page.evaluate(() => { const p = App.split.analyze("route", 0, [-104.785, 38.8201]);
+      return { has: !!p.opposite, av: p.opposite && p.opposite.available, why: p.opposite && p.opposite.reason }; });
+    check("opposite direction ~1100 ft away: option offered but unavailable, with the reason", far.has && far.av === false && /300 ft/.test(far.why), far);
+    // Bring Red SB within ~180 ft and give Title VI a 'before' ref to Red (route 5).
+    await page.evaluate(({ ROUTE }) => {
+      var st = App.cache.collectState("full");
+      var sb = ROUTE.slice().reverse().map((c) => [c[0], c[1] + 0.0005]);
+      st.routes[1].geometry.coordinates = sb;
+      st.routes[1].properties.waypoints = [sb[0], sb[3]];
+      st.moduleState = st.moduleState || {};
+      st.moduleState["title-vi"] = { version: 3, policy: TitleVI.defaultPolicy(), activeScenarioIdx: 0, baselineFeatureFilter: null,
+        scenarios: [{ name: "Scenario A", impactMethod: "service_loss_area", alterations: [{ name: "Adjustment 1", changeType: "adjustment",
+          before: { featureType: "route", featureId: 5, featureName: "Red" }, after: null, computed: null, manual: {} }] }] };
+      App.cache.applyState(st);
+    }, { ROUTE });
+    const usage = await page.evaluate(() => App.describeFeatureUsage("route", 5));
+    check("describeFeatureUsage reports the Title VI 'before' ref as a warning",
+      usage.some((u) => u.severity === "warn" && u.label === "Title VI · Scenario A · 'before' of Adjustment 1"), usage);
+    check("a throwing provider is ignored", await page.evaluate(() => { App.registerFeatureUsage(() => { throw new Error("x"); });
+      return Array.isArray(App.describeFeatureUsage("route", 5)); }));
+    const p3 = await page.evaluate(() => { const p = App.split.analyze("route", 0, [-104.785, 38.8201]);
+      return { av: p.opposite && p.opposite.available, why: p.opposite && p.opposite.reason, pairOf: p.opposite && p.opposite.pairOf, warn: p.usage.warn }; });
+    check("opposite direction ~180 ft away: available, its pieces pair in reverse order", p3.av === true && JSON.stringify(p3.pairOf) === "[1,0]", p3);
+    await page.evaluate(() => App.split.openDialog("route", 0, [-104.785, 38.8201]));
+    await page.waitForTimeout(150);
+    const dl = await page.evaluate(() => ({ cb: !!document.getElementById("fsOpposite") && !document.getElementById("fsOpposite").disabled,
+      warn: (document.querySelector(".fm-usage-warn") || {}).textContent || "",
+      pair: getComputedStyle(document.querySelector(".fs-pair-warn")).display }));
+    check("Split dialog: Title VI usage warning shown; opposite checkbox enabled; pair warning visible while unchecked",
+      dl.cb && /Title VI · Scenario A · 'before' of Adjustment 1/.test(dl.warn) && /part 1/.test(dl.warn) && dl.pair !== "none", dl);
+    const before3 = await snapshot(page);
+    await page.evaluate(() => { const cb = document.getElementById("fsOpposite"); cb.checked = true; cb.dispatchEvent(new Event("change")); });
+    const dl2 = await page.evaluate(() => ({ rows: document.querySelectorAll(".fs-opposite-body .fs-piece-row").length,
+      svc: Array.from(document.querySelectorAll(".fs-piece-svc")).map((e) => e.textContent),
+      pair: getComputedStyle(document.querySelector(".fs-pair-warn")).display }));
+    check("checked: opposite pieces shown with their Service ids, pair warning hidden",
+      dl2.rows === 2 && JSON.stringify(dl2.svc) === JSON.stringify(["Service 'R (2)'", "Service 'R'"]) && dl2.pair === "none", dl2);
+    await page.evaluate(() => Array.from(document.querySelectorAll(".fm-dialog button")).find((b) => b.textContent === "Split").click());
+    await page.waitForTimeout(200);
+    const after3 = await page.evaluate(() => ({
+      r: App.routes.map((f) => ({ n: f.properties.name, s: f.properties.attributes.serviceId, d: f.properties.attributes.direction, x0: f.geometry.coordinates[0][0] })),
+      svcs: App.buildTransitServices().filter((s) => s.isGroup && /^service-R/.test(s.key)).map((s) => ({ k: s.key, n: s.patterns.length,
+        w: (s.warnings || []).map((w) => w.msg || w).filter((m) => /opposite|pair/i.test(m)) })) }));
+    const east = after3.r.filter((r) => r.s === "R (2)");
+    check("both directions split in one go: 4 routes; the two east pieces share 'R (2)', the west pieces keep 'R'",
+      after3.r.length === 4 && east.length === 2 && east.every((r) => r.x0 > -104.7851 || r.x0 === -104.77) &&
+      after3.r.filter((r) => r.s === "R").length === 2, after3.r);
+    check("App.buildTransitServices: two 2-pattern Services, no pairing warnings",
+      after3.svcs.length === 2 && after3.svcs.every((s) => s.n === 2 && s.w.length === 0), after3.svcs);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(400);
+    check("one Undo restores both directions", (await snapshot(page)) === before3);
+    // Two-cut section split with the opposite direction.
+    const secOpp = await page.evaluate(() => {
+      const r = App.split.run("route", 0, [[-104.795, 38.8201], [-104.775, 38.8201]], { opposite: true });
+      return { ok: r.ok, err: r.errors, n: App.routes.length, opp: r.opposite && r.opposite.indices.length,
+        svcs: App.buildTransitServices().filter((s) => s.isGroup && /^service-R/.test(s.key)).map((s) => ({ n: s.patterns.length, dirs: s.patterns.map((p) => p.direction).sort().join("+"),
+          w: (s.warnings || []).length })) };
+    });
+    check("section split with opposite: 6 routes form three valid NB+SB pairs",
+      secOpp.ok && secOpp.n === 6 && secOpp.opp === 3 && secOpp.svcs.length === 3 && secOpp.svcs.every((s) => s.n === 2 && s.dirs === "NB+SB"), secOpp);
+    await page.evaluate(() => App.undo.undo()); await page.waitForTimeout(400);
+    check("section split then one Undo restores both", (await snapshot(page)) === before3);
+    // Merge dialog shows usage for every feature being merged.
+    await page.evaluate(() => App.merge.openDialog("route", [1, 0], 1));
+    await page.waitForTimeout(300);
+    const mw = await page.evaluate(() => ({ warn: (document.querySelector(".fm-usage-warn") || {}).textContent || "",
+      info: (document.querySelector(".fm-usage-info") || {}).textContent || "" }));
+    check("Merge dialog: Title VI ref on the removed feature warns it will be missing",
+      /Title VI · Scenario A · 'before' of Adjustment 1 — 'Red' is removed by the merge/.test(mw.warn), mw);
+    await page.evaluate(() => App.merge.closeDialog());
+    // ================= END PHASE 3 =================
+
     console.log("\n# Reload persistence");
     await page.evaluate(() => App.split.run("line", 0, [{ segIndex: 2, t: 0 }]));
     await page.evaluate(() => App.cache.save && App.cache.save());

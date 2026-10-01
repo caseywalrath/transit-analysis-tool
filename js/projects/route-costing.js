@@ -1575,6 +1575,26 @@
 
   // ---- Register module ----
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  // Service membership (by serviceId) and whether that Service is in the last
+  // costing results. Uses the live assembly; closure state only otherwise.
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      if (typeof App.buildTransitServices !== "function") return [];
+      var svcs = App.buildTransitServices() || [];
+      for (var i = 0; i < svcs.length; i++) {
+        var s = svcs[i];
+        var hit = (s.patterns || []).some(function (p) { return p.featureType === type && p.featureId === id; });
+        if (!hit) continue;
+        var inResults = _lastResult && (_lastResult.services || []).some(function (r) { return r && r.key === s.key; });
+        if (!s.isGroup && !inResults) return [];
+        return [(s.isGroup ? "Route Costing · pattern of Service '" + s.name + "' (" + s.patterns.length + " patterns)" : "Route Costing · costed as '" + s.name + "'") +
+          (inResults ? "; in the last costing results" : "")];
+      }
+      return [];
+    }, { module: "Route Costing", severity: "info" });
+  }
+
   App.registerModule({
     id:         "route-costing",
     name:       "Route Costing",

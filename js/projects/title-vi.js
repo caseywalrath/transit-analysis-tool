@@ -1653,6 +1653,27 @@
     });
   }
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  // A before/after reference points at ONE feature: after a split it covers
+  // only part of the route; after a merge it resolves to the survivor or goes
+  // missing. Reads closure state only (safe before the popup is ever opened).
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      var out = [];
+      (_scenarios || []).forEach(function (sc) {
+        ((sc && sc.alterations) || []).forEach(function (alt) {
+          ["before", "after"].forEach(function (w) {
+            var r = alt && alt[w];
+            if (r && r.featureType === type && r.featureId === id) {
+              out.push("Title VI · " + (sc.name || "Scenario") + " · '" + w + "' of " + (alt.name || "an adjustment"));
+            }
+          });
+        });
+      });
+      return out;
+    }, { module: "Title VI", severity: "warn" });
+  }
+
   // ---- Module registration ----
 
   App.registerModule({

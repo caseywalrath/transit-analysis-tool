@@ -3690,6 +3690,27 @@
 
   // ---- Register module ----
 
+  // ---- Feature usage (Split / Merge dialogs) ----
+  // Calibration matches drawn features to the ridership CSV BY NAME, so a
+  // renamed / split / merged-away feature stops matching (warn). The selected
+  // corridor is a stable ID ref (info). Closure state only; never throws.
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      var out = [];
+      var matched = (_matchResult && _matchResult.matched) || [];
+      matched.forEach(function (m) {
+        var rc = m && m.routeCDI;
+        if (rc && rc.featureType === type && rc.featureId === id) {
+          out.push({ severity: "warn", label: "Ridership Forecasting · calibration matches '" + (rc.name || "this feature") +
+            "' to the ridership CSV by name" + (_calibration ? " (calibration exists)" : "") });
+        }
+      });
+      var key = type + ":" + id;
+      if (_selectedCorridor === key) out.push({ severity: "info", label: "Ridership Forecasting · selected analysis corridor" });
+      return out;
+    }, { module: "Ridership Forecasting" });
+  }
+
   App.registerModule({
     id: "ridership-forecasting",
     name: "Ridership Forecasting",

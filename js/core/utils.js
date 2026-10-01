@@ -307,6 +307,36 @@
   App.indexFilterToRefs = function (filter) { return indexFilterToRefsIn(_liveArrays(), filter); };
   App.ensureFeatureIds = ensureFeatureIds;
 
+  /* Feature usage hook (docs/feature-split-plan.md Phase 3). Analysis modules
+     register a provider fn(type, id) -> [label | {label, severity}] that says
+     how they refer to a feature; the Split and Merge dialogs ask
+     describeFeatureUsage(type, id) -> [{module, label, severity: "warn"|"info"}].
+     Lives here (the first App file) so every module can register at load time.
+     A provider that throws is ignored, never breaks the caller. */
+  var _usageProviders = [];
+  App.registerFeatureUsage = function (fn, opts) {
+    if (typeof fn !== "function") return;
+    var o = typeof opts === "string" ? { module: opts } : (opts || {});
+    _usageProviders.push({ fn: fn, module: o.module || "", severity: o.severity === "warn" ? "warn" : "info" });
+  };
+  App.describeFeatureUsage = function (type, id) {
+    var out = [];
+    if (!type || id == null) return out;
+    _usageProviders.forEach(function (p) {
+      var res;
+      try { res = p.fn(type, id); } catch (e) { return; }
+      if (!Array.isArray(res)) res = res ? [res] : [];
+      res.forEach(function (r) {
+        if (!r) return;
+        var label = typeof r === "string" ? r : r.label;
+        if (!label) return;
+        var sev = (r && r.severity) || p.severity;
+        out.push({ module: (r && r.module) || p.module, label: String(label), severity: sev === "warn" ? "warn" : "info" });
+      });
+    });
+    return out;
+  };
+
   App.resolveFeatureColor = resolveFeatureColor;
   App._nextColorSeq = nextColorSeq;
   App._advanceColorSeqPast = advanceColorSeqPast;

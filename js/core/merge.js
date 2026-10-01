@@ -1321,6 +1321,45 @@
     return me;
   }
 
+  // Module references to each merged feature (App.describeFeatureUsage, the
+  // Phase 3 hook from docs/feature-split-plan.md). The survivor keeps its ID,
+  // so its references now cover the merged feature; a removed feature's ID is
+  // gone, so its references go missing. -> { warn: [..], info: [..] }
+  function usageForMerge(plan) {
+    var out = { warn: [], info: [] };
+    if (typeof App.describeFeatureUsage !== "function" || !plan || !plan.refs) return out;
+    plan.refs.forEach(function (r) {
+      var f = getFeat(r);
+      var id = f && f.properties && f.properties[ID_PROP[r.type]];
+      if (id == null) return;
+      var survives = plan.survivor && plan.survivor.type === r.type && plan.survivor.index === r.index;
+      var nm = "'" + featName(f, TYPE_LABEL[r.type] + " " + (r.index + 1)) + "'";
+      App.describeFeatureUsage(r.type, id).forEach(function (u) {
+        var line = u.label + " — " + (survives
+          ? nm + " is kept, so this now refers to the whole merged " + plan.survivor.type + "."
+          : nm + " is removed by the merge, so this reference will be missing.");
+        (u.severity === "warn" ? out.warn : out.info).push(line);
+      });
+    });
+    return out;
+  }
+
+  // Shared with split.js: amber note for "warn" usage, muted section for "info".
+  function renderUsage(container, usage, heading) {
+    if (!usage) return;
+    if (usage.warn && usage.warn.length) {
+      var wb = el("div", "fm-note fm-note-warn fm-usage-warn");
+      renderList(wb, usage.warn);
+      container.appendChild(wb);
+    }
+    if (usage.info && usage.info.length) {
+      var s = el("div", "fm-section fm-usage-info");
+      s.appendChild(el("div", "fm-section-title", heading || "Also used by"));
+      renderList(s, usage.info, "fm-list fm-hint");
+      container.appendChild(s);
+    }
+  }
+
   function openDialog(type, indices, primary) {
     var st = STRATEGIES[type];
     if (!st || !indices || indices.length < 2) return;
@@ -1427,6 +1466,7 @@
           renderList(wb, plan.warnings);
           body.appendChild(wb);
         }
+        if (plan.ok) renderUsage(body, usageForMerge(plan));
         state.ok = !!plan.ok;
         mergeBtn.disabled = !plan.ok || state.busy;
         if (onDone) onDone(plan);
@@ -1555,6 +1595,7 @@
       buildShell: buildShell,
       buildActions: buildActions,
       installDialog: installDialog,
+      renderUsage: renderUsage,
       closeDialog: closeDialog,
       isOpen: function () { return !!_dlg; },
       isCurrent: function (d) { return !!d && _dlg === d; }
