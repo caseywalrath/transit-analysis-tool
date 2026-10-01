@@ -1,6 +1,12 @@
 # Box select (drag to select) — plan
 
-Status: **Phases 1-4 implemented**; Phase 5 (final tests/docs/screenshots) in progress.
+Status: **implemented** (Phases 1-5). Browser test: `test/box-select-smoke.mjs`; golden cases: `test/cases/box-select.mjs`.
+
+Notes from implementation:
+- The tool intercepts mouse events in the capture phase instead of toggling MapLibre's `dragPan`, so there is no map state to restore.
+- Single-feature deletes never removed stop links to a deleted route, and bulk delete matches that (the Phase 5 "stop loses its link" check was dropped).
+- Outside the tool, Shift+drag replaces the selection (Shift is the trigger), and Ctrl still removes.
+- Fixed along the way: the shared right-click menu could stay open after a fast outside click. It now closes on the next outside mouse press or Escape.
 
 ## What the user asked for
 
