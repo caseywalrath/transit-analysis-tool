@@ -17,11 +17,15 @@
     checkedVars: [], // persisted checkbox values (restored before DOM exists)
     featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs (Phase 4b)
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
-    useDisplayBuffers: false
+    useDisplayBuffers: false,
+    includeHidden: false // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
   };
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
   var _stale = false; // true when features/walksheds changed since the last run
+  // Snapshot taken at run time so update() can tell a relevant change from an
+  // unrelated hide/show (notifyProject now fires on every visibility change).
+  var _runSnap = null; // { geom: string, hidden: string, includeHidden: bool }
 
   // Currently selected #basMapVar value ("" = none / gray outline). Persisted
   // via the cache collect/apply handlers below (Step 1.5) — geometry is not
@@ -177,7 +181,7 @@
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       var cb = boxes[i];
-      if (!cb.checked) continue;
+      if (!cb.checked || cb.disabled) continue;   // disabled = hidden row (toggle off): kept checked, not analyzed
       var type = cb.getAttribute("data-type");
       var idx = parseInt(cb.getAttribute("data-idx"), 10);
       if (type === "route") routeIndices.push(idx);
@@ -187,6 +191,58 @@
     }
     return { routeIndices: routeIndices, lineIndices: lineIndices,
              pointIndices: pointIndices, polygonIndices: polygonIndices };
+  }
+
+  // Signature of everything about the drawn features that affects a run EXCEPT
+  // the hidden flag (geometry + properties + attributes), so update() can ignore
+  // hide/show notifications. Includes the road-network epoch (walksheds).
+  function featureGeomSig() {
+    var parts = [];
+    ["points", "lines", "routes", "polygons"].forEach(function (k) {
+      parts.push(k + ":" + (App[k] || []).map(function (f) {
+        return JSON.stringify([f.geometry, f.properties, ]
+          , function (key, val) { return (key === "hidden" || key === "_mergedFrom") ? undefined : val; });
+      }).join("|"));
+    });
+    parts.push("epoch:" + (App.roadNetworkEpoch ? App.roadNetworkEpoch() : 0));
+    return parts.join("#");
+  }
+
+  // Hidden flag of each feature that was in the run's selection.
+  function selectedHiddenSig(filter) {
+    var out = [];
+    [["route", App.routes, filter.routeIndices], ["line", App.lines, filter.lineIndices],
+     ["point", App.points, filter.pointIndices], ["polygon", App.polygons, filter.polygonIndices]
+    ].forEach(function (g) {
+      (g[2] || []).forEach(function (idx) {
+        var f = (g[1] || [])[idx];
+        out.push(g[0] + ":" + (f && f.properties ? f.properties[App.FEATURE_ID_PROP[g[0]]] : "?") + "=" +
+          ((f && f.properties && f.properties.hidden) ? 1 : 0));
+      });
+    });
+    return out.join(",");
+  }
+
+  function currentRunFilter() {
+    var filter = _runSnap && _runSnap.filterRefs;
+    if (!filter) return null;
+    var out = { routeIndices: [], lineIndices: [], pointIndices: [], polygonIndices: [] };
+    var map = { route: "routeIndices", line: "lineIndices", point: "pointIndices", polygon: "polygonIndices" };
+    filter.forEach(function (r) {
+      var idx = App.resolveFeatureRef(r);
+      if (idx >= 0) out[map[r.type]].push(idx);
+    });
+    return out;
+  }
+
+  // True when the last run no longer matches the map: features changed, the
+  // hidden state of a feature in the run's selection changed, or the toggle changed.
+  function runIsOutdated() {
+    if (!_runSnap) return true;
+    if (_runSnap.includeHidden !== !!_state.includeHidden) return true;
+    if (_runSnap.geom !== featureGeomSig()) return true;
+    var f = currentRunFilter();
+    return !!f && _runSnap.hidden !== selectedHiddenSig(f);
   }
 
   // The checked rows as stable { type, id } refs — what _state.featureFilter stores
@@ -248,6 +304,7 @@
       badgeEl.textContent = badge;
       label.addEventListener("click", function (event) {
         event.preventDefault();
+        if (cb.disabled) return;
         cb.checked = !cb.checked;
         _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
@@ -262,6 +319,7 @@
       row.appendChild(label);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _state.includeHidden);
     }
 
     (App.routes || []).forEach(function (feature, idx) { addRow("route", idx, feature, "Route " + (idx + 1), "R"); });
@@ -310,8 +368,16 @@
     var apportionByAreaEl = document.getElementById("basApportionByArea");
     var apportionByArea = apportionByAreaEl ? apportionByAreaEl.checked : true;
     var featureFilter = getFeatureFilter();
+    var checkedDisabled = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:disabled").length;
     var selectedCount = featureFilter.routeIndices.length + featureFilter.lineIndices.length +
       featureFilter.pointIndices.length + featureFilter.polygonIndices.length;
+    if (!selectedCount && checkedDisabled > 0) {
+      // Everything the user ticked is hidden on the map (toggle off).
+      var hiddenErr = App.hiddenSelectionMessage(0).error;
+      App.setStatus(hiddenErr);
+      setStatus(hiddenErr, "error");
+      return;
+    }
     if (!selectedCount) {
       App.setStatus("No features selected");
       App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true,
@@ -321,9 +387,22 @@
     _state.bufferMiles = App.readAnalysisBufferMiles("basBufferMiles", App.ANALYSIS_BUFFER_DEFAULT_MILES);
     _state.useDisplayBuffers = !!(document.getElementById("basUseDisplayBuffers") || {}).checked;
     _state.featureFilter = getCheckedRefs();
+    var hiddenOpts = { includeHidden: !!_state.includeHidden };
     var bufferSet = _state.useDisplayBuffers
-      ? App.buildDisplayBufferSet(featureFilter)
-      : App.buildAnalysisBufferSet(featureFilter, _state.bufferMiles);
+      ? App.buildDisplayBufferSet(featureFilter, hiddenOpts)
+      : App.buildAnalysisBufferSet(featureFilter, _state.bufferMiles, hiddenOpts);
+    var hiddenCount = bufferSet.hiddenCount || { included: 0, skipped: 0 };
+    _runSnap = {
+      geom: featureGeomSig(), hidden: selectedHiddenSig(featureFilter),
+      includeHidden: !!_state.includeHidden, filterRefs: getCheckedRefs().filter(function (r) {
+        // only refs that were actually in the run filter (enabled boxes)
+        var cbs = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]");
+        for (var q = 0; q < cbs.length; q++) {
+          if (cbs[q].getAttribute("data-type") === r.type && parseInt(cbs[q].getAttribute("data-feature-id"), 10) === r.id) return !cbs[q].disabled;
+        }
+        return false;
+      })
+    };
     var unionFeat = bufferSet.union;
 
     // Save state
@@ -376,7 +455,10 @@
     if (!unionFeat) {
       var errMsg = (App.points.length === 0 && App.lines.length === 0 &&
                     App.routes.length === 0 && App.polygons.length === 0)
-        ? "No features placed" : "No buffers set";
+        ? "No features placed"
+        : (hiddenCount.skipped > 0
+            ? App.hiddenSelectionMessage(hiddenCount).error
+            : "No buffers set");
       for (var k = 0; k < displayVars.length; k++) {
         var errRows = codeToRows[displayVars[k]] || [];
         for (var ei = 0; ei < errRows.length; ei++) {
@@ -658,6 +740,8 @@
           "slightly from the union-level total above (whole-block internal-points test) at buffer edges.");
       }
     }
+    var hiddenNote = App.hiddenSelectionMessage(hiddenCount).notes;
+    if (hiddenNote) notesParts.push(hiddenNote);
     var apportionNote = apportionByArea
       ? "counts are area-apportioned (fractional overlap)"
       : "counts include all intersecting geographies in full (no area apportionment)";
@@ -1133,6 +1217,8 @@
     if (apportionEl) apportionEl.checked = _state.apportionByArea;
     syncBufferControl();
     applyFeatureFilterToCheckboxes(_state.featureFilter);
+    var ihEl = document.getElementById("basIncludeHidden");
+    if (ihEl) ihEl.checked = !!_state.includeHidden;
 
     // Restore checkbox selections (LODES checkbox is now inside #varSelect).
     if (_state.checkedVars && _state.checkedVars.length > 0) {
@@ -1178,7 +1264,7 @@
     var yearEl = document.getElementById("basYearSelect");
     var apportionEl = document.getElementById("basApportionByArea");
     var count = collectCheckedVars().length;
-    var featureCount = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked").length;
+    var featureCount = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:not(:disabled)").length;
     var geoLabel = geoEl && geoEl.value === "tract" ? "Tracts" : "Block groups";
     return count + " variable" + (count === 1 ? "" : "s") + " \u00b7 " +
       geoLabel + " \u00b7 " + (yearEl ? yearEl.value : _state.year) + " \u00b7 " +
@@ -1212,6 +1298,7 @@
     _lastGeoData = null;
     _hasResults = false;
     _stale = false;
+    _runSnap = null;
     _mapVar = "";
     _mapNorm = "count";
     _mapRamp = "blues";
@@ -1300,7 +1387,7 @@
 
       document.getElementById("basFeatureSelectAll").addEventListener("click", function (event) {
         event.preventDefault();
-        document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
@@ -1312,6 +1399,20 @@
         if (App.cache) App.cache.save();
         renderInputs();
       });
+
+      var actionsEl = (document.getElementById("basFeatureSelectAll") || {}).parentNode;
+      if (actionsEl && !document.getElementById("basIncludeHidden")) {
+        actionsEl.appendChild(App.buildIncludeHiddenToggle({
+          id: "basIncludeHidden", checked: _state.includeHidden,
+          onChange: function (on) {
+            _state.includeHidden = on;
+            buildFeatureChecklist();           // re-decorate rows; checked states untouched
+            if (App.cache) App.cache.save();
+            if (_hasResults && runIsOutdated()) showStale();
+            renderInputs();
+          }
+        }));
+      }
 
       var bufferMilesEl = document.getElementById("basBufferMiles");
       if (bufferMilesEl) bufferMilesEl.addEventListener("change", function () {
@@ -1414,8 +1515,10 @@
       // Features/walksheds changed (this hook only fires via App.notifyProject()).
       // Stale-but-visible with a Re-run banner is the suite convention — the
       // choropleth and results table are left on the map/screen as-is.
-      if (isPopupVisible()) buildFeatureChecklist();
-      if (_hasResults) showStale();
+      // notifyProject also fires on every hide/show, so only go stale when the
+      // run's inputs really changed (see runIsOutdated()).
+      if (isPopupVisible()) { buildFeatureChecklist(); renderInputs(); }
+      if (_hasResults && runIsOutdated()) showStale();
     }
   });
 
@@ -1440,6 +1543,7 @@
           })(),
           bufferMiles: _state.bufferMiles,
           useDisplayBuffers: _state.useDisplayBuffers,
+          includeHidden: !!_state.includeHidden,   // additive, no schema bump
           mapVar: _mapVar,
           mapNorm: _mapNorm,
           mapRamp: _mapRamp,
@@ -1463,6 +1567,7 @@
         }
         if (Number.isFinite(data.bufferMiles)) _state.bufferMiles = data.bufferMiles;
         if (typeof data.useDisplayBuffers === "boolean") _state.useDisplayBuffers = data.useDisplayBuffers;
+        if (typeof data.includeHidden === "boolean") _state.includeHidden = data.includeHidden;
         // Geometry/results are not persisted (see clearAll()/_lastGeoData) — this
         // only restores which variable the dropdown will re-select on the next
         // successful run (populateBasMapVarDropdown() reads _mapVar as "keep").

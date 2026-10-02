@@ -890,6 +890,7 @@
                 if (App.cache && typeof App.cache.save === "function") App.cache.save();
                 if (typeof App.rerenderForType === "function") App.rerenderForType(featureType);
                 if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+                if (typeof App.notifyProject === "function") App.notifyProject();
             }},
             { label: "Delete", action: function () {
                 if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {

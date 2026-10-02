@@ -682,6 +682,13 @@
         else _expandedLayerStyle[entry.styleKey] = true;
       });
       row.appendChild(caret);
+    } else {
+      // No style drawer, so no caret: reserve the caret's width so this row's
+      // grip and name line up with the expandable rows around it.
+      var spacer = document.createElement("span");
+      spacer.className = "lp-caret-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
     }
 
     var grip = document.createElement("span");
@@ -814,6 +821,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   // Solo: show only the given items, hide every other drawn feature.
@@ -830,6 +838,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -842,6 +851,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -1119,6 +1129,7 @@
     });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
