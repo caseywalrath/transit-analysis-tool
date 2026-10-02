@@ -395,6 +395,8 @@
 
     // ---- Hover cursor management (when not in draw mode) ----
     map.on("mousemove", function (e) {
+      // The name tooltip is hidden while drawing, dragging or vertex-editing.
+      if ((App.drawMode || editState) && typeof App.hideHoverTooltip === "function") App.hideHoverTooltip();
       if (App.drawMode) return;
       // Don't change cursor during active drags
       if (editState && (editState.type === "point-drag" || editState.type === "vertex-drag")) return;
@@ -486,6 +488,7 @@
 
     // ---- Mousedown: start point drag or vertex drag ----
     map.on("mousedown", function (e) {
+      if (typeof App.hideHoverTooltip === "function") App.hideHoverTooltip();
       if (App.drawMode) return;
       if (e.originalEvent && e.originalEvent.button === 2) return; // right-click handled by contextmenu
 

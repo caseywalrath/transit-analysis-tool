@@ -5588,6 +5588,15 @@ body.dark-mode .result-error td { color: #fc8181; }
   text-overflow: ellipsis;
 }
 
+/* Click-through, no pointer tip: the name never blocks a vertex handle or drag. */
+.feature-hover-popup,
+.feature-hover-popup * {
+  pointer-events: none;
+}
+.feature-hover-popup .maplibregl-popup-tip {
+  display: none;
+}
+
 /* ---- Click detail popup ---- */
 
 .gtfs-detail {

@@ -662,6 +662,33 @@ async function main() {
     check("floating pick calls back once and closes", await page.evaluate(() => window.__fp.length === 1 && document.getElementById("fp-color-picker").style.display === "none"));
     // Label / text box swatch path
     await page.evaluate(() => { document.getElementById("__cpAnchor").remove(); });
+
+    // Hover name tooltip: rest delay, below-right of the cursor, click-through,
+    // hidden while vertex-editing.
+    console.log("\n# Hover name tooltip");
+    await page.evaluate(() => { App.clearSelection(); App.map.jumpTo({ center: [-104.795, 38.80], zoom: 15 }); });
+    await page.waitForTimeout(400);
+    const hp = await page.evaluate(() => {
+      var c = App.lines[0].geometry.coordinates; var p = App.map.project([(c[0][0] + c[1][0]) / 2, c[0][1]]);
+      var r = App.map.getCanvas().getBoundingClientRect(); return { x: r.left + p.x, y: r.top + p.y };
+    });
+    const tip = () => page.evaluate(() => { var e = document.querySelector(".feature-hover-popup"); if (!e) return null; var r = e.getBoundingClientRect(); return { left: r.left, top: r.top, pe: getComputedStyle(e).pointerEvents, text: e.textContent }; });
+    await page.mouse.move(hp.x - 30, hp.y);
+    await page.mouse.move(hp.x, hp.y);
+    await page.waitForTimeout(100);
+    check("no tooltip immediately on hover (rest delay)", (await tip()) === null);
+    await page.waitForTimeout(600);
+    const t1 = await tip();
+    check("tooltip appears after resting, names the feature", t1 && /Line 1/.test(t1.text), t1);
+    check("tooltip sits below-right of the cursor and is click-through", t1 && t1.left > hp.x && t1.top > hp.y && t1.pe === "none", [t1, hp]);
+    await page.mouse.move(hp.x, hp.y - 200);
+    await page.waitForTimeout(100);
+    check("tooltip hides when leaving the feature", (await tip()) === null);
+    await page.evaluate(() => App.activateVertexEdit("line", 0));
+    await page.mouse.move(hp.x + 5, hp.y);
+    await page.waitForTimeout(800);
+    check("no tooltip while vertex-editing", (await tip()) === null);
+    await page.evaluate(() => App.deactivateVertexEdit());
     // ================= END ASSERTIONS =================
   } finally {
     if (browser) await browser.close().catch(() => {});
