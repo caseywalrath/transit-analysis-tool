@@ -104,6 +104,7 @@ async function standardSection(page, cfg, url) {
   await page.waitForSelector(L + " .rf-feature-check-row", { state: "attached" });
   if (cfg.prep) await cfg.prep(page);
   check(T + "Include hidden toggle present and off", await page.evaluate((id) => { const t = document.getElementById(id); return !!t && !t.checked; }, cfg.toggle));
+  check(T + "toggle sits beside this list's Select all | Clear", await page.evaluate(([id, sa]) => { const t = document.getElementById(id), a = document.querySelector(sa); return !!t && !!a && t.closest(".rf-feature-select-actions") === a.closest(".rf-feature-select-actions"); }, [cfg.toggle, cfg.selAll]));
   check(T + "visible row enabled", !(await rowOf(page, L, 1)).disabled);
   await hide(page, cfg.first.type, cfg.first.index, true);
   let r = await rowOf(page, L, 1);
@@ -240,6 +241,8 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
       v.checked = true; v.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
+    check("toggle sits beside the Select all | Clear links",
+      await page.evaluate(() => { const t = document.getElementById("basIncludeHidden"), a = document.getElementById("basFeatureSelectAll"); return !!t && t.closest(".rf-feature-select-actions") === a.closest(".rf-feature-select-actions"); }));
     check("Include hidden toggle present and off by default",
       await page.evaluate(() => { const t = document.getElementById("basIncludeHidden"); return !!t && !t.checked; }));
 
@@ -349,6 +352,8 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
       await loadFixture(page);
       await page.evaluate(() => App.openModulePopup("corridor-scoring"));
       await page.waitForSelector(L + " .rf-feature-check-row");
+      check("CS: toggle sits beside Select all | Clear",
+        await page.evaluate(() => { const t = document.getElementById("csIncludeHidden"), a = document.getElementById("csSelectAll"); return !!t && t.closest(".rf-feature-select-actions") === a.closest(".rf-feature-select-actions"); }));
       check("CS: Include hidden toggle present and off", await page.evaluate(() => { const t = document.getElementById("csIncludeHidden"); return !!t && !t.checked; }));
       check("CS: visible row enabled", !(await rowOf(page, L, 1)).disabled);
       await hide(page, "route", 0, true);

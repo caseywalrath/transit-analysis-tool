@@ -991,7 +991,7 @@
     if (thresholdInput) thresholdInput.addEventListener("change", markStale);
 
     // Include hidden toggle: one for both lists, beside the first list's Select all | Clear.
-    var actionsEl = document.querySelector(".rf-feature-select-actions");
+    var actionsEl = (document.getElementById("tcFeatSelectAll") || {}).parentNode;
     if (actionsEl && !document.getElementById("tcIncludeHidden")) {
       var toggleEl = App.buildIncludeHiddenToggle({
         id: "tcIncludeHidden", checked: _includeHidden,

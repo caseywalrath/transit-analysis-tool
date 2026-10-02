@@ -948,7 +948,7 @@
     syncBufferControl();
 
     // Include hidden toggle (next to Select all | Clear)
-    var actionsEl = document.querySelector(".rf-feature-select-actions");
+    var actionsEl = (document.getElementById("csSelectAll") || {}).parentNode;
     if (actionsEl && !document.getElementById("csIncludeHidden")) {
       actionsEl.appendChild(App.buildIncludeHiddenToggle({
         id: "csIncludeHidden", checked: _includeHidden,

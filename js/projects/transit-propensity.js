@@ -1167,7 +1167,7 @@
     if (resetBtn) resetBtn.addEventListener("click", resetModalToDefaults);
 
     // Include hidden toggle (next to Select all | Clear)
-    var actionsEl = document.querySelector(".rf-feature-select-actions");
+    var actionsEl = (document.getElementById("tpiSelectAll") || {}).parentNode;
     if (actionsEl && !document.getElementById("tpiIncludeHidden")) {
       actionsEl.appendChild(App.buildIncludeHiddenToggle({
         id: "tpiIncludeHidden", checked: _includeHidden,

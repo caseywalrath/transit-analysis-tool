@@ -1400,7 +1400,7 @@
         renderInputs();
       });
 
-      var actionsEl = document.querySelector(".rf-feature-select-actions");
+      var actionsEl = (document.getElementById("basFeatureSelectAll") || {}).parentNode;
       if (actionsEl && !document.getElementById("basIncludeHidden")) {
         actionsEl.appendChild(App.buildIncludeHiddenToggle({
           id: "basIncludeHidden", checked: _state.includeHidden,
