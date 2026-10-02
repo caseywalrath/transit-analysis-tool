@@ -57,12 +57,22 @@
   var _perRouteCDI = null;       // per-route CDI array (calibration context)
   var _matchResult = null;       // result from RM.matchRoutesToCSV()
   var _selectedCorridor = ""; // "route:<id>" / "line:<id>" — a stable feature ID, NOT an array index (specific corridor required)
-  var _calibFeatureFilter = null; // { routeIds: [...], lineIds: [...] } (stable feature IDs) or null (all)
+  var _calibFeatureFilter = null; // SELECTION { routeIds: [...], lineIds: [...] } (stable feature IDs) or null (all). Includes disabled-but-checked (hidden) rows; a run analyzes dropHidden(selection, toggle).
+
+  // Hidden features (docs/hidden-features-analysis-plan.md): one "Include hidden" toggle per checklist.
+  var _includeHiddenCalib = false;
+  var _includeHiddenDemand = false;
+  var _calibHiddenIncluded = 0;   // hidden features that took part in the last calibration run
+  var _demandHiddenIncluded = 0;  // ... in the last demand run
+  // Taken at run time so update() can tell a relevant change from an unrelated hide/show
+  // (notifyProject fires on every visibility change). { geom, refs, hidden, toggles ("c"/"d"/"cd"/"") }
+  var _calibSnap = null;
+  var _demandSnap = null;
 
   // Demand-phase state (independent TPI context when analyzing a different system)
   var _demandSystemResult = null;  // result from demand-phase RM.computeSystemDemand()
   var _demandPerRouteCDI = null;   // per-route CDI array (demand context)
-  var _demandFeatureFilter = null; // { routeIds: [...], lineIds: [...] } (stable feature IDs) or null
+  var _demandFeatureFilter = null; // SELECTION { routeIds: [...], lineIds: [...] } (stable feature IDs) or null
   var _demandUseSameSystem = false; // true = reuse calibration TPI data for demand
 
   // Shared-pool normalization state
@@ -232,7 +242,7 @@
   }
 
   function countCheckedFeatures(containerId) {
-    var cbs = document.querySelectorAll("#" + containerId + " input[type=\"checkbox\"]:checked");
+    var cbs = document.querySelectorAll("#" + containerId + " input[type=\"checkbox\"]:checked:not(:disabled)");
     var r = 0, l = 0;
     for (var i = 0; i < cbs.length; i++) {
       if (cbs[i].getAttribute("data-feature-type") === "route") r++;
@@ -353,10 +363,11 @@
     if (tabId === "elasticity") refreshElasticity();
   }
 
-  function buildRouteLineBufferSet(filter) {
+  function buildRouteLineBufferSet(filter, includeHidden) {
+    var opts = { includeHidden: !!includeHidden };
     return _useDisplayBuffers
-      ? App.buildDisplayBufferSet(filter)
-      : App.buildAnalysisBufferSet(filter, _bufferMiles);
+      ? App.buildDisplayBufferSet(filter, opts)
+      : App.buildAnalysisBufferSet(filter, _bufferMiles, opts);
   }
 
   function syncBufferControl() {
@@ -379,16 +390,22 @@
     // Read the current demand filter from the UI
     var demandFilter = readFeatureFilter("rfDemandFeatureList");
     _demandFeatureFilter = demandFilter;
+    // What actually runs: the selection minus hidden features whose toggle is off.
+    var calibRun  = dropHidden(_calibFeatureFilter, _includeHiddenCalib);
+    var demandRun = dropHidden(demandFilter, _includeHiddenDemand);
+    var combinedRun = combineFeatureFilters(calibRun, demandRun);
 
     // Buffer set for ALL drawn routes/lines (module's own analysis distance) —
     // computePerRouteCDI needs every feature's buffer so featureFilter:null
     // below can compute CDI for all of them, exactly as before this module
     // carried its own buffer distance; only the geometry source changed.
-    var allBufferSet = buildRouteLineBufferSet(allRoutesLinesFilter());
+    // Hidden features are in the set only when they are part of the run
+    // (selected + their toggle on): every visible feature plus those.
+    var allBufferSet = buildRouteLineBufferSet(allRoutesLinesFilter(combinedRun), true);
 
     // Study area union is scoped to the combined calibration+demand selection —
     // fold only that subset's polygons out of the already-built full set.
-    var combinedFilter = filterToIndices(combineFeatureFilters(_calibFeatureFilter, demandFilter));
+    var combinedFilter = filterToIndices(combinedRun);
     var combinedPolys = [];
     (combinedFilter.routeIndices || []).forEach(function (idx) {
       var b = allBufferSet.get("route", idx); if (b) combinedPolys.push(b);
@@ -420,6 +437,9 @@
 
     result.bufferMiles = _bufferMiles;
     result.bufferSet   = allBufferSet;
+    _calibHiddenIncluded  = countHidden(calibRun);
+    _demandHiddenIncluded = countHidden(demandRun);
+    _demandSnap = makeSnap(combinedRun, "cd");
 
     // Partition result.routeCDIs by filter
     _sharedCalibPerRouteCDI = filterRouteCDIs(result.routeCDIs, _calibFeatureFilter);
@@ -454,6 +474,7 @@
 
   async function runDemand() {
     if (_running) return;
+    if (demandHiddenBlocked()) return;   // demand features all hidden (toggle off)
     _running = true;
 
     var runBtn = document.getElementById("rfRunDemand");
@@ -498,6 +519,7 @@
       var result;
       var tpiResult;
       var activeRouteCDIs;
+      _demandSnap = null;   // each path below sets it; stays null for the legacy path C
 
       // Determine which path to take for TPI data:
       // Path A: "Same system as calibration" — reuse calibration TPI data
@@ -516,6 +538,8 @@
         activeRouteCDIs = _perRouteCDI;
         _demandPerRouteCDI = _perRouteCDI;
         _demandSystemResult = _systemResult;
+        _demandHiddenIncluded = _calibHiddenIncluded;
+        _demandSnap = _calibSnap ? Object.assign({}, _calibSnap) : null;
 
       } else if (useSharedPool) {
         // Path B-shared: combined normalization pool (one TPI run covers both systems)
@@ -529,7 +553,8 @@
         var demandFilter = readFeatureFilter("rfDemandFeatureList");
         _demandFeatureFilter = demandFilter;
 
-        var demandBufferSet = buildRouteLineBufferSet(filterToIndices(demandFilter));
+        var demandRun = dropHidden(demandFilter, _includeHiddenDemand);
+        var demandBufferSet = buildRouteLineBufferSet(filterToIndices(demandRun), _includeHiddenDemand);
         if (demandBufferSet.count === 0) {
           throw new Error("Could not build buffers for the selected demand features.");
         }
@@ -547,7 +572,7 @@
           apportionByArea: _apportionByArea,
           growthFactors: App.projGrowthFactors(),
           unionPolygon: customUnion,
-          featureFilter: filterToIndices(demandFilter),
+          featureFilter: filterToIndices(demandRun),
           bufferSet: demandBufferSet,
           onProgress: function (msg) {
             if (textEl) textEl.textContent = msg;
@@ -559,6 +584,8 @@
         demandSystemResult.bufferSet   = demandBufferSet;
 
         _demandSystemResult = demandSystemResult;
+        _demandHiddenIncluded = countHidden(demandRun);
+        _demandSnap = makeSnap(demandRun, "d");
         _demandPerRouteCDI = demandSystemResult.routeCDIs;
         tpiResult = demandSystemResult.tpiResult;
         activeRouteCDIs = demandSystemResult.routeCDIs;
@@ -585,6 +612,12 @@
             App.setStatus(msg);
           }
         });
+      }
+
+      if (result && !_demandSnap) {
+        // Path C (legacy, all features): any visibility/feature change matters.
+        _demandHiddenIncluded = 0;
+        _demandSnap = makeSnap(allRefsFilter(), "");
       }
 
       // For Path A and B, build the result object from TPI data
@@ -673,6 +706,12 @@
     if (!isPopupVisible()) return;
     var el = document.getElementById("rfDemandResults");
     if (el) el.style.display = "";
+    var dNote = document.getElementById("rfDemandHiddenNote");
+    if (dNote) {
+      var dText = App.hiddenSelectionMessage(_demandHiddenIncluded).notes;
+      dNote.textContent = dText;
+      dNote.style.display = dText ? "" : "none";
+    }
 
     // CDI score
     var cdiVal = document.getElementById("rfCDIValue");
@@ -906,6 +945,10 @@
     _matchResult = null;
     _selectedCorridor = "";
     _calibFeatureFilter = null;
+    _calibSnap = null;
+    _demandSnap = null;
+    _calibHiddenIncluded = 0;
+    _demandHiddenIncluded = 0;
     _demandSystemResult = null;
     _demandPerRouteCDI = null;
     _demandFeatureFilter = null;
@@ -1071,7 +1114,7 @@
   // ---- Feature selection checklists ----
 
   // Build a single checkbox row for a feature
-  function makeFeatureCheckRow(type, index, name, checked, id) {
+  function makeFeatureCheckRow(type, index, name, checked, id, feature, includeHidden) {
     var row = document.createElement("div");
     row.className = "rf-feature-check-row";
     var cb = document.createElement("input");
@@ -1091,11 +1134,128 @@
     return row;
   }
 
+  function listToggle(containerId) {
+    return containerId === "rfDemandFeatureList" ? _includeHiddenDemand : _includeHiddenCalib;
+  }
+
+  // The checked ids currently in a rendered checklist (disabled-but-checked rows
+  // included), or null when the list has no feature rows yet. A rebuild uses this
+  // so hide/show notifications never reset an un-run selection.
+  function captureListSelection(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container || !container.querySelector(".rf-feature-check-row")) return null;
+    var known = { route: [], line: [] };
+    container.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+      var id = parseInt(cb.getAttribute("data-feature-id"), 10);
+      var t = cb.getAttribute("data-feature-type");
+      if (Number.isFinite(id) && known[t]) known[t].push(id);
+    });
+    return { filter: readFeatureFilter(containerId), known: known };
+  }
+
+  // The selection minus features that are hidden on the map while their toggle is
+  // off — what a run really analyzes. null stays null (= all).
+  function dropHidden(filter, includeHidden) {
+    if (!filter || includeHidden) return filter;
+    function keep(type, ids) {
+      return (ids || []).filter(function (id) {
+        var f = App.featureById(type, id);
+        return !(f && f.properties && f.properties.hidden);
+      });
+    }
+    return { routeIds: keep("route", filter.routeIds), lineIds: keep("line", filter.lineIds) };
+  }
+
+  // How many features of a run filter are hidden on the map.
+  function countHidden(filter) {
+    var n = 0;
+    if (!filter) return 0;
+    [["route", filter.routeIds], ["line", filter.lineIds]].forEach(function (g) {
+      (g[1] || []).forEach(function (id) {
+        var f = App.featureById(g[0], id);
+        if (f && f.properties && f.properties.hidden) n++;
+      });
+    });
+    return n;
+  }
+
+  // True when the user's selection is non-empty but everything in it is hidden
+  // with the toggle off, so a run would have nothing to analyze.
+  function hiddenOnlyBlocked(selection, includeHidden) {
+    if (!selection || includeHidden) return false;
+    var run = dropHidden(selection, false);
+    var nSel = (selection.routeIds || []).length + (selection.lineIds || []).length;
+    var nRun = (run.routeIds || []).length + (run.lineIds || []).length;
+    return nSel > 0 && nRun === 0;
+  }
+
+  // Everything ticked in the Calibrate / Demand checklist is hidden on the map (toggle
+  // off): show the standard message in that tab's status pill and return true so the
+  // caller stops before any confirmation dialog or run.
+  function calibHiddenBlocked() {
+    if (!hiddenOnlyBlocked(readFeatureFilter("rfCalibFeatureList"), _includeHiddenCalib)) return false;
+    App.renderModuleState({ statusEl: "rfSystemStatus", status: { kind: "error", message: App.hiddenSelectionMessage(0).error } });
+    return true;
+  }
+
+  function demandHiddenBlocked() {
+    var sameSys = document.getElementById("rfDemandUseSameSystem");
+    if (!_systemResult || (sameSys && sameSys.checked)) return false;   // demand checklist only applies to a separate system
+    if (!hiddenOnlyBlocked(readFeatureFilter("rfDemandFeatureList"), _includeHiddenDemand)) return false;
+    App.renderModuleState({ statusEl: "rfDemandStatus", status: { kind: "error", message: App.hiddenSelectionMessage(0).error } });
+    return true;
+  }
+
+  // ---- Run snapshots (staleness) ----
+
+  function filterRefs(filter) {
+    var out = [];
+    if (!filter) return out;
+    (filter.routeIds || []).forEach(function (id) { out.push({ type: "route", id: id }); });
+    (filter.lineIds || []).forEach(function (id) { out.push({ type: "line", id: id }); });
+    return out;
+  }
+
+  function toggleKey(toggles) {
+    return (toggles.indexOf("c") >= 0 ? (_includeHiddenCalib ? "1" : "0") : "-") +
+           (toggles.indexOf("d") >= 0 ? (_includeHiddenDemand ? "1" : "0") : "-");
+  }
+
+  // Everything besides the hidden flag that changes a run and arrives via
+  // notifyProject: feature edits, LODES, display-buffer radii.
+  function runInputsSig() {
+    var fs = App.featureSettings || {};
+    return App.featureGeomSignature() + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") +
+      "#fs:" + JSON.stringify([fs.bufferRadius, fs.lineBufferRadius, fs.routeBufferRadius]);
+  }
+
+  // run: the run filter ({routeIds, lineIds}); toggles: which checklist toggles it depended on.
+  function makeSnap(run, toggles) {
+    var refs = filterRefs(run);
+    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs),
+             toggles: toggles, inc: toggleKey(toggles) };
+  }
+
+  function snapOutdated(snap) {
+    if (!snap) return false;
+    if (snap.inc !== toggleKey(snap.toggles)) return true;
+    if (snap.geom !== runInputsSig()) return true;
+    return snap.hidden !== App.hiddenSignature(snap.refs);
+  }
+
   // Populate a feature checklist container with current routes/lines.
   // previousFilter: optional feature filter to restore checkbox state from
-  function populateFeatureList(containerId, previousFilter) {
+  function populateFeatureList(containerId, previousFilter, preferDom) {
     var container = document.getElementById(containerId);
     if (!container) return;
+    var live = preferDom ? captureListSelection(containerId) : null;
+    // A row already on screen keeps its on-screen state; a feature with no row yet
+    // follows the saved filter (default checked when there is none).
+    function isChecked(ref, key, domKey) {
+      if (live && ref && live.known[domKey].indexOf(ref.id) >= 0) return live.filter[key].indexOf(ref.id) !== -1;
+      return !previousFilter || !previousFilter[key] || (ref && previousFilter[key].indexOf(ref.id) !== -1);
+    }
+    var includeHidden = listToggle(containerId);
     container.innerHTML = "";
     var routes = App.routes || [];
     var lines = App.lines || [];
@@ -1106,14 +1266,18 @@
     for (var ri = 0; ri < routes.length; ri++) {
       var name = (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1));
       var rRef = App.featureRef("route", ri);
-      var checked = !previousFilter || !previousFilter.routeIds || (rRef && previousFilter.routeIds.indexOf(rRef.id) !== -1);
-      container.appendChild(makeFeatureCheckRow("route", ri, name, !!checked, rRef ? rRef.id : null));
+      var checked = isChecked(rRef, "routeIds", "route");
+      var rRow = makeFeatureCheckRow("route", ri, name, !!checked, rRef ? rRef.id : null);
+      container.appendChild(rRow);
+      App.decorateHiddenRow(rRow, rRow.querySelector("input"), routes[ri], includeHidden);
     }
     for (var li = 0; li < lines.length; li++) {
       var name = (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1));
       var lRef = App.featureRef("line", li);
-      var checked = !previousFilter || !previousFilter.lineIds || (lRef && previousFilter.lineIds.indexOf(lRef.id) !== -1);
-      container.appendChild(makeFeatureCheckRow("line", li, name, !!checked, lRef ? lRef.id : null));
+      var checked = isChecked(lRef, "lineIds", "line");
+      var lRow = makeFeatureCheckRow("line", li, name, !!checked, lRef ? lRef.id : null);
+      container.appendChild(lRow);
+      App.decorateHiddenRow(lRow, lRow.querySelector("input"), lines[li], includeHidden);
     }
   }
 
@@ -1121,11 +1285,28 @@
   // path, which needs a buffer set spanning ALL drawn features (matching the
   // historical featureFilter:null "compute CDI for all routes" behavior),
   // separately from whatever subset defines the study-area union.
-  function allRoutesLinesFilter() {
-    return {
-      routeIndices: (App.routes || []).map(function (_, i) { return i; }),
-      lineIndices:  (App.lines  || []).map(function (_, i) { return i; })
-    };
+  // runFilter (optional, ID form): hidden features are left out of the result unless
+  // they are in runFilter (a hidden feature is only analyzed when selected + toggled on).
+  // With no runFilter every feature is included (callers that ignore hidden state).
+  function allRoutesLinesFilter(runFilter) {
+    function idx(type, arr, ids) {
+      var out = [];
+      for (var i = 0; i < arr.length; i++) {
+        var hidden = !!(arr[i].properties && arr[i].properties.hidden);
+        var ref = App.featureRef(type, i);
+        if (runFilter && hidden && !(ref && (ids || []).indexOf(ref.id) >= 0)) continue;
+        out.push(i);
+      }
+      return out;
+    }
+    if (runFilter === null || runFilter === undefined) {
+      return {
+        routeIndices: (App.routes || []).map(function (_, i) { return i; }),
+        lineIndices:  (App.lines  || []).map(function (_, i) { return i; })
+      };
+    }
+    return { routeIndices: idx("route", App.routes || [], runFilter.routeIds),
+             lineIndices:  idx("line", App.lines || [], runFilter.lineIds) };
   }
 
   // Read checkbox state from a feature checklist and return a featureFilter
@@ -1146,6 +1327,13 @@
       }
     }
     return { routeIds: routeIds, lineIds: lineIds };
+  }
+
+  function allRefsFilter() {
+    return {
+      routeIds: (App.routes || []).map(function (_, i) { return App.featureRef("route", i).id; }),
+      lineIds:  (App.lines  || []).map(function (_, i) { return App.featureRef("line", i).id; })
+    };
   }
 
   // Combine two feature filters by unioning their route/line ID sets.
@@ -1274,7 +1462,7 @@
       allLink.addEventListener("click", function (e) {
         e.preventDefault();
         var cbs = document.querySelectorAll("#" + containerId + ' input[type="checkbox"]');
-        for (var i = 0; i < cbs.length; i++) cbs[i].checked = true;
+        for (var i = 0; i < cbs.length; i++) { if (!cbs[i].disabled) cbs[i].checked = true; }   // hidden (disabled) rows stay as they are
         if (afterChange) afterChange();
       });
     }
@@ -1341,7 +1529,7 @@
     var cbs = container.querySelectorAll('input[type="checkbox"]');
 
     for (var i = 0; i < cbs.length; i++) {
-      if (!cbs[i].checked) continue;
+      if (!cbs[i].checked || cbs[i].disabled) continue;   // disabled = hidden row, toggle off: not analyzed
       var type = cbs[i].getAttribute("data-feature-type");
       var idx = parseInt(cbs[i].getAttribute("data-feature-index"), 10);
       var fid = parseInt(cbs[i].getAttribute("data-feature-id"), 10);
@@ -1383,6 +1571,7 @@
 
   async function runSystemAnalysis() {
     if (_running) return;
+    if (calibHiddenBlocked()) return;   // everything ticked is hidden (toggle off)
     _running = true;
 
     var runBtn = document.getElementById("rfRunSystemAnalysis");
@@ -1403,7 +1592,8 @@
       var featureFilter = readFeatureFilter("rfCalibFeatureList");
       _calibFeatureFilter = featureFilter;
 
-      var calibBufferSet = buildRouteLineBufferSet(filterToIndices(featureFilter));
+      var calibRun = dropHidden(featureFilter, _includeHiddenCalib);
+      var calibBufferSet = buildRouteLineBufferSet(filterToIndices(calibRun), _includeHiddenCalib);
       if (calibBufferSet.count === 0) {
         throw new Error("Could not build buffers for the selected calibration features.");
       }
@@ -1418,7 +1608,7 @@
         apportionByArea: apportion,
         growthFactors: App.projGrowthFactors(),
         unionPolygon: customUnion,
-        featureFilter: filterToIndices(featureFilter),
+        featureFilter: filterToIndices(calibRun),
         bufferSet: calibBufferSet,
         onProgress: function (msg) {
           if (textEl) textEl.textContent = msg;
@@ -1430,6 +1620,8 @@
 
       _systemResult = result;
       _perRouteCDI = result.routeCDIs;
+      _calibHiddenIncluded = countHidden(calibRun);
+      _calibSnap = makeSnap(calibRun, "c");
       _stale = false;
       _calibStale = false;
 
@@ -1571,6 +1763,13 @@
     if (!isPopupVisible()) return;
     var el = document.getElementById("rfSystemResults");
     if (el) el.style.display = "";
+
+    var cNote = document.getElementById("rfCalibHiddenNote");
+    if (cNote) {
+      var cText = App.hiddenSelectionMessage(_calibHiddenIncluded).notes;
+      cNote.textContent = cText;
+      cNote.style.display = cText ? "" : "none";
+    }
 
     // Feature count
     var countEl = document.getElementById("rfSystemFeatureCount");
@@ -2349,7 +2548,16 @@
 
     if (_selectedCorridor && activeRouteCDIs) {
       // For corridor-specific CDI, re-run per-route CDI with the projected TPI
-      var projRouteCDIs = RM.computePerRouteCDI(tpiResult, filterToIndices(featureFilter));
+      // The engine reads its buffers from the set it is given, else the display buffers
+      // (empty for hidden features). A hidden corridor can only be scored from the
+      // run's own buffer set; visible corridors keep using the display buffers as before.
+      var selRef = App.parseFeatureRefKey(_selectedCorridor);
+      var selFeat = selRef ? App.featureById(selRef.type, selRef.id) : null;
+      var ctxSet = null;
+      if (selFeat && selFeat.properties && selFeat.properties.hidden) {
+        ctxSet = (_demandSystemResult && _demandSystemResult.bufferSet) || (_systemResult && _systemResult.bufferSet) || null;
+      }
+      var projRouteCDIs = RM.computePerRouteCDI(tpiResult, filterToIndices(featureFilter), ctxSet);
       var projRow = findCorridorRow(projRouteCDIs);
       if (projRow) return projRow.cdi;
     }
@@ -2908,10 +3116,10 @@
   var _calibStale = false;
   var _demandStale = false;
 
-  function markStale() {
-    // Mark both contexts stale when features change
-    if (_systemResult) _calibStale = true;
-    if (_lastResult || _demandSystemResult) _demandStale = true;
+  function markStale(which) {
+    // Mark both contexts stale when features change (which = "calib" | "demand" limits it to one)
+    if (which !== "demand" && _systemResult) _calibStale = true;
+    if (which !== "calib" && (_lastResult || _demandSystemResult)) _demandStale = true;
     _stale = _calibStale || _demandStale;
     if (!isPopupVisible()) return;
     // Show stale banner (with Re-run) on Demand tab
@@ -2941,6 +3149,27 @@
     if (noteEl) noteEl.textContent = _useDisplayBuffers
       ? "Analysis buffers: Display Buffers — set on the Calibrate tab."
       : "Analysis buffer: " + _bufferMiles + " mi — set on the Calibrate tab.";
+  }
+
+  // "Include hidden" toggle appended to a checklist's Select all | Clear row.
+  function mountIncludeHiddenToggle(selectAllId, toggleId, containerId) {
+    var anchor = document.getElementById(selectAllId);
+    var actions = anchor && anchor.parentNode;
+    if (!actions || document.getElementById(toggleId)) return;
+    var isDemand = containerId === "rfDemandFeatureList";
+    actions.appendChild(App.buildIncludeHiddenToggle({
+      id: toggleId, checked: isDemand ? _includeHiddenDemand : _includeHiddenCalib,
+      onChange: function (on) {
+        if (isDemand) _includeHiddenDemand = on; else _includeHiddenCalib = on;
+        populateFeatureList(containerId, isDemand ? _demandFeatureFilter : _calibFeatureFilter, true);   // re-decorate; checked states untouched
+        if (isDemand) populateCorridorDropdownFromCheckedFeatures();
+        if (App.cache) App.cache.save();
+        // The toggle changes the Calibrate run, and (shared pool) the Demand run too.
+        var co = _systemResult && snapOutdated(_calibSnap);
+        var dof = (_lastResult || _demandSystemResult) && snapOutdated(_demandSnap);
+        if (co || dof) markStale(co && dof ? undefined : (co ? "calib" : "demand"));
+      }
+    }));
   }
 
   // ---- Module init (called once on first popup open) ----
@@ -3013,6 +3242,7 @@
 
     var sysBtn = document.getElementById("rfRunSystemAnalysis");
     if (sysBtn) sysBtn.addEventListener("click", function () {
+      if (calibHiddenBlocked()) return;
       showAnalysisConfirm(buildCalibConfirmHTML(), runSystemAnalysis);
     });
 
@@ -3074,6 +3304,7 @@
     // Feature selection checklists (Calibrate tab)
     populateFeatureList("rfCalibFeatureList", _calibFeatureFilter);
     wireFeatureSelectLinks("rfCalibSelectAll", "rfCalibSelectNone", "rfCalibFeatureList");
+    mountIncludeHiddenToggle("rfCalibSelectAll", "rfCalibIncludeHidden", "rfCalibFeatureList");
 
     var uploadBtn = document.getElementById("rfUploadCalibCSV");
     var fileInput = document.getElementById("rfCalibFile");
@@ -3112,6 +3343,8 @@
     populateFeatureList("rfDemandFeatureList", _demandFeatureFilter);
     wireFeatureSelectLinks("rfDemandSelectAll", "rfDemandSelectNone", "rfDemandFeatureList",
       populateCorridorDropdownFromCheckedFeatures);
+
+    mountIncludeHiddenToggle("rfDemandSelectAll", "rfDemandIncludeHidden", "rfDemandFeatureList");
 
     // Wire individual checkbox changes via event delegation
     var demandFeatureListEl = document.getElementById("rfDemandFeatureList");
@@ -3184,6 +3417,7 @@
 
     var runBtn = document.getElementById("rfRunDemand");
     if (runBtn) runBtn.addEventListener("click", function () {
+      if (demandHiddenBlocked()) return;
       showAnalysisConfirm(buildDemandConfirmHTML(), runDemand);
     });
 
@@ -3420,6 +3654,12 @@
     var stSelEl = document.getElementById("rfServiceType");
     if (stSelEl) syncPremiumSliders(stSelEl.value);
 
+    // Sync the Include hidden toggles (restored session / reopen)
+    var ihCalibEl = document.getElementById("rfCalibIncludeHidden");
+    if (ihCalibEl) ihCalibEl.checked = _includeHiddenCalib;
+    var ihDemandEl = document.getElementById("rfDemandIncludeHidden");
+    if (ihDemandEl) ihDemandEl.checked = _includeHiddenDemand;
+
     // Refresh feature checklists (picks up any features added/removed while popup was closed)
     populateFeatureList("rfCalibFeatureList", _calibFeatureFilter);
     populateFeatureList("rfDemandFeatureList", _demandFeatureFilter);
@@ -3502,15 +3742,25 @@
   }
 
   async function update(core) {
-    if (_lastResult && !core.getUnion()) {
+    // No union only means "everything is gone" when no features exist at all —
+    // hiding every feature (announced via notifyProject) must keep the results.
+    var anyFeature = (App.points || []).length + (App.lines || []).length +
+      (App.routes || []).length + (App.polygons || []).length > 0;
+    if (_lastResult && !core.getUnion() && !anyFeature) {
       clearAll();
     } else {
-      markStale();
+      // notifyProject also fires on every hide/show: only go stale on a real change
+      // to what each run analyzed (feature edits, hidden state of its features, toggles).
+      var co = _systemResult && snapOutdated(_calibSnap);
+      var dof = (_lastResult || _demandSystemResult) && snapOutdated(_demandSnap);
+      if (co || dof) markStale(co && dof ? undefined : (co ? "calib" : "demand"));
     }
-    // Refresh feature checklists if popup is open (picks up added/removed features)
+    // Refresh feature checklists if popup is open (picks up added/removed features
+    // and the hidden state; a rebuild keeps the un-run selection on screen)
     if (isPopupVisible()) {
-      populateFeatureList("rfCalibFeatureList", _calibFeatureFilter);
-      populateFeatureList("rfDemandFeatureList", _demandFeatureFilter);
+      populateFeatureList("rfCalibFeatureList", _calibFeatureFilter, true);
+      populateFeatureList("rfDemandFeatureList", _demandFeatureFilter, true);
+      if (!_demandUseSameSystem && !_lastResult) populateCorridorDropdownFromCheckedFeatures();
       updateLodesWarnings();
     }
   }
@@ -3574,6 +3824,10 @@
       apportionByArea: _apportionByArea,
       bufferMiles: _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
+      includeHiddenCalib: _includeHiddenCalib,     // additive, no schema bump
+      includeHiddenDemand: _includeHiddenDemand,
+      calibHiddenIncluded: _calibHiddenIncluded,
+      demandHiddenIncluded: _demandHiddenIncluded,
       normalizeByLength: _normalizeByLength,
       baselineUncertaintyPct: _baselineUncertaintyPct,
       spanElasticity: _spanElasticity,
@@ -3623,6 +3877,10 @@
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
     if (data.bufferMiles != null && Number.isFinite(data.bufferMiles)) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
+    if (typeof data.includeHiddenCalib === "boolean") _includeHiddenCalib = data.includeHiddenCalib;
+    if (typeof data.includeHiddenDemand === "boolean") _includeHiddenDemand = data.includeHiddenDemand;
+    _calibHiddenIncluded = Number.isFinite(data.calibHiddenIncluded) ? data.calibHiddenIncluded : 0;
+    _demandHiddenIncluded = Number.isFinite(data.demandHiddenIncluded) ? data.demandHiddenIncluded : 0;
     if (data.normalizeByLength != null) _normalizeByLength = !!data.normalizeByLength;
     _baselineUncertaintyPct = (data.baselineUncertaintyPct != null && Number.isFinite(data.baselineUncertaintyPct))
       ? data.baselineUncertaintyPct : 0.25;
@@ -3713,6 +3971,15 @@
     // Restore projection results
     if (Array.isArray(data.projectionResults)) {
       _projectionResults = data.projectionResults;
+    }
+
+    // Baselines for update(): what each restored result covered, against the live features.
+    var calibRunR = dropHidden(_calibFeatureFilter || allRefsFilter(), _includeHiddenCalib);
+    var demandRunR = dropHidden(_demandFeatureFilter || allRefsFilter(), _includeHiddenDemand);
+    _calibSnap = _systemResult ? makeSnap(calibRunR, "c") : null;
+    if (_lastResult || _demandSystemResult) {
+      _demandSnap = _demandUseSameSystem ? makeSnap(calibRunR, "c")
+        : (_sharedPoolMode ? makeSnap(combineFeatureFilters(calibRunR, demandRunR), "cd") : makeSnap(demandRunR, "d"));
     }
   }
 

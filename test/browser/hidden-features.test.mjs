@@ -76,6 +76,21 @@ async function loadFixture(page) {
 }
 
 
+// Open a module popup unless it is already the open one (openModulePopup toggles).
+async function openModule(page, id) {
+  await page.evaluate((m) => { if (!(App.popup.isOpen() && App.popup.currentModuleId() === m)) App.openModulePopup(m); }, id);
+}
+
+// Click a module's run button; RF asks for a confirmation first (cfg.confirm = its Proceed button).
+async function doRun(page, cfg) {
+  await clickEl(page, cfg.run);
+  if (cfg.confirm) {
+    if (await waitFor(page, (sel) => { const m = document.querySelector(sel); return !!m && m.offsetParent !== null; }, 5000, "#rfAnalysisConfirmModal")) {
+      await clickEl(page, cfg.confirm);
+    }
+  }
+}
+
 // Standard hidden-feature assertions for a checklist-based module. cfg:
 //   tag, module (registry id + cache key), list (checklist selector), selAll, selNone,
 //   run (button selector), status (pill selector), toggle (id), note (selector),
@@ -85,8 +100,9 @@ async function standardSection(page, cfg, url) {
   const L = cfg.list, ST = cfg.status;
   const stale = () => page.evaluate((s) => !!document.querySelector(s + ".rf-status-stale"), ST);
   await loadFixture(page);
-  await page.evaluate((m) => App.openModulePopup(m), cfg.module);
-  await page.waitForSelector(L + " .rf-feature-check-row");
+  await openModule(page, cfg.module);
+  await page.waitForSelector(L + " .rf-feature-check-row", { state: "attached" });
+  if (cfg.prep) await cfg.prep(page);
   check(T + "Include hidden toggle present and off", await page.evaluate((id) => { const t = document.getElementById(id); return !!t && !t.checked; }, cfg.toggle));
   check(T + "visible row enabled", !(await rowOf(page, L, 1)).disabled);
   await hide(page, cfg.first.type, cfg.first.index, true);
@@ -103,7 +119,7 @@ async function standardSection(page, cfg, url) {
   // a disabled-but-checked row is never written into the saved unchecked list
   await hide(page, cfg.first.type, cfg.first.index, true);
   await clickEl(page, L + " .rf-feature-check-row:nth-child(2) input"); // uncheck row 2 -> selection saved
-  check(T + "disabled-checked row not recorded as unchecked", await waitFor(page, ([m, t, idx]) => {
+  if (!cfg.skipUnchecked) check(T + "disabled-checked row not recorded as unchecked", await waitFor(page, ([m, t, idx]) => {
     const raw = localStorage.getItem("mat-session"); if (!raw) return false;
     const u = JSON.parse(raw).moduleState[m].uncheckedFeatures || [];
     return u.length === 1 && u[0].id === App[t === "route" ? "routes" : t === "line" ? "lines" : t === "point" ? "points" : "polygons"][idx].properties[App.FEATURE_ID_PROP[t]];
@@ -120,14 +136,15 @@ async function standardSection(page, cfg, url) {
   await hide(page, cfg.first.type, cfg.first.index, false);
   await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input");
   await hide(page, cfg.first.type, cfg.first.index, true);
-  await clickEl(page, cfg.run);
+  await clickEl(page, cfg.run);   // plain click: the message must come before any confirmation dialog
   check(T + "hidden-only selection (toggle off) shows the hidden message",
     await waitFor(page, (s) => document.querySelector(s).textContent.includes("Selected features are hidden"), 20000, ST), await text(page, ST));
+  if (cfg.confirm) check(T + "no confirmation dialog for the hidden-only message", await page.evaluate(() => { const m = document.getElementById("rfAnalysisConfirmModal"); return !m || m.offsetParent === null; }));
   await clickEl(page, "#" + cfg.toggle);
   r = await rowOf(page, L, 1);
   check(T + "toggle on enables the hidden row (still tagged)", !r.disabled && r.tag && !r.muted);
   if (cfg.extra) await cfg.extra(page);
-  await clickEl(page, cfg.run);
+  await doRun(page, cfg);
   check(T + "toggle on: run completes", await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d), 40000, [ST, cfg.done]), await text(page, ST));
   check(T + "results disclose hidden features", (await text(page, cfg.note)).includes("Includes 1 feature hidden on the map."), await text(page, cfg.note));
   check(T + "fresh results not stale", !(await stale()));
@@ -137,12 +154,12 @@ async function standardSection(page, cfg, url) {
   check(T + "showing an unselected feature does NOT mark stale", !(await stale()));
   await hide(page, cfg.first.type, cfg.first.index, false);
   check(T + "changing hidden state of a selected feature marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
-  await clickEl(page, cfg.run);
+  await doRun(page, cfg);
   check(T + "re-run clears stale", await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d) && !document.querySelector(s + ".rf-status-stale"), 40000, [ST, cfg.done]));
   if (cfg.editStale) {
     await page.evaluate(() => { App.routes[1].properties.name = "Renamed"; App.notifyProject(); });
     check(T + "a genuine feature edit still marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
-    await clickEl(page, cfg.run);
+    await doRun(page, cfg);
     await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d) && !document.querySelector(s + ".rf-status-stale"), 40000, [ST, cfg.done]);
   }
   await clickEl(page, "#" + cfg.toggle); // off
@@ -153,8 +170,8 @@ async function standardSection(page, cfg, url) {
     let o = JSON.parse(raw).moduleState[m]; for (const k of path.split(".")) o = o && o[k];
     return o === true; }, 10000, [cfg.cacheKey || cfg.module, cfg.flagPath || "includeHidden"]);
   await reloadPage(page, url);
-  await page.evaluate((m) => App.openModulePopup(m), cfg.module);
-  await page.waitForSelector("#" + cfg.toggle);
+  await openModule(page, cfg.module);
+  await page.waitForSelector("#" + cfg.toggle, { state: "attached" });
   check(T + "toggle survives a reload", await page.evaluate((id) => document.getElementById(id).checked, cfg.toggle));
   await clickEl(page, "#" + cfg.toggle);
   await page.evaluate(() => App.cache.save());
@@ -433,6 +450,46 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
         await hide(pg, "polygon", 0, false);
         await clickEl(pg, "#tcAreaSelectAll");
         await hide(pg, "route", 0, true);
+      } }, url);
+
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await standardSection(page, {
+      tag: "RF Calibrate", confirm: "#rfConfirmModalProceed", module: "ridership-forecasting", cacheKey: "rf", flagPath: "includeHiddenCalib", skipUnchecked: true,
+      list: "#rfCalibFeatureList", selAll: "#rfCalibSelectAll", selNone: "#rfCalibSelectNone", run: "#rfRunSystemAnalysis",
+      status: "#rfSystemStatus", toggle: "rfCalibIncludeHidden", note: "#rfCalibHiddenNote", done: "System analysis complete",
+      first: { type: "route", index: 0 }, second: { type: "route", index: 1 }, editStale: true }, url);
+
+    // RF: the saved calibration selection keeps a hidden-but-ticked route that was not analyzed.
+    {
+      const T = "RF Calibrate: ";
+      await loadFixture(page);
+      await openModule(page, "ridership-forecasting");
+      await page.waitForSelector("#rfCalibFeatureList .rf-feature-check-row", { state: "attached" });
+      await hide(page, "route", 0, true);               // ticked + hidden + toggle off
+      await clickEl(page, "#rfCalibSelectAll");          // ticks the visible rows; the hidden one keeps its tick
+      await doRun(page, { run: "#rfRunSystemAnalysis", confirm: "#rfConfirmModalProceed" });
+      check(T + "run with a hidden ticked row (toggle off) completes", await waitFor(page, () => document.getElementById("rfSystemStatus").textContent.includes("System analysis complete"), 40000), await text(page, "#rfSystemStatus"));
+      check(T + "no hidden note when no hidden feature was analyzed", (await text(page, "#rfCalibHiddenNote")).trim() === "");
+      check(T + "analysis skipped the hidden route", await page.evaluate(() => !document.getElementById("rfRouteScoreList").textContent.includes("Route A")));
+      check(T + "saved selection still holds the hidden ticked route", await page.evaluate(() => {
+        const st = App.cache.collectState("light").moduleState.rf; const id = App.routes[0].properties.routeIdx;
+        return st.calibFeatureFilter.routeIds.indexOf(id) >= 0; }));
+      await hide(page, "route", 0, false);
+      check(T + "showing it again: row is still ticked", (await rowOf(page, "#rfCalibFeatureList", 1)).checked);
+      await reloadPage(page, url);
+    }
+
+    await standardSection(page, {
+      tag: "RF Demand", confirm: "#rfConfirmModalProceed", module: "ridership-forecasting", cacheKey: "rf", flagPath: "includeHiddenDemand", skipUnchecked: true,
+      list: "#rfDemandFeatureList", selAll: "#rfDemandSelectAll", selNone: "#rfDemandSelectNone", run: "#rfRunDemand",
+      status: "#rfDemandStatus", toggle: "rfDemandIncludeHidden", note: "#rfDemandHiddenNote", done: "Demand analysis complete",
+      first: { type: "route", index: 0 }, second: { type: "route", index: 1 }, editStale: true,
+      prep: async (pg) => {
+        await doRun(pg, { run: "#rfRunSystemAnalysis", confirm: "#rfConfirmModalProceed" });
+        const ok = await waitFor(pg, () => document.getElementById("rfSystemStatus").textContent.includes("System analysis complete"), 40000);
+        check("RF Demand: prerequisite calibration run completes", ok, await text(pg, "#rfSystemStatus"));
+        const same = await pg.evaluate(() => document.getElementById("rfDemandUseSameSystem").checked);
+        check("RF Demand: 'same system' is off so the demand checklist applies", !same);
       } }, url);
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
