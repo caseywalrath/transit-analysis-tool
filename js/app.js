@@ -541,12 +541,12 @@
       _safeSetPaint("points-layer", "circle-stroke-opacity", opExpr);
     }
     if (type === "line" || type === "all") {
-      _safeSetPaint("lines-layer", "line-opacity",
-        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.lineOpacity / 100]);
+      App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-opacity",
+        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.lineOpacity / 100]); });
     }
     if (type === "route" || type === "all") {
-      _safeSetPaint("routes-layer", "line-opacity",
-        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]);
+      App.lineStyleLayerIds("route").forEach(function (lid) { _safeSetPaint(lid, "line-opacity",
+        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]); });
     }
     if (type === "polygon" || type === "all") {
       _safeSetPaint("polygons-fill", "fill-opacity",
@@ -575,12 +575,12 @@
         ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointStrokeWidth]);
     }
     if (type === "line" || type === "all") {
-      _safeSetPaint("lines-layer", "line-width",
-        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.lineLineWidth]);
+      App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-width",
+        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.lineLineWidth]); });
     }
     if (type === "route" || type === "all") {
-      _safeSetPaint("routes-layer", "line-width",
-        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.routeLineWidth]);
+      App.lineStyleLayerIds("route").forEach(function (lid) { _safeSetPaint(lid, "line-width",
+        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.routeLineWidth]); });
     }
     if (type === "polygon" || type === "all") {
       _safeSetPaint("polygons-outlines-layer", "line-width",

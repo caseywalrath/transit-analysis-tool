@@ -717,4 +717,76 @@
   App.objToMap = objToMap;
   App.nestedMapToObj = nestedMapToObj;
   App.nestedObjToMap = nestedObjToMap;
+
+  // ---- Per-feature line style (docs/feature-appearance-plan.md Phase 3) ----
+  // Drawn Lines/Routes render in THREE layers over one source, one per
+  // properties._lineStyle value, because MapLibre's line-dasharray cannot be a
+  // data expression. The solid layer keeps the historical id. Never reference
+  // "lines-layer"/"routes-layer" alone for hit-testing — use these helpers.
+  var LINE_STYLES = ["solid", "dashed", "dotted"];
+  var LINE_STYLE_LAYERS = {
+    line:  ["lines-layer",  "lines-layer-dashed",  "lines-layer-dotted"],
+    route: ["routes-layer", "routes-layer-dashed", "routes-layer-dotted"]
+  };
+  // Dash arrays are in line-width units. Dotted = zero-length dash + round cap.
+  var LINE_STYLE_DASH = { dashed: [4, 2.5], dotted: [0, 2] };
+
+  function normalizeLineStyle(v) {
+    return (v === "dashed" || v === "dotted") ? v : "solid";
+  }
+  // MapLibre filter for one style layer. The solid filter catches absent,
+  // "", "solid" and any unknown value, so a feature can never vanish.
+  function lineStyleFilter(style) {
+    if (style === "dashed" || style === "dotted") return ["==", ["get", "_lineStyle"], style];
+    return ["!", ["in", ["coalesce", ["get", "_lineStyle"], ""], ["literal", ["dashed", "dotted"]]]];
+  }
+  function lineStyleLayerIds(type) {
+    if (type === "line" || type === "route") return LINE_STYLE_LAYERS[type].slice();
+    return LINE_STYLE_LAYERS.line.concat(LINE_STYLE_LAYERS.route);
+  }
+  // "line" | "route" | null for a MapLibre layer id.
+  function lineStyleLayerType(layerId) {
+    if (LINE_STYLE_LAYERS.line.indexOf(layerId) >= 0) return "line";
+    if (LINE_STYLE_LAYERS.route.indexOf(layerId) >= 0) return "route";
+    return null;
+  }
+  // Creates the three style layers for a line/route source (call once, when
+  // the source is first added). paint is the solid layer's paint object.
+  function addLineStyleLayers(map, type, sourceId, paint) {
+    LINE_STYLE_LAYERS[type].forEach(function (id, i) {
+      var style = LINE_STYLES[i];
+      var p = {};
+      for (var k in paint) p[k] = paint[k];
+      var spec = { id: id, type: "line", source: sourceId, filter: lineStyleFilter(style), paint: p };
+      if (LINE_STYLE_DASH[style]) p["line-dasharray"] = LINE_STYLE_DASH[style];
+      if (style === "dotted") spec.layout = { "line-cap": "round" };
+      map.addLayer(spec);
+    });
+  }
+
+  // Per-feature appearance overrides (color is copied separately by callers).
+  // Used by Duplicate (Decision 5): copy every override, never _mergedFrom.
+  var APPEARANCE_OVERRIDE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth",
+    "_offset", "_offsetManual", "_lineStyle", "_bufferRadius"];
+  function copyAppearanceOverrides(srcProps, dstProps) {
+    if (!srcProps || !dstProps) return dstProps;
+    APPEARANCE_OVERRIDE_KEYS.forEach(function (k) {
+      // An automatic overlap offset (no _offsetManual) belongs to the source's
+      // position, not its look — the copy gets its own from the next recompute.
+      if ((k === "_offset" || k === "_offsetManual") && !srcProps._offsetManual) return;
+      if (srcProps[k] !== undefined && srcProps[k] !== null) dstProps[k] = srcProps[k];
+    });
+    return dstProps;
+  }
+  App.APPEARANCE_OVERRIDE_KEYS = APPEARANCE_OVERRIDE_KEYS;
+  App.copyAppearanceOverrides = copyAppearanceOverrides;
+
+  App.LINE_STYLES = LINE_STYLES;
+  App.LINE_STYLE_LAYERS = LINE_STYLE_LAYERS;
+  App.LINE_STYLE_DASH = LINE_STYLE_DASH;
+  App.normalizeLineStyle = normalizeLineStyle;
+  App.lineStyleFilter = lineStyleFilter;
+  App.lineStyleLayerIds = lineStyleLayerIds;
+  App.lineStyleLayerType = lineStyleLayerType;
+  App.addLineStyleLayers = addLineStyleLayers;
 })();

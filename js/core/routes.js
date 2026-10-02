@@ -228,12 +228,9 @@
     // Saved routes (solid teal line)
     if (!map.getSource("routes")) {
       map.addSource("routes", { type: "geojson", data: routesGeoJSON() });
-      map.addLayer({
-        id: "routes-layer",
-        type: "line",
-        source: "routes",
-        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
-      });
+      // Three style layers (solid keeps the "routes-layer" id) — see App.addLineStyleLayers.
+      App.addLineStyleLayers(map, "route", "routes",
+        { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] });
     } else {
       map.getSource("routes").setData(routesGeoJSON());
     }
@@ -651,6 +648,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     // Own palette slot when no explicit color (see duplicateLine).
     if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();
     routes.push(copy);

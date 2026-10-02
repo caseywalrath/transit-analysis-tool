@@ -261,6 +261,27 @@
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
   };
 
+  // Per-feature line style for a line/route (docs/feature-appearance-plan.md
+  // Phase 3). style: "dashed" | "dotted"; "solid"/""/null clears the override.
+  // One undo step, re-render, save, panel refresh. Returns false if invalid.
+  App.setFeatureLineStyle = function (featureType, featureIndex, style) {
+    if (featureType !== "line" && featureType !== "route") return false;
+    var arr = featureType === "line" ? App.lines : App.routes;
+    var f = arr && arr[featureIndex];
+    if (!f) return false;
+    var next = App.normalizeLineStyle(style);
+    var cur = App.normalizeLineStyle(f.properties._lineStyle);
+    if (next === cur && (next !== "solid" || f.properties._lineStyle === undefined)) return true;
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    if (next === "solid") delete f.properties._lineStyle;
+    else f.properties._lineStyle = next;
+    rerenderForType(featureType);
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    refreshFeaturePanel();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    return true;
+  };
+
   // Type-wide color from the Layers tab (nc = a hex color, or null/"" for
   // Automatic). Last action wins: every feature of the type drops its own
   // color so it inherits the new setting. One undo step covers all of it.
