@@ -654,7 +654,7 @@
   var TYPE_LABEL = { point: "Point", line: "Line", route: "Route", polygon: "Polygon" };
   // Per-feature appearance overrides a surviving line inherits from a route
   // primary (the cascade's per-feature half — see layers-panel.js).
-  var APPEARANCE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth", "_bufferRadius", "_offset", "_offsetManual"];
+  var APPEARANCE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth", "_bufferRadius", "_offset", "_offsetManual", "_lineStyle"];
 
   function arrayFor(type) {
     return { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[type] || [];

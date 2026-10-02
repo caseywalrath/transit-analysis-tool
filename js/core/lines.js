@@ -152,12 +152,9 @@
     // Saved lines (solid)
     if (!map.getSource("lines")) {
       map.addSource("lines", { type: "geojson", data: linesGeoJSON() });
-      map.addLayer({
-        id: "lines-layer",
-        type: "line",
-        source: "lines",
-        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
-      });
+      // Three style layers (solid keeps the "lines-layer" id) — see App.addLineStyleLayers.
+      App.addLineStyleLayers(map, "line", "lines",
+        { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] });
     } else {
       map.getSource("lines").setData(linesGeoJSON());
     }
@@ -383,6 +380,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     // A copy with no explicit color needs its own palette slot (array position
     // would drift whenever an earlier line is deleted).
     if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();

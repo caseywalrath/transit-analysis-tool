@@ -395,6 +395,8 @@
 
     // ---- Hover cursor management (when not in draw mode) ----
     map.on("mousemove", function (e) {
+      // The name tooltip is hidden while drawing, dragging or vertex-editing.
+      if ((App.drawMode || editState) && typeof App.hideHoverTooltip === "function") App.hideHoverTooltip();
       if (App.drawMode) return;
       // Don't change cursor during active drags
       if (editState && (editState.type === "point-drag" || editState.type === "vertex-drag")) return;
@@ -407,14 +409,14 @@
           return;
         }
         // Check if cursor is over the currently-edited feature → show insert cursor
-        var editFeatLayers = ["lines-layer", "routes-layer", "polygons-fill", "polygons-outlines"];
+        var editFeatLayers = App.lineStyleLayerIds().concat(["polygons-fill", "polygons-outlines"]);
         var editFeatHits = safeQuery(e.point, editFeatLayers);
         if (editFeatHits.length > 0) {
           var ef = editFeatHits[0];
           var efLid = ef.layer.id;
           var efIdx = -1;
-          if (efLid === "lines-layer" && editState.featureType === "line") efIdx = findLineIndex(ef);
-          else if (efLid === "routes-layer" && editState.featureType === "route") efIdx = findRouteIndex(ef);
+          if (App.lineStyleLayerType(efLid) === "line" && editState.featureType === "line") efIdx = findLineIndex(ef);
+          else if (App.lineStyleLayerType(efLid) === "route" && editState.featureType === "route") efIdx = findRouteIndex(ef);
           else if ((efLid === "polygons-fill" || efLid === "polygons-outlines") && editState.featureType === "polygon") efIdx = findPolygonIndex(ef);
           if (efIdx === editState.featureIndex) {
             // Polygon: crosshair only on outline (edge), not fill interior
@@ -441,15 +443,15 @@
       }
 
       // Check lines, routes, and polygons
-      var featureHits = safeQuery(e.point, ["lines-layer", "routes-layer", "polygons-fill"]);
+      var featureHits = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
       if (featureHits.length > 0) {
         map.getCanvas().style.cursor = "pointer";
         var hit = featureHits[0];
         var lid = hit.layer.id;
-        if (lid === "lines-layer") {
+        if (App.lineStyleLayerType(lid) === "line") {
           var lIdx = findLineIndex(hit);
           if (lIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("line", lIdx, e.lngLat);
-        } else if (lid === "routes-layer") {
+        } else if (App.lineStyleLayerType(lid) === "route") {
           var rIdx = findRouteIndex(hit);
           if (rIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("route", rIdx, e.lngLat);
         } else if (lid === "polygons-fill") {
@@ -486,6 +488,7 @@
 
     // ---- Mousedown: start point drag or vertex drag ----
     map.on("mousedown", function (e) {
+      if (typeof App.hideHoverTooltip === "function") App.hideHoverTooltip();
       if (App.drawMode) return;
       if (e.originalEvent && e.originalEvent.button === 2) return; // right-click handled by contextmenu
 
@@ -697,12 +700,12 @@
         if (editHits.length > 0) return;
 
         // Check if click is on a line/route/polygon (same or different feature)
-        var featureHits = safeQuery(e.point, ["lines-layer", "routes-layer", "polygons-fill", "polygons-outlines-layer"]);
+        var featureHits = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill", "polygons-outlines-layer"]));
         if (featureHits.length > 0) {
           var hit = featureHits[0];
           var layerId = hit.layer.id;
 
-          if (layerId === "lines-layer") {
+          if (App.lineStyleLayerType(layerId) === "line") {
             var lineIdx = findLineIndex(hit);
             if (lineIdx >= 0) {
               if (lineIdx === editState.featureIndex && editState.featureType === "line") {
@@ -713,7 +716,7 @@
               }
               return;
             }
-          } else if (layerId === "routes-layer") {
+          } else if (App.lineStyleLayerType(layerId) === "route") {
             var routeIdx = findRouteIndex(hit);
             if (routeIdx >= 0) {
               if (routeIdx === editState.featureIndex && editState.featureType === "route") {
@@ -763,7 +766,7 @@
         return;
       }
 
-      var linePolyHits = safeQuery(e.point, ["lines-layer", "routes-layer", "polygons-fill"]);
+      var linePolyHits = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
       if (linePolyHits.length === 0) {
         // Check buffer areas — clicking a buffer locks the associated feature
         var bufHits = safeQuery(e.point, ["buffers-fill", "line-buffers-fill", "route-buffers-fill"]);
@@ -790,10 +793,10 @@
 
       var hit2 = linePolyHits[0];
       var layerId2 = hit2.layer.id;
-      if (layerId2 === "lines-layer") {
+      if (App.lineStyleLayerType(layerId2) === "line") {
         var lineIdx2 = findLineIndex(hit2);
         if (lineIdx2 >= 0) enterVertexEditMode("line", lineIdx2);
-      } else if (layerId2 === "routes-layer") {
+      } else if (App.lineStyleLayerType(layerId2) === "route") {
         var routeIdx2 = findRouteIndex(hit2);
         if (routeIdx2 >= 0) enterVertexEditMode("route", routeIdx2);
       } else if (layerId2 === "polygons-fill") {
@@ -825,7 +828,7 @@
 
       // Priority 2: feature hit → show attributes context menu
       var stHits = safeQuery(e.point, ["points-layer"]);
-      var fHits  = safeQuery(e.point, ["lines-layer", "routes-layer", "polygons-fill"]);
+      var fHits  = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
       var hit    = (stHits.length ? stHits : fHits)[0];
       if (!hit) return;
 
@@ -834,8 +837,8 @@
       var featureType  = null;
       var featureIndex = -1;
       if      (layerId === "points-layer") { featureType = "point";  featureIndex = findPointIndex(hit); }
-      else if (layerId === "lines-layer")    { featureType = "line";     featureIndex = findLineIndex(hit); }
-      else if (layerId === "routes-layer")   { featureType = "route";    featureIndex = findRouteIndex(hit); }
+      else if (App.lineStyleLayerType(layerId) === "line")    { featureType = "line";     featureIndex = findLineIndex(hit); }
+      else if (App.lineStyleLayerType(layerId) === "route")   { featureType = "route";    featureIndex = findRouteIndex(hit); }
       else if (layerId === "polygons-fill")  { featureType = "polygon";  featureIndex = findPolygonIndex(hit); }
       if (featureType === null || featureIndex < 0) return;
 

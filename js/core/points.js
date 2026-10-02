@@ -226,6 +226,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     points.push(copy);
     rebuildBuffers(bufferRadiusMiles);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

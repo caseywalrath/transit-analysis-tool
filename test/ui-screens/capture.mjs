@@ -447,6 +447,45 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_attr-popup", "fail", e.message);
   }
 
+  // ---- Shared Appearance popover (docs/feature-appearance-plan.md Phase 1) ----
+  try {
+    await page.evaluate(() => {
+      const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;
+      window.App.openAppearancePopup(icon, "route", 0, {});
+    });
+    await page.locator("#fp-appearance-popover").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#fp-appearance-popover", join(OUT_DIR, theme + "_appearance-popover.png"), theme + "_appearance-popover");
+    await page.evaluate(() => window.App.closeAppearancePopup());
+  } catch (e) {
+    record(theme + "_appearance-popover", "fail", e.message);
+  }
+
+  // ---- Line style control + dashed/dotted lines (Phase 3) ----
+  try {
+    await page.evaluate(() => {
+      const A = window.App;
+      if (A.lines[0]) A.lines[0].properties._lineStyle = "dashed";
+      if (A.routes[0]) A.routes[0].properties._lineStyle = "dotted";
+      A.renderLineLayers(); A.renderRouteLayers();
+      const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;
+      A.openAppearancePopup(icon, A.routes[0] ? "route" : "line", 0, {});
+    });
+    await page.locator("#fp-appearance-popover").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#fp-appearance-popover", join(OUT_DIR, theme + "_appearance-line-style.png"), theme + "_appearance-line-style");
+    await page.evaluate(() => window.App.closeAppearancePopup());
+    await shootPage(page, join(OUT_DIR, theme + "_line-styles-map.png"), theme + "_line-styles-map");
+    await page.evaluate(() => {
+      const A = window.App;
+      if (A.lines[0]) delete A.lines[0].properties._lineStyle;
+      if (A.routes[0]) delete A.routes[0].properties._lineStyle;
+      A.renderLineLayers(); A.renderRouteLayers();
+    });
+  } catch (e) {
+    record(theme + "_appearance-line-style", "fail", e.message);
+  }
+
   // ---- Module popups ----
   for (const id of MODULE_IDS) {
     const name = theme + "_" + id;
