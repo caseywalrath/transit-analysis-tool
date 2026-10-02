@@ -242,9 +242,15 @@
   // Builder pairing key, and copying it onto other routes/lines would
   // silently merge them into the same Service.
 
+  // Per-feature buffer radius lives on feature.properties._bufferRadius, not
+  // in attributes, hence target: "properties". An explicit 0 (no buffer) is a
+  // real value and copies; an inherited (absent) radius is "no value to copy".
+  var BUFFER_COPY_FIELD = { key: "_bufferRadius", label: "Buffer Radius", kind: "number", target: "properties" };
+
   var COPY_FIELDS_POINT = [
     { key: "group",            label: "Group",              kind: "text" },
     { key: "serviceAreaType",  label: "Service Area Type",  kind: "select" },
+    BUFFER_COPY_FIELD,
     { key: "stopId",           label: "Stop ID",             kind: "text" },
     { key: "associatedRoutes", label: "Associated Routes",   kind: "routearray" }
   ];
@@ -255,7 +261,8 @@
     { key: "avgSpeed",    label: "Avg Speed",    kind: "number" },
     { key: "runTime",     label: "Run Time",     kind: "number" },
     { key: "service",     label: "Time Bands",   kind: "bands" },
-    { key: "networkRole", label: "Walk Network", kind: "select" }
+    { key: "networkRole", label: "Walk Network", kind: "select" },
+    BUFFER_COPY_FIELD
   ];
   var COPY_FIELDS_POLYGON = [
     { key: "group", label: "Group", kind: "text" },
@@ -268,21 +275,33 @@
     polygon: COPY_FIELDS_POLYGON
   };
 
-  function copyFieldGetValue(fieldDef, attrs) {
-    return attrs ? attrs[fieldDef.key] : undefined;
+  // Field values are read/written on `container(fd, props)`: feature.properties
+  // for target:"properties" fields (_bufferRadius), else properties.attributes.
+  // The helpers below take the feature's PROPERTIES object.
+  function copyContainer(fieldDef, props, create) {
+    if (!props) return undefined;
+    if (fieldDef.target === "properties") return props;
+    if (create && !props.attributes) props.attributes = {};
+    return props.attributes;
+  }
+
+  function copyFieldGetValue(fieldDef, props) {
+    var c = copyContainer(fieldDef, props);
+    return c ? c[fieldDef.key] : undefined;
   }
 
   // Shared with Feature Merge (js/core/merge.js) so the two features agree on
   // what counts as "has a value".
-  function copyFieldHasValue(fieldDef, attrs) {
-    return App.mergeAttrs.fieldHasValue(fieldDef.kind, attrs ? attrs[fieldDef.key] : undefined);
+  function copyFieldHasValue(fieldDef, props) {
+    return App.mergeAttrs.fieldHasValue(fieldDef.kind, copyFieldGetValue(fieldDef, props));
   }
 
-  function copyFieldSetValue(fieldDef, attrs, val) {
+  function copyFieldSetValue(fieldDef, props, val) {
+    var c = copyContainer(fieldDef, props, true);
     if (fieldDef.kind === "bands" || fieldDef.kind === "routearray") {
-      attrs[fieldDef.key] = JSON.parse(JSON.stringify(val)); // deep clone per target
+      c[fieldDef.key] = JSON.parse(JSON.stringify(val)); // deep clone per target
     } else {
-      attrs[fieldDef.key] = val;
+      c[fieldDef.key] = val;
     }
   }
 
@@ -330,13 +349,13 @@
     return targets;
   }
 
-  function buildCopyAttrChecklist(sourceType, sourceAttrs) {
+  function buildCopyAttrChecklist(sourceType, sourceProps) {
     var wrap = document.createElement("div");
     wrap.className = "as-copy-attr-list";
     var fields = COPY_FIELD_DEFS[sourceType] || [];
 
     fields.forEach(function (fd) {
-      var has = copyFieldHasValue(fd, sourceAttrs);
+      var has = copyFieldHasValue(fd, sourceProps);
       var row = document.createElement("label");
       row.className = "as-copy-attr-row" + (has ? "" : " as-copy-attr-disabled");
 
@@ -441,16 +460,15 @@
     return col;
   }
 
-  function computeOverwriteWarning(checkedFieldDefs, sourceAttrs, targets) {
+  function computeOverwriteWarning(checkedFieldDefs, sourceProps, targets) {
     if (!checkedFieldDefs.length || !targets.length) return null;
     var affectedLabels = [];
     var affectedTargetKeys = {};
     checkedFieldDefs.forEach(function (fd) {
-      if (!copyFieldHasValue(fd, sourceAttrs)) return; // blank source → nothing will be written for this field
+      if (!copyFieldHasValue(fd, sourceProps)) return; // blank source → nothing will be written for this field
       var anyConflict = false;
       targets.forEach(function (t) {
-        var tAttrs = (t.feat.properties && t.feat.properties.attributes) || {};
-        if (copyFieldHasValue(fd, tAttrs)) {
+        if (copyFieldHasValue(fd, t.feat.properties)) {
           anyConflict = true;
           affectedTargetKeys[t.type + ":" + t.idx] = true;
         }
@@ -469,7 +487,6 @@
   }
 
   function buildCopyModalContent(sourceType, sourceIdx, sourceFeat) {
-    var sourceAttrs = sourceFeat.properties.attributes || {};
     var wrap = document.createElement("div");
 
     var columns = document.createElement("div");
@@ -481,7 +498,7 @@
     attrTitle.className = "rf-section-title";
     attrTitle.textContent = "Attributes to copy";
     attrCol.appendChild(attrTitle);
-    attrCol.appendChild(buildCopyAttrChecklist(sourceType, sourceAttrs));
+    attrCol.appendChild(buildCopyAttrChecklist(sourceType, sourceFeat.properties));
 
     var targetCol = document.createElement("div");
     targetCol.className = "as-copy-col";
@@ -510,7 +527,6 @@
     var sourceType = _copySource.type, sourceIdx = _copySource.idx;
     var sourceFeat = copySourceArray(sourceType)[sourceIdx];
     if (!sourceFeat) { closeCopyModal(); return; }
-    var sourceAttrs = sourceFeat.properties.attributes || {};
     var fieldDefs = COPY_FIELD_DEFS[sourceType] || [];
 
     var checkedFieldDefs = [];
@@ -531,7 +547,7 @@
 
     var warnEl = el("asCopyWarning");
     if (warnEl) {
-      var summary = computeOverwriteWarning(checkedFieldDefs, sourceAttrs, checkedTargets);
+      var summary = computeOverwriteWarning(checkedFieldDefs, sourceFeat.properties, checkedTargets);
       if (summary) {
         warnEl.textContent = summary.message;
         warnEl.style.display = "";
@@ -582,7 +598,6 @@
     var sourceFeat = copySourceArray(sourceType)[sourceIdx];
     var modal = el("asCopyModal");
     if (!sourceFeat || !modal) { closeCopyModal(); return; }
-    var sourceAttrs = sourceFeat.properties.attributes || {};
     var fieldDefs = COPY_FIELD_DEFS[sourceType] || [];
 
     var checkedFieldDefs = [];
@@ -598,7 +613,7 @@
       var t = cb.getAttribute("data-type");
       var i = parseInt(cb.getAttribute("data-idx"), 10);
       var feat = copySourceArray(t)[i];
-      if (feat) targets.push(feat);
+      if (feat) targets.push({ type: t, feat: feat });
     });
 
     if (!checkedFieldDefs.length || !targets.length) return;
@@ -606,13 +621,15 @@
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
 
     var touchedServiceAreaType = false;
-    targets.forEach(function (feat) {
+    var touchedBufferTypes = {};
+    targets.forEach(function (tg) {
+      var feat = tg.feat;
       if (!feat.properties.attributes) feat.properties.attributes = {};
-      var attrs = feat.properties.attributes;
       checkedFieldDefs.forEach(function (fd) {
-        if (!copyFieldHasValue(fd, sourceAttrs)) return; // blank source — skip, never overwrite with emptiness
-        copyFieldSetValue(fd, attrs, copyFieldGetValue(fd, sourceAttrs));
+        if (!copyFieldHasValue(fd, sourceFeat.properties)) return; // blank source — skip, never overwrite with emptiness
+        copyFieldSetValue(fd, feat.properties, copyFieldGetValue(fd, sourceFeat.properties));
         if (fd.key === "serviceAreaType") touchedServiceAreaType = true;
+        if (fd.key === "_bufferRadius") touchedBufferTypes[tg.type] = true;
       });
     });
 
@@ -624,12 +641,20 @@
       if (typeof App.refreshBuffers === "function") App.refreshBuffers();
     }
 
+    // _bufferRadius changes the study-area geometry: rebuild the touched
+    // types' buffers (the copy source's own type is irrelevant — a Line source
+    // can write onto Routes).
+    var touchedBuffer = Object.keys(touchedBufferTypes).length > 0;
+    if (touchedBuffer && typeof App.rebuildBuffersForType === "function") {
+      Object.keys(touchedBufferTypes).forEach(function (t) { App.rebuildBuffersForType(t); });
+    }
+
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
     renderAll({ preserveSelection: true });
     closeCopyModal();
 
-    if (touchedServiceAreaType && typeof App.notifyProject === "function") App.notifyProject();
+    if ((touchedServiceAreaType || touchedBuffer) && typeof App.notifyProject === "function") App.notifyProject();
   }
 
   /* ---- Cell builders ---- */
@@ -760,6 +785,7 @@
       { label: "" },
       { label: "Name" },
       { label: "Service", title: "Service area type (Circular buffer or Walkshed)" },
+      { label: "Buffer",  title: "Buffer radius (mi). Muted = the type default from Feature Settings; \u00d7 clears an override. Disabled for walkshed points.", cls: "as-col-buffer" },
       { label: "ID",     title: "Stop ID" },
       { label: "Routes", title: "Associated routes / lines" },
       { label: "",       cls: "as-col-copy", title: "Copy attributes" }
@@ -792,6 +818,7 @@
         },
         { title: "Circular buffer or Walkshed", labels: { "": "Buffer", "walkshed": "Walkshed" } }
       ));
+      appendCell(row, App.buildBufferRadiusControl("point", feat), "as-col-buffer");
       appendCell(row, buildTextCell(
         function () { return attrs.stopId; },
         function (v) {
@@ -832,6 +859,7 @@
       { label: "RunT",      cls: "as-col-num", title: "Run time (minutes, one-way / loop)" },
       { label: "Bands",     cls: "as-col-narrow", title: "Time bands — Weekday · Saturday · Sunday counts" },
       { label: "Net",       cls: "as-col-narrow", title: "Walk network role (Lines only — see the Walk network section of the Attributes popup)" },
+      { label: "Buffer",    cls: "as-col-buffer", title: "Buffer radius (mi). Muted = the type default from Feature Settings; \u00d7 clears an override." },
       { label: "",          cls: "as-col-copy", title: "Copy attributes" }
     ]);
     hdr.classList.add(gridClass);
@@ -913,6 +941,7 @@
       } else {
         appendCell(row, "—", "as-col-narrow as-cell-muted");
       }
+      appendCell(row, App.buildBufferRadiusControl(featureType, feat), "as-col-buffer");
       appendCell(row, buildCopyButton(featureType, idx, feat), "as-col-copy");
 
       container.appendChild(row);

@@ -6,7 +6,9 @@
 // icon, the Attributes pop-up swatch, the Layers-tab row swatch and the
 // Attribute Summary swatch; edits color / opacity / width / offset with the
 // muted-default + x-clear semantics; takes one undo step per gesture; and the
-// old Attributes override-icon strip is gone.
+// old Attributes override-icon strip is gone. Phase 2: per-feature buffer
+// radius lives in the Attributes popup's Study area section, the Attribute
+// Summary Buffer column and Copy Attributes (not the Layers drawer).
 //
 // USAGE (Playwright is not an npm dependency of this repo — see
 // test/ui-screens/capture.mjs for the one-time install):
@@ -324,12 +326,199 @@ async function main() {
     await page.waitForTimeout(200);
     const drawerInfo = await page.evaluate(`(() => { var d = ${rowOf("Line 2")}.parentElement.querySelector(".lp-style-drawer-feature");
       return d && d.style.display !== "none" ? Array.prototype.map.call(d.querySelectorAll(".lp-style-label"), (x) => x.textContent) : null; })()`);
-    check("drawer rows: Opacity, Weight, Offset, Buffer", JSON.stringify(drawerInfo) === JSON.stringify(["Opacity", "Weight", "Offset", "Buffer"]), drawerInfo);
+    check("drawer rows: Opacity, Weight, Offset (Buffer moved to Attributes in Phase 2)", JSON.stringify(drawerInfo) === JSON.stringify(["Opacity", "Weight", "Offset"]), drawerInfo);
     await page.evaluate(`(() => { var d = ${rowOf("Line 2")}.parentElement.querySelector(".lp-style-drawer-feature");
       var r = Array.prototype.filter.call(d.querySelectorAll(".lp-style-row"), (x) => x.querySelector(".lp-style-label").textContent === "Weight")[0];
       var i = r.querySelector(".fp-scrub-input"); i.value = "2"; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
     check("drawer edit writes the same override", (await props(page, "line", 1))._lineWidth === 2);
     check("drawer edit is undoable (new in Phase 1)", await page.evaluate(() => { App.undo.undo(); return App.lines[1].properties._lineWidth === undefined; }));
+
+    // ================= PHASE 2: Study area / buffer radius =================
+    console.log("\n# Phase 2: buffer radius in the Attributes popup");
+    await page.click('.fp-tab-btn[data-fptab="features"]');
+    await loadFixture(page);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      window.__p2pushes = 0; window.__notifies = 0; window.__rebuilds = 0;
+      var op = App.undo.push; App.undo.push = function () { window.__p2pushes++; return op.apply(this, arguments); };
+      var on = App.notifyProject; App.notifyProject = function () { window.__notifies++; return on.apply(this, arguments); };
+      var or = App.rebuildBuffers; App.rebuildBuffers = function () { window.__rebuilds++; return or.apply(this, arguments); };
+      App.undo.__restore = function () { App.undo.push = op; App.notifyProject = on; App.rebuildBuffers = or; };
+    });
+    const counters = () => page.evaluate(() => ({ pushes: window.__p2pushes, notifies: window.__notifies, rebuilds: window.__rebuilds }));
+    const resetCounters = () => page.evaluate(() => { window.__p2pushes = 0; window.__notifies = 0; window.__rebuilds = 0; });
+    const area0 = () => page.evaluate(() => App.buffers[0] ? turf.area(App.buffers[0]) : 0);
+    const ATTR = "#fp-attr-popup";
+    const bufCtl = () => page.locator(ATTR + " .fp-buffer-ctl");
+    const sections = () => page.evaluate((a) => Array.prototype.map.call(document.querySelectorAll(a + " .fp-attr-section"), (x) => x.textContent), ATTR);
+
+    await page.evaluate(() => App.openAttrPopup("point", 0, App.points[0]));
+    await page.waitForTimeout(200);
+    check("point popup has a Study area section", (await sections()).indexOf("Study area") >= 0, await sections());
+    check("Buffer control shows the type default, muted (inherited)", await page.evaluate((a) => {
+      var c = document.querySelector(a + " .fp-buffer-ctl");
+      return !!c && c.classList.contains("is-inherited") && parseFloat(c.querySelector(".fp-scrub-input").value) === App.featureSettings.bufferRadius;
+    }, ATTR));
+    check("x is hidden until an override exists", await page.evaluate((a) => document.querySelector(a + " .fp-buffer-ctl .lp-style-clear").style.display === "none", ATTR));
+
+    const before = await area0();
+    await resetCounters();
+    const inp = bufCtl().locator(".fp-scrub-input");
+    await inp.fill("1"); await inp.press("Tab");
+    await page.waitForTimeout(150);
+    p = await props(page, "point", 0);
+    check("typing writes properties._bufferRadius (not attributes)", p._bufferRadius === 1 && p.attributes._bufferRadius === undefined && p.attributes.bufferRadius === undefined, p);
+    const after = await area0();
+    check("the point's buffer was rebuilt at the new radius", after > before * 1.5 || (before === 0 && after > 0), { before, after });
+    let c = await counters();
+    check("a typed change = one undo snapshot, one notifyProject", c.pushes === 1 && c.notifies === 1, c);
+    check("control is no longer muted and x is shown", await page.evaluate((a) => { var e = document.querySelector(a + " .fp-buffer-ctl"); return !e.classList.contains("is-inherited") && e.querySelector(".lp-style-clear").style.display !== "none"; }, ATTR));
+
+    // Drag-scrub: many ticks, ONE notify + ONE undo step, flushed on mouseup.
+    await resetCounters();
+    const ibox = await inp.boundingBox();
+    await page.mouse.move(ibox.x + ibox.width / 2, ibox.y + ibox.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(ibox.x + ibox.width / 2 + i * 9, ibox.y + ibox.height / 2);
+    c = await counters();
+    check("during the drag buffers rebuild live but modules are NOT notified", c.rebuilds >= 2 && c.notifies === 0, c);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    c = await counters();
+    check("drag end: exactly one notifyProject and one undo snapshot", c.notifies === 1 && c.pushes === 1, c);
+    p = await props(page, "point", 0);
+    check("drag changed the radius", p._bufferRadius !== 1 && p._bufferRadius > 1, p._bufferRadius);
+
+    // x clears; undo restores
+    await resetCounters();
+    await bufCtl().locator(".lp-style-clear").click();
+    await page.waitForTimeout(100);
+    p = await props(page, "point", 0);
+    check("x clears the override", p._bufferRadius === undefined, p);
+    c = await counters();
+    check("clear = one undo snapshot, one notify", c.pushes === 1 && c.notifies === 1, c);
+    await page.evaluate(() => App.undo.undo());
+    check("undo restores the cleared override", (await props(page, "point", 0))._bufferRadius > 1);
+    await page.evaluate(() => App.undo.undo());
+    await page.evaluate(() => App.undo.undo());
+
+    // Walkshed point: disabled with a note
+    console.log("\n# Phase 2: walkshed disables the control");
+    await page.evaluate(() => { App.closeAttrPopup(); App.openAttrPopup("point", 0, App.points[0]); });
+    await page.waitForTimeout(200);
+    check("enabled for a circular-buffer point; note hidden", await page.evaluate((a) => {
+      var c = document.querySelector(a + " .fp-buffer-ctl");
+      return !c.querySelector(".fp-scrub-input").disabled && c.querySelector(".fp-buffer-note").style.display === "none";
+    }, ATTR));
+    await page.locator(ATTR + " select.fp-attr-input").first().selectOption("walkshed");
+    await page.waitForTimeout(200);
+    const wsState = await page.evaluate((a) => {
+      var c = document.querySelector(a + " .fp-buffer-ctl");
+      var note = c.querySelector(".fp-buffer-note");
+      return { disabled: c.querySelector(".fp-scrub-input").disabled, btns: Array.prototype.every.call(c.querySelectorAll(".fp-scrub-btn"), (b) => b.disabled), note: note.style.display !== "none" && /Walkshed/.test(note.textContent) };
+    }, ATTR);
+    check("walkshed point: control disabled, with a note", wsState.disabled && wsState.btns && wsState.note, wsState);
+    await page.locator(ATTR + " select.fp-attr-input").first().selectOption("");
+    await page.waitForTimeout(200);
+    check("back to circular buffer: control re-enabled", await page.evaluate((a) => !document.querySelector(a + " .fp-buffer-ctl .fp-scrub-input").disabled, ATTR));
+
+    // Lines and routes
+    console.log("\n# Phase 2: lines and routes");
+    for (const [t, i] of [["line", 0], ["route", 0]]) {
+      await page.evaluate(([t, i]) => { App.closeAttrPopup(); App.openAttrPopup(t, i, ({ line: App.lines, route: App.routes })[t][i]); }, [t, i]);
+      await page.waitForTimeout(200);
+      const secs = await sections();
+      check(t + " popup: Study area section with a Buffer control", secs.indexOf("Study area") >= 0 && (await bufCtl().count()) === 1, secs);
+      if (t === "route") check("route popup now has Transit service section too", secs[0] === "Transit service", secs);
+      const bi = bufCtl().locator(".fp-scrub-input");
+      await bi.fill("0.25"); await bi.press("Tab");
+      await page.waitForTimeout(150);
+      const pr = await props(page, t, i);
+      check(t + ": writes _bufferRadius, never attributes", pr._bufferRadius === 0.25 && pr.attributes._bufferRadius === undefined && pr.attributes.bufferRadius === undefined, pr);
+      const ba = await page.evaluate((t) => { var b = ({ line: App.lineBuffers, route: App.routeBuffers })[t][0]; return b ? turf.area(b) : 0; }, t);
+      check(t + ": buffer rebuilt (non-empty)", ba > 0, ba);
+    }
+    await page.evaluate(() => App.closeAttrPopup());
+
+    // Attribute Summary
+    console.log("\n# Phase 2: Attribute Summary Buffer column");
+    await page.evaluate(() => App.openAttributeSummary());
+    await page.waitForTimeout(500);
+    const asInfo = await page.evaluate(() => {
+      function cols(sel) { var h = document.querySelector(sel + " .as-row-header"); var r = document.querySelector(sel + " .as-row:not(.as-row-header)"); return h && r ? { header: h.children.length, row: r.children.length, label: Array.prototype.map.call(h.children, (x) => x.textContent) } : null; }
+      return { points: cols('[data-section="point"]'), lines: cols('[data-section="line"]'), routes: cols('[data-section="route"]') };
+    });
+    check("Points: Buffer header present, header/row column counts match", !!asInfo.points && asInfo.points.label.indexOf("Buffer") >= 0 && asInfo.points.header === asInfo.points.row, asInfo.points);
+    check("Lines: Buffer header present, header/row column counts match", !!asInfo.lines && asInfo.lines.label.indexOf("Buffer") >= 0 && asInfo.lines.header === asInfo.lines.row, asInfo.lines);
+    check("Routes: Buffer header present, header/row column counts match", !!asInfo.routes && asInfo.routes.label.indexOf("Buffer") >= 0 && asInfo.routes.header === asInfo.routes.row, asInfo.routes);
+    check("Summary cell shows the same line value (0.25)", await page.evaluate(() => {
+      var r = document.querySelector('[data-section="line"] .as-row[data-feature-index="0"]');
+      return parseFloat(r.querySelector(".as-col-buffer .fp-scrub-input").value) === 0.25 && !r.querySelector(".as-col-buffer .fp-buffer-ctl").classList.contains("is-inherited");
+    }));
+    // Buffer column geometry: header cell and row cell share an x position.
+    const align = await page.evaluate(() => {
+      var out = {};
+      ["point", "line"].forEach((t) => {
+        var sec = document.querySelector('[data-section="' + t + '"]');
+        var h = Array.prototype.filter.call(sec.querySelectorAll(".as-row-header .as-cell"), (x) => x.textContent === "Buffer")[0];
+        var c = sec.querySelector(".as-row:not(.as-row-header) .as-col-buffer");
+        var hr = h.getBoundingClientRect(), cr = c.getBoundingClientRect();
+        out[t] = { dx: Math.abs(hr.left - cr.left), dw: Math.abs(hr.width - cr.width), overflowX: c.scrollWidth - c.clientWidth };
+      });
+      return out;
+    });
+    check("Buffer header and cells are aligned and not clipped", ["point", "line"].every((t) => align[t].dx < 1 && align[t].dw < 1 && align[t].overflowX <= 1), align);
+    // Edit from the summary (point) -> same property
+    const sInp = page.locator('[data-section="point"] .as-row:not(.as-row-header) .as-col-buffer .fp-scrub-input').first();
+    await sInp.fill("0.75"); await sInp.press("Tab");
+    await page.waitForTimeout(400);
+    check("Attribute Summary edit writes the same _bufferRadius", (await props(page, "point", 0))._bufferRadius === 0.75);
+    // Walkshed point in the summary: disabled
+    await page.evaluate(() => { App.points[0].properties.attributes.serviceAreaType = "walkshed"; App.notifyProject(); });
+    await page.waitForTimeout(400);
+    check("Summary: walkshed point's Buffer control is disabled", await page.evaluate(() => document.querySelector('[data-section="point"] .as-row:not(.as-row-header) .as-col-buffer .fp-scrub-input').disabled));
+    await page.evaluate(() => { delete App.points[0].properties.attributes.serviceAreaType; App.notifyProject(); });
+    await page.waitForTimeout(300);
+
+    // Copy Attributes
+    console.log("\n# Phase 2: Copy Attributes carries _bufferRadius");
+    await page.evaluate(() => { App.lines[1].properties._bufferRadius = 1.5; App.rebuildBuffersForType("line"); App.notifyProject(); });
+    await page.waitForTimeout(400);
+    await page.locator('[data-section="line"] .as-row[data-feature-index="1"] .fp-sib').click();
+    await page.waitForTimeout(200);
+    const cbState = await page.evaluate(() => { var cb = document.querySelector('#asCopyModal .as-copy-attr-list input[data-field-key="_bufferRadius"]'); return cb ? { disabled: cb.disabled } : null; });
+    check("Copy modal lists Buffer Radius, enabled when the source has an override", !!cbState && cbState.disabled === false, cbState);
+    await page.evaluate(() => { document.querySelector('#asCopyModal .as-copy-attr-list input[data-field-key="_bufferRadius"]').click(); });
+    await page.evaluate(() => { var t = Array.prototype.filter.call(document.querySelectorAll('#asCopyTargetList input[type=checkbox]'), (x) => x.getAttribute("data-type") === "route")[0]; t.click(); });
+    const routeBefore = await page.evaluate(() => turf.area(App.routeBuffers[0]));
+    await page.evaluate(() => { window.__notifies = 0; });
+    await page.click("#asCopyApplyBtn");
+    await page.waitForTimeout(400);
+    const rp = await props(page, "route", 0);
+    check("copy wrote _bufferRadius onto the Route target", rp._bufferRadius === 1.5, rp._bufferRadius);
+    check("copy rebuilt the route buffer and notified modules", (await page.evaluate(() => turf.area(App.routeBuffers[0]))) > routeBefore && (await counters()).notifies >= 1);
+    // Source with no override: disabled
+    await page.locator('[data-section="line"] .as-row[data-feature-index="1"] .fp-sib').click().catch(() => {});
+    await page.evaluate(() => { var m = document.getElementById("asCopyModal"); if (m) m.style.display = "none"; });
+    await page.evaluate(() => { delete App.lines[1].properties._bufferRadius; });
+    await page.evaluate(() => App.popup.close());
+    await page.evaluate(() => App.openAttributeSummary());
+    await page.waitForTimeout(400);
+    await page.locator('[data-section="line"] .as-row[data-feature-index="1"] .fp-sib').click();
+    await page.waitForTimeout(200);
+    check("no override on the source -> Buffer Radius disabled (no value to copy)", await page.evaluate(() => document.querySelector('#asCopyModal .as-copy-attr-list input[data-field-key="_bufferRadius"]').disabled));
+    await page.evaluate(() => { var m = document.getElementById("asCopyModal"); if (m) m.style.display = "none"; App.popup.close(); });
+
+    // Layers drawer: no Buffer row for points either
+    console.log("\n# Phase 2: Layers drawer has no Buffer row");
+    await page.click('.fp-tab-btn[data-fptab="layers"]');
+    await page.waitForTimeout(300);
+    const pointDrawer = await page.evaluate(`(() => { var lab = Array.prototype.slice.call(document.querySelectorAll("#fp-tab-layers .lp-row-label")).filter((x) => x.textContent === "P1")[0];
+      var row = lab.parentElement; row.querySelector(".lp-caret").click();
+      var d = row.parentElement.querySelector(".lp-style-drawer-feature");
+      return Array.prototype.map.call(d.querySelectorAll(".lp-style-label"), (x) => x.textContent); })()`);
+    check("point drawer: no Buffer row", pointDrawer.indexOf("Buffer") < 0 && pointDrawer.length > 0, pointDrawer);
+    await page.evaluate(() => App.undo.__restore && App.undo.__restore());
     // ================= END ASSERTIONS =================
   } finally {
     if (browser) await browser.close().catch(() => {});

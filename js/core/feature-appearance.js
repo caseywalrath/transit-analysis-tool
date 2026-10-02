@@ -8,7 +8,9 @@
 //    icon, the Attributes popup swatch, the Layers-tab feature row swatch and
 //    the Attribute Summary swatch.
 //  - App.buildFeatureOverrideRows(type, feature, opts) — the opacity / width /
-//    offset (/ buffer) override rows. The popover AND the Layers-tab per-feature
+//    offset override rows (buffer radius is NOT here: it is geometry, edited in
+//    the Attributes popup's Study area section via App.buildBufferRadiusControl).
+//    The popover AND the Layers-tab per-feature
 //    drawer both call this, so the "muted default until overridden, × clears"
 //    cascade logic lives in exactly one place.
 //
@@ -25,12 +27,6 @@
   var OPACITY_KEYS = { point: "pointOpacity", line: "lineOpacity", route: "routeOpacity" };
   var WIDTH_KEYS = { point: "pointLineWidth", line: "lineLineWidth", route: "routeLineWidth", polygon: "polygonLineWidth" };
   var WIDTH_LABELS = { point: "Size", line: "Weight", route: "Weight", polygon: "Width" };
-  var BUFFER_KEYS = { point: "bufferRadius", line: "lineBufferRadius", route: "routeBufferRadius" };
-  var REBUILD_FNS = {
-    point: function (v) { if (typeof App.rebuildBuffers === "function") App.rebuildBuffers(v); },
-    line: function (v) { if (typeof App.rebuildLineBuffers === "function") App.rebuildLineBuffers(v); },
-    route: function (v) { if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(v); }
-  };
   var OFFSET_STEPS = [-6, -3, 0, 3, 6];
 
   function rerender(ft) {
@@ -119,7 +115,7 @@
     return row;
   }
 
-  // Returns an array of DOM rows. opts: { includeBuffer, onChange }.
+  // Returns an array of DOM rows. opts: { onChange }.
   // onChange fires after every write (value change or clear).
   function buildFeatureOverrideRows(type, feature, opts) {
     opts = opts || {};
@@ -198,33 +194,6 @@
           write(function (p) { delete p._offset; delete p._offsetManual; });
           var oCb = document.getElementById("offsetOverlap");
           if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") App.computeOverlapOffsets();
-        }
-      }, gesture));
-    }
-
-    // Buffer radius (opt-in: the Layers drawer still carries it until Phase 2
-    // moves it to the Attributes popup's "Study area" section).
-    if (opts.includeBuffer && BUFFER_KEYS[type]) {
-      var rebuild = function () {
-        var rb = REBUILD_FNS[type];
-        if (rb) rb(FS()[BUFFER_KEYS[type]] || 0);
-      };
-      rows.push(buildOverrideRow("Buffer", { values: App.BUFFER_RADIUS_STEPS || [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2], unit: "mi" }, {
-        hasOverride: function () { var p = props(); return !!p && p._bufferRadius != null; },
-        getValue: function () {
-          var p = props() || {};
-          if (p._bufferRadius != null) return p._bufferRadius;
-          return FS()[BUFFER_KEYS[type]] || 0;
-        },
-        setValue: function (v) {
-          var p = props(); if (!p) return;
-          p._bufferRadius = v; rebuild(); saveCache();
-          if (typeof opts.onChange === "function") opts.onChange();
-        },
-        clearValue: function () {
-          var p = props(); if (!p) return;
-          delete p._bufferRadius; rebuild(); saveCache();
-          if (typeof opts.onChange === "function") opts.onChange();
         }
       }, gesture));
     }

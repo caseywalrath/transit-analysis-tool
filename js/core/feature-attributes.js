@@ -26,15 +26,26 @@
     { id: "sunday",   label: "Sunday"   }
   ];
 
-  // Shared route/line fields — line mirrors route exactly
-  var ROUTE_FIELDS = [
+  // Transit-service fields shared by routes and lines (a Line can be attributed
+  // as a transit pattern too). Tagged with a section so the popup renders a
+  // "Transit service" header before them.
+  var TRANSIT_FIELDS = [
     { key: "group",     label: "Group",     type: "text",   placeholder: "e.g. Corridor A", groupPicker: true, hidden: true },
     { key: "direction", label: "Direction", type: "select", options: ["Both","NB","SB","EB","WB","Inbound","Outbound","Loop","CW","CCW"] },
     { key: "mode",      label: "Mode",      type: "select", options: ["Bus","BRT","Light Rail","Streetcar"] },
     { key: "serviceId", label: "Service",   type: "text",   placeholder: "e.g. Blue Line", servicePicker: true },
     { key: "avgSpeed",  label: "Avg speed", type: "number", unit: "mph", defaultValue: 14 },
     { key: "runTime",   label: "Run time",  type: "number", unit: "min", placeholder: "e.g. 45" }
-  ];
+  ].map(function (f) { f.section = "Transit service"; return f; });
+
+  // Per-feature buffer radius (docs/feature-appearance-plan.md Phase 2). It is
+  // study-area geometry, not appearance. Unlike every other field it lives on
+  // feature.properties._bufferRadius, NOT feature.properties.attributes — the
+  // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
+  // never touches `attributes`.
+  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area" };
+
+  var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
 
   // Fired when a Line's Walk network role changes (Not part of network ↔ Walk
   // connector). Stub in Phase 2 of docs/network-connectors-plan.md — Phase 4
@@ -43,29 +54,16 @@
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
 
-  // Returns a shallow copy of `fields` with `section` set on every entry, so
-  // the attributes popup renders a `.fp-attr-section` header before the first
-  // field of that section. Used to visually separate Lines' transit-route
-  // fields (which every Line inherits from Routes, even though most Lines in
-  // this app are NOT transit routes) from the Walk network field below.
-  function withSection(fields, section) {
-    return fields.map(function (f) {
-      var copy = {};
-      for (var k in f) copy[k] = f[k];
-      copy.section = section;
-      return copy;
-    });
-  }
-
   // Lines share every Route field (a Line can be attributed as a transit
   // pattern too) plus one Walk network field Routes never get — Routes
   // already follow existing streets, so "connect this to the walk network"
   // is meaningless for them. See docs/network-connectors-plan.md §2.
-  var LINE_FIELDS = withSection(ROUTE_FIELDS, "Transit service").concat([
+  var LINE_FIELDS = TRANSIT_FIELDS.concat([
     { key: "networkRole", label: "Walk network", type: "select", section: "Walk network",
       options: ["", "connector"],
       optionLabels: { "": "Not part of network", "connector": "Walk connector" },
-      onChange: onNetworkRoleChange }
+      onChange: onNetworkRoleChange },
+    BUFFER_FIELD
   ]);
 
   // Field definitions per feature type.
@@ -75,12 +73,13 @@
     line:  LINE_FIELDS,
     point: [
       { key: "group",            label: "Group",    type: "text", placeholder: "e.g. North Corridor", groupPicker: true, hidden: true },
-      { key: "serviceAreaType",  label: "Service area", type: "select",
+      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
+      { key: "associatedRoutes", label: "Routes"                                                 },
+      { key: "serviceAreaType",  label: "Service area", type: "select", section: "Study area",
         options: ["", "walkshed"],
         optionLabels: { "": "Circular buffer", "walkshed": "Walkshed" },
         onChange: onServiceAreaChange },
-      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
-      { key: "associatedRoutes", label: "Routes"                                                 }
+      BUFFER_FIELD
     ],
     polygon: [
       { key: "group",  label: "Group",  type: "text", placeholder: "e.g. Study Area", groupPicker: true, hidden: true },
@@ -112,7 +111,164 @@
   function onServiceAreaChange() {
     if (typeof App.ensurePointWalksheds === "function") App.ensurePointWalksheds();
     if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+    if (typeof App.refreshBufferRadiusControls === "function") App.refreshBufferRadiusControls();
     if (typeof App.notifyProject === "function") App.notifyProject();
+  }
+
+  /* ---- Buffer radius control (shared with Attribute Summary) ---- */
+  //
+  // App.buildBufferRadiusControl(type, feature, opts) -> element (with .refresh())
+  //   type: "point" | "line" | "route".  opts: { note: bool }
+  // Shows the type default (Feature Settings) muted until
+  // feature.properties._bufferRadius is set; the x clears the override. Reads
+  // and writes properties._bufferRadius only (never attributes). The feature is
+  // held as a stable {type, id} ref and resolved on every write.
+  //
+  // Timing: the buffers are rebuilt live on every tick (so the map follows a
+  // drag), but the undo snapshot, cache save and App.notifyProject() (which
+  // makes analysis modules mark themselves stale) happen once per GESTURE:
+  // one drag, one +/- click, one typed value. A click/typed change is flushed on
+  // the next tick; a drag is flushed on mouseup.
+  //
+  // A point flagged serviceAreaType "walkshed" has its buffer replaced by the
+  // walkshed (points.js rebuildBuffers), so the control is disabled for it.
+  var BUFFER_DEFAULT_KEYS = { point: "bufferRadius", line: "lineBufferRadius", route: "routeBufferRadius" };
+  var BUFFER_ARRAYS = { point: "points", line: "lines", route: "routes" };
+  var BUFFER_STEPS_FALLBACK = [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  var WALKSHED_NOTE = "Walkshed replaces the buffer";
+  var _bufferControls = [];
+
+  function typeDefaultBuffer(type) {
+    var v = (App.featureSettings || {})[BUFFER_DEFAULT_KEYS[type]];
+    return v != null ? v : 0;
+  }
+
+  // Rebuild one type's buffers at its type default (per-feature overrides are
+  // applied inside the rebuild functions).
+  function rebuildBuffersForType(type) {
+    var fn = { point: "rebuildBuffers", line: "rebuildLineBuffers", route: "rebuildRouteBuffers" }[type];
+    if (fn && typeof App[fn] === "function") App[fn](typeDefaultBuffer(type));
+  }
+  App.rebuildBuffersForType = rebuildBuffersForType;
+
+  function buildBufferRadiusControl(type, feature, opts) {
+    opts = opts || {};
+    var arr = App[BUFFER_ARRAYS[type]] || [];
+    var ref = App.featureRef(type, arr.indexOf(feature));
+    var wrap = document.createElement("div");
+    wrap.className = "fp-buffer-ctl";
+    if (!ref) return wrap;
+
+    function props() { var f = App.featureById(ref.type, ref.id); return f ? f.properties : null; }
+    function isWalkshed() {
+      var p = props();
+      return type === "point" && !!p && !!p.attributes && p.attributes.serviceAreaType === "walkshed";
+    }
+    function currentValue() {
+      var p = props();
+      return (p && p._bufferRadius != null) ? p._bufferRadius : typeDefaultBuffer(type);
+    }
+
+    var dirty = false, dragging = false, timer = null;
+    function flush() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!dirty) return;
+      dirty = false;
+      if (App.cache && typeof App.cache.save === "function") App.cache.save();
+      if (typeof App.notifyProject === "function") App.notifyProject();
+    }
+    function schedule() {
+      if (dragging || timer) return;
+      timer = setTimeout(flush, 0);
+    }
+    function pushUndo() {
+      if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    }
+
+    var scrubber = App.buildScrubber({
+      values: App.BUFFER_RADIUS_STEPS || BUFFER_STEPS_FALLBACK,
+      unit: "mi",
+      value: currentValue(),
+      onChange: function (v) {
+        var p = props(); if (!p || isWalkshed()) return;
+        if (!dirty) { pushUndo(); dirty = true; }
+        p._bufferRadius = v;
+        rebuildBuffersForType(type);
+        syncState();
+        schedule();
+      }
+    });
+    wrap.appendChild(scrubber);
+
+    // A drag spans mousedown..mouseup on the control; flush once at the end.
+    scrubber.addEventListener("mousedown", function () {
+      dragging = true;
+      var up = function () {
+        document.removeEventListener("mouseup", up, true);
+        dragging = false;
+        flush();
+      };
+      document.addEventListener("mouseup", up, true);
+    });
+
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "lp-style-clear";
+    clearBtn.title = "Clear override (use the default buffer radius)";
+    clearBtn.setAttribute("aria-label", "Clear buffer override");
+    clearBtn.textContent = "\u00d7";
+    clearBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var p = props(); if (!p || p._bufferRadius == null) return;
+      flush();
+      pushUndo();
+      delete p._bufferRadius;
+      rebuildBuffersForType(type);
+      scrubber.refresh(currentValue());
+      syncState();
+      dirty = true;
+      flush();
+    });
+    wrap.appendChild(clearBtn);
+
+    var note = null;
+    if (opts.note) {
+      note = document.createElement("span");
+      note.className = "fp-buffer-note";
+      note.textContent = WALKSHED_NOTE;
+      wrap.appendChild(note);
+    }
+
+    function syncState() {
+      var p = props();
+      var has = !!p && p._bufferRadius != null;
+      var ws = isWalkshed();
+      wrap.classList.toggle("is-inherited", !has);
+      wrap.classList.toggle("is-disabled", ws);
+      wrap.title = ws ? WALKSHED_NOTE : "";
+      clearBtn.style.display = (has && !ws) ? "" : "none";
+      Array.prototype.forEach.call(scrubber.querySelectorAll("input,button"), function (el) { el.disabled = ws; });
+      if (note) note.style.display = ws ? "" : "none";
+    }
+    wrap.refresh = function () {
+      scrubber.refresh(currentValue());
+      syncState();
+    };
+    syncState();
+    if (_bufferControls.length > 40) _bufferControls = _bufferControls.filter(function (c) { return c.isConnected; });
+    _bufferControls.push(wrap);
+    return wrap;
+  }
+  App.buildBufferRadiusControl = buildBufferRadiusControl;
+
+  // Re-sync every live control (e.g. after a point's Service area type changes).
+  App.refreshBufferRadiusControls = function () {
+    _bufferControls = _bufferControls.filter(function (c) { return c.isConnected; });
+    _bufferControls.forEach(function (c) { c.refresh(); });
+  };
+
+  function buildBufferField(field, feature, featureType) {
+    return { el: buildBufferRadiusControl(featureType, feature, { note: true }), unit: null };
   }
 
   /* ---- Field builders ---- */
@@ -806,6 +962,7 @@
   }
 
   function buildFieldInput(field, attrs, feature, featureType) {
+    if (field.type === "buffer-radius") return buildBufferField(field, feature, featureType);
     if (field.key === "associatedRoutes") return buildRouteBadge(attrs);
     if (field.type === "select")      return buildSelect(field, attrs);
     if (field.type === "checkboxes")  return buildCheckboxes(field, attrs);

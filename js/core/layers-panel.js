@@ -258,16 +258,16 @@
   }
 
   // ---- Per-feature override drawer (buildFeatureRow) ----
-  // The rows (opacity / width / offset / buffer) are built by
+  // The rows (opacity / width / offset) are built by
   // App.buildFeatureOverrideRows (js/core/feature-appearance.js) — the same
   // builder the Appearance popover uses, so the cascade logic lives once.
-  // The Buffer row stays here until Phase 2 of docs/feature-appearance-plan.md
-  // moves it to the Attributes popup.
+  // Per-feature buffer radius is NOT here: it is study-area geometry, edited
+  // from the Attributes popup / Attribute Summary (App.buildBufferRadiusControl).
   function buildFeatureOverrideDrawer(it) {
     var body = document.createElement("div");
     body.className = "lp-style-drawer lp-style-drawer-feature";
     if (!FEATURE_OVERRIDE_SPECS[it.type] || typeof App.buildFeatureOverrideRows !== "function") return body;
-    App.buildFeatureOverrideRows(it.type, it.feature, { includeBuffer: true }).forEach(function (r) {
+    App.buildFeatureOverrideRows(it.type, it.feature, {}).forEach(function (r) {
       body.appendChild(r);
     });
     return body;

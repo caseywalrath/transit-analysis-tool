@@ -1859,6 +1859,38 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   margin-bottom: 5px;
   min-height: 22px;
 }
+/* Per-feature buffer radius control (App.buildBufferRadiusControl): used in the
+   Attributes popup's "Study area" section and the Attribute Summary Buffer
+   column. Compact scrubber sizing, same as the Layers style drawers. */
+.fp-buffer-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+.fp-buffer-ctl .fp-scrubber { gap: 3px; }
+.fp-buffer-ctl .fp-scrub-btn { width: 16px; height: 16px; }
+.fp-buffer-ctl .fp-scrub-input,
+.module-popup-body .fp-buffer-ctl .fp-scrub-input {
+  width: 40px;
+  min-height: 0;
+  height: 22px;
+  padding: 2px 1px;
+  font-size: var(--text-xs);
+  text-align: center;
+  box-sizing: border-box;
+}
+.fp-buffer-ctl.is-inherited .fp-scrub-input { color: var(--muted); font-weight: var(--weight-medium); }
+.fp-buffer-ctl.is-disabled { opacity: 0.55; }
+.fp-buffer-ctl.is-disabled .fp-scrub-input,
+.fp-buffer-ctl.is-disabled .fp-scrub-btn { cursor: not-allowed; }
+.fp-buffer-note {
+  flex: 1 0 100%;
+  font-size: var(--text-2xs, 10px);
+  color: var(--muted);
+}
+
 /* Section header row (e.g. "Transit service" / "Walk network" on Lines) —
    visually separates field groups within one feature type's attribute set.
    See docs/network-connectors-plan.md §2. */
@@ -6268,6 +6300,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     24px            /* swatch */
     1.4fr           /* name */
     96px            /* service area */
+    116px           /* buffer radius */
     0.8fr           /* id */
     1fr             /* routes badge */
     24px;           /* copy attributes */
@@ -6284,6 +6317,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     68px            /* run time */
     84px            /* bands */
     84px            /* walk network role (lines only; "—" for routes) */
+    116px           /* buffer radius */
     24px;           /* copy attributes */
 }
 .as-grid-polygons {
@@ -6302,6 +6336,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 }
 
 .as-col-narrow  { }
+.as-col-buffer  { }
 .as-col-num     { }
 .as-col-check { justify-self: center; }
 .as-col-copy  { justify-self: center; }
