@@ -112,3 +112,15 @@ READMEs for one-time setup):
   startup sequencing, map-layer lifecycle. Run after a change to session
   persistence, IndexedDB/localStorage state, or anything else that only
   misbehaves with a real event loop.
+
+## Comment guard
+
+`test/comment-guard.mjs` proves an edit changed only comments and whitespace (`docs/comment-cleanup-plan.md` Phase 0). It compares each changed `.js`/`.mjs`/`.css`/`.html` file against a git revision: JS by token stream with comments dropped (acorn), CSS and HTML with comments stripped and whitespace collapsed. An added or deleted code file also fails.
+
+```
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs           # uncommitted work vs HEAD
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs HEAD~1    # the last commit
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs --self-test
+```
+
+The self-test confirms that a comment-only edit passes and that a one-character code change, a changed string containing `//`, a changed regex literal, a changed template literal, a CSS value change, a `/*` inside a CSS string and an HTML text change all fail.
