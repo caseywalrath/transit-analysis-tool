@@ -268,7 +268,7 @@ async function main() {
     const BR = "#fp-tab-layers .lp-gtfs-browser";
     check("browser collapsed by default", (await page.locator(BR).count()) === 0);
     const gtfsRow = page.locator("#fp-tab-layers .lp-row", { hasText: "GTFS routes" }).first();
-    await gtfsRow.locator(".lp-caret").click();
+    await gtfsRow.locator(".lp-gtfs-browse-btn").click();
     check("caret expands the browser", (await page.locator(BR).count()) === 1);
     check("routes listed in index order", eq(await page.locator(BR + " .lp-gtfs-route .lp-gtfs-title").evaluateAll((els) => els.map((e) => e.textContent)), ["10", "Blue Line", "Red", "Unassigned shapes"]));
     check("shape rows are lazy (none built yet)", (await page.locator(BR + " .lp-gtfs-shape").count()) === 0);

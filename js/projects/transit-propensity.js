@@ -648,11 +648,7 @@
 
       // Render choropleth + auto-show legend
       renderChoropleth(result);
-      App.popup.showFloatingWidget("tpi-legend", "projects/tpi-legend.html", {
-        position: "bottom-left",
-        width: 160,
-        title: "TPI Legend"
-      });
+      showTpiLegend();
 
       // Rebuild corridor dropdown (now has actual geos to pick from)
       buildCorridorDropdown();
@@ -779,7 +775,9 @@
     // yields tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
     App.choropleth.render({
       id: "tpi", features: features, valueProp: "tpiScore",
-      breaks: [1, 2, 3, 4], ramp: "blues", fillOpacity: 0.55,
+      breaks: [1, 2, 3, 4], ramp: "blues",
+      colors: App.resolveLayerColors ? App.resolveLayerColors("tpi") : null,
+      fillOpacity: 0.55,
       hoverHTML: tpiHoverHTML, beforeLayer: "buffers-fill"
     });
 
@@ -792,6 +790,45 @@
 
   function removeChoropleth() {
     App.choropleth.remove("tpi");
+  }
+
+  // The legend lists high score first (5 at top) while
+  // App.resolveLayerColors("tpi") runs low -> high (light -> dark), so the
+  // fill iterates the colors array reversed — get this backwards and the
+  // legend reads inverted against the map. Row 4's extra border (for
+  // visibility against a near-white swatch) is untouched — only .background
+  // is set here.
+  function fillTpiLegendColors() {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("tpi")) ||
+      ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"];
+    for (var i = 0; i < 5; i++) {
+      var sw = document.getElementById("tpiLegendSw" + i);
+      if (sw) sw.style.background = colors[colors.length - 1 - i] || colors[0];
+    }
+  }
+
+  // Shows (or re-shows) the tpi-legend widget and fills its swatch colors
+  // once the widget's DOM has actually mounted — showFloatingWidget is
+  // async on first creation (fetches the fragment) but synchronous when the
+  // widget already exists, so this handles both without forcing every
+  // caller to become async itself.
+  function showTpiLegend() {
+    var p = App.popup.showFloatingWidget("tpi-legend", "projects/tpi-legend.html", {
+      position: "bottom-left", width: 160, title: "TPI Legend"
+    });
+    if (p && typeof p.then === "function") p.then(fillTpiLegendColors);
+    else fillTpiLegendColors();
+  }
+
+  // Re-renders from the last result (cheap — no Census calls) so a palette
+  // change picked up from the Layers panel repaints instantly, and
+  // refreshes the legend swatches in place. No-op when nothing has been
+  // scored yet.
+  if (typeof App.registerLayerRepainter === "function") {
+    App.registerLayerRepainter("tpi", function () {
+      if (_lastResult) renderChoropleth(_lastResult);
+      fillTpiLegendColors();
+    });
   }
 
   function clearChoropleth() {
@@ -1051,7 +1088,7 @@
         if (map.getLayer("census-geos-fill"))  map.setLayoutProperty("census-geos-fill",  "visibility", vis);
         if (map.getLayer("census-geos-line"))  map.setLayoutProperty("census-geos-line",  "visibility", vis);
         if (hideCb.checked) App.popup.hideFloatingWidget("tpi-legend");
-        else                App.popup.showFloatingWidget("tpi-legend", "projects/tpi-legend.html", { position: "bottom-left", width: 160, title: "TPI Legend" });
+        else                showTpiLegend();
       });
     }
 
@@ -1277,9 +1314,7 @@
     if (restored.geos && restored.geos.length > 0) {
       renderChoropleth(restored);
       App.renderCensusOverlay(restored.geos);
-      App.popup.showFloatingWidget("tpi-legend", "projects/tpi-legend.html", {
-        position: "bottom-left", width: 160, title: "TPI Legend"
-      });
+      showTpiLegend();
     }
   }
 

@@ -1,0 +1,54 @@
+{
+  "classify-footway-tag": "footway",
+  "classify-footway-hwy-class": "footway",
+  "classify-path-hwy-class": "footway",
+  "classify-both": "both",
+  "classify-yes-as-both": "both",
+  "classify-left-one-side": "one-side",
+  "classify-right-one-side": "one-side",
+  "classify-no-as-none": "none",
+  "classify-none-as-none": "none",
+  "classify-separate-as-none": "none",
+  "classify-junk-value-unknown": "unknown",
+  "classify-absent-tag-unknown": "unknown",
+  "classify-empty-object-unknown": "unknown",
+  "coverage-stats-mixed": {
+    "roadKm": 0.44229600000054053,
+    "footwayKm": 0.12163140000089503,
+    "crossingCount": 1,
+    "byClass": {
+      "both": 0.22114800000027027,
+      "oneSide": 0,
+      "none": 0.1105739999997423,
+      "unknown": 0.11057400000052797
+    },
+    "pctTagged": 74.99999999991118,
+    "pctBoth": 50
+  },
+  "coverage-stats-empty": {
+    "roadKm": 0,
+    "footwayKm": 0,
+    "crossingCount": 0,
+    "byClass": {
+      "both": 0,
+      "oneSide": 0,
+      "none": 0,
+      "unknown": 0
+    },
+    "pctTagged": 0,
+    "pctBoth": 0
+  },
+  "coverage-stats-null-input": {
+    "roadKm": 0,
+    "footwayKm": 0,
+    "crossingCount": 0,
+    "byClass": {
+      "both": 0,
+      "oneSide": 0,
+      "none": 0,
+      "unknown": 0
+    },
+    "pctTagged": 0,
+    "pctBoth": 0
+  }
+}

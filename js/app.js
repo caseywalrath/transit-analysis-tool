@@ -284,6 +284,9 @@
     }
     // Keep the Layers tab current when features/analysis layers change.
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    // Re-apply the walk-network connector overlay if any Line's networkRole or
+    // geometry changed (cheap no-op when nothing did — see network-connectors.js).
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
   App.notifyProject = notifyProject;
 
@@ -1839,6 +1842,21 @@
     } else if (typeof App.cache !== "undefined" && App.cache.restore()) {
       App.setStatus("Session restored");
       notifyProject();
+    }
+
+    // The road network is too large for the session cache, so it lives in its
+    // own IndexedDB store and restores separately (and asynchronously) — see
+    // App.restoreCachedNetwork() in js/core/road-network.js. Runs after the
+    // session restore above so connectors and excluded ways are already
+    // registered and get re-applied by the rebuild it triggers. notifyProject()
+    // re-runs so modules gated on "is a network loaded" (Walkshed's Calculate
+    // button, Transit Travelshed's coverage warning) pick it up.
+    if (typeof App.restoreCachedNetwork === "function") {
+      App.restoreCachedNetwork().then(function (restored) {
+        if (restored) notifyProject();
+      }).catch(function (e) {
+        console.warn("Road network cache restore failed:", e);
+      });
     }
 
     // "Start fresh" link in view-only banner

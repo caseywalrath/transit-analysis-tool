@@ -158,6 +158,14 @@
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
       featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
+      networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
+      networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
+      networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
+      networkExcludedWayIds: (App.networkSettings && App.networkSettings.excludedWayIds) ? App.networkSettings.excludedWayIds.slice() : [],
+      // Layer color palette cascade (additive fields, docs/layer-color-customization-plan.md
+      // Phase 3 — absent on an old session, App.layerStyles/mapPalette keep their defaults).
+      layerStyles: App.layerStyles ? JSON.parse(JSON.stringify(App.layerStyles)) : {},
+      mapPalette: App.mapPalette || null,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
       lodesFileNames: App.lodesFileNames || [],
       projFileName: App.projFileName || "",
@@ -315,6 +323,42 @@
       });
     }
 
+    // 3a-2. Restore the network-connectors global snap tolerance (additive
+    // field — absent on an old session, App.networkSettings keeps its default).
+    if (App.networkSettings && state.networkSnapToleranceFt != null) {
+      App.networkSettings.snapToleranceFt = state.networkSnapToleranceFt;
+    }
+    // 3a-3. Restore the global crossing-penalty settings (additive fields,
+    // docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5 — absent on
+    // an old session, App.networkSettings keeps its 0 default).
+    if (App.networkSettings && state.networkCrossingMajorSec != null) {
+      App.networkSettings.crossingMajorSec = state.networkCrossingMajorSec;
+    }
+    if (App.networkSettings && state.networkCrossingMinorSec != null) {
+      App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
+    }
+    // 3a-3b. Restore user-excluded streets (docs/sidewalk-data-plan.md
+    // Phase 4 — additive field, absent on an old session leaves the
+    // exclusion set empty). Goes through the sanctioned write path
+    // (App.setExcludedWays), not a direct App.networkSettings poke, so
+    // road-network.js's private _excludedWays Set — the object it actually
+    // reads at buildGraph time — stays in sync. No base network is loaded
+    // yet at restore time, so this is a cheap no-op rebuild that simply
+    // primes the exclusion set for whenever a network is next loaded.
+    if (state.networkExcludedWayIds && typeof App.setExcludedWays === "function") {
+      App.setExcludedWays(state.networkExcludedWayIds);
+    }
+
+    // 3a-4. Restore the layer color palette cascade (additive fields,
+    // docs/layer-color-customization-plan.md Phase 3 — absent on an old
+    // session, App.layerStyles/mapPalette keep their defaults). Repainting
+    // happens once at the end of this function, after every module has had
+    // a chance to register its repainter.
+    if (state.layerStyles && typeof state.layerStyles === "object") {
+      App.layerStyles = JSON.parse(JSON.stringify(state.layerStyles));
+    }
+    if (state.mapPalette !== undefined) App.mapPalette = state.mapPalette || null;
+
     // 3b. Restore offset toggle (actual offset computed after render via auto-recompute hook)
     var offsetEl = document.getElementById("offsetOverlap");
     if (offsetEl && state.offsetOverlap) {
@@ -412,6 +456,12 @@
         }
       }
     }
+
+    // 10. Repaint any styled layers from the restored cascade (Phase 3 of
+    // docs/layer-color-customization-plan.md). Guarded with typeof — no
+    // module has registered a repainter yet until Phase 4, so this is a
+    // no-op today by design.
+    if (typeof App.repaintStyledLayers === "function") App.repaintStyledLayers();
   }
 
   // ---- Save (debounced) ----
@@ -788,22 +838,6 @@
       ctx.db.close();
     } catch (e) {
       console.warn("Clear recents failed:", e);
-    }
-  }
-
-  // Dedupe: if an existing entry points at the same file handle, remove it
-  // first so the newly-added entry becomes the most-recent one.
-  async function _dedupeByHandle(store, handle) {
-    var all = await _idbRequest(store.getAll());
-    for (var i = 0; i < all.length; i++) {
-      var entry = all[i];
-      if (!entry || !entry.handle) continue;
-      try {
-        if (typeof entry.handle.isSameEntry === "function" &&
-            await entry.handle.isSameEntry(handle)) {
-          await _idbRequest(store.delete(entry.id));
-        }
-      } catch (e) { /* ignore */ }
     }
   }
 

@@ -104,10 +104,23 @@
       </div>
 
       <div class="data-input-group" data-input-group="hull-detail">
-        <label class="tiny u-mt-2">Hull detail — max edge (km)</label>
-        <input type="number" id="tsMaxEdge" class="rf-number-input" min="0.02" max="2" step="0.01" value="0.3">
+        <label class="tiny u-mt-2">Hull detail — max edge (ft)</label>
+        <input type="number" id="tsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
         <p class="tiny u-mt-1 u-muted">
           Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
+        </p>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Connector snap tolerance (ft)</label>
+          <input type="number" id="tsSnapTol" class="rf-number-input" min="5" max="300" step="5" value="50">
+        </div>
+        <p class="tiny u-mt-1 u-muted">
+          How close a drawn walk connector's end must be to an existing street to join it.
+          Shared with the Walkshed module.
+        </p>
+        <p class="tiny u-mt-1 u-muted">
+          Click a street on the Walk network layer (Layers tab) to mark it not walkable — a busy
+          arterial with no sidewalk, for example. Applies here too; the Walkshed module's Advanced
+          block shows the exclusion count and a Clear all button.
         </p>
       </div>
       </details>

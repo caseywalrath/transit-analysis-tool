@@ -13,35 +13,58 @@
       </div>
 
       <div class="data-input-group" data-input-group="analysis">
-      <div class="rf-section-title form-section">Walk budget</div>
-
-      <div class="form-field">
-        <label class="tiny">Minutes</label>
-        <input type="number" id="wsMinutes" class="rf-number-input" min="1" max="60" step="1" value="15">
+      <div class="rf-section-title form-section">Time budgets (min)</div>
+      <div class="ts-budget-row">
+        <input type="number" id="wsMinutes" class="rf-number-input ts-budget-input" min="1" max="60" step="1" value="15">
+        <input type="number" id="wsMinutes2" class="rf-number-input ts-budget-input" min="1" max="60" step="1" value="30">
+        <input type="number" id="wsMinutes3" class="rf-number-input ts-budget-input" min="1" max="60" step="1" placeholder="—">
       </div>
 
-      <div class="form-field">
+      <div class="form-field u-mt-3">
         <label class="tiny">Walk speed (mph)</label>
         <input type="number" id="wsSpeed" class="rf-number-input" min="0.5" max="7.5" step="0.1" value="3.1">
       </div>
 
       </div>
 
-      <div class="data-input-group" data-input-group="display">
-      <label class="tpi-toggle-row u-mt-3">
-        <input type="checkbox" id="wsShowSegments" checked>
-        <span class="tiny">Show reachable streets</span>
-      </label>
-      </div>
-
       <details class="u-mt-3 data-input-group" data-input-group="advanced">
         <summary class="tiny u-muted ws-advanced-summary">Advanced Settings</summary>
         <div class="form-field u-mt-2">
-          <label class="tiny">Hull detail — max edge (km)</label>
-          <input type="number" id="wsMaxEdge" class="rf-number-input" min="0.02" max="2" step="0.01" value="0.3">
+          <label class="tiny">Hull detail — max edge (ft)</label>
+          <input type="number" id="wsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
         </div>
         <p class="tiny u-mt-1 u-muted">
           Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
+        </p>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Connector snap tolerance (ft)</label>
+          <input type="number" id="wsSnapTol" class="rf-number-input" min="5" max="300" step="5" value="50">
+        </div>
+        <p class="tiny u-mt-1 u-muted">
+          How close a drawn walk connector's end must be to an existing street to join it.
+          Shared with the Transit Travelshed module.
+        </p>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Crossing delay — major street (s)</label>
+          <input type="number" id="wsCrossMajor" class="rf-number-input" min="0" max="120" step="1" value="0">
+        </div>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Crossing delay — minor street (s)</label>
+          <input type="number" id="wsCrossMinor" class="rf-number-input" min="0" max="60" step="1" value="0">
+        </div>
+        <p class="tiny u-mt-1 u-muted">
+          Seconds added each time the walk crosses an intersection. 0 = off. Typical signalized arterial is
+          15–20 s; suburban arterials with long cycles run 30–45 s. Shared with Transit Travelshed. Applied
+          at every intersection on the route, so walking <em>along</em> an arterial is charged too — treat
+          these as blended averages, not exact signal waits.
+        </p>
+        <p class="tiny u-mt-2" id="wsExcludedWays">
+          Excluded streets: <span id="wsExcludedWaysCount">0</span>
+          <button id="wsClearExcludedWays" type="button" class="rf-btn-sm" style="display:none;">Clear all</button>
+        </p>
+        <p class="tiny u-mt-1 u-muted">
+          Click a street on the Walk network layer (Layers tab) to mark it not walkable — a busy arterial
+          with no sidewalk, for example. Excluded streets render red/dashed there; click again to restore.
         </p>
       </details>
 
@@ -71,6 +94,9 @@
           <button id="wsUseStudyArea" type="button" class="rf-btn-sm" disabled title="Set these points' Service Area to Walkshed so demographic modules use the walkshed instead of a circle.">Use as study areas</button>
           <button id="wsExportGeoJSON" type="button" class="rf-btn-sm" disabled>Export GeoJSON</button>
         </div>
+
+        <div id="wsConnReport" class="tiny u-mt-2" style="display:none;"></div>
+        <div id="wsCoverageReport" class="tiny u-mt-2" style="display:none;"></div>
 
         <p class="tiny u-mt-2 u-muted">
           A walkshed is the true street-network area reachable on foot within the time budget — smaller and

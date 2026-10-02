@@ -20,14 +20,16 @@
 
   // ---- Defaults + module-local state (persists across popup open/close) ----
 
-  var DEFAULT_SETTINGS = { minutes: 15, walkSpeedMph: 3.1, maxEdge: 0.3 };
+  var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1, maxEdge: 0.3 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdge is
+                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
+                            // as walkSpeedMph above and the connector snap-tolerance input.
 
   var _settings      = Object.assign({}, DEFAULT_SETTINGS);
   var _walkshedCache = new Map();  // pointIdx -> entry (see computeForPoint)
   var _lastEntries   = [];         // entries (+failures) from the last Compute run, for display
-  var _showSegments  = true;
   var _stale         = false;
   var _running       = false;
   var _initialized   = false;
@@ -36,6 +38,14 @@
 
   var WS_FILL_SRC  = "walkshed-src";
   var WS_FILL_LAYER = "walkshed-fill";
+  // The line layer gets its OWN source (WS_LINE_SRC) rather than sharing
+  // WS_FILL_SRC, because "flatten overlaps" (see buildFlattenedFillFeatures
+  // below) only reshapes what the FILL paints — the outline always draws
+  // every point's own band boundaries in full, flattened or not, so an
+  // overlap stays visible even when the fill hides it. When flattening is
+  // off the two sources hold identical features; the duplication is the
+  // price of not special-casing layer creation on the toggle.
+  var WS_LINE_SRC  = "walkshed-line-src";
   var WS_LINE_LAYER = "walkshed-line";
   var WS_SEG_SRC   = "walkshed-seg-src";
   var WS_SEG_LAYER = "walkshed-seg";
@@ -71,60 +81,135 @@
     return null;
   }
 
+  // Valid budgets only, ascending, deduped, each capped at MAX_MINUTES. Never
+  // returns an empty array — falls back to the smallest default budget when
+  // every input is blank/invalid.
+  function activeBudgets() {
+    var out = [];
+    (_settings.budgets || []).forEach(function (m) {
+      var v = +m;
+      if (v > 0) out.push(Math.min(v, MAX_MINUTES));
+    });
+    out = out.filter(function (v, i) { return out.indexOf(v) === i; });
+    out.sort(function (a, b) { return a - b; });
+    if (!out.length) out = [DEFAULT_SETTINGS.budgets[0]];
+    return out;
+  }
+
   // Per-point walk parameters. Global module settings apply to every point; a
   // point may optionally carry attributes.walkMinutes / walkSpeedMph overrides
   // (data model supports it; the current UI only sets the type, not overrides).
+  // A point with a walkMinutes override uses that single value as its only
+  // budget — otherwise it uses the module's full activeBudgets() list.
   // `speed` is in mph — converted to km/h at the point of use (computeForPoint).
   function pointSettingsFor(pf) {
     var attrs = (pf.properties && pf.properties.attributes) || {};
-    var minutes = (attrs.walkMinutes != null && +attrs.walkMinutes > 0) ? +attrs.walkMinutes : _settings.minutes;
-    var speed   = (attrs.walkSpeedMph != null && +attrs.walkSpeedMph > 0) ? +attrs.walkSpeedMph : _settings.walkSpeedMph;
-    return { minutes: Math.min(minutes, MAX_MINUTES), speed: speed, maxEdge: _settings.maxEdge };
+    var budgets = (attrs.walkMinutes != null && +attrs.walkMinutes > 0)
+      ? [Math.min(+attrs.walkMinutes, MAX_MINUTES)]
+      : activeBudgets();
+    var speed = (attrs.walkSpeedMph != null && +attrs.walkSpeedMph > 0) ? +attrs.walkSpeedMph : _settings.walkSpeedMph;
+    return { budgets: budgets, speed: speed, maxEdge: _settings.maxEdge };
   }
 
   // Cache key — a walkshed is a pure function of the origin coords, the walk
   // parameters, and the loaded network (roadNetworkEpoch bumps on (re)load/clear).
+  // Every budget must be included, not just one, or changing budget 2/3 won't
+  // invalidate the cache. The two crossing-penalty seconds must be included too
+  // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5) — they change
+  // the result but don't bump the network epoch, so without this the cache
+  // would serve stale polygons after a penalty change.
   function settingsKeyFor(pf) {
     var c = pf.geometry.coordinates;
     var s = pointSettingsFor(pf);
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
-    return [c[0].toFixed(6), c[1].toFixed(6), s.minutes, s.speed, s.maxEdge, epoch].join("|");
+    var crossMajor = (App.networkSettings && App.networkSettings.crossingMajorSec) || 0;
+    var crossMinor = (App.networkSettings && App.networkSettings.crossingMinorSec) || 0;
+    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|");
+  }
+
+  // Builds { major, minor } crossing-penalty km values from the global
+  // App.networkSettings seconds plus this point's own walk speed (km/h) — see
+  // js/core/walk-cost.js. Guarded so a missing walk-cost.js script tag
+  // degrades to no penalty rather than throwing.
+  function crossingPenaltyKmFor(speedKmh) {
+    if (typeof window.WalkCost === "undefined") return null;
+    var opts = {
+      majorSec: (App.networkSettings && App.networkSettings.crossingMajorSec) || 0,
+      minorSec: (App.networkSettings && App.networkSettings.crossingMinorSec) || 0,
+      speedKmh: speedKmh
+    };
+    return { major: window.WalkCost.penaltyKm("major", opts), minor: window.WalkCost.penaltyKm("minor", opts) };
   }
 
   // ---- Core compute (shared by the Compute button and ensurePointWalksheds) ----
 
   // Compute + cache a walkshed for one point. Returns the cache entry, or a
   // { failed:true, reason } sentinel. Reuses a valid cached entry when present.
+  // Floods once at the largest budget and thresholds it into one polygon per
+  // budget (App.computeWalkshed's options.budgetsKm). entry.polygon/area/
+  // reachableCount alias the SMALLEST band, since that is the study area
+  // getPointWalkshed() returns — the other bands are display-only.
   function computeForPoint(pf) {
     var pIdx = pf.properties.pointIdx;
     var key = settingsKeyFor(pf);
     var existing = _walkshedCache.get(pIdx);
     if (existing && existing.settingsKey === key && existing.polygon) return existing;
 
-    var s = pointSettingsFor(pf);
-    var budgetKm = (s.speed * KM_PER_MILE) * (s.minutes / 60); // s.speed is mph; engine works in km
-    var res = App.computeWalkshed ? App.computeWalkshed(pf.geometry.coordinates, budgetKm, { maxEdge: s.maxEdge }) : null;
+    var s = pointSettingsFor(pf); // s.budgets is ascending (activeBudgets() / single override)
+    var speedKmh = s.speed * KM_PER_MILE; // s.speed is mph; engine works in km
+    var budgetsKm = s.budgets.map(function (m) { return speedKmh * (m / 60); });
+    var maxBudgetKm = budgetsKm[budgetsKm.length - 1];
+    var res = App.computeWalkshed
+      ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm,
+          { maxEdge: s.maxEdge, budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh) })
+      : null;
 
-    if (!res || !res.polygon) {
+    if (!res) {
       _walkshedCache.delete(pIdx);
       return {
         failed: true,
         pointIdx: pIdx,
         name: pf.properties.name,
-        reason: res ? "no reachable area (sparse/disconnected network)" : "origin off-network (> 500 m from a road)"
+        reason: "origin off-network (> 500 m from a road)"
       };
     }
 
-    res.polygon.properties = res.polygon.properties || {};
-    res.polygon.properties.pointIdx = pIdx;
+    // options.budgetsKm always has >=1 entries (activeBudgets() never returns
+    // empty), so App.computeWalkshed always returns `polygons` — the fallback
+    // here only guards a caller running against a pre-Phase-2 engine.
+    var bandPolys = res.polygons || [{ budgetKm: maxBudgetKm, polygon: res.polygon, nodeCount: res.reachableCount }];
+    var bands = [];
+    for (var i = 0; i < s.budgets.length; i++) {
+      var bp = bandPolys[i];
+      bands.push({
+        minutes:   s.budgets[i],
+        polygon:   bp ? bp.polygon : null,
+        area:      (bp && bp.polygon) ? turf.area(bp.polygon) : 0, // m²
+        nodeCount: bp ? bp.nodeCount : 0
+      });
+    }
+
+    if (!bands[0].polygon) {
+      _walkshedCache.delete(pIdx);
+      return {
+        failed: true,
+        pointIdx: pIdx,
+        name: pf.properties.name,
+        reason: "no reachable area (sparse/disconnected network)"
+      };
+    }
+
+    bands[0].polygon.properties = bands[0].polygon.properties || {};
+    bands[0].polygon.properties.pointIdx = pIdx;
 
     var entry = {
-      polygon:           res.polygon,
+      polygon:           bands[0].polygon,
       reachableSegments: res.reachableSegments,
-      reachableCount:    res.reachableCount,
-      area:              turf.area(res.polygon),   // m²
+      reachableCount:    bands[0].nodeCount,
+      area:              bands[0].area,   // m²
+      bands:             bands,           // ascending, one entry per active budget
       computeMs:         res.computeMs,
-      minutes:           s.minutes,
+      minutes:           bands[0].minutes,
       name:              pf.properties.name,
       pointIdx:          pIdx,
       coord:             pf.geometry.coordinates.slice(),
@@ -220,50 +305,256 @@
 
   // ---- Map rendering ----
 
+  // Band fill/line color, smallest band (index 0) darkest so it reads as "most
+  // walkable" — same ["match", ["get", "bandIdx"], ...] pattern network-joins-point
+  // uses in js/core/network-connectors.js. Resolved through the layer color
+  // cascade (docs/layer-color-customization-plan.md); guarded so a missing
+  // layer-palettes.js script tag degrades to the original hardcoded colors
+  // rather than throwing, same defensive pattern used elsewhere in this file
+  // for window.WalkCost.
+  var WS_SEG_DEFAULT_COLOR = "#16a34a";
+  function bandColorExpr() {
+    if (typeof window.LayerPalette === "undefined") {
+      return ["match", ["get", "bandIdx"], 0, "#1e40af", 1, "#3b82f6", "#93c5fd"];
+    }
+    var colors = App.resolveLayerColors("walkshed") || ["#1e40af", "#3b82f6", "#93c5fd"];
+    return window.LayerPalette.matchExpr("bandIdx", colors);
+  }
+  function segColor() {
+    if (typeof App.resolveLayerColors !== "function") return WS_SEG_DEFAULT_COLOR;
+    var colors = App.resolveLayerColors("walkshed-seg");
+    return (colors && colors[0]) || WS_SEG_DEFAULT_COLOR;
+  }
+
+  // Outline weight/opacity for the walkshed-line layer. Normally (flatten
+  // off) every per-point band boundary IS the visible edge of that band, so
+  // it stays a clearly visible line. With flatten on, the fill already
+  // shows the shortest band wherever walksheds overlap, so most of these
+  // same per-point boundaries now sit INSIDE the merged fill rather than on
+  // its real edge — left at full weight they read as visual clutter
+  // criss-crossing a region the fill already renders as one solid color.
+  // Nearly-invisible-but-still-there is the point: a user who wants to
+  // confirm "yes, an overlap happened here" can still find the line, but it
+  // no longer competes with the fill for attention.
+  var WS_OUTLINE_NORMAL   = { width: 2,   opacity: 0.9  };
+  var WS_OUTLINE_FLATTENED = { width: 1,  opacity: 0.12 };
+  function outlineStyle() {
+    return flattenEnabled() ? WS_OUTLINE_FLATTENED : WS_OUTLINE_NORMAL;
+  }
+
+  // Re-applies paint properties from the current cascade without re-running
+  // the analysis, so a palette change is instant. No-op when the layers
+  // aren't currently on the map.
+  function repaintWalkshedLayers() {
+    var map = App.map;
+    if (!map || !map.getLayer(WS_FILL_LAYER)) return;
+    var expr = bandColorExpr();
+    var outline = outlineStyle();
+    map.setPaintProperty(WS_FILL_LAYER, "fill-color", expr);
+    map.setPaintProperty(WS_LINE_LAYER, "line-color", expr);
+    map.setPaintProperty(WS_LINE_LAYER, "line-width", outline.width);
+    map.setPaintProperty(WS_LINE_LAYER, "line-opacity", outline.opacity);
+    if (map.getLayer(WS_SEG_LAYER)) {
+      map.setPaintProperty(WS_SEG_LAYER, "line-color", segColor());
+    }
+  }
+  if (typeof App.registerLayerRepainter === "function") {
+    var refreshWalkshedPaintAndLegend = function () {
+      // A palette/reverse toggle only needs paint; "Flatten overlaps"
+      // changes which polygons are painted (see buildFlattenedFillFeatures),
+      // so re-render from the last computed entries when there are any —
+      // still no flood recompute, just re-unioning already-computed band
+      // polygons, so this stays cheap despite not being paint-only anymore.
+      if (_lastEntries.length) renderWalkshedLayers(_lastEntries);
+      else repaintWalkshedLayers();
+      fillWalkshedLegend(activeBudgets());
+    };
+    // Registered under both styleKeys — walkshed-fill and walkshed-seg are
+    // separate Layers-panel rows (docs/walkshed-bands-and-crossing-penalties-plan.md
+    // Phase 1) so either one's visibility toggle can refresh the legend's
+    // "Reachable streets" row (see fillWalkshedLegend below).
+    App.registerLayerRepainter("walkshed", refreshWalkshedPaintAndLegend);
+    App.registerLayerRepainter("walkshed-seg", refreshWalkshedPaintAndLegend);
+  }
+
+  // Smallest band (bandIdx 0) first, matching
+  // App.resolveLayerColors("walkshed")'s array order — no reversal needed,
+  // unlike TPI/Corridor Scoring's high-first legends. Hides rows beyond the
+  // active budget count (a point may use 1-3 budgets).
+  function fillWalkshedLegend(budgets) {
+    var colors = (App.resolveLayerColors && App.resolveLayerColors("walkshed")) ||
+      ["#1e40af", "#3b82f6", "#93c5fd"];
+    for (var i = 0; i < 3; i++) {
+      var row = document.getElementById("wsLegendRow" + i);
+      var label = document.getElementById("wsLegendLabel" + i);
+      var sw = document.getElementById("wsLegendSw" + i);
+      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+      if (!row) continue;
+      if (i < budgets.length) {
+        row.style.display = "";
+        if (label) label.textContent = "≤ " + budgets[i] + " min";
+      } else {
+        row.style.display = "none";
+      }
+    }
+    var segSw = document.getElementById("wsLegendSwSeg");
+    if (segSw) segSw.style.background = segColor();
+    var segRow = document.getElementById("wsLegendRowSeg");
+    if (segRow) {
+      var map = App.map;
+      var segLayerVisible = !map || !map.getLayer(WS_SEG_LAYER) ||
+        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none";
+      segRow.style.display = segLayerVisible ? "" : "none";
+    }
+  }
+
+  // Shows (or re-shows) the ws-legend widget and fills its band rows once
+  // the widget's DOM has actually mounted — showFloatingWidget is async on
+  // first creation but synchronous when the widget already exists, so this
+  // handles both without forcing every caller to await.
+  function showWalkshedLegend() {
+    if (!App.popup || !App.popup.showFloatingWidget) return;
+    var budgets = activeBudgets();
+    var p = App.popup.showFloatingWidget("ws-legend", "projects/walkshed-legend.html",
+      { position: "bottom-left", width: 190, title: "Walkshed" });
+    if (p && typeof p.then === "function") p.then(function () { fillWalkshedLegend(budgets); });
+    else fillWalkshedLegend(budgets);
+  }
+
+  // Reads the display-only "Flatten overlaps" toggle from the Layers panel's
+  // walkshed-fill style drawer (docs/layer-color-customization-plan.md's
+  // App.layerStyles cascade — this rides the same persisted override object
+  // as palette/reverse, no new persistence needed). Purely a rendering
+  // choice: bands[] itself, and every study-area/export consumer that reads
+  // it, is never touched by this flag.
+  function flattenEnabled() {
+    var ov = (App.layerStyles && App.layerStyles["walkshed"]) || {};
+    return !!ov.flatten;
+  }
+
+  // "Flatten overlaps" fill geometry: system-wide "shortest walkshed wins",
+  // not just within one point's own bands. Groups every successfully-computed
+  // point's band polygons by MINUTES value (not per-point bandIdx — two points
+  // can use different budgets via attributes.walkMinutes overrides), unions
+  // each tier across every point that has one, then subtracts the running
+  // union of every smaller tier so a 15-min area from Point A masks any
+  // 30/45-min area from Point B wherever they overlap. bandIdx on the
+  // returned features is the tier's rank (0 = smallest minutes value, same
+  // meaning bandColorExpr() already gives bandIdx), not any one point's own
+  // band index. Only reshapes the FILL — renderWalkshedLayers always draws
+  // the un-flattened per-point outlines separately, so an overlap an area
+  // hides is still visible as a preserved band boundary.
+  function buildFlattenedFillFeatures(entries) {
+    var byMinutes = {}; // minutes -> polygon[]
+    entries.forEach(function (e) {
+      if (!e || e.failed) return;
+      var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+      bands.forEach(function (band) {
+        if (!band.polygon) return;
+        (byMinutes[band.minutes] = byMinutes[band.minutes] || []).push(band.polygon);
+      });
+    });
+    var tiers = Object.keys(byMinutes).map(Number).sort(function (a, b) { return a - b; });
+    var features = [];
+    var smallerUnion = null; // union of every tier already processed (<= current)
+    tiers.forEach(function (minutes, tierIdx) {
+      var tierUnion = App.foldAnalysisUnion(byMinutes[minutes]);
+      if (!tierUnion) return;
+      var ringPoly = tierUnion;
+      if (smallerUnion) {
+        try {
+          var diffed = turf.difference(ringPoly, smallerUnion);
+          if (diffed) ringPoly = diffed;
+        } catch (err) { /* fall back to the un-differenced tier union for this tier */ }
+      }
+      features.push({
+        type: "Feature",
+        properties: { minutes: minutes, bandIdx: tierIdx },
+        geometry: ringPoly.geometry
+      });
+      smallerUnion = smallerUnion ? App.foldAnalysisUnion([smallerUnion, tierUnion]) : tierUnion;
+    });
+    return features;
+  }
+
   function renderWalkshedLayers(entries) {
     var map = App.map;
     if (!map) return;
-    var polyFeatures = [], segFeatures = [];
+    var outlineFeatures = [], segFeatures = [];
     entries.forEach(function (e) {
       if (!e || e.failed) return;
-      if (e.polygon) {
-        var pf = { type: "Feature", properties: { pointIdx: e.pointIdx, name: e.name, minutes: e.minutes }, geometry: e.polygon.geometry };
-        polyFeatures.push(pf);
+      var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+      // Ring-difference for rendering only (bands[] itself, which
+      // getPointWalkshed()/exportGeoJSON() read, stays un-differenced — see
+      // docs/layer-color-customization-plan.md Phase 1). Largest-first so the
+      // innermost band stays solid; a turf.difference failure or null result
+      // falls back to the un-differenced polygon for that band rather than
+      // dropping it. Same approach as transit-travelshed.js's ring builder.
+      // This per-point set always feeds the OUTLINE layer (below), flattened
+      // fill or not — see buildFlattenedFillFeatures's comment.
+      for (var bi = bands.length - 1; bi >= 0; bi--) {
+        var band = bands[bi];
+        if (!band.polygon) continue;
+        var ringPoly = band.polygon;
+        if (bi > 0 && bands[bi - 1].polygon) {
+          try {
+            var diffed = turf.difference(ringPoly, bands[bi - 1].polygon);
+            if (diffed) ringPoly = diffed;
+          } catch (err) { /* fall back to the un-differenced polygon for this band */ }
+        }
+        outlineFeatures.push({
+          type: "Feature",
+          properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi },
+          geometry: ringPoly.geometry
+        });
       }
       if (e.reachableSegments && e.reachableSegments.features) {
         segFeatures = segFeatures.concat(e.reachableSegments.features);
       }
     });
-    var polyFc = { type: "FeatureCollection", features: polyFeatures };
+
+    var fillFeatures = flattenEnabled() ? buildFlattenedFillFeatures(entries) : outlineFeatures;
+    var fillFc = { type: "FeatureCollection", features: fillFeatures };
+    var lineFc = { type: "FeatureCollection", features: outlineFeatures };
     var segFc  = { type: "FeatureCollection", features: segFeatures };
 
     if (!map.getSource(WS_FILL_SRC)) {
-      map.addSource(WS_FILL_SRC, { type: "geojson", data: polyFc });
+      map.addSource(WS_FILL_SRC, { type: "geojson", data: fillFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
-        paint: { "fill-color": "#2563eb", "fill-opacity": 0.14 }
-      });
-      map.addLayer({
-        id: WS_LINE_LAYER, type: "line", source: WS_FILL_SRC,
-        layout: { "line-join": "round" },
-        paint: { "line-color": "#2563eb", "line-width": 2, "line-opacity": 0.9 }
+        paint: { "fill-color": bandColorExpr(), "fill-opacity": 0.30 }
       });
     } else {
-      map.getSource(WS_FILL_SRC).setData(polyFc);
+      map.getSource(WS_FILL_SRC).setData(fillFc);
     }
+
+    if (!map.getSource(WS_LINE_SRC)) {
+      var initialOutline = outlineStyle();
+      map.addSource(WS_LINE_SRC, { type: "geojson", data: lineFc });
+      map.addLayer({
+        id: WS_LINE_LAYER, type: "line", source: WS_LINE_SRC,
+        layout: { "line-join": "round" },
+        paint: { "line-color": bandColorExpr(), "line-width": initialOutline.width, "line-opacity": initialOutline.opacity }
+      });
+    } else {
+      map.getSource(WS_LINE_SRC).setData(lineFc);
+    }
+
+    // Pick up a palette/reverse/flatten change made while results were
+    // already on screen — harmless to also run right after the addLayer
+    // branch above, since the colors it applies already match what was just
+    // set at creation.
+    repaintWalkshedLayers();
 
     if (!map.getSource(WS_SEG_SRC)) {
       map.addSource(WS_SEG_SRC, { type: "geojson", data: segFc });
       map.addLayer({
         id: WS_SEG_LAYER, type: "line", source: WS_SEG_SRC,
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#16a34a", "line-width": 1.5, "line-opacity": 0.85 }
+        paint: { "line-color": segColor(), "line-width": 1.5, "line-opacity": 0.85 }
       });
     } else {
       map.getSource(WS_SEG_SRC).setData(segFc);
-    }
-    if (map.getLayer(WS_SEG_LAYER)) {
-      map.setLayoutProperty(WS_SEG_LAYER, "visibility", _showSegments ? "visible" : "none");
     }
   }
 
@@ -271,7 +562,7 @@
     var map = App.map;
     if (!map) return;
     [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
-    [WS_SEG_SRC, WS_FILL_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
+    [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
   // ---- Status / stale / empty (standardized helper) ----
@@ -304,7 +595,7 @@
   // header still answers "what am I looking at".
   function inputsSummary() {
     var n = _lastEntries.length;
-    return _settings.minutes + " min · " + _settings.walkSpeedMph + " mph · " +
+    return activeBudgets().join(" / ") + " min · " + _settings.walkSpeedMph + " mph · " +
            n + " point" + (n === 1 ? "" : "s");
   }
 
@@ -342,18 +633,61 @@
     _lastEntries.forEach(function (e) {
       if (e.failed) {
         rows += '<tr class="ws-row-fail"><td>' + escapeHtml(e.name || ("Point " + e.pointIdx)) +
-          '</td><td colspan="3" class="ws-warn">skipped — ' + escapeHtml(e.reason) + '</td></tr>';
-      } else {
-        rows += "<tr><td>" + escapeHtml(e.name || ("Point " + e.pointIdx)) + "</td>" +
-          "<td>" + (e.area * M2_TO_MI2).toFixed(3) + " mi&sup2;<span class='ws-sub'> / " + (e.area * M2_TO_KM2).toFixed(3) + " km&sup2;</span></td>" +
-          "<td>" + e.reachableCount + "</td>" +
-          "<td>" + e.computeMs + " ms</td></tr>";
+          '</td><td colspan="4" class="ws-warn">skipped — ' + escapeHtml(e.reason) + '</td></tr>';
+        return;
       }
+      var bands = e.bands || [{ minutes: e.minutes, area: e.area, nodeCount: e.reachableCount, polygon: e.polygon }];
+      bands.forEach(function (band, bi) {
+        var areaCell = band.polygon
+          ? (band.area * M2_TO_MI2).toFixed(3) + " mi&sup2;<span class='ws-sub'> / " + (band.area * M2_TO_KM2).toFixed(3) + " km&sup2;</span>"
+          : "&mdash;";
+        rows += "<tr>" +
+          "<td>" + (bi === 0 ? escapeHtml(e.name || ("Point " + e.pointIdx)) : "") + "</td>" +
+          "<td>" + band.minutes + " min</td>" +
+          "<td>" + areaCell + "</td>" +
+          "<td>" + band.nodeCount + "</td>" +
+          "<td>" + (bi === 0 ? e.computeMs + " ms" : "") + "</td>" +
+          "</tr>";
+      });
     });
     host.innerHTML =
       '<table class="ws-table"><thead><tr>' +
-      "<th>Point</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
+      "<th>Point</th><th>Band</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table>";
+
+    renderConnectionReport();
+    renderCoverageReport();
+  }
+
+  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // only rendered when at least one walk connector exists. Styled with the
+  // module's existing warning color (#b45309) when a connector end isn't
+  // joined to the network.
+  function renderConnectionReport() {
+    var el = document.getElementById("wsConnReport");
+    if (!el) return;
+    var summary = typeof App.getConnectorReportSummary === "function"
+      ? App.getConnectorReportSummary() : null;
+    if (!summary) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.style.color = summary.warn ? "#b45309" : "";
+    el.innerHTML = escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "");
+  }
+
+  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
+  // only rendered when a network is loaded — absent, not "0%", when there
+  // isn't one. Same warning-color convention as renderConnectionReport().
+  function renderCoverageReport() {
+    var el = document.getElementById("wsCoverageReport");
+    if (!el) return;
+    var summary = typeof App.getSidewalkCoverageSummary === "function"
+      ? App.getSidewalkCoverageSummary() : null;
+    if (!summary) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.style.color = summary.warn ? "#b45309" : "";
+    el.innerHTML = escapeHtml(summary.text) +
+      (summary.detail ? "<br>" + escapeHtml(summary.detail) : "");
   }
 
   function escapeHtml(s) {
@@ -376,7 +710,9 @@
   // for MORE coverage than strictly needed, never less.
   function computeRequiredExtent(targets) {
     if (!targets.length) return null;
-    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (_settings.minutes / 60);
+    var budgets = activeBudgets();
+    var maxMinutes = budgets[budgets.length - 1]; // size the circle from the LARGEST budget
+    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (maxMinutes / 60);
     var pieces = [];
     targets.forEach(function (pf) {
       var c = pf.geometry && pf.geometry.coordinates;
@@ -483,10 +819,7 @@
           setExportEnabled(ok > 0);
         }
 
-        if (ok && App.popup && App.popup.showFloatingWidget) {
-          App.popup.showFloatingWidget("ws-legend", "projects/walkshed-legend.html",
-            { position: "bottom-left", width: 190, title: "Walkshed" });
-        }
+        if (ok) showWalkshedLegend();
 
         if (!ok) {
           setStatus("No walksheds produced — " + bad + " point(s) skipped.", "error");
@@ -539,11 +872,15 @@
   function exportGeoJSON() {
     var features = [];
     _lastEntries.forEach(function (e) {
-      if (e.failed || !e.polygon) return;
-      features.push({
-        type: "Feature",
-        properties: { pointIdx: e.pointIdx, name: e.name, minutes: e.minutes, areaM2: e.area, reachableNodes: e.reachableCount },
-        geometry: e.polygon.geometry
+      if (e.failed) return;
+      var bands = e.bands || [{ minutes: e.minutes, area: e.area, nodeCount: e.reachableCount, polygon: e.polygon }];
+      bands.forEach(function (band, bi) {
+        if (!band.polygon) return;
+        features.push({
+          type: "Feature",
+          properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi, areaM2: band.area, reachableNodes: band.nodeCount },
+          geometry: band.polygon.geometry
+        });
       });
     });
     if (!features.length) { setStatus("Nothing to export.", "error"); return; }
@@ -565,24 +902,110 @@
   // ---- Settings <-> inputs ----
 
   function readSettingsFromInputs() {
-    var m = document.getElementById("wsMinutes");
+    var m1 = document.getElementById("wsMinutes");
+    var m2 = document.getElementById("wsMinutes2");
+    var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
     var e = document.getElementById("wsMaxEdge");
-    if (m && +m.value > 0) _settings.minutes = Math.min(+m.value, MAX_MINUTES);
+    var budgets = [];
+    [m1, m2, m3].forEach(function (el) {
+      if (el && +el.value > 0) budgets.push(Math.min(+el.value, MAX_MINUTES));
+    });
+    if (budgets.length) {
+      budgets.sort(function (a, b) { return a - b; });
+      _settings.budgets = budgets;
+    }
     if (s && +s.value > 0) _settings.walkSpeedMph = +s.value;
-    if (e && +e.value > 0) _settings.maxEdge = +e.value;
+    if (e && +e.value > 0) _settings.maxEdge = +e.value / FT_PER_KM; // ft input -> km stored
     if (App.cache && App.cache.save) App.cache.save();
+    updateStudyAreaButtonLabel();
   }
 
   function syncInputsFromSettings() {
-    var m = document.getElementById("wsMinutes");
+    var m1 = document.getElementById("wsMinutes");
+    var m2 = document.getElementById("wsMinutes2");
+    var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
     var e = document.getElementById("wsMaxEdge");
-    var seg = document.getElementById("wsShowSegments");
-    if (m) m.value = _settings.minutes;
+    var b = _settings.budgets || [];
+    if (m1) m1.value = (b[0] != null) ? b[0] : "";
+    if (m2) m2.value = (b[1] != null) ? b[1] : "";
+    if (m3) m3.value = (b[2] != null) ? b[2] : "";
     if (s) s.value = _settings.walkSpeedMph;
-    if (e) e.value = _settings.maxEdge;
-    if (seg) seg.checked = _showSegments;
+    if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
+    // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
+    // shared with Transit Travelshed (docs/network-connectors-plan.md §2), so
+    // this module never stores its own copy of the value.
+    var tol = document.getElementById("wsSnapTol");
+    if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
+    // Crossing-penalty seconds are GLOBAL state too, same sharing rationale
+    // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
+    var cMajor = document.getElementById("wsCrossMajor");
+    var cMinor = document.getElementById("wsCrossMinor");
+    if (App.networkSettings) {
+      if (cMajor) cMajor.value = App.networkSettings.crossingMajorSec;
+      if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
+    }
+    syncExcludedWaysLine();
+    updateStudyAreaButtonLabel();
+  }
+
+  // "Excluded streets: N — clear all" (docs/sidewalk-data-plan.md Phase 4
+  // step 9) — discoverability + bulk-undo for exclusions made by clicking
+  // the walk-network layer directly, which this popup has no other view into.
+  function syncExcludedWaysLine() {
+    var countEl = document.getElementById("wsExcludedWaysCount");
+    var clearBtn = document.getElementById("wsClearExcludedWays");
+    if (!countEl) return;
+    var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
+    countEl.textContent = ids.length;
+    if (clearBtn) clearBtn.style.display = ids.length ? "" : "none";
+  }
+
+  function clearExcludedWays() {
+    if (typeof App.setExcludedWays === "function") App.setExcludedWays([]);
+    syncExcludedWaysLine();
+    if (_lastEntries.length) markStale();
+  }
+
+  // The study-area button's label always names the SMALLEST active budget,
+  // since that is the one band getPointWalkshed() actually returns — changing
+  // it changes the study area for every downstream module (Buffer-Area
+  // Summary, TPI, Census, LODES, Transit Coverage, Title VI, ...).
+  function updateStudyAreaButtonLabel() {
+    var btn = document.getElementById("wsUseStudyArea");
+    if (!btn) return;
+    var smallest = activeBudgets()[0];
+    btn.textContent = "Use " + smallest + "-min walkshed as study areas";
+    btn.title = "Set these points' Service Area to the " + smallest + "-min Walkshed so demographic modules " +
+      "use it instead of a circle. Changing the smallest time budget changes the study area used by every " +
+      "downstream module.";
+  }
+
+  // Snap tolerance is global state, not a module setting — write straight to
+  // App.networkSettings and re-run the connector overlay, per §2 "Known conflict".
+  function onSnapTolChange() {
+    var el = document.getElementById("wsSnapTol");
+    if (!el || !(+el.value > 0)) return;
+    if (App.networkSettings) App.networkSettings.snapToleranceFt = +el.value;
+    if (App.cache && App.cache.save) App.cache.save();
+    if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
+    if (_lastEntries.length) markStale();
+  }
+
+  // Crossing-penalty seconds are global state too, same sharing rationale as
+  // snap tolerance (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5)
+  // — write straight to App.networkSettings. No connector overlay to re-run;
+  // no network geometry changed, only the flood's cost function.
+  function onCrossingChange() {
+    var majorEl = document.getElementById("wsCrossMajor");
+    var minorEl = document.getElementById("wsCrossMinor");
+    if (App.networkSettings) {
+      if (majorEl && +majorEl.value >= 0) App.networkSettings.crossingMajorSec = +majorEl.value;
+      if (minorEl && +minorEl.value >= 0) App.networkSettings.crossingMinorSec = +minorEl.value;
+    }
+    if (App.cache && App.cache.save) App.cache.save();
+    if (_lastEntries.length) markStale();
   }
 
   // ---- Lifecycle ----
@@ -605,18 +1028,21 @@
     var use = document.getElementById("wsUseStudyArea");
     if (use) use.addEventListener("click", useAsStudyAreas);
 
-    var seg = document.getElementById("wsShowSegments");
-    if (seg) seg.addEventListener("change", function () {
-      _showSegments = seg.checked;
-      if (App.map && App.map.getLayer(WS_SEG_LAYER)) {
-        App.map.setLayoutProperty(WS_SEG_LAYER, "visibility", _showSegments ? "visible" : "none");
-      }
-    });
-
-    ["wsMinutes", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
+    ["wsMinutes", "wsMinutes2", "wsMinutes3", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); if (_lastEntries.length) markStale(); });
     });
+
+    var snapEl = document.getElementById("wsSnapTol");
+    if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
+
+    ["wsCrossMajor", "wsCrossMinor"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("change", onCrossingChange);
+    });
+
+    var clearExcludedBtn = document.getElementById("wsClearExcludedWays");
+    if (clearExcludedBtn) clearExcludedBtn.addEventListener("click", clearExcludedWays);
   }
 
   function onOpen(core) {
@@ -680,21 +1106,55 @@
     if (_lastEntries.length) markStale();
   }
 
-  // ---- Session persistence (settings only; polygons recompute cheaply) ----
+  // ---- Session persistence ----
+  // Settings always persist (light + full). The computed polygons/reachable-streets
+  // are a snapshot of a Compute run against whatever road network was loaded at the
+  // time — not re-derivable without that network — so they're included ONLY in full
+  // mode (file Save/Load State), same rule Corridor Scoring's lastSummary follows,
+  // and left out of the light/localStorage autosave to avoid growing on every
+  // settings tweak. A light-mode restore (page reload) still requires Calculate,
+  // same as before this was added.
 
-  function collect() {
-    return {
-      version: 2,
-      minutes: _settings.minutes,
+  function collect(mode) {
+    var data = {
+      version: 3,
+      budgets: (_settings.budgets || []).filter(function (b) { return b != null; }),
       walkSpeedMph: _settings.walkSpeedMph,
-      maxEdge: _settings.maxEdge,
-      showSegments: _showSegments
+      maxEdge: _settings.maxEdge
     };
+    if (mode === "full" && _lastEntries.length) {
+      data.lastEntries = _lastEntries.map(function (e) {
+        return e.failed
+          ? { failed: true, pointIdx: e.pointIdx, name: e.name, reason: e.reason }
+          : {
+              pointIdx: e.pointIdx,
+              name: e.name,
+              coord: e.coord,
+              settingsKey: e.settingsKey,
+              computeMs: e.computeMs,
+              bands: e.bands,                       // [{minutes, polygon, area, nodeCount}, ...]
+              reachableSegments: e.reachableSegments // FeatureCollection, for the green proof layer
+            };
+      });
+    }
+    return data;
   }
 
   function apply(data) {
     if (!data) return;
-    if (+data.minutes > 0) _settings.minutes = Math.min(+data.minutes, MAX_MINUTES);
+    if (Array.isArray(data.budgets) && data.budgets.length) {
+      // v3: an explicit budget list.
+      var budgets = data.budgets
+        .filter(function (b) { return +b > 0; })
+        .map(function (b) { return Math.min(+b, MAX_MINUTES); });
+      if (budgets.length) {
+        budgets.sort(function (a, b) { return a - b; });
+        _settings.budgets = budgets;
+      }
+    } else if (+data.minutes > 0) {
+      // v1/v2: a single minutes value — becomes the sole (smallest) budget.
+      _settings.budgets = [Math.min(+data.minutes, MAX_MINUTES)];
+    }
     if (+data.walkSpeedMph > 0) {
       _settings.walkSpeedMph = +data.walkSpeedMph;
     } else if (+data.walkSpeedKmh > 0) {
@@ -702,7 +1162,62 @@
       _settings.walkSpeedMph = +data.walkSpeedKmh / KM_PER_MILE;
     }
     if (+data.maxEdge > 0) _settings.maxEdge = +data.maxEdge;
-    if (typeof data.showSegments === "boolean") _showSegments = data.showSegments;
+
+    if (Array.isArray(data.lastEntries) && data.lastEntries.length) restoreEntries(data.lastEntries);
+  }
+
+  // Rebuilds _walkshedCache + _lastEntries from a full-mode save and renders them
+  // immediately — no road network or Calculate click needed. Mirrors the tail of
+  // runWalkshed()'s success path (map layers first, then the popup DOM behind the
+  // usual isPopupVisible() guard). Restored polygons stay in _walkshedCache like any
+  // other cache entry, so getPointWalkshed()'s settingsKey check still applies —
+  // it naturally falls back to a circular buffer until a live network makes the key
+  // match again, rather than trusting a snapshot that may no longer be accurate.
+  function restoreEntries(saved) {
+    var entries = [];
+    saved.forEach(function (s) {
+      if (s.failed) {
+        entries.push({ failed: true, pointIdx: s.pointIdx, name: s.name, reason: s.reason });
+        return;
+      }
+      var bands = s.bands;
+      if (!bands || !bands.length || !bands[0] || !bands[0].polygon) return;
+      bands[0].polygon.properties = bands[0].polygon.properties || {};
+      bands[0].polygon.properties.pointIdx = s.pointIdx;
+      var entry = {
+        polygon:           bands[0].polygon,
+        reachableSegments: s.reachableSegments || null,
+        reachableCount:    bands[0].nodeCount || 0,
+        area:              bands[0].area || 0,
+        bands:             bands,
+        computeMs:         s.computeMs,
+        minutes:           bands[0].minutes,
+        name:              s.name,
+        pointIdx:          s.pointIdx,
+        coord:             s.coord,
+        settingsKey:       s.settingsKey
+      };
+      _walkshedCache.set(s.pointIdx, entry);
+      entries.push(entry);
+    });
+    if (!entries.length) return;
+
+    _lastEntries = entries;
+    _stale = false;
+
+    renderWalkshedLayers(_lastEntries);
+    var ok = _lastEntries.filter(function (e) { return !e.failed; }).length;
+    if (ok) showWalkshedLegend();
+
+    if (isPopupVisible()) {
+      var resultsEl = document.getElementById("wsResults");
+      if (resultsEl) resultsEl.style.display = ok ? "" : "none";
+      renderResults();
+      setExportEnabled(ok > 0);
+      renderInputs(ok > 0);
+      if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode(ok > 0 ? "results" : "setup");
+      setStatus(ok ? "Restored " + ok + " walkshed(s) from saved session." : "", ok ? "done" : "");
+    }
   }
 
   // ---- Register ----

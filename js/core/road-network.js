@@ -1,12 +1,15 @@
 // js/core/road-network.js
 // Offline road network: Overpass download, graph construction, Dijkstra pathfinding.
 // Allows local street-snapped routing when OSRM servers are unavailable.
-// Depends on: App.map (map.js), App.setStatus (utils.js), turf (CDN).
+// Depends on: App.map (map.js), App.setStatus (utils.js), turf (CDN),
+//             window.WalkCost (walk-cost.js, optional — crossing penalties,
+//             see docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
 // Exports: roadNetworkLoaded, findLocalRoute, fetchRoadNetwork,
 //          loadRoadNetworkFromFile, exportRoadNetwork, clearRoadNetwork,
 //          computeWalkshed, computeWalkCostMap, polygonizeNodeSet,
 //          nodeKeyToCoord, snapWalk, getRoadDownloadExtent,
-//          fetchRoadNetworkForExtent
+//          fetchRoadNetworkForExtent, getWalkNetworkSegments,
+//          setNetworkConnectors (docs/network-connectors-plan.md)
 
 (function () {
   "use strict";
@@ -18,16 +21,38 @@
   var MAX_AREA_WARN_KM2 = 2000;  // warn before downloading an expanded area larger than this (~a large county)
   var RDL_SRC = "road-dl-area";       // map source for the downloaded-area outline
   var RDL_LAYER = "road-dl-area-line"; // map layer for the downloaded-area outline
+  // A restored network younger than this is reported like any other load; an
+  // older one additionally tells the user to re-download. OSM street geometry
+  // does not meaningfully move in two days, so nagging below this would be noise.
+  var NET_CACHE_FRESH_MS = 48 * 60 * 60 * 1000;
 
   // ---- Private state ----
 
   var _roadGeoJSON = null;  // raw GeoJSON FeatureCollection (for export)
   var _graph = null;        // Map<nodeKey, [{node, weight, coords}]>
-  var _segmentIndex = null; // Array of {startKey, endKey, startCoord, endCoord, pedBlocked, carBlocked} per segment
+  var _segmentIndex = null; // Array of {startKey, endKey, startCoord, endCoord, pedBlocked, carBlocked, kind} per segment
   var _segGrid = null;      // Map<"gx,gy", int[]> of _segmentIndex indices — snap acceleration, see buildSegGrid()
+  var _nodeTier = null;     // Map<nodeKey, "major"|"minor"> — crossing-penalty tier per intersection node, see buildNodeTierMap()
   var _featureCount = 0;
   var _networkEpoch = 0;    // bumped on every (re)build/clear — lets caches (e.g. walkshed) invalidate
   var _downloadedBboxPolygon = null; // turf Polygon of the last Overpass download extent (for the on-map outline)
+
+  // ---- Network Connectors overlay state (docs/network-connectors-plan.md Phase 4) ----
+  // Plain geometry only — road-network.js never reads App.lines or any attribute;
+  // network-connectors.js owns collecting connector Lines and calls
+  // App.setNetworkConnectors() with the result. Preserved across a base-network
+  // reload so a fresh Overpass download re-applies the same overlay automatically.
+  var _connectors = [];        // [{ id, coords: [[lng,lat], ...] }]
+  var _connectorOpts = {};     // { snapToleranceKm }
+  var _lastOverlayReport = null; // last applyConnectorOverlay() result, returned by setNetworkConnectors()
+
+  // ---- Manual street exclusion state (docs/sidewalk-data-plan.md Phase 4) ----
+  // Set<wayId> hydrated from App.networkSettings.excludedWayIds (an array,
+  // JSON-serializable for the session cache) via the sole write path,
+  // App.setExcludedWays(). Read inside buildGraph() — see the plan's §3 "The
+  // two insertion points" — so exclusions re-apply automatically after a
+  // re-download without any caller having to reapply them.
+  var _excludedWays = new Set();
 
   // ---- Byte formatting helper ----
 
@@ -77,19 +102,53 @@
 
   // ---- Graph construction ----
 
+  // Pushes a bidirectional edge into an explicit graph Map. Extracted from
+  // buildGraph() (which calls it with its local `graph`) so applyConnectorOverlay()
+  // can push connector-derived edges into the live _graph the same way.
+  function addGraphEdge(graph, fromKey, toKey, weight, coordPair, pedBlocked, carBlocked, hwy) {
+    hwy = hwy || "";
+    if (!graph.has(fromKey)) graph.set(fromKey, []);
+    graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked, hwy: hwy });
+    if (!graph.has(toKey)) graph.set(toKey, []);
+    graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked, hwy: hwy });
+  }
+
+  // Crossing-penalty tier per intersection node (docs/walkshed-bands-and-
+  // crossing-penalties-plan.md Phase 5). Walks the graph once: a node's own
+  // adjacency-list length equals the number of segments incident to it (each
+  // incident segment contributes exactly one directed edge in that node's own
+  // array), so it's exactly the "how many edges meet here" count
+  // window.WalkCost.nodeTier() needs. Nodes with no penalty (fewer than 3
+  // incident edges) are omitted entirely rather than stored as null.
+  function buildNodeTierMap(graph) {
+    var map = new Map();
+    if (!graph || typeof window.WalkCost === "undefined") return map;
+    graph.forEach(function (edges, key) {
+      var hwyList = edges.map(function (e) { return e.hwy || ""; });
+      var tier = window.WalkCost.nodeTier(hwyList);
+      if (tier) map.set(key, tier);
+    });
+    return map;
+  }
+
+  // Removes one edge fromKey -> toKey from _graph (the first matching entry).
+  // Used when applying a connector overlay's removeSegIds — the base segment's
+  // two directed edges are removed so the split/weld replacement edges
+  // (added separately) are the only path through that point.
+  function removeGraphEdge(fromKey, toKey) {
+    var edges = _graph.get(fromKey);
+    if (!edges) return;
+    for (var i = 0; i < edges.length; i++) {
+      if (edges[i].node === toKey) { edges.splice(i, 1); break; }
+    }
+  }
+
   function buildGraph(geojson) {
     var graph = new Map();
     var segments = [];
     var features = geojson.features || [];
 
     var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-
-    function addEdge(fromKey, toKey, weight, coordPair, pedBlocked, carBlocked) {
-      if (!graph.has(fromKey)) graph.set(fromKey, []);
-      graph.get(fromKey).push({ node: toKey, weight: weight, coords: coordPair, pedBlocked: pedBlocked, carBlocked: carBlocked });
-      if (!graph.has(toKey)) graph.set(toKey, []);
-      graph.get(toKey).push({ node: fromKey, weight: weight, coords: coordPair.slice().reverse(), pedBlocked: pedBlocked, carBlocked: carBlocked });
-    }
 
     for (var i = 0; i < features.length; i++) {
       var f = features[i];
@@ -101,7 +160,25 @@
       // traversable by both modes so legacy road-network files still route.
       var props = f.properties || {};
       var hwy = props.highway || "";
-      var pedBlocked = isPedForbidden(hwy, props.foot);
+      // Sidewalk-data plan Phase 1: captured on segments only, never on graph
+      // edges (docs/sidewalk-data-plan.md §2 "Stage A does not touch graph
+      // edges") — a city network has hundreds of thousands of edges and
+      // nothing reads these yet. Legacy imports lack them; default to "" / null.
+      var sidewalk = props.sidewalk || "";
+      var footway = props.footway || "";
+      var wayId = props.wayId != null ? props.wayId : null;
+      // Carried through for the Phase 4 hover tooltip ("the tooltip names
+      // the street" — plan step 8); already downloaded on every way, just
+      // not previously propagated past this parse loop.
+      var name = props.name || "";
+      // Phase 4: a user-excluded way is blocked for pedestrians just like a
+      // class-forbidden one (motorway/trunk), but userExcluded is recorded
+      // separately so getWalkNetworkSegments() and the weld carve-out
+      // (connector-graph.js) can tell "blocked by the user" from "blocked by
+      // class" — see the plan's §2. carBlocked is untouched: driving is
+      // never affected by exclusion.
+      var userExcluded = !!(wayId != null && _excludedWays.has(wayId));
+      var pedBlocked = isPedForbidden(hwy, props.foot) || userExcluded;
       var carBlocked = isCarForbidden(hwy);
 
       var coordArrays = [];
@@ -121,14 +198,21 @@
           var k1 = nodeKey(c1);
           var k2 = nodeKey(c2);
           var dist = turf.distance(turf.point(c1), turf.point(c2), { units: "kilometers" });
-          addEdge(k1, k2, dist, [c1, c2], pedBlocked, carBlocked);
+          addGraphEdge(graph, k1, k2, dist, [c1, c2], pedBlocked, carBlocked, hwy);
           segments.push({
             startKey: k1,
             endKey: k2,
             startCoord: c1,
             endCoord: c2,
             pedBlocked: pedBlocked,
-            carBlocked: carBlocked
+            carBlocked: carBlocked,
+            hwy: hwy,
+            sidewalk: sidewalk,
+            footway: footway,
+            wayId: wayId,
+            userExcluded: userExcluded,
+            name: name,
+            kind: "base"
           });
 
           if (c1[0] < minLng) minLng = c1[0]; if (c1[0] > maxLng) maxLng = c1[0];
@@ -142,8 +226,133 @@
     _graph = graph;
     _segmentIndex = segments;
     _segGrid = buildSegGrid(segments, minLat, maxLat, minLng, maxLng);
+    _nodeTier = buildNodeTierMap(_graph);
     _featureCount = features.length;
+  }
+
+  // Rebuilds the graph from the current base GeoJSON, re-applies the connector
+  // overlay, and bumps the epoch exactly once. This is the single choke point
+  // every base-network load AND every connector change routes through (see
+  // docs/network-connectors-plan.md §3 "Rebuild orchestration"), so connectors
+  // are never merged into _roadGeoJSON and always survive a wholesale base
+  // replacement (a fresh Overpass download, a file import).
+  function rebuildNetwork() {
+    if (_roadGeoJSON) buildGraph(_roadGeoJSON);
+    applyConnectorOverlay();
     _networkEpoch++;
+  }
+
+  // ---- Network Connectors overlay (docs/network-connectors-plan.md Phase 4) ----
+  //
+  // Welds/splits the current _connectors into the freshly-built base graph.
+  // Runs immediately after buildGraph() inside rebuildNetwork(), before the
+  // epoch bump, so every consumer keyed on _networkEpoch sees the overlaid
+  // graph as a single atomic update. Never reads App.lines or any attribute —
+  // network-connectors.js is the only caller, via App.setNetworkConnectors(),
+  // and supplies plain { id, coords } geometry.
+  function applyConnectorOverlay() {
+    if (!_graph || !_segmentIndex) {
+      _lastOverlayReport = { reason: "no-base-network" };
+      return;
+    }
+    if (!_connectors.length) {
+      _lastOverlayReport = { addEdges: 0, removeSegIds: 0, joins: [], orphans: [] };
+      return;
+    }
+
+    var candidates = collectCandidateSegments(_connectors);
+    var snapToleranceKm = (_connectorOpts && _connectorOpts.snapToleranceKm) || 0;
+    var result = window.ConnectorGraph.planarizeConnectors(_connectors, candidates, {
+      snapToleranceKm: snapToleranceKm,
+      weldVertices: true,
+      splitCrossings: true // Phase 5: mid-block crossings now join too (welding shipped in Phase 4)
+    });
+
+    // Remove the base segments that got split/welded — their two directed
+    // graph edges are replaced entirely by result.addEdges below.
+    var removeSet = new Set(result.removeSegIds);
+    removeSet.forEach(function (idx) {
+      var seg = _segmentIndex[idx];
+      if (!seg) return;
+      removeGraphEdge(seg.startKey, seg.endKey);
+      removeGraphEdge(seg.endKey, seg.startKey);
+    });
+
+    var newSegmentIndex = [];
+    var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    function trackBbox(c) {
+      if (c[0] < minLng) minLng = c[0]; if (c[0] > maxLng) maxLng = c[0];
+      if (c[1] < minLat) minLat = c[1]; if (c[1] > maxLat) maxLat = c[1];
+    }
+    for (var i = 0; i < _segmentIndex.length; i++) {
+      if (removeSet.has(i)) continue;
+      var kept = _segmentIndex[i];
+      newSegmentIndex.push(kept);
+      trackBbox(kept.startCoord); trackBbox(kept.endCoord);
+    }
+
+    // Connector-derived edges are walk-only: pedBlocked false so walksheds/
+    // travelsheds traverse them, carBlocked true so App.findLocalRoute (driving)
+    // never does — connectors must not affect drive routing.
+    for (var e = 0; e < result.addEdges.length; e++) {
+      var edge = result.addEdges[e];
+      var a = edge.coords[0], b = edge.coords[1];
+      var ka = nodeKey(a), kb = nodeKey(b);
+      var distKm = turf.distance(turf.point(a), turf.point(b), { units: "kilometers" });
+      addGraphEdge(_graph, ka, kb, distKm, [a, b], false, true);
+      newSegmentIndex.push({
+        startKey: ka, endKey: kb, startCoord: a, endCoord: b,
+        pedBlocked: false, carBlocked: true, kind: "connector"
+      });
+      trackBbox(a); trackBbox(b);
+    }
+
+    _segmentIndex = newSegmentIndex;
+    _segGrid = buildSegGrid(_segmentIndex, minLat, maxLat, minLng, maxLng);
+    _nodeTier = buildNodeTierMap(_graph);
+
+    _lastOverlayReport = {
+      addEdges: result.addEdges.length,
+      removeSegIds: result.removeSegIds.length,
+      joins: result.joins,
+      orphans: result.orphans
+    };
+  }
+
+  // Candidate base segments near the connectors, queried from _segGrid: for
+  // each connector sub-segment, the cell range it touches (same gxMin..gxMax /
+  // gyMin..gyMax the segment's own grid insertion in buildSegGrid used),
+  // expanded by 1 cell in every direction so a connector endpoint near a cell
+  // boundary still finds neighbors just across it. Deduped by segment index.
+  function collectCandidateSegments(connectors) {
+    var idxSet = new Set();
+    for (var ci = 0; ci < connectors.length; ci++) {
+      var coords = connectors[ci].coords;
+      for (var j = 0; j < coords.length - 1; j++) {
+        var cellA = gridCellOf(coords[j][0], coords[j][1]);
+        var cellB = gridCellOf(coords[j + 1][0], coords[j + 1][1]);
+        var gxMin = Math.min(cellA[0], cellB[0]) - 1, gxMax = Math.max(cellA[0], cellB[0]) + 1;
+        var gyMin = Math.min(cellA[1], cellB[1]) - 1, gyMax = Math.max(cellA[1], cellB[1]) + 1;
+        for (var gx = gxMin; gx <= gxMax; gx++) {
+          for (var gy = gyMin; gy <= gyMax; gy++) {
+            var bucket = _segGrid.get(gridKey(gx, gy));
+            if (!bucket) continue;
+            for (var bi = 0; bi < bucket.length; bi++) idxSet.add(bucket[bi]);
+          }
+        }
+      }
+    }
+    var candidates = [];
+    idxSet.forEach(function (idx) {
+      var seg = _segmentIndex[idx];
+      // userExcluded lets connector-graph.js's weld/crossing-split guards
+      // tell "blocked by the user" from "blocked by class" (motorway/trunk),
+      // so a connector drawn along a user-excluded street can still weld to
+      // it while the bridge/freeway mitigation stays intact for real
+      // freeways — see docs/sidewalk-data-plan.md Phase 4 step 7.
+      candidates.push({ segId: idx, coords: [seg.startCoord, seg.endCoord], pedBlocked: seg.pedBlocked, userExcluded: !!seg.userExcluded });
+    });
+    return candidates;
   }
 
   // ---- Spatial grid over segments (snap acceleration) ----
@@ -568,7 +777,14 @@
             highway: (el.tags || {}).highway || "",
             name: (el.tags || {}).name || "",
             oneway: (el.tags || {}).oneway || "",
-            foot: (el.tags || {}).foot || ""
+            foot: (el.tags || {}).foot || "",
+            // Sidewalk-data plan (docs/sidewalk-data-plan.md) Phase 1: out geom;
+            // already returns every tag and the element id, so reading these
+            // three adds nothing to the download — parse-side only.
+            sidewalk: (el.tags || {}).sidewalk || "",
+            footway: (el.tags || {}).footway || "",
+            crossing: (el.tags || {}).crossing || "",
+            wayId: el.id
           },
           geometry: { type: "LineString", coordinates: coords }
         });
@@ -583,12 +799,14 @@
 
       var geojson = { type: "FeatureCollection", features: features };
 
-      // Build graph (synchronous — fast for regional networks)
-      buildGraph(geojson);
+      // Build graph + re-apply the connector overlay (synchronous — fast for
+      // regional networks), bumping the epoch exactly once.
       _roadGeoJSON = geojson;
+      rebuildNetwork();
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
 
       updateUI();
+      persistNetwork(extentCacheId(extentPolygon), "overpass", "");
       App.setStatus(_featureCount.toLocaleString() + " road segments loaded \u2014 local routing enabled");
       return true;
     } catch (e) {
@@ -632,10 +850,11 @@
           App.setStatus("No features found in file");
           return;
         }
-        buildGraph(geojson);
         _roadGeoJSON = geojson;
+        rebuildNetwork();
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         updateUI();
+        persistNetwork("file:" + file.name, "file", file.name);
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
       } catch (err) {
         App.setStatus("Failed to parse road network: " + (err.message || err));
@@ -660,14 +879,108 @@
     URL.revokeObjectURL(url);
   }
 
+  // ---- Offline persistence (js/core/network-store.js) ----
+  // Overpass is the app's least reliable dependency — a failed query commonly
+  // needs three or four retries — so the built network is kept in IndexedDB and
+  // restored on the next page load instead of being re-downloaded. Writing is
+  // fire-and-forget: the in-memory network is already usable, and a browser may
+  // evict the store at any time, so nothing here is allowed to fail loudly.
+
+  // Same extent re-downloaded => same key, so a repeat download of an area
+  // replaces its stored copy instead of accumulating near-duplicates.
+  function extentCacheId(extentPolygon) {
+    var bb = turf.bbox(extentPolygon); // [w, s, e, n]
+    return "bbox:" + bb.map(function (v) { return v.toFixed(3); }).join(",");
+  }
+
+  function persistNetwork(id, source, label) {
+    if (!App.networkStore || !App.networkStore.supported() || !_roadGeoJSON) return;
+    var geojson = _roadGeoJSON;
+    var extent = _downloadedBboxPolygon;
+    var count = _featureCount;
+    // Deferred: serializing a city-scale network blocks for a few hundred ms and
+    // nothing downstream is waiting on the write.
+    setTimeout(function () {
+      var json;
+      try {
+        json = JSON.stringify(geojson);
+      } catch (e) {
+        return; // too large to serialize — the live network is unaffected
+      }
+      App.networkStore.save({
+        id: id,
+        savedAt: Date.now(),
+        source: source,
+        label: label || "",
+        featureCount: count,
+        extent: extent || null,
+        geojson: json
+      });
+    }, 0);
+  }
+
+  function formatAge(ms) {
+    function plural(n, unit) { return n + " " + unit + (n === 1 ? "" : "s"); }
+    var min = Math.round(ms / 60000);
+    if (min < 60) return plural(Math.max(1, min), "minute");
+    var hrs = Math.round(min / 60);
+    if (hrs < 48) return plural(hrs, "hour");
+    return plural(Math.round(hrs / 24), "day");
+  }
+
+  // Rebuild from the most recently stored network. Returns Promise<boolean>.
+  //
+  // Routed through the same rebuildNetwork() -> updateUI() path as a live
+  // download, which matters for correctness rather than tidiness: the epoch
+  // bumps exactly once, so every epoch-keyed module cache (walkshed, travelshed)
+  // invalidates precisely as it would after a fresh fetch. A restored network is
+  // never allowed to silently validate geometry a previous page load computed
+  // against it. The stored download extent is restored too, so
+  // getRoadDownloadExtent() — and Transit Travelshed's coverage check built on
+  // it — keeps working without a re-download.
+  async function restoreCachedNetwork() {
+    if (_graph) return false; // something already loaded a network — don't override it
+    if (!App.networkStore || !App.networkStore.supported()) return false;
+
+    var rec = await App.networkStore.latest();
+    if (!rec || !rec.geojson) return false;
+
+    var geojson;
+    try {
+      geojson = JSON.parse(rec.geojson);
+    } catch (e) {
+      return false;
+    }
+    if (!geojson.features || !geojson.features.length) return false;
+
+    _roadGeoJSON = geojson;
+    rebuildNetwork();
+    _downloadedBboxPolygon = rec.extent || null;
+    updateUI();
+
+    var age = formatAge(Date.now() - (rec.savedAt || 0));
+    var stale = (Date.now() - (rec.savedAt || 0)) > NET_CACHE_FRESH_MS;
+    App.setStatus(
+      _featureCount.toLocaleString() + " road segments restored from cache — downloaded " +
+      age + " ago." + (stale ? " Re-download to refresh." : ""));
+    return true;
+  }
+
   function clearRoadNetwork() {
+    // Clearing is an explicit "remove this" action (Add Data × icon, Reset
+    // Session), so the stored copy goes too — otherwise the next page load would
+    // silently resurrect the network the user just dismissed.
+    if (App.networkStore) App.networkStore.clear();
+
     _roadGeoJSON = null;
     _graph = null;
     _segmentIndex = null;
     _segGrid = null;
+    _nodeTier = null;
     _featureCount = 0;
     _networkEpoch++;
     _downloadedBboxPolygon = null;
+    _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
   }
 
@@ -714,6 +1027,12 @@
 
     // Reconcile the on-map downloaded-area outline with current state.
     renderDownloadArea();
+
+    // Reconcile the discreet walk-network reference layer (network-connectors.js).
+    if (typeof App.refreshWalkNetworkLayer === "function") App.refreshWalkNetworkLayer();
+
+    // Reconcile the sidewalk coverage audit layer (walk-audit.js Phase 2).
+    if (typeof App.refreshSidewalkCoverageLayer === "function") App.refreshSidewalkCoverageLayer();
   }
 
   // ---- Walkshed (network isochrone) ----
@@ -721,8 +1040,13 @@
   // Budget-limited flood Dijkstra: settle every node whose cumulative distance
   // from startKey is <= budgetKm. Unlike dijkstra() there is no endKey early-exit;
   // we prune any relaxation that would exceed the budget so the search stays local.
+  //   penaltyKm : optional { major, minor } km values (docs/walkshed-bands-and-
+  //               crossing-penalties-plan.md Phase 5) — added to newDist when
+  //               arriving at a node classified in _nodeTier, so the budget
+  //               check below correctly prunes an over-budget crossing. null/
+  //               absent = no penalty, byte-identical to pre-Phase-5 behavior.
   // Returns a Map<nodeKey, distKm> of all settled nodes within budget.
-  function floodDijkstra(startKey, budgetKm) {
+  function floodDijkstra(startKey, budgetKm, penaltyKm) {
     var dist = new Map();
     var heap = new MinHeap();
 
@@ -740,6 +1064,10 @@
         var nb = neighbors[i];
         if (nb.pedBlocked) continue; // pedestrians can't walk motorways/trunk roads
         var newDist = current.dist + nb.weight;
+        if (penaltyKm) {
+          var tier = _nodeTier.get(nb.node);
+          if (tier) newDist += (tier === "major" ? penaltyKm.major : penaltyKm.minor);
+        }
         if (newDist > budgetKm) continue; // beyond walk budget — don't settle
         if (newDist < (dist.get(nb.node) || Infinity)) {
           dist.set(nb.node, newDist);
@@ -783,13 +1111,17 @@
   // async-safe.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km
+  //   opts     : optional { crossingPenaltyKm: {major, minor} } — threaded to
+  //              floodDijkstra (docs/walkshed-bands-and-crossing-penalties-plan.md
+  //              Phase 5). Absent/no crossingPenaltyKm = no penalty, unchanged
+  //              behavior — computeWalkCostMap deliberately never passes this.
   // Returns null when no network is loaded or the origin is outside walkable
   // coverage (snap > SNAP_MAX_KM). Otherwise { distMap: Map<nodeKey,distKm>,
   // snap, computeMs, snapMs, floodMs }. snapMs/floodMs split the total so
   // callers doing many of these (e.g. Transit Travelshed's per-stop floods)
   // can diagnose whether time is going to snapping or to the Dijkstra flood
   // itself — see the "Spatial grid over segments" comment above buildSegGrid().
-  function runWalkFlood(lngLat, budgetKm) {
+  function runWalkFlood(lngLat, budgetKm, opts) {
     if (!_graph || !(budgetKm > 0)) return null;
 
     var t0 = (typeof performance !== "undefined" && performance.now)
@@ -843,7 +1175,7 @@
     var distMap;
     try {
       injectSnapNode(snap);
-      distMap = floodDijkstra(snap.key, budgetKm);
+      distMap = floodDijkstra(snap.key, budgetKm, opts && opts.crossingPenaltyKm);
     } finally {
       cleanupTempNodes();
     }
@@ -863,15 +1195,32 @@
   // Compute a network walkshed (walking isochrone) from an arbitrary origin.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km (= speedKmh * minutes/60)
-  //   options  : { maxEdge } — advanced concave-hull edge length (km)
+  //   options  : { maxEdge,       — advanced concave-hull edge length (km)
+  //               budgetsKm,     — OPTIONAL ascending array of km values; when
+  //                                 present, floods once at max(budgetsKm) and
+  //                                 returns one nested polygon per entry (see
+  //                                 `polygons` below). Absent = today's behavior,
+  //                                 byte-identical — see
+  //                                 docs/walkshed-bands-and-crossing-penalties-plan.md
+  //                                 Phase 2.
+  //               crossingPenaltyKm } — OPTIONAL { major, minor } km values,
+  //                                 threaded to the flood (Phase 5). Absent/zero
+  //                                 = no penalty, byte-identical to pre-Phase-5
+  //                                 output — this is a hard backward-compat
+  //                                 requirement, verified pixel-identical at 0.
   // Returns null when no network is loaded or the origin is outside coverage
   // (snap > SNAP_MAX_KM). Otherwise { polygon, reachableSegments, reachableCount,
   // snap, computeMs }. Built on top of runWalkFlood — the graph mutation stays
   // atomic there; polygon/segment assembly below never touches the graph.
+  // When options.budgetsKm is present the return additionally carries
+  // `polygons: [{budgetKm, polygon, nodeCount}]` (ascending, one entry per
+  // budgetsKm value — a degenerate/sparse band still gets an entry with
+  // polygon: null, never dropped); polygon/reachableSegments/reachableCount
+  // remain the LARGEST budget's values, unchanged in meaning.
   function computeWalkshed(lngLat, budgetKm, options) {
     options = options || {};
 
-    var flood = runWalkFlood(lngLat, budgetKm);
+    var flood = runWalkFlood(lngLat, budgetKm, options);
     if (!flood) return null;
     var distMap = flood.distMap;
     var snap = flood.snap;
@@ -896,7 +1245,7 @@
 
     var polygon = buildWalkshedPolygon(coords, options.maxEdge);
 
-    return {
+    var result = {
       polygon: polygon,
       reachableSegments: turf.featureCollection(segFeatures),
       reachableCount: distMap.size,
@@ -905,6 +1254,23 @@
       snapMs: flood.snapMs,
       floodMs: flood.floodMs
     };
+
+    if (options.budgetsKm && options.budgetsKm.length) {
+      var polygons = [];
+      for (var bi = 0; bi < options.budgetsKm.length; bi++) {
+        var b = options.budgetsKm[bi];
+        var bandCoords = [];
+        distMap.forEach(function (d, key) { if (d <= b) bandCoords.push(keyToCoord(key)); });
+        polygons.push({
+          budgetKm: b,
+          polygon: buildWalkshedPolygon(bandCoords, options.maxEdge),
+          nodeCount: bandCoords.length
+        });
+      }
+      result.polygons = polygons;
+    }
+
+    return result;
   }
 
   // Same flood as computeWalkshed, but returns the raw per-node cost map instead
@@ -935,6 +1301,42 @@
     };
   }
 
+  // ---- Walk network segment accessor (js/core/network-connectors.js) ----
+
+  // Plain-array (not turf FeatureCollection) view of every walkable segment in
+  // the graph, for the discreet reference layer network-connectors.js renders.
+  // kind is "base" (from the OSM download/import) or "connector" (from the
+  // Phase 4 overlay — see applyConnectorOverlay()). Cached by _networkEpoch
+  // since a city network has tens of thousands of segments and this is called
+  // on every layer refresh.
+  var _walkSegCache = null;   // { epoch, segments }
+  function getWalkNetworkSegments() {
+    if (_walkSegCache && _walkSegCache.epoch === _networkEpoch) return _walkSegCache.segments;
+    var segments = [];
+    if (_segmentIndex) {
+      for (var i = 0; i < _segmentIndex.length; i++) {
+        var seg = _segmentIndex[i];
+        // Phase 4: a user-excluded segment stays in the walk-network view
+        // (rendered distinctly, still clickable to undo — see the plan's
+        // §2 "Excluded streets must stay visible and clickable"). Only a
+        // class-blocked segment (motorway/trunk) is skipped, same as before.
+        if (seg.pedBlocked && !seg.userExcluded) continue;
+        segments.push({
+          coords: [seg.startCoord, seg.endCoord],
+          kind: seg.kind || "base",
+          sidewalk: seg.sidewalk || "",
+          footway: seg.footway || "",
+          hwy: seg.hwy || "",
+          wayId: seg.wayId != null ? seg.wayId : null,
+          excluded: !!seg.userExcluded,
+          name: seg.name || ""
+        });
+      }
+    }
+    _walkSegCache = { epoch: _networkEpoch, segments: segments };
+    return segments;
+  }
+
   // ---- Expose on App namespace ----
 
   App.roadNetworkLoaded = function () { return !!_graph; };
@@ -944,9 +1346,51 @@
   App.loadRoadNetworkFromFile = loadRoadNetworkFromFile;
   App.exportRoadNetwork = exportRoadNetwork;
   App.clearRoadNetwork = clearRoadNetwork;
+  // Rebuild from the IndexedDB copy of the last loaded network (see the Offline
+  // persistence section above). Async; returns Promise<boolean>. Called once at
+  // startup from app.js, after the session cache has been restored.
+  App.restoreCachedNetwork = restoreCachedNetwork;
   App.computeWalkshed = computeWalkshed;
   // Remove only the downloaded-area outline (leaves the road graph intact) — used by the Layers panel.
   App.clearRoadDownloadArea = function () { _downloadedBboxPolygon = null; updateUI(); };
+  App.getWalkNetworkSegments = getWalkNetworkSegments;
+
+  // ---- Network Connectors adapter (js/core/network-connectors.js) ----
+  // Stores plain connector geometry + opts and triggers a full rebuildNetwork()
+  // (buildGraph -> applyConnectorOverlay -> one epoch bump). Returns the overlay
+  // report ({ addEdges, removeSegIds, joins, orphans } or { reason }). Never
+  // reads App.lines or attributes — network-connectors.js does that translation.
+  App.setNetworkConnectors = function (connectors, opts) {
+    _connectors = connectors || [];
+    _connectorOpts = opts || {};
+    rebuildNetwork();
+    return _lastOverlayReport;
+  };
+  // Raw accessor for the last overlay report — lets network-connectors.js stay in
+  // sync even when a base-network reload (which also re-runs applyConnectorOverlay
+  // via rebuildNetwork()) happens without going through setNetworkConnectors().
+  App.getLastConnectorOverlayReport = function () { return _lastOverlayReport; };
+
+  // ---- Manual street exclusion (docs/sidewalk-data-plan.md Phase 4) ----
+  // The ONLY sanctioned write path to _excludedWays, mirroring
+  // App.setNetworkConnectors(): stores the Set, writes the array back to
+  // App.networkSettings.excludedWayIds so it round-trips through the session
+  // cache, saves, then rebuildNetwork() — buildGraph() re-reads _excludedWays
+  // on every call, so exclusions re-apply automatically after a re-download
+  // and the epoch bumps exactly once per change. updateUI() (the same choke
+  // point fetchNetworkForBounds/loadRoadNetworkFromFile call after rebuilding)
+  // is required here too — rebuildNetwork() alone only updates the internal
+  // graph/_segmentIndex; without this the walk-network-line map source keeps
+  // its stale pre-exclusion GeoJSON and an excluded street never visibly
+  // changes until some unrelated event happens to refresh the layer.
+  App.setExcludedWays = function (ids) {
+    ids = ids || [];
+    _excludedWays = new Set(ids);
+    if (App.networkSettings) App.networkSettings.excludedWayIds = ids.slice();
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    rebuildNetwork();
+    updateUI();
+  };
 
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
