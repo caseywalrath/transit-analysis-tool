@@ -189,6 +189,22 @@
              pointIndices: pointIndices, polygonIndices: polygonIndices };
   }
 
+  // How many of the filter's features are hidden on the map. The buffer helpers
+  // skip hidden features, so a selection made only of hidden features builds no
+  // buffers; this lets runSummary() say so instead of a bare "No buffers set".
+  function countHiddenSelected(filter) {
+    var n = 0;
+    [["route", App.routes, filter.routeIndices], ["line", App.lines, filter.lineIndices],
+     ["point", App.points, filter.pointIndices], ["polygon", App.polygons, filter.polygonIndices]
+    ].forEach(function (g) {
+      (g[2] || []).forEach(function (idx) {
+        var f = (g[1] || [])[idx];
+        if (f && f.properties && f.properties.hidden) n++;
+      });
+    });
+    return n;
+  }
+
   // The checked rows as stable { type, id } refs — what _state.featureFilter stores
   // and the session persists. (getFeatureFilter() above returns run-time array
   // indices and is only for the run in progress.)
@@ -242,7 +258,8 @@
         ? previous[key] : filterHas(_state.featureFilter, type, ref ? ref.id : null);
       var label = document.createElement("label");
       label.style.cssText = "flex:1;cursor:pointer;";
-      label.textContent = (feature.properties && feature.properties.name) || fallback;
+      label.textContent = ((feature.properties && feature.properties.name) || fallback) +
+        ((feature.properties && feature.properties.hidden) ? " (hidden \u2014 skipped)" : "");
       var badgeEl = document.createElement("span");
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
@@ -376,7 +393,10 @@
     if (!unionFeat) {
       var errMsg = (App.points.length === 0 && App.lines.length === 0 &&
                     App.routes.length === 0 && App.polygons.length === 0)
-        ? "No features placed" : "No buffers set";
+        ? "No features placed"
+        : (countHiddenSelected(featureFilter) > 0
+            ? "Selected features are hidden \u2014 show them in the Layers tab"
+            : "No buffers set");
       for (var k = 0; k < displayVars.length; k++) {
         var errRows = codeToRows[displayVars[k]] || [];
         for (var ei = 0; ei < errRows.length; ei++) {
