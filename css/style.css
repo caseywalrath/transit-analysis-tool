@@ -54,6 +54,9 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.12);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.22);
 
+  /* ---- Layout ---- */
+  --fp-width: 250px;  /* right-hand Features/Layers panel; the module popup's right gutter derives from it */
+
   /* ---- Motion ---- */
   --ease-fast: 0.12s ease;
 
@@ -383,7 +386,7 @@ button { cursor: pointer; }
 
 /* ---- Right-side feature panel ---- */
 #feature-panel {
-  width: 208px;
+  width: var(--fp-width);
   min-width: 24px;
   border-left: 1px solid var(--border);
   padding: 0;
@@ -626,8 +629,8 @@ button { cursor: pointer; }
   gap: 3px;
 }
 /* The shared .fp-scrubber is sized for wider contexts (module popups, the
-   #fp-slider-popover). Inside a style-drawer row at the 208px panel width
-   there isn't room for its default sizing plus a readable label, so this
+   #fp-slider-popover). Inside a style-drawer row at the panel's width
+   (--fp-width) there isn't room for its default sizing plus a readable label, so this
    scopes a more compact size to just this container rather than shrinking
    the shared control everywhere it's used. */
 .lp-style-control .fp-scrub-btn { width: 16px; height: 16px; }
@@ -660,7 +663,7 @@ button { cursor: pointer; }
 /* Layer palette select (docs/layer-color-customization-plan.md Phase 6) reuses
    .lp-basemap-select, which is flex:1 for its usual full-width row context;
    inside the narrower .lp-style-control it needs a cap so a long palette
-   label can't push the 208px panel into horizontal scroll. */
+   label can't push the panel into horizontal scroll. */
 .lp-style-control .lp-basemap-select { max-width: 104px; flex: 0 1 auto; }
 /* --- Shared census-cache status line (analysis modules) --- */
 /* A status NOTE, not a control. It previously carried a filled background, a
@@ -2692,9 +2695,9 @@ code { font-family: var(--font-mono); }
   justify-content: flex-end;
   /* #module-popup overlays the whole viewport (it is a sibling of #main-content,
      not of #feature-panel, so it can't just dock inside the map column) —
-     clear the 208px feature panel + its 1px border plus the original 24px
-     gutter so a freshly opened/re-docked panel doesn't rest underneath it. */
-  padding-right: 233px;
+     clear the feature panel (--fp-width) + its 1px border plus the original
+     24px gutter so a freshly opened/re-docked panel doesn't rest underneath it. */
+  padding-right: calc(var(--fp-width) + 25px);
   box-sizing: border-box;
   pointer-events: none;
 }

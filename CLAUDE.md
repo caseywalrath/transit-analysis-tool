@@ -871,10 +871,12 @@ Remove all module `<script>` tags from `index.html`. The toolbar Analysis menu w
 | Toolbar: workflow | draw tools/actions | view controls | location search       |
 +-------------------------------------------------------------+------------------+
 |                    Live map (flex)                          | Feature/Layers   |
-|                                                            | panel (208px)    |
+|                                                            | panel (250px)    |
 |                    Floating analysis panel docks right over the map             |
 +-------------------------------------------------------------+------------------+
 ```
+
+The right panel's width is the `--fp-width` custom property in `:root` (`css/style.css`, currently 250px). `#feature-panel` uses it directly and `.module-popup`'s right gutter is `calc(var(--fp-width) + 25px)`, so change the variable, never the individual rules. The map controls (zoom, basemap switcher), floating legends and the panel's collapse tab are all positioned relative to `#map` or the panel itself, so they follow the width automatically; the collapsed (24px) and present-mode rules deliberately stay explicit.
 
 ### Dormant legacy sidebar
 

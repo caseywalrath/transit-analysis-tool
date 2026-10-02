@@ -120,7 +120,9 @@ that constant, for `.fp-collapsed` and for `body.present-mode`.
 
 Replace this with a single variable:
 
-- Define `--fp-width: 208px` on `#app`.
+- Define `--fp-width: 208px` on `#app`. *(Done early, separately from this plan: `--fp-width` now exists on
+  `:root` and the default was widened to 250px, so substitute 250px for 208px wherever this phase says 208px.
+  `#feature-panel` and `.module-popup` already read the variable; step 0.1 is complete.)*
 - `#feature-panel { width: var(--fp-width); }`
 - `.module-popup { padding-right: calc(var(--fp-width) + 25px); }`
 - The collapsed and present-mode rules stay as they are — they already force `24px` and can keep
