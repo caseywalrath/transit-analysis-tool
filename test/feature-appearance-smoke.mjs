@@ -326,12 +326,77 @@ async function main() {
     await page.waitForTimeout(200);
     const drawerInfo = await page.evaluate(`(() => { var d = ${rowOf("Line 2")}.parentElement.querySelector(".lp-style-drawer-feature");
       return d && d.style.display !== "none" ? Array.prototype.map.call(d.querySelectorAll(".lp-style-label"), (x) => x.textContent) : null; })()`);
-    check("drawer rows: Opacity, Weight, Offset (Buffer moved to Attributes in Phase 2)", JSON.stringify(drawerInfo) === JSON.stringify(["Opacity", "Weight", "Offset"]), drawerInfo);
+    check("drawer rows: Opacity, Weight, Offset, Line style (Buffer moved to Attributes in Phase 2)", JSON.stringify(drawerInfo) === JSON.stringify(["Opacity", "Weight", "Offset", "Line style"]), drawerInfo);
     await page.evaluate(`(() => { var d = ${rowOf("Line 2")}.parentElement.querySelector(".lp-style-drawer-feature");
       var r = Array.prototype.filter.call(d.querySelectorAll(".lp-style-row"), (x) => x.querySelector(".lp-style-label").textContent === "Weight")[0];
       var i = r.querySelector(".fp-scrub-input"); i.value = "2"; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
     check("drawer edit writes the same override", (await props(page, "line", 1))._lineWidth === 2);
     check("drawer edit is undoable (new in Phase 1)", await page.evaluate(() => { App.undo.undo(); return App.lines[1].properties._lineWidth === undefined; }));
+
+    // ================= PHASE 3: Line style control =================
+    console.log("\n# Phase 3: Line style control (lines/routes only)");
+    await page.click('.fp-tab-btn[data-fptab="features"]');
+    await loadFixture(page);
+    await page.waitForTimeout(300);
+    const lsBtn = (style) => page.locator(POP + ' .fa-seg-btn[data-style="' + style + '"]');
+    const lsClear = () => rowClear(page, "Line style");
+    const lsActive = () => page.evaluate((s) => { var b = document.querySelector(s + " .fa-seg-btn.is-active"); return b ? b.getAttribute("data-style") : null; }, POP);
+    const lsLayer = (id) => page.evaluate((id) => App.map.queryRenderedFeatures({ layers: [id] }).length, id);
+    for (const [type, name, idx] of [["line", "Line 1", 0], ["route", "Route 1", 0]]) {
+      await page.locator('#fp-tab-features .fp-item', { hasText: name }).locator(".fp-type-icon").click();
+      check(type + ": popover has a Line style row with 3 options", (await page.locator(POP + " .fa-seg-btn").count()) === 3);
+      check(type + ": starts Solid, muted, no x", (await lsActive()) === "solid" && (await rowInherited(page, "Line style")) === true && !(await lsClear().isVisible()));
+      for (const st of ["dashed", "dotted"]) {
+        await lsBtn(st).click();
+        p = await props(page, type, idx);
+        check(type + ": " + st + " writes _lineStyle", p._lineStyle === st, p._lineStyle);
+        check(type + ": " + st + " control active, not muted, x visible", (await lsActive()) === st && (await rowInherited(page, "Line style")) === false && await lsClear().isVisible());
+        await page.waitForTimeout(250);
+        check(type + ": " + st + " feature renders on the " + st + " layer", (await lsLayer(type === "line" ? "lines-layer-" + st : "routes-layer-" + st)) >= 1);
+        check(type + ": " + st + " is one undo step that restores the previous style", await page.evaluate(([t, i, st]) => {
+          App.undo.undo();
+          var q = ({ line: App.lines, route: App.routes })[t][i].properties._lineStyle;
+          App.undo.redo();
+          return q === undefined || q === "dashed" && st === "dotted";
+        }, [type, idx, st]));
+        await page.waitForTimeout(100);
+        if (!(await popOpen(page))) await page.locator('#fp-tab-features .fp-item', { hasText: name }).locator(".fp-type-icon").click();
+      }
+      await lsClear().click();
+      p = await props(page, type, idx);
+      check(type + ": x clears _lineStyle (back to Solid)", p._lineStyle === undefined && (await lsActive()) === "solid");
+      await lsBtn("dashed").click();
+      await page.evaluate(() => App.undo.undo());
+      await page.waitForTimeout(100);
+      check(type + ": undo of a style change removes it", (await props(page, type, idx))._lineStyle === undefined);
+      await page.evaluate(() => App.closeAppearancePopup());
+    }
+    // Reset all clears the style in ONE undo step
+    await page.locator('#fp-tab-features .fp-item', { hasText: "Line 1" }).locator(".fp-type-icon").click();
+    await lsBtn("dotted").click();
+    await typeValue(page, "Weight", 3);
+    await page.evaluate(() => { while (App.undo.canUndo()) App.undo.undo(); App.lines[0].properties._lineStyle = "dotted"; App.lines[0].properties._lineWidth = 3; App.undo.push(); window.__base = 0; });
+    await page.locator(POP + " .fa-reset").click();
+    p = await props(page, "line", 0);
+    check("Reset all clears _lineStyle and _lineWidth", p._lineStyle === undefined && p._lineWidth === undefined, p);
+    check("Reset all with a line style is exactly one undo step", await page.evaluate(() => { App.undo.undo(); return App.lines[0].properties._lineStyle === "dotted" && App.lines[0].properties._lineWidth === 3; }));
+    check("Reset all moved the line back to the solid layer", (await lsActive()) === "solid");
+    await page.evaluate(() => { App.closeAppearancePopup(); App.lines[0].properties._lineStyle = undefined; delete App.lines[0].properties._lineStyle; });
+    // Points and polygons never show the control
+    for (const name of ["P1", "Poly 1"]) {
+      await page.locator('#fp-tab-features .fp-item', { hasText: name }).locator(".fp-type-icon").click();
+      check(name + ": no Line style row", (await page.locator(POP + " .fa-seg-btn").count()) === 0 && !(await page.evaluate((s) => Array.prototype.some.call(document.querySelectorAll(s + " .lp-style-label"), (x) => x.textContent === "Line style"), POP)));
+      await page.evaluate(() => App.closeAppearancePopup());
+    }
+    // Layers drawer shares the row
+    await page.click('.fp-tab-btn[data-fptab="layers"]');
+    await page.waitForTimeout(300);
+    await page.evaluate(`${rowOf("Line 2")}.querySelector(".lp-caret").click()`);
+    await page.waitForTimeout(200);
+    await page.evaluate(`${rowOf("Line 2")}.parentElement.querySelector('.lp-style-drawer-feature .fa-seg-btn[data-style="dashed"]').click()`);
+    check("Layers drawer segmented control writes the same override", (await props(page, "line", 1))._lineStyle === "dashed");
+    await page.evaluate(() => { App.undo.undo(); });
+    check("Layers drawer change is undoable", (await props(page, "line", 1))._lineStyle === undefined);
 
     // ================= PHASE 2: Study area / buffer radius =================
     console.log("\n# Phase 2: buffer radius in the Attributes popup");

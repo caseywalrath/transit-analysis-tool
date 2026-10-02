@@ -4,7 +4,7 @@
 //
 //  - App.openAppearancePopup(anchorEl, type, index, opts) — the singleton
 //    #fp-appearance-popover: color, opacity, width, offset (lines/routes) and
-//    a Reset all button for ONE feature. Opened from the Features-pane type
+//    Line style (lines/routes) and a Reset all button for ONE feature. Opened from the Features-pane type
 //    icon, the Attributes popup swatch, the Layers-tab feature row swatch and
 //    the Attribute Summary swatch.
 //  - App.buildFeatureOverrideRows(type, feature, opts) — the opacity / width /
@@ -115,6 +115,70 @@
     return row;
   }
 
+  // "Line style" row (lines/routes only): Solid | Dashed | Dotted segmented
+  // control + the usual muted-default / x clear. Writes ONLY through
+  // App.setFeatureLineStyle (one undo step per click); reads through
+  // App.normalizeLineStyle. Default (and cleared) = Solid.
+  var LINE_STYLES = [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]];
+  function buildLineStyleRow(type, ref, opts) {
+    var row = document.createElement("div");
+    row.className = "lp-style-row fa-linestyle-row";
+    var lab = document.createElement("span");
+    lab.className = "lp-style-label";
+    lab.textContent = "Line style";
+    row.appendChild(lab);
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-control";
+    row.appendChild(wrap);
+    var seg = document.createElement("div");
+    seg.className = "fa-segmented";
+    seg.setAttribute("role", "radiogroup");
+    seg.setAttribute("aria-label", "Line style");
+    wrap.appendChild(seg);
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "lp-style-clear";
+    clearBtn.title = "Clear override (use Solid)";
+    clearBtn.setAttribute("aria-label", "Clear Line style override");
+    clearBtn.textContent = "×";
+    wrap.appendChild(clearBtn);
+
+    function current() {
+      var f = resolve(ref);
+      return f ? App.normalizeLineStyle(f.properties._lineStyle) : "solid";
+    }
+    function sync() {
+      var cur = current();
+      row.classList.toggle("lp-inherited", cur === "solid");
+      clearBtn.style.display = cur === "solid" ? "none" : "";
+      Array.prototype.forEach.call(seg.children, function (b) {
+        var on = b.getAttribute("data-style") === cur;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-checked", on ? "true" : "false");
+      });
+    }
+    function apply(style) {
+      var idx = App.resolveFeatureRef(ref);
+      if (idx < 0) return;
+      App.setFeatureLineStyle(type, idx, style);   // one undo step; re-render, save, panels
+      sync();
+      if (typeof opts.onChange === "function") opts.onChange();
+    }
+    LINE_STYLES.forEach(function (ls) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "fa-seg-btn";
+      b.setAttribute("role", "radio");
+      b.setAttribute("data-style", ls[0]);
+      b.textContent = ls[1];
+      b.addEventListener("click", function (e) { e.stopPropagation(); apply(ls[0]); });
+      seg.appendChild(b);
+    });
+    clearBtn.addEventListener("click", function (e) { e.stopPropagation(); apply("solid"); });
+    sync();
+    return row;
+  }
+
   // Returns an array of DOM rows. opts: { onChange }.
   // onChange fires after every write (value change or clear).
   function buildFeatureOverrideRows(type, feature, opts) {
@@ -198,6 +262,9 @@
       }, gesture));
     }
 
+    // Line style (lines and routes only)
+    if (type === "line" || type === "route") rows.push(buildLineStyleRow(type, ref, opts));
+
     return rows;
   }
   App.buildFeatureOverrideRows = buildFeatureOverrideRows;
@@ -223,7 +290,8 @@
 
   function hasOwnAppearance(p) {
     return p.color || p._opacity != null || p._fillOpacity != null || p._borderOpacity != null ||
-      p._lineWidth != null || !!p._offsetManual;
+      p._lineWidth != null || !!p._offsetManual ||
+      App.normalizeLineStyle(p._lineStyle) !== "solid";
   }
 
   function notifyChange() {
@@ -259,6 +327,7 @@
       delete p._opacity; delete p._fillOpacity; delete p._borderOpacity;
       delete p._lineWidth;
       if (p._offsetManual) { delete p._offset; delete p._offsetManual; }
+      if (type === "line" || type === "route") App.setFeatureLineStyle(type, idx, "solid");  // push is a no-op inside the batch
       rerender(type);
       var oCb = document.getElementById("offsetOverlap");
       if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") App.computeOverlapOffsets();
