@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Not started
+**Status:** Phase 0 done; Phase 1 in progress
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
