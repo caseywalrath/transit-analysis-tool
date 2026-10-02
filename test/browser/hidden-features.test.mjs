@@ -126,6 +126,7 @@ async function standardSection(page, cfg, url) {
   await clickEl(page, "#" + cfg.toggle);
   r = await rowOf(page, L, 1);
   check(T + "toggle on enables the hidden row (still tagged)", !r.disabled && r.tag && !r.muted);
+  if (cfg.extra) await cfg.extra(page);
   await clickEl(page, cfg.run);
   check(T + "toggle on: run completes", await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d), 40000, [ST, cfg.done]), await text(page, ST));
   check(T + "results disclose hidden features", (await text(page, cfg.note)).includes("Includes 1 feature hidden on the map."), await text(page, cfg.note));
@@ -148,8 +149,9 @@ async function standardSection(page, cfg, url) {
   check(T + "changing the toggle after a run marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
   await clickEl(page, "#" + cfg.toggle); // on
   await page.evaluate(() => App.cache.save());
-  await waitFor(page, (m) => { const raw = localStorage.getItem("mat-session");
-    return !!raw && JSON.parse(raw).moduleState[m].includeHidden === true; }, 10000, cfg.cacheKey || cfg.module);
+  await waitFor(page, ([m, path]) => { const raw = localStorage.getItem("mat-session"); if (!raw) return false;
+    let o = JSON.parse(raw).moduleState[m]; for (const k of path.split(".")) o = o && o[k];
+    return o === true; }, 10000, [cfg.cacheKey || cfg.module, cfg.flagPath || "includeHidden"]);
   await reloadPage(page, url);
   await page.evaluate((m) => App.openModulePopup(m), cfg.module);
   await page.waitForSelector("#" + cfg.toggle);
@@ -400,6 +402,38 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
       tag: "TPI", module: "transit-propensity", cacheKey: "tpi", list: "#tpiFeatureChecklist", selAll: "#tpiSelectAll", selNone: "#tpiSelectNone",
       run: "#tpiRun", status: "#tpiStatus", toggle: "tpiIncludeHidden", note: "#tpiHiddenNote", done: "TPI computed",
       first: { type: "route", index: 0 }, second: { type: "route", index: 1 }, editStale: true }, url);
+
+    await standardSection(page, {
+      tag: "TC", module: "transit-coverage", flagPath: "settings.includeHidden", list: "#tcFeatureList",
+      selAll: "#tcFeatSelectAll", selNone: "#tcFeatSelectNone", run: "#tcRunBtn", status: "#tcStatus",
+      toggle: "tcIncludeHidden", note: "#tcHiddenNote", done: "Analyzed coverage",
+      first: { type: "route", index: 0 }, second: { type: "route", index: 1 },
+      extra: async (pg) => {
+        const A = "#tcAreaList";
+        check("TC: area list present with both rows enabled (toggle on)", !(await rowOf(pg, A, 1)).disabled && !(await rowOf(pg, A, 2)).disabled);
+        await clickEl(pg, "#tcIncludeHidden"); // off
+        await hide(pg, "polygon", 0, true);
+        let ar = await rowOf(pg, A, 1);
+        check("TC: one toggle governs the service-area list too (hidden polygon grayed, checked)", ar.disabled && ar.muted && ar.tag && ar.checked, JSON.stringify(ar));
+        await clickEl(pg, "#tcAreaSelectNone");
+        await clickEl(pg, "#tcAreaSelectAll");
+        const a2 = [await rowOf(pg, A, 1), await rowOf(pg, A, 2)];
+        check("TC: area Select all ticks enabled only; Clear clears all", !a2[0].checked && a2[1].checked);
+        // hidden-only service area, toggle off, features visible and ticked
+        await hide(pg, "route", 0, false);
+        await clickEl(pg, "#tcAreaSelectNone");
+        await hide(pg, "polygon", 0, false);
+        await clickEl(pg, A + " .rf-feature-check-row:nth-child(1) input");
+        await hide(pg, "polygon", 0, true);
+        await clickEl(pg, "#tcRunBtn");
+        check("TC: hidden-only service area (toggle off) shows the hidden message",
+          await waitFor(pg, () => document.getElementById("tcStatus").textContent.includes("Selected features are hidden"), 20000), await text(pg, "#tcStatus"));
+        // restore: toggle on, polygon visible again, route 0 hidden again
+        await clickEl(pg, "#tcIncludeHidden");
+        await hide(pg, "polygon", 0, false);
+        await clickEl(pg, "#tcAreaSelectAll");
+        await hide(pg, "route", 0, true);
+      } }, url);
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {

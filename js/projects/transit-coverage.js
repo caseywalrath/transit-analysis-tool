@@ -23,6 +23,10 @@
   // (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
+  var _includeHidden     = false;   // one toggle for BOTH lists (docs/hidden-features-analysis-plan.md)
+  // Taken at run time so update() can tell a relevant change from an unrelated
+  // hide/show (notifyProject fires on every visibility change).
+  var _runSnap           = null;    // { geom, hidden, refs: [{type,id}], includeHidden }
 
   // ---- DOM guard: only touch DOM when popup is open for this module ----
 
@@ -68,11 +72,32 @@
     if (!el) return out;
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
-      if (!boxes[i].checked) continue;
+      if (!boxes[i].checked || boxes[i].disabled) continue;   // disabled = hidden row, toggle off: kept in the saved selection, not analyzed
       var fid = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
       if (Number.isFinite(fid)) out.push({ type: boxes[i].getAttribute("data-type"), id: fid });
     }
     return out;
+  }
+
+  // Everything besides the hidden flag that changes a run and arrives via
+  // notifyProject: feature edits, LODES, display-buffer radii.
+  function runInputsSig() {
+    var fs = App.featureSettings || {};
+    return App.featureGeomSignature() + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") +
+      "#fs:" + JSON.stringify([fs.bufferRadius, fs.lineBufferRadius, fs.routeBufferRadius]);
+  }
+
+  function makeRunSnap(refs) {
+    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs), includeHidden: _includeHidden };
+  }
+
+  // True when the last run no longer matches the map: features changed, the hidden
+  // state of a feature in the run's selection changed, or the toggle changed.
+  function runIsOutdated() {
+    if (!_runSnap) return false;
+    if (_runSnap.includeHidden !== _includeHidden) return true;
+    if (_runSnap.geom !== runInputsSig()) return true;
+    return _runSnap.hidden !== App.hiddenSignature(_runSnap.refs);
   }
 
   // ---- Feature checklist (routes + lines) ----
@@ -84,7 +109,7 @@
     el.innerHTML = "";
     var hasFeatures = false;
 
-    function addRow(type, idx, name, badge) {
+    function addRow(type, idx, name, badge, feature) {
       hasFeatures = true;
       var ref = App.featureRef(type, idx);
       var checked = !(ref && isRefUnchecked(type, ref.id));
@@ -106,13 +131,14 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var routes = App.routes || [];
@@ -121,12 +147,12 @@
     for (var ri = 0; ri < routes.length; ri++) {
       addRow("route", ri,
         (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1)),
-        "R");
+        "R", routes[ri]);
     }
     for (var li = 0; li < lines.length; li++) {
       addRow("line", li,
         (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1)),
-        "L");
+        "L", lines[li]);
     }
 
     if (!hasFeatures) {
@@ -143,7 +169,7 @@
     el.innerHTML = "";
     var hasAreas = false;
 
-    function addRow(idx, name) {
+    function addRow(idx, name, feature) {
       hasAreas = true;
       var ref = App.featureRef("polygon", idx);
       var checked = !(ref && isRefUnchecked("polygon", ref.id));
@@ -165,18 +191,19 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = "P";
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var polygons = App.polygons || [];
     for (var i = 0; i < polygons.length; i++) {
-      addRow(i, (polygons[i].properties && polygons[i].properties.name) || ("Polygon " + (i + 1)));
+      addRow(i, (polygons[i].properties && polygons[i].properties.name) || ("Polygon " + (i + 1)), polygons[i]);
     }
 
     if (!hasAreas) {
@@ -193,7 +220,7 @@
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       var cb = boxes[i];
-      if (!cb.checked) continue;
+      if (!cb.checked || cb.disabled) continue;
       var type = cb.getAttribute("data-type");
       var idx  = parseInt(cb.getAttribute("data-idx"), 10);
       if      (type === "route") routeIndices.push(idx);
@@ -209,7 +236,7 @@
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       var cb = boxes[i];
-      if (!cb.checked) continue;
+      if (!cb.checked || cb.disabled) continue;
       polygonIndices.push(parseInt(cb.getAttribute("data-idx"), 10));
     }
     return { polygonIndices: polygonIndices };
@@ -390,13 +417,13 @@
   // App.routeBuffers / App.lineBuffers (those belong to the shared
   // Feature Settings buffer radius, a different concern).
 
-  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers) {
+  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers, includeHidden) {
     var headwayRows = [];
     var allBuffers = [];
     var qualifyingBuffers = [];
     var bufferSet = useDisplayBuffers
-      ? App.buildDisplayBufferSet(sel)
-      : App.buildAnalysisBufferSet(sel, miles);
+      ? App.buildDisplayBufferSet(sel, { includeHidden: !!includeHidden })
+      : App.buildAnalysisBufferSet(sel, miles, { includeHidden: !!includeHidden });
 
     function featureIdOf(type, idx) {
       var ref = App.featureRef(type, idx);
@@ -437,7 +464,8 @@
     var coverageUnion  = App.foldAnalysisUnion(allBuffers);
     var thresholdUnion = (thresholdMin == null) ? null : App.foldAnalysisUnion(qualifyingBuffers);
 
-    return { coverageUnion: coverageUnion, thresholdUnion: thresholdUnion, headwayRows: headwayRows };
+    return { coverageUnion: coverageUnion, thresholdUnion: thresholdUnion, headwayRows: headwayRows,
+             hiddenCount: bufferSet.hiddenCount || { included: 0, skipped: 0 } };
   }
 
   function clipToServiceArea(unionFeat, serviceAreaUnion) {
@@ -593,6 +621,14 @@
 
   async function runCoverage() {
     if (_running) return;
+    // Everything the user ticked in a list is hidden on the map (toggle off): say so.
+    var pre = { feat: getSelectedFeatures(), area: getSelectedAreas() };
+    var hiddenChecked = function (id) { return document.querySelectorAll("#" + id + " input[type=checkbox]:checked:disabled").length; };
+    if ((!pre.feat.routeIndices.length && !pre.feat.lineIndices.length && hiddenChecked("tcFeatureList") > 0) ||
+        (!pre.area.polygonIndices.length && hiddenChecked("tcAreaList") > 0)) {
+      setStatus(App.hiddenSelectionMessage(0).error, "error");
+      return;
+    }
     _running = true;
     var runBtn = document.getElementById("tcRunBtn");
     if (runBtn) runBtn.disabled = true;
@@ -625,7 +661,16 @@
       }
 
       _useDisplayBuffers = !!(document.getElementById("tcUseDisplayBuffers") || {}).checked;
-      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers);
+      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers, _includeHidden);
+      var snap = makeRunSnap(checkedRefsIn("tcFeatureList").concat(checkedRefsIn("tcAreaList")));
+      // Hidden features that took part: route/line from the buffer set, plus hidden service-area polygons.
+      var hiddenIncluded = (unions.hiddenCount && unions.hiddenCount.included) || 0;
+      if (_includeHidden) {
+        areaSel.polygonIndices.forEach(function (pi) {
+          var pf = (App.polygons || [])[pi];
+          if (pf && pf.properties && pf.properties.hidden) hiddenIncluded++;
+        });
+      }
       var coverageUnion  = unions.coverageUnion;
       var thresholdUnion = unions.thresholdUnion;
       var headwayRows     = unions.headwayRows;
@@ -677,8 +722,10 @@
         headwayRows: headwayRows,
         coverageClipped: coverageClipped, thresholdClipped: thresholdClipped,
         serviceAreaUnion: serviceAreaUnion,
-        featRefs: checkedRefsIn("tcFeatureList"), areaRefs: checkedRefsIn("tcAreaList")
+        featRefs: checkedRefsIn("tcFeatureList"), areaRefs: checkedRefsIn("tcAreaList"),
+        hiddenIncluded: hiddenIncluded
       };
+      _runSnap = snap;
       _stale = false;
 
       renderResults(_lastResult);
@@ -715,6 +762,8 @@
     var resultsWrap = document.getElementById("tcResults");
     var emptyState  = document.getElementById("tcEmptyState");
     if (!container || !resultsWrap) return;
+    var hiddenNoteEl = document.getElementById("tcHiddenNote");
+    if (hiddenNoteEl) hiddenNoteEl.textContent = (result && App.hiddenSelectionMessage(result.hiddenIncluded || 0).notes) || "";
 
     if (!result) {
       resultsWrap.style.display = "none";
@@ -941,12 +990,29 @@
     var thresholdInput = document.getElementById("tcHeadwayThreshold");
     if (thresholdInput) thresholdInput.addEventListener("change", markStale);
 
+    // Include hidden toggle: one for both lists, beside the first list's Select all | Clear.
+    var actionsEl = document.querySelector(".rf-feature-select-actions");
+    if (actionsEl && !document.getElementById("tcIncludeHidden")) {
+      var toggleEl = App.buildIncludeHiddenToggle({
+        id: "tcIncludeHidden", checked: _includeHidden,
+        onChange: function (on) {
+          _includeHidden = on;
+          buildFeatureChecklist();           // re-decorate rows; checked states untouched
+          buildAreaChecklist();
+          if (App.cache) App.cache.save();
+          if (_lastResult && runIsOutdated()) markStale();
+        }
+      });
+      toggleEl.title = "Applies to both the routes/lines and the service-area polygons.";
+      actionsEl.appendChild(toggleEl);
+    }
+
     // Transit features select all / clear
     var featSelectAll = document.getElementById("tcFeatSelectAll");
     if (featSelectAll) {
       featSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -966,7 +1032,7 @@
     if (areaSelectAll) {
       areaSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -993,6 +1059,8 @@
   }
 
   function onOpen(core) {
+    var ihEl = document.getElementById("tcIncludeHidden");
+    if (ihEl) ihEl.checked = _includeHidden;
     buildFeatureChecklist();
     buildAreaChecklist();
     syncBufferControl();
@@ -1021,6 +1089,7 @@
     clearMapOverlay();
     if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("tc-legend");
     _lastResult = null;
+    _runSnap = null;
     _stale = false;
     if (isPopupVisible()) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
@@ -1040,11 +1109,12 @@
     if (_lastResult && (noFeatures || noAreas)) {
       clearAll();
     }
+    // notifyProject also fires on every hide/show: only go stale on a real change.
+    if (_lastResult && !_stale && runIsOutdated()) markStale();
     if (!isPopupVisible()) return;
     buildFeatureChecklist();
     buildAreaChecklist();
     updateLodesWarnings();
-    if (_lastResult) markStale();
   }
 
   // ---- Session persistence ----
@@ -1053,6 +1123,7 @@
     var settings = {
       bufferMiles:      null,
       useDisplayBuffers: _useDisplayBuffers,
+      includeHidden:    _includeHidden,   // additive, no schema bump
       dayType:          null,
       headwayThreshold: null,
       geoLevel:         null,
@@ -1098,6 +1169,7 @@
         useDisplayBuffers: _lastResult.useDisplayBuffers,
         dayType:         _lastResult.dayType,
         thresholdMin:    _lastResult.thresholdMin,
+        hiddenIncluded:  _lastResult.hiddenIncluded || 0,
         popTotal:        _lastResult.popTotal,
         popCovered:      _lastResult.popCovered,
         popThreshold:    _lastResult.popThreshold,
@@ -1148,6 +1220,9 @@
 
     if (bufferEl && Number.isFinite(settings.bufferMiles)) bufferEl.value = String(settings.bufferMiles);
     if (settings.useDisplayBuffers != null) _useDisplayBuffers = !!settings.useDisplayBuffers;
+    if (typeof settings.includeHidden === "boolean") _includeHidden = settings.includeHidden;
+    var ihRestoreEl = document.getElementById("tcIncludeHidden");
+    if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
     syncBufferControl();
     if (dayTypeEl && settings.dayType)                      dayTypeEl.value = settings.dayType;
     if (thresholdEl) {
@@ -1166,6 +1241,7 @@
       useDisplayBuffers: !!s.useDisplayBuffers,
       dayType:          s.dayType,
       thresholdMin:     s.thresholdMin,
+      hiddenIncluded:   s.hiddenIncluded || 0,
       popTotal:         s.popTotal,
       popCovered:       s.popCovered,
       popThreshold:     s.popThreshold,
@@ -1189,6 +1265,15 @@
       areaRefs:         null
     };
     _stale = false;
+    // Baseline for update(): the live routes/lines/polygons now, minus what the user unchecked.
+    var restoreRefs = [];
+    [["route", App.routes], ["line", App.lines], ["polygon", App.polygons]].forEach(function (g) {
+      (g[1] || []).forEach(function (f, i) {
+        var ref = App.featureRef(g[0], i);
+        if (ref && !isRefUnchecked(g[0], ref.id)) restoreRefs.push(ref);
+      });
+    });
+    _runSnap = makeRunSnap(restoreRefs);
 
     if (isPopupVisible()) {
       renderResults(_lastResult);
