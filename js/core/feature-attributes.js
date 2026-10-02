@@ -995,230 +995,6 @@
     btn.title = collapsed ? "Expand" : "Collapse";
   }
 
-  // SVG icons for per-feature override buttons
-  var _OVR_OPACITY_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6" stroke-dasharray="3 2"/></svg>';
-  var _OVR_BUFFER_SVG  = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/></svg>';
-  var _OVR_WIDTH_SVG   = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="2" y1="8" x2="14" y2="8" stroke-width="2.5"/></svg>';
-  var _OVR_OFFSET_SVG  = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="6" x2="14" y2="6"/><line x1="2" y1="10" x2="14" y2="10"/></svg>';
-  var _OVR_DEFAULT_SVG = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 6.5A4 4 0 1 1 8 2.5"/><polyline points="8 0.5 10.5 2.5 8 4.5"/></svg>';
-
-  // Push updated feature GeoJSON data to MapLibre source so data-driven
-  // paint expressions pick up any changed feature.properties immediately.
-  // (The wrapped render functions also re-apply paint expressions via _wrapRender.)
-  function _pushFeatureLayer(ft) {
-    var fnName = { point: "renderPointLayers", line: "renderLineLayers",
-                   route: "renderRouteLayers", polygon: "renderPolygonLayers" }[ft];
-    if (fnName && typeof App[fnName] === "function") App[fnName]();
-  }
-
-  // Inverse of _polyOpacityValues fill component → returns S (0–100)
-  function _invertPolyFillOpacity(fill) {
-    if (fill <= 0.15) return Math.round(fill * 50 / 0.15);
-    return Math.round(50 + (fill - 0.15) * 50 / 0.85);
-  }
-
-  // Build the per-feature override icons container (opacity / buffer / width / offset / reset).
-  // Used by the per-feature attribute popup AND the Attribute Summary module.
-  // Returns a DOM div (`.fp-attr-overrides`) wired with click handlers, or null
-  // for label/textbox features (which have no per-feature overrides in this app).
-  function buildOverridesContainer(featureType, feature) {
-    if (featureType === "label" || featureType === "textbox") return null;
-
-    var TYPE_KEYS = {
-      point:   { opacityKey: "pointOpacity",   widthKey: "pointLineWidth",   bufferKey: "bufferRadius" },
-      line:    { opacityKey: "lineOpacity",     widthKey: "lineLineWidth",    bufferKey: "lineBufferRadius" },
-      route:   { opacityKey: "routeOpacity",    widthKey: "routeLineWidth",   bufferKey: "routeBufferRadius" },
-      polygon: { opacityKey: "polygonOpacity",  widthKey: "polygonLineWidth", bufferKey: null }
-    };
-    var REBUILD_FNS = {
-      point:  function (v) { if (typeof App.rebuildBuffers      === "function") App.rebuildBuffers(v); },
-      line:   function (v) { if (typeof App.rebuildLineBuffers  === "function") App.rebuildLineBuffers(v); },
-      route:  function (v) { if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(v); },
-      polygon: null
-    };
-    var keys = TYPE_KEYS[featureType] || TYPE_KEYS.point;
-    var rebuildFn = REBUILD_FNS[featureType] || null;
-
-    var overrides = document.createElement("div");
-    overrides.className = "fp-attr-overrides";
-
-    // Opacity
-    var opacityBtn = document.createElement("button");
-    opacityBtn.type = "button";
-    opacityBtn.className = "fp-sib";
-    opacityBtn.title = "Per-feature opacity";
-    opacityBtn.innerHTML = _OVR_OPACITY_SVG;
-    if (feature.properties._opacity != null || feature.properties._fillOpacity != null) {
-      opacityBtn.classList.add("fp-sib-has-override");
-    }
-    (function (btn, feat, ft, ok) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var curVal;
-        if (ft === "polygon") {
-          curVal = (feat.properties._fillOpacity != null)
-            ? _invertPolyFillOpacity(feat.properties._fillOpacity)
-            : (App.featureSettings && App.featureSettings.polygonFillOpacity != null
-                 ? _invertPolyFillOpacity(App.featureSettings.polygonFillOpacity / 100)
-                 : 50);
-        } else {
-          curVal = (feat.properties._opacity != null)
-            ? feat.properties._opacity * 100
-            : (App.featureSettings ? App.featureSettings[ok] : 100);
-        }
-        if (typeof App._openFpSlider === "function") {
-          App._openFpSlider(btn, {
-            min: 0, max: 100, step: 1, unit: "%",
-            value: curVal,
-            onChange: function (S) {
-              if (ft === "polygon") {
-                var pc = App._polyOpacityValues(S);
-                feat.properties._fillOpacity   = pc.fill;
-                feat.properties._borderOpacity = pc.border;
-              } else {
-                feat.properties._opacity = S / 100;
-              }
-              btn.classList.add("fp-sib-has-override");
-              _pushFeatureLayer(ft);
-              if (typeof App.cache !== "undefined") App.cache.save();
-            }
-          });
-        }
-      });
-    })(opacityBtn, feature, featureType, keys.opacityKey);
-    overrides.appendChild(opacityBtn);
-
-    // Buffer (not for polygons)
-    if (featureType !== "polygon") {
-      var bufferBtn = document.createElement("button");
-      bufferBtn.type = "button";
-      bufferBtn.className = "fp-sib";
-      bufferBtn.title = "Per-feature buffer radius";
-      bufferBtn.innerHTML = _OVR_BUFFER_SVG;
-      if (feature.properties._bufferRadius != null) {
-        bufferBtn.classList.add("fp-sib-has-override");
-      }
-      (function (btn, feat, bk, rbFn) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var curVal = (feat.properties._bufferRadius != null)
-            ? feat.properties._bufferRadius
-            : (App.featureSettings ? App.featureSettings[bk] : 0);
-          if (typeof App._openFpSlider === "function") {
-            App._openFpSlider(btn, {
-              values: (App.BUFFER_RADIUS_STEPS || [0,0.125,0.25,0.5,0.75,1,1.25,1.5,1.75,2]), unit: "mi",
-              value: curVal,
-              onChange: function (v) {
-                feat.properties._bufferRadius = v;
-                btn.classList.add("fp-sib-has-override");
-                if (rbFn) rbFn(App.featureSettings ? App.featureSettings[bk] : 0);
-                if (typeof App.cache !== "undefined") App.cache.save();
-              }
-            });
-          }
-        });
-      })(bufferBtn, feature, keys.bufferKey, rebuildFn);
-      overrides.appendChild(bufferBtn);
-    }
-
-    // Width
-    var widthBtn = document.createElement("button");
-    widthBtn.type = "button";
-    widthBtn.className = "fp-sib";
-    widthBtn.title = "Per-feature line width";
-    widthBtn.innerHTML = _OVR_WIDTH_SVG;
-    if (feature.properties._lineWidth != null) {
-      widthBtn.classList.add("fp-sib-has-override");
-    }
-    (function (btn, feat, ft, wk) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var curVal = (feat.properties._lineWidth != null)
-          ? feat.properties._lineWidth
-          : (App.featureSettings ? App.featureSettings[wk] : 1);
-        if (typeof App._openFpSlider === "function") {
-          App._openFpSlider(btn, {
-            min: 0, max: 5, step: 0.1, unit: "×",
-            value: curVal,
-            onChange: function (v) {
-              feat.properties._lineWidth = v;
-              btn.classList.add("fp-sib-has-override");
-              _pushFeatureLayer(ft);
-              if (typeof App.cache !== "undefined") App.cache.save();
-            }
-          });
-        }
-      });
-    })(widthBtn, feature, featureType, keys.widthKey);
-    overrides.appendChild(widthBtn);
-
-    // Offset (routes and lines only)
-    if (featureType === "route" || featureType === "line") {
-      var OFFSET_STEPS = [-6, -3, 0, 3, 6];
-      var offsetBtn = document.createElement("button");
-      offsetBtn.type = "button";
-      offsetBtn.className = "fp-sib";
-      offsetBtn.title = "Per-feature offset (perpendicular to line)";
-      offsetBtn.innerHTML = _OVR_OFFSET_SVG;
-      if (feature.properties._offsetManual) {
-        offsetBtn.classList.add("fp-sib-has-override");
-      }
-      (function (btn, feat, ft) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var curVal = (feat.properties._offset != null) ? feat.properties._offset : 0;
-          if (typeof App._openFpSlider === "function") {
-            App._openFpSlider(btn, {
-              values: OFFSET_STEPS, unit: "px",
-              value: curVal,
-              onChange: function (v) {
-                feat.properties._offset = v;
-                feat.properties._offsetManual = true;
-                btn.classList.add("fp-sib-has-override");
-                _pushFeatureLayer(ft);
-                if (typeof App.cache !== "undefined") App.cache.save();
-              }
-            });
-          }
-        });
-      })(offsetBtn, feature, featureType);
-      overrides.appendChild(offsetBtn);
-    }
-
-    // Reset
-    var defaultBtn = document.createElement("button");
-    defaultBtn.type = "button";
-    defaultBtn.className = "fp-sib";
-    defaultBtn.title = "Reset to global defaults";
-    defaultBtn.innerHTML = _OVR_DEFAULT_SVG;
-    (function (btn, feat, ft, bk, rbFn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        delete feat.properties._opacity;
-        delete feat.properties._fillOpacity;
-        delete feat.properties._borderOpacity;
-        delete feat.properties._lineWidth;
-        delete feat.properties._bufferRadius;
-        delete feat.properties._offset;
-        delete feat.properties._offsetManual;
-        _pushFeatureLayer(ft);
-        if (rbFn) rbFn(App.featureSettings ? (App.featureSettings[bk] || 0) : 0);
-        var oCb = document.getElementById("offsetOverlap");
-        if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") {
-          App.computeOverlapOffsets();
-        }
-        if (typeof App.cache !== "undefined") App.cache.save();
-        if (typeof App._closeFpSlider === "function") App._closeFpSlider();
-        overrides.querySelectorAll(".fp-sib-has-override").forEach(function (el) {
-          el.classList.remove("fp-sib-has-override");
-        });
-      });
-    })(defaultBtn, feature, featureType, keys.bufferKey, rebuildFn);
-    overrides.appendChild(defaultBtn);
-
-    return overrides;
-  }
-
   function populatePopupBody(featureType, featureIndex, feature) {
     buildPopupEl();
 
@@ -1235,31 +1011,19 @@
     var hdrSwatch = document.createElement("button");
     hdrSwatch.className = "fp-attr-popup-swatch";
     hdrSwatch.style.background = featureColor;
-    hdrSwatch.setAttribute("aria-label", "Change color");
-    hdrSwatch.title = "Change color";
+    hdrSwatch.setAttribute("aria-label", "Appearance");
+    hdrSwatch.title = "Appearance";
     (function (sw, ft, fi, feat) {
       sw.addEventListener("click", function (e) {
         e.stopPropagation();
-        if (typeof App.openColorPicker === "function") {
-          App.openColorPicker(sw, App.resolveFeatureColor(ft, feat), function (newColor) {
-            sw.style.background = newColor;
-            if (typeof App.updateFeatureColor === "function") App.updateFeatureColor(ft, fi, newColor);
+        if (typeof App.openAppearancePopup === "function") {
+          App.openAppearancePopup(sw, ft, fi, {
+            onChange: function () { sw.style.background = App.resolveFeatureColor(ft, feat); }
           });
         }
       });
     })(hdrSwatch, featureType, featureIndex, feature);
     controlsEl.appendChild(hdrSwatch);
-
-    // Remove existing overrides container, then rebuild it
-    var existingOverrides = controlsEl.querySelector(".fp-attr-overrides");
-    if (existingOverrides) existingOverrides.remove();
-
-    var overrides = buildOverridesContainer(featureType, feature) || (function () {
-      var d = document.createElement("div");
-      d.className = "fp-attr-overrides";
-      return d;
-    })();
-    controlsEl.appendChild(overrides);
 
     // Clear and rebuild body
     var body = _popupEl.querySelector(".fp-attr-popup-body");
@@ -1599,10 +1363,15 @@
     return buildServiceSchedule(feature.properties.attributes);
   };
 
-  // Build a `.fp-attr-overrides` container with the per-feature override icons
-  // (opacity / buffer / width / offset / reset). Returns null for label/textbox.
-  App.buildOverrideIcons = function (featureType, feature) {
-    return buildOverridesContainer(featureType, feature);
+  // Re-sync the header swatch with the shown feature's resolved color (used by
+  // the Appearance popover after a color change made elsewhere).
+  App.refreshAttrPopupSwatch = function () {
+    if (!_popupEl || _currentType == null || _currentIdx == null) return;
+    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
+    if (!sw) return;
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
+    var feat = arr && arr[_currentIdx];
+    if (feat) sw.style.background = App.resolveFeatureColor(_currentType, feat);
   };
 
   // Build the `N routes` pill for a point feature. Returns the button DOM.

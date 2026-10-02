@@ -1791,13 +1791,6 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   min-height: 24px;
   margin-top: 2px;
 }
-.fp-attr-overrides {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  flex-shrink: 0;
-}
-.fp-sib.fp-sib-has-override { color: var(--accent); }
 .fp-attr-popup-body {
   padding: 12px 14px 14px;
   overflow-y: auto;
@@ -4780,6 +4773,68 @@ select.fp-attr-input,
 .fp-swatch-neutral {
   background: var(--surface-raised) !important;
   border-color: var(--border) !important;
+}
+
+/* ---- Appearance popover (js/core/feature-appearance.js) ---- */
+.fa-popover {
+  position: fixed;
+  z-index: 9150;
+  width: 232px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  font-size: var(--text-sm);
+}
+.fa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.fa-title {
+  font-weight: var(--weight-semibold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fa-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+}
+.fa-close:hover { color: var(--text-primary); background: var(--surface-hover); }
+.fa-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.fa-popover .lp-style-label { min-width: 52px; font-size: var(--text-xs); }
+.fa-color-swatch {
+  width: 22px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  display: inline-block;
+}
+.fa-color-row.lp-inherited .fa-color-swatch { opacity: 0.85; }
+.fa-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
 }
 
 /* ---- Type icon (doubles as quick color picker) ---- */

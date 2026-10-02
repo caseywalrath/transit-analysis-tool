@@ -110,11 +110,13 @@
   var _pickerCallback = null;
   var _pickerAnchor = null;
 
-  function buildPicker() {
-    if (_picker) return;
-    var el = document.createElement("div");
-    el.id = "fp-color-picker";
-    el.style.display = "none";
+  // The swatch grid + hex entry, as a standalone element. `onPick(hex)` fires
+  // when a swatch is clicked or a valid hex is applied. Shared by the floating
+  // picker below and the inline color row of the Appearance popover
+  // (js/core/feature-appearance.js). `body.setColor(c)` seeds the hex field.
+  function buildColorPickerBody(currentColor, onPick) {
+    var body = document.createElement("div");
+    body.className = "fp-cp-body";
 
     var grid = document.createElement("div");
     grid.className = "fp-cp-grid";
@@ -126,11 +128,11 @@
       cell.setAttribute("aria-label", "Select color " + c);
       cell.addEventListener("click", function (e) {
         e.stopPropagation();
-        selectPickerColor(c);
+        onPick(c);
       });
       grid.appendChild(cell);
     });
-    el.appendChild(grid);
+    body.appendChild(grid);
 
     var hexRow = document.createElement("div");
     hexRow.className = "fp-cp-hex-row";
@@ -139,6 +141,7 @@
     hexInput.className = "fp-cp-hex-input";
     hexInput.placeholder = "#rrggbb";
     hexInput.maxLength = 7;
+    hexInput.value = currentColor || "";
     var applyBtn = document.createElement("button");
     applyBtn.textContent = "Apply";
     applyBtn.className = "fp-cp-apply";
@@ -147,7 +150,7 @@
       var val = hexInput.value.trim();
       if (val.charAt(0) !== "#") val = "#" + val;
       if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-        selectPickerColor(val.toLowerCase());
+        onPick(val.toLowerCase());
       } else {
         hexInput.style.outline = "2px solid red";
         setTimeout(function () { hexInput.style.outline = ""; }, 1200);
@@ -161,7 +164,19 @@
     });
     hexRow.appendChild(hexInput);
     hexRow.appendChild(applyBtn);
-    el.appendChild(hexRow);
+    body.appendChild(hexRow);
+    body.setColor = function (c) { hexInput.value = c || ""; hexInput.style.outline = ""; };
+    return body;
+  }
+  App.buildColorPickerBody = buildColorPickerBody;
+
+  function buildPicker() {
+    if (_picker) return;
+    var el = document.createElement("div");
+    el.id = "fp-color-picker";
+    el.style.display = "none";
+
+    el.appendChild(buildColorPickerBody("", function (c) { selectPickerColor(c); }));
 
     document.body.appendChild(el);
     _picker = el;
@@ -619,22 +634,23 @@
     typeIcon.type = "button";
     typeIcon.className = "fp-type-icon";
     typeIcon.innerHTML = TYPE_ICON_SVGS[featureType] || "";
-    typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[featureType] || featureType) + " color";
-    typeIcon.setAttribute("aria-label", typeIcon.title);
+    typeIcon.title = "Appearance";
+    typeIcon.setAttribute("aria-label", "Appearance — " + (TYPE_LABELS_LOCAL[featureType] || featureType));
     var _currentColor = App.resolveFeatureColor(featureType, feature);
     typeIcon.style.color = _currentColor;
     (function (btn, ft, fi, feat) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        if (typeof App.openColorPicker !== "function") return;
-        var curColor = App.resolveFeatureColor(ft, feat);
-        App.openColorPicker(btn, curColor, function (newColor) {
-          if (typeof App.updateFeatureColor === "function") {
-            App.updateFeatureColor(ft, fi, newColor);
-          }
-          btn.style.color = newColor;
-          if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-          if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+        if (!App.FEATURE_ID_PROP[ft] || typeof App.openAppearancePopup !== "function") {
+          // Types with no appearance cascade (labels/text boxes) keep the plain picker.
+          App.openColorPicker(btn, App.resolveFeatureColor(ft, feat), function (nc) {
+            App.updateFeatureColor(ft, fi, nc);
+            btn.style.color = nc;
+          });
+          return;
+        }
+        App.openAppearancePopup(btn, ft, fi, {
+          onChange: function () { btn.style.color = App.resolveFeatureColor(ft, feat); }
         });
       });
     })(typeIcon, featureType, featureIndex, feature);

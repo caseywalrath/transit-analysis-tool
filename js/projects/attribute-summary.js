@@ -638,17 +638,17 @@
     var sw = document.createElement("button");
     sw.type = "button";
     sw.className = "as-swatch";
-    sw.title = "Change color";
+    sw.title = "Appearance";
+    sw.setAttribute("aria-label", "Appearance");
     sw.style.background = App.resolveFeatureColor(featureType, feature);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
-      if (typeof App.openColorPicker !== "function") return;
-      App.openColorPicker(sw, App.resolveFeatureColor(featureType, feature), function (newColor) {
-        sw.style.background = newColor;
-        if (typeof App.updateFeatureColor === "function") {
-          App.updateFeatureColor(featureType, featureIndex, newColor);
+      if (typeof App.openAppearancePopup !== "function") return;
+      App.openAppearancePopup(sw, featureType, featureIndex, {
+        onChange: function () {
+          // The popover already pushed undo / saved / refreshed the Features pane.
+          sw.style.background = App.resolveFeatureColor(featureType, feature);
         }
-        saveAndRefreshFeaturePanel();
       });
     });
     return sw;

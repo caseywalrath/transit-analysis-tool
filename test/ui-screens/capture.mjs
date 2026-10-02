@@ -447,6 +447,20 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_attr-popup", "fail", e.message);
   }
 
+  // ---- Shared Appearance popover (docs/feature-appearance-plan.md Phase 1) ----
+  try {
+    await page.evaluate(() => {
+      const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;
+      window.App.openAppearancePopup(icon, "route", 0, {});
+    });
+    await page.locator("#fp-appearance-popover").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#fp-appearance-popover", join(OUT_DIR, theme + "_appearance-popover.png"), theme + "_appearance-popover");
+    await page.evaluate(() => window.App.closeAppearancePopup());
+  } catch (e) {
+    record(theme + "_appearance-popover", "fail", e.message);
+  }
+
   // ---- Module popups ----
   for (const id of MODULE_IDS) {
     const name = theme + "_" + id;
