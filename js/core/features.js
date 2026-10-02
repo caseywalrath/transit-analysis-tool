@@ -779,6 +779,7 @@
         feat.properties.hidden = !feat.properties.hidden;
         if (App.cache && typeof App.cache.save === "function") App.cache.save();
         rerenderForType(ft);
+        if (typeof App.notifyProject === "function") App.notifyProject();
       });
     })(eyeBtn, feature, featureType);
 
@@ -912,6 +913,7 @@
             if (App.cache && typeof App.cache.save === "function") App.cache.save();
             if (typeof App.rerenderForType === "function") App.rerenderForType(ft);
             if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+            if (typeof App.notifyProject === "function") App.notifyProject();
           }});
           options.push({ label: "Delete", action: function () { onDelete(); } });
         })(featureType, featureIndex, feature);
@@ -1082,6 +1084,7 @@
       });
       if (App.cache && typeof App.cache.save === "function") App.cache.save();
       Object.keys(typesChanged).forEach(function (t) { rerenderForType(t); });
+      if (typeof App.notifyProject === "function") App.notifyProject();
     });
 
     // Color swatch — applies color to all features in the group

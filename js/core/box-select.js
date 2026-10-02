@@ -407,6 +407,7 @@
     if (App.undo) App.undo.push();
     list.forEach(function (s) { featureOf(s).properties.hidden = !!hidden; });
     afterChange(typesOf(list));
+    if (typeof App.notifyProject === "function") App.notifyProject();
     App.setStatus((hidden ? "Hid " : "Showed ") + describe(list));
   }
 

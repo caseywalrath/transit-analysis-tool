@@ -814,6 +814,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   // Solo: show only the given items, hide every other drawn feature.
@@ -830,6 +831,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -842,6 +844,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -1119,6 +1122,7 @@
     });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 

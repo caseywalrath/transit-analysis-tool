@@ -11,7 +11,7 @@
 // through `typeof document !== "undefined"` and falls back cleanly.
 
 export default {
-  scripts: ["js/core/module-buffers.js"],
+  scripts: ["js/core/module-buffers.js", "test/stubs/module-buffers-harness.js"],
   cases: [
     { id: "readBuffer/valid-value", call: "App.readAnalysisBufferMiles", args: [{ value: "1.5" }] },
     { id: "readBuffer/below-min", call: "App.readAnalysisBufferMiles", args: [{ value: "0.01" }] },
@@ -23,5 +23,32 @@ export default {
     { id: "readBuffer/explicit-fallback-honored", call: "App.readAnalysisBufferMiles", args: [{ value: "" }, 0.75] },
     { id: "readBuffer/at-min-boundary", call: "App.readAnalysisBufferMiles", args: [{ value: "0.05" }] },
     { id: "readBuffer/at-max-boundary", call: "App.readAnalysisBufferMiles", args: [{ value: "5" }] },
+
+    // ---- includeHidden / hiddenCount (docs/hidden-features-analysis-plan.md Phase 1) ----
+    // Runs the real builders against a stubbed turf (test/stubs/module-buffers-harness.js).
+    ...(() => {
+      const scen = {
+        points: [{ hidden: false }, { hidden: true }, { hidden: true, radius: 0.3 }],
+        lines: [{ hidden: false }, { hidden: true }],
+        routes: [{ hidden: false }, { hidden: true }],
+        polygons: [{ hidden: false }, { hidden: true }],
+        settings: { bufferRadius: 0.5, lineBufferRadius: 0.75, routeBufferRadius: 1 },
+        display: { points: [true, false, false], lines: [true, false], routes: [true, false] },
+      };
+      const filter = { pointIndices: [0, 1, 2], lineIndices: [0, 1], routeIndices: [0, 1], polygonIndices: [0, 1] };
+      const hiddenOnly = { pointIndices: [1], lineIndices: [1], routeIndices: [1], polygonIndices: [1] };
+      const mk = (id, fn, f, opts) => ({ id, call: "__mbRun", args: [scen, { fn, filter: f, opts, miles: 0.5 }] });
+      return [
+        mk("analysis/hidden-skipped-default", "analysis", filter, undefined),
+        mk("analysis/hidden-skipped-flag-false", "analysis", filter, { includeHidden: false }),
+        mk("analysis/hidden-included", "analysis", filter, { includeHidden: true }),
+        mk("analysis/hidden-only-skipped", "analysis", hiddenOnly, undefined),
+        mk("analysis/hidden-only-included", "analysis", hiddenOnly, { includeHidden: true }),
+        mk("display/hidden-skipped-default", "display", filter, undefined),
+        mk("display/hidden-included-on-the-fly", "display", filter, { includeHidden: true }),
+        mk("display/hidden-only-skipped", "display", hiddenOnly, undefined),
+        mk("display/hidden-only-included", "display", hiddenOnly, { includeHidden: true }),
+      ];
+    })(),
   ],
 };

@@ -6740,3 +6740,27 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
+
+/* Analysis checklists: hidden-feature rows (js/core/analysis-checklist.js) */
+.ac-hidden { color: var(--text-disabled); cursor: not-allowed; }
+.ac-hidden input[type="checkbox"] { cursor: not-allowed; }
+.ac-hidden-tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.ac-include-hidden {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
