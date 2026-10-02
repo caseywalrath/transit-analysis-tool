@@ -73,6 +73,23 @@
     }).sort().join(",");
   }
 
+  // Signature of everything about the drawn features that can change a run EXCEPT
+  // the hidden flag (geometry, properties, attributes, road-network epoch), so a
+  // module's update() can ignore hide/show notifications but still catch real edits.
+  function featureGeomSignature() {
+    var parts = [];
+    ["points", "lines", "routes", "polygons"].forEach(function (k) {
+      parts.push(k + ":" + (App[k] || []).map(function (f) {
+        return JSON.stringify([f.geometry, f.properties], function (key, val) {
+          return (key === "hidden" || key === "_mergedFrom") ? undefined : val;
+        });
+      }).join("|"));
+    });
+    parts.push("epoch:" + (App.roadNetworkEpoch ? App.roadNetworkEpoch() : 0));
+    return parts.join("#");
+  }
+
+  App.featureGeomSignature = featureGeomSignature;
   App.hiddenSignature = hiddenSignature;
   App.decorateHiddenRow = decorateHiddenRow;
   App.buildIncludeHiddenToggle = buildIncludeHiddenToggle;

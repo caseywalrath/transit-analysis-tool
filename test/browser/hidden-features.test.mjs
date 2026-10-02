@@ -75,6 +75,89 @@ async function loadFixture(page) {
   });
 }
 
+
+// Standard hidden-feature assertions for a checklist-based module. cfg:
+//   tag, module (registry id + cache key), list (checklist selector), selAll, selNone,
+//   run (button selector), status (pill selector), toggle (id), note (selector),
+//   done (status text of a finished run), first/second = {type,index} of rows 1 and 2.
+async function standardSection(page, cfg, url) {
+  const T = cfg.tag + ": ";
+  const L = cfg.list, ST = cfg.status;
+  const stale = () => page.evaluate((s) => !!document.querySelector(s + ".rf-status-stale"), ST);
+  await loadFixture(page);
+  await page.evaluate((m) => App.openModulePopup(m), cfg.module);
+  await page.waitForSelector(L + " .rf-feature-check-row");
+  check(T + "Include hidden toggle present and off", await page.evaluate((id) => { const t = document.getElementById(id); return !!t && !t.checked; }, cfg.toggle));
+  check(T + "visible row enabled", !(await rowOf(page, L, 1)).disabled);
+  await hide(page, cfg.first.type, cfg.first.index, true);
+  let r = await rowOf(page, L, 1);
+  check(T + "hiding grays row live, keeps checked", r.disabled && r.muted && r.tag && r.checked && r.title.includes("Include hidden"), JSON.stringify(r));
+  await hide(page, cfg.first.type, cfg.first.index, false);
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input");
+  await hide(page, cfg.first.type, cfg.first.index, true);
+  check(T + "hidden + unchecked stays unchecked", !(await rowOf(page, L, 1)).checked);
+  await hide(page, cfg.first.type, cfg.first.index, false);
+  r = await rowOf(page, L, 1);
+  check(T + "showing restores enabled + unchecked state", !r.disabled && !r.muted && !r.checked, JSON.stringify(r));
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input");
+  // a disabled-but-checked row is never written into the saved unchecked list
+  await hide(page, cfg.first.type, cfg.first.index, true);
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(2) input"); // uncheck row 2 -> selection saved
+  check(T + "disabled-checked row not recorded as unchecked", await waitFor(page, ([m, t, idx]) => {
+    const raw = localStorage.getItem("mat-session"); if (!raw) return false;
+    const u = JSON.parse(raw).moduleState[m].uncheckedFeatures || [];
+    return u.length === 1 && u[0].id === App[t === "route" ? "routes" : t === "line" ? "lines" : t === "point" ? "points" : "polygons"][idx].properties[App.FEATURE_ID_PROP[t]];
+  }, 10000, [cfg.cacheKey || cfg.module, cfg.second.type, cfg.second.index]));
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(2) input"); // re-check
+  await clickEl(page, cfg.selNone);
+  await clickEl(page, cfg.selAll);
+  const sa = [await rowOf(page, L, 1), await rowOf(page, L, 2)];
+  check(T + "Select all ticks enabled only; Clear clears all", !sa[0].checked && sa[1].checked);
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(1) label");
+  check(T + "clicking a disabled row's label does nothing", !(await rowOf(page, L, 1)).checked);
+  // hidden-only selection (only row 1 ticked), toggle off
+  await clickEl(page, cfg.selNone);
+  await hide(page, cfg.first.type, cfg.first.index, false);
+  await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input");
+  await hide(page, cfg.first.type, cfg.first.index, true);
+  await clickEl(page, cfg.run);
+  check(T + "hidden-only selection (toggle off) shows the hidden message",
+    await waitFor(page, (s) => document.querySelector(s).textContent.includes("Selected features are hidden"), 20000, ST), await text(page, ST));
+  await clickEl(page, "#" + cfg.toggle);
+  r = await rowOf(page, L, 1);
+  check(T + "toggle on enables the hidden row (still tagged)", !r.disabled && r.tag && !r.muted);
+  await clickEl(page, cfg.run);
+  check(T + "toggle on: run completes", await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d), 40000, [ST, cfg.done]), await text(page, ST));
+  check(T + "results disclose hidden features", (await text(page, cfg.note)).includes("Includes 1 feature hidden on the map."), await text(page, cfg.note));
+  check(T + "fresh results not stale", !(await stale()));
+  await hide(page, cfg.second.type, cfg.second.index, true); await sleep(300);
+  check(T + "hiding an unselected feature does NOT mark stale", !(await stale()));
+  await hide(page, cfg.second.type, cfg.second.index, false); await sleep(300);
+  check(T + "showing an unselected feature does NOT mark stale", !(await stale()));
+  await hide(page, cfg.first.type, cfg.first.index, false);
+  check(T + "changing hidden state of a selected feature marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
+  await clickEl(page, cfg.run);
+  check(T + "re-run clears stale", await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d) && !document.querySelector(s + ".rf-status-stale"), 40000, [ST, cfg.done]));
+  if (cfg.editStale) {
+    await page.evaluate(() => { App.routes[1].properties.name = "Renamed"; App.notifyProject(); });
+    check(T + "a genuine feature edit still marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
+    await clickEl(page, cfg.run);
+    await waitFor(page, ([s, d]) => document.querySelector(s).textContent.includes(d) && !document.querySelector(s + ".rf-status-stale"), 40000, [ST, cfg.done]);
+  }
+  await clickEl(page, "#" + cfg.toggle); // off
+  check(T + "changing the toggle after a run marks stale", await waitFor(page, (s) => !!document.querySelector(s + ".rf-status-stale"), 5000, ST));
+  await clickEl(page, "#" + cfg.toggle); // on
+  await page.evaluate(() => App.cache.save());
+  await waitFor(page, (m) => { const raw = localStorage.getItem("mat-session");
+    return !!raw && JSON.parse(raw).moduleState[m].includeHidden === true; }, 10000, cfg.cacheKey || cfg.module);
+  await reloadPage(page, url);
+  await page.evaluate((m) => App.openModulePopup(m), cfg.module);
+  await page.waitForSelector("#" + cfg.toggle);
+  check(T + "toggle survives a reload", await page.evaluate((id) => document.getElementById(id).checked, cfg.toggle));
+  await clickEl(page, "#" + cfg.toggle);
+  await page.evaluate(() => App.cache.save());
+}
+
 async function reloadPage(page, url) {
   await page.reload({ waitUntil: "load" });
   await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
@@ -88,8 +171,8 @@ async function statusText(page) {
 async function isStale(page) {
   return page.evaluate(() => !!document.querySelector("#basStatus.rf-status-stale"));
 }
-async function waitFor(page, fn, timeout = 20000) {
-  try { await page.waitForFunction(fn, null, { timeout }); return true; } catch (e) { return false; }
+async function waitFor(page, fn, timeout = 20000, arg = null) {
+  try { await page.waitForFunction(fn, arg, { timeout }); return true; } catch (e) { return false; }
 }
 
 (async () => {
@@ -312,6 +395,11 @@ async function waitFor(page, fn, timeout = 20000) {
       await clickEl(page, "#csIncludeHidden");
       await page.evaluate(() => App.cache.save());
     }
+
+    await standardSection(page, {
+      tag: "TPI", module: "transit-propensity", cacheKey: "tpi", list: "#tpiFeatureChecklist", selAll: "#tpiSelectAll", selNone: "#tpiSelectNone",
+      run: "#tpiRun", status: "#tpiStatus", toggle: "tpiIncludeHidden", note: "#tpiHiddenNote", done: "TPI computed",
+      first: { type: "route", index: 0 }, second: { type: "route", index: 1 }, editStale: true }, url);
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
