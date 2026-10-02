@@ -1694,8 +1694,10 @@
       var lEl = document.getElementById("fp-tab-layers");
       if (fEl) fEl.style.display = tab === "features" ? "" : "none";
       if (lEl) lEl.style.display = tab === "layers" ? "" : "none";
-      // Sorting only applies to the Features list, not the Layers tab.
-      if (sortBtn) sortBtn.style.display = tab === "features" ? "" : "none";
+      // Sorting only applies to the Features list, not the Layers tab. Hide it
+      // with visibility (not display) so it keeps its space and the tab labels
+      // don't change size or position when switching tabs.
+      if (sortBtn) sortBtn.style.visibility = tab === "features" ? "" : "hidden";
       if (tab === "layers" && typeof App.refreshLayersPanel === "function") {
         App.refreshLayersPanel();
       }
@@ -1722,6 +1724,8 @@
       header.addEventListener("contextmenu", function (e) {
         e.preventDefault();
         e.stopPropagation();
+        // Sorting only applies to the Features tab (the button is hidden on Layers).
+        if (btn && btn.style.visibility === "hidden") return;
         showContextMenu(e.clientX, e.clientY, buildSortMenuOptions());
       });
     }
