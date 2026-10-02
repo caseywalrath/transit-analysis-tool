@@ -26,6 +26,10 @@
   var _apportionByArea   = false;
   var _bufferMiles       = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
+  var _includeHidden     = false;  // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+  // Taken at run time so update() can tell a relevant change from an unrelated
+  // hide/show (notifyProject fires on every visibility change).
+  var _runSnap           = null;   // { refs: [{type,id}], hidden: string, includeHidden: bool }
 
   // ---- DOM guard: only touch DOM when popup is open for this module ----
 
@@ -42,8 +46,8 @@
 
   function buildUnionFromFilter(filter) {
     var set = _useDisplayBuffers
-      ? App.buildDisplayBufferSet(filter)
-      : App.buildAnalysisBufferSet(filter, _bufferMiles);
+      ? App.buildDisplayBufferSet(filter, { includeHidden: _includeHidden })
+      : App.buildAnalysisBufferSet(filter, _bufferMiles, { includeHidden: _includeHidden });
     _lastBufferSet = set;
     return set.union;
   }
@@ -83,14 +87,16 @@
     return false;
   }
 
-  // Checked rows as stable refs (for the filter captured at a run).
+  // Checked, enabled rows as stable refs (the features a run analyzes). A
+  // disabled-but-checked row (hidden, toggle off) stays in the saved selection
+  // (_uncheckedRefs) but is not part of a run.
   function getCheckedRefs() {
     var el = document.getElementById("csFeatureList");
     var out = [];
     if (!el) return out;
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
-      if (!boxes[i].checked) continue;
+      if (!boxes[i].checked || boxes[i].disabled) continue;
       var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
       if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
     }
@@ -108,7 +114,7 @@
       var cb = boxes[i];
       var type = cb.getAttribute("data-type");
       var idx  = parseInt(cb.getAttribute("data-idx"), 10);
-      if (cb.checked) {
+      if (cb.checked && !cb.disabled) {
         if      (type === "route") routeIndices.push(idx);
         else if (type === "line")  lineIndices.push(idx);
       }
@@ -125,7 +131,7 @@
     el.innerHTML = "";
     var hasFeatures = false;
 
-    function addRow(type, idx, name, badge) {
+    function addRow(type, idx, name, badge, feature) {
       hasFeatures = true;
       var ref = App.featureRef(type, idx);
       var checked = !(ref && isRefUnchecked(type, ref.id));
@@ -147,13 +153,14 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var routes = App.routes || [];
@@ -162,12 +169,12 @@
     for (var ri = 0; ri < routes.length; ri++) {
       addRow("route", ri,
         (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1)),
-        "R");
+        "R", routes[ri]);
     }
     for (var li = 0; li < lines.length; li++) {
       addRow("line", li,
         (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1)),
-        "L");
+        "L", lines[li]);
     }
 
     if (!hasFeatures) {
@@ -312,7 +319,7 @@
     var geoEl = document.getElementById("csGeoLevel");
     var yearEl = document.getElementById("csYearSelect");
     var bufferEl = document.getElementById("csBufferMiles");
-    var count = document.querySelectorAll("#csFeatureList input[type=checkbox]:checked").length;
+    var count = document.querySelectorAll("#csFeatureList input[type=checkbox]:checked:not(:disabled)").length;
     var geoLabel = geoEl && geoEl.value === "tract" ? "Tracts" : "Block groups";
     return geoLabel + " \u00b7 " + (yearEl ? yearEl.value : "") + " \u00b7 " +
       (bufferEl ? bufferEl.value : _bufferMiles) + " mi \u00b7 " +
@@ -329,6 +336,14 @@
         App.popup.setLayoutMode(isCollapsed && _lastResult ? "results" : "setup", true);
       }
     });
+  }
+
+  // True when the last run no longer matches the map: the hidden state of a
+  // feature in the run's selection changed, or the toggle changed.
+  function runIsOutdated() {
+    if (!_runSnap) return false;
+    if (_runSnap.includeHidden !== _includeHidden) return true;
+    return _runSnap.hidden !== App.hiddenSignature(_runSnap.refs);
   }
 
   function markStale() {
@@ -725,6 +740,8 @@
     var resultsWrap = document.getElementById("csResults");
     var emptyState  = document.getElementById("csEmptyState");
     if (!container || !resultsWrap) return;
+    var hiddenNoteEl = document.getElementById("csHiddenNote");
+    if (hiddenNoteEl) hiddenNoteEl.textContent = (result && App.hiddenSelectionMessage(result.hiddenIncluded || 0).notes) || "";
 
     var rows = (result && result.routeCDIs) || [];
 
@@ -802,6 +819,13 @@
       return;
     }
 
+    // Everything the user ticked is hidden on the map (toggle off): say so.
+    if (!getFeatureFilter().routeIndices.length && !getFeatureFilter().lineIndices.length &&
+        document.querySelectorAll("#csFeatureList input[type=checkbox]:checked:disabled").length > 0) {
+      setStatus(App.hiddenSelectionMessage(0).error, "error");
+      return;
+    }
+
     _running = true;
     var scoreBtn = document.getElementById("csScoreBtn");
     if (scoreBtn) scoreBtn.disabled = true;
@@ -818,8 +842,10 @@
       var featureRefs   = getCheckedRefs();
 
       var unionPolygon  = buildUnionFromFilter(featureFilter);
+      var hiddenCount   = (_lastBufferSet && _lastBufferSet.hiddenCount) || { included: 0, skipped: 0 };
 
       if (!_lastBufferSet || _lastBufferSet.count === 0) {
+        if (hiddenCount.skipped > 0) throw new Error(App.hiddenSelectionMessage(hiddenCount).error);
         throw new Error("Could not build buffers for the selected corridors.");
       }
       if (!unionPolygon) {
@@ -855,8 +881,10 @@
         bufferMiles:     _bufferMiles,
         unionPolygon:    unionPolygon,
         featureRefs:     featureRefs,
+        hiddenIncluded:  hiddenCount.included || 0,
         weights:         Object.assign({}, _weights)
       };
+      _runSnap = { refs: featureRefs, hidden: App.hiddenSignature(featureRefs), includeHidden: _includeHidden };
       _stale = false;
 
       var geoCount = (result.tpiResult && result.tpiResult.geos) ? result.tpiResult.geos.length : 0;
@@ -919,12 +947,26 @@
     });
     syncBufferControl();
 
+    // Include hidden toggle (next to Select all | Clear)
+    var actionsEl = document.querySelector(".rf-feature-select-actions");
+    if (actionsEl && !document.getElementById("csIncludeHidden")) {
+      actionsEl.appendChild(App.buildIncludeHiddenToggle({
+        id: "csIncludeHidden", checked: _includeHidden,
+        onChange: function (on) {
+          _includeHidden = on;
+          buildFeatureChecklist();           // re-decorate rows; checked states untouched
+          if (App.cache) App.cache.save();
+          if (_lastResult && runIsOutdated()) markStale(); else renderInputs();
+        }
+      }));
+    }
+
     // Select all / clear
     var selectAll = document.getElementById("csSelectAll");
     if (selectAll) {
       selectAll.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#csFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#csFeatureList input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -1001,6 +1043,8 @@
     var bufferMilesEl = document.getElementById("csBufferMiles");
     if (bufferMilesEl) bufferMilesEl.value = String(_bufferMiles);
     syncBufferControl();
+    var ihEl = document.getElementById("csIncludeHidden");
+    if (ihEl) ihEl.checked = _includeHidden;
 
     buildFeatureChecklist();
     renderInputs(false);
@@ -1033,6 +1077,7 @@
     clearMapChoropleth();
     if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("cs-legend");
     _lastResult = null;
+    _runSnap = null;
     _stale = false;
     if (isPopupVisible()) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
@@ -1054,9 +1099,13 @@
     if (_lastResult && (App.routes || []).length === 0 && (App.lines || []).length === 0) {
       clearAll();
     }
+    // notifyProject also fires on every hide/show: go stale only when the run's
+    // hidden-state inputs really changed (see runIsOutdated()).
+    if (_lastResult && !_stale && runIsOutdated()) markStale();
     // Guard all DOM writes — update fires even when the popup is closed.
     if (!isPopupVisible()) return;
     buildFeatureChecklist();
+    renderInputs();
     updateLodesWarnings();
   }
 
@@ -1072,6 +1121,7 @@
       apportionByArea: _apportionByArea,
       bufferMiles:     _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
+      includeHidden:   _includeHidden,   // additive, no schema bump
       uncheckedFeatures: _uncheckedRefs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; }),
       geoLevel:        null,
       year:            null,
@@ -1091,6 +1141,7 @@
         bufferMiles:     _lastResult.bufferMiles,
         weights:         Object.assign({}, _lastResult.weights || {}),
         featureRefs:     (_lastResult.featureRefs || []).slice(),
+        hiddenIncluded:  _lastResult.hiddenIncluded || 0,
         routeCDIs:       (_lastResult.routeCDIs || []).map(function (r) {
           return {
             name:            r.name,
@@ -1124,6 +1175,9 @@
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
+    if (typeof data.includeHidden === "boolean") _includeHidden = data.includeHidden;
+    var ihRestoreEl = document.getElementById("csIncludeHidden");
+    if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
 
     // v1 sessions saved array indices (checked-filter + per-row featureIndex).
     // Features are restored in saved order and given IDs before module hooks run,
@@ -1180,8 +1234,10 @@
       bufferMiles:     s.bufferMiles != null ? s.bufferMiles : App.ANALYSIS_BUFFER_DEFAULT_MILES,
       unionPolygon:    null,
       featureRefs:     legacy ? App.indexFilterToRefs(s.featureFilter) : (s.featureRefs || []),
+      hiddenIncluded:  s.hiddenIncluded || 0,
       weights:         Object.assign({}, s.weights || _weights)
     };
+    _runSnap = { refs: _lastResult.featureRefs, hidden: App.hiddenSignature(_lastResult.featureRefs), includeHidden: _includeHidden };
     // A scored corridor whose feature was deleted since the save can't be drawn or
     // exported: show what survives, flagged stale so the user re-scores.
     _stale = missing;

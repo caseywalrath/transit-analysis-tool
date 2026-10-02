@@ -64,6 +64,16 @@
     };
   }
 
+  // Stable string of the hidden flag of each ref ({type,id}) — modules snapshot it
+  // at run time so a later hide/show only counts when it touches the run's features.
+  function hiddenSignature(refs) {
+    return (refs || []).map(function (r) {
+      var f = App.featureById ? App.featureById(r.type, r.id) : null;
+      return r.type + ":" + r.id + "=" + (f ? ((f.properties && f.properties.hidden) ? 1 : 0) : "x");
+    }).sort().join(",");
+  }
+
+  App.hiddenSignature = hiddenSignature;
   App.decorateHiddenRow = decorateHiddenRow;
   App.buildIncludeHiddenToggle = buildIncludeHiddenToggle;
   App.hiddenSelectionMessage = hiddenSelectionMessage;

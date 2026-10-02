@@ -30,6 +30,57 @@ async function rowState(page, n) {
   }, ROW(n));
 }
 
+// Generic row helpers for the other modules' checklists (selector = the list container).
+async function rowOf(page, listSel, n) {
+  return page.evaluate(([sel, n]) => {
+    const row = document.querySelectorAll(sel + " .rf-feature-check-row")[n - 1];
+    const cb = row.querySelector("input[type=checkbox]");
+    return { disabled: cb.disabled, checked: cb.checked, muted: row.classList.contains("ac-hidden"),
+      tag: !!row.querySelector(".ac-hidden-tag"), title: row.title || "" };
+  }, [listSel, n]);
+}
+const clickEl = (page, sel) => page.evaluate((s) => document.querySelector(s).click(), sel);
+const text = (page, sel) => page.evaluate((s) => (document.querySelector(s) || {}).textContent || "", sel);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hide = (page, type, index, on) => page.evaluate(([t, i, o]) => App.bulkFeatures.setHidden([{ type: t, index: i }], o), [type, index, on]);
+
+// Fixture: 2 routes, 2 lines, 2 points, 2 polygons inside the stubbed block group.
+async function loadFixture(page) {
+  await page.evaluate(() => {
+    var st = App.cache.collectState("full");
+    st.labels = []; st.points = []; st.polygons = []; st.lines = []; st.routes = [];
+    function ln(name, id, lat) {
+      return { type: "Feature", properties: { name: name, lineIdx: id, waypoints: 2, attributes: {} },
+        geometry: { type: "LineString", coordinates: [[-104.9, lat], [-104.8, lat]] } };
+    }
+    function rt(name, id, lat) {
+      return { type: "Feature", properties: { name: name, routeIdx: id, waypoints: [[-104.9, lat], [-104.8, lat]], attributes: {} },
+        geometry: { type: "LineString", coordinates: [[-104.9, lat], [-104.85, lat], [-104.8, lat]] } };
+    }
+    function pt(name, id, lat) {
+      return { type: "Feature", properties: { name: name, pointIdx: id, attributes: {} },
+        geometry: { type: "Point", coordinates: [-104.85, lat] } };
+    }
+    function pg(name, id, lat) {
+      var d = 0.02;
+      return { type: "Feature", properties: { name: name, polyIdx: id, attributes: {} },
+        geometry: { type: "Polygon", coordinates: [[[-104.9, lat], [-104.8, lat], [-104.8, lat + d], [-104.9, lat + d], [-104.9, lat]]] } };
+    }
+    st.routes = [rt("Route A", 1, 39.70), rt("Route B", 2, 39.72)];
+    st.lines = [ln("Line A", 1, 39.74), ln("Line B", 2, 39.76)];
+    st.points = [pt("Point A", 1, 39.70), pt("Point B", 2, 39.72)];
+    st.polygons = [pg("Poly A", 1, 39.60), pg("Poly B", 2, 39.64)];
+    App.cache.applyState(st);
+    App.refreshFeaturePanel();
+  });
+}
+
+async function reloadPage(page, url) {
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
+  await page.waitForFunction("typeof App.openModulePopup === 'function'", { timeout: 10000 });
+}
+
 // Status text lives in #basStatus; the progress line in #basResultsProgress.
 async function statusText(page) {
   return page.evaluate(() => (document.getElementById("basStatus") || {}).textContent || "");
@@ -186,6 +237,81 @@ async function waitFor(page, fn, timeout = 20000) {
     check("toggle can be turned off again and persists in the cache payload",
       await waitFor(page, () => { const raw = localStorage.getItem("mat-session");
         return !!raw && JSON.parse(raw).moduleState["buffer-summary"].includeHidden === false; }, 10000));
+
+
+    // =====================================================================
+    // Corridor Scoring (Phase 3)
+    // =====================================================================
+    {
+      const L = "#csFeatureList", ST = "#csStatus";
+      await loadFixture(page);
+      await page.evaluate(() => App.openModulePopup("corridor-scoring"));
+      await page.waitForSelector(L + " .rf-feature-check-row");
+      check("CS: Include hidden toggle present and off", await page.evaluate(() => { const t = document.getElementById("csIncludeHidden"); return !!t && !t.checked; }));
+      check("CS: visible row enabled", !(await rowOf(page, L, 1)).disabled);
+      await hide(page, "route", 0, true);
+      let r = await rowOf(page, L, 1);
+      check("CS: hiding grays row live, keeps checked", r.disabled && r.muted && r.tag && r.checked && r.title.includes("Include hidden"), JSON.stringify(r));
+      await hide(page, "route", 0, false);
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input"); // uncheck
+      await hide(page, "route", 0, true);
+      check("CS: hidden + unchecked stays unchecked", !(await rowOf(page, L, 1)).checked);
+      await hide(page, "route", 0, false);
+      r = await rowOf(page, L, 1);
+      check("CS: showing restores enabled + unchecked state", !r.disabled && !r.muted && !r.checked, JSON.stringify(r));
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input"); // re-check
+      // saved selection never records a disabled-checked row as unchecked
+      await hide(page, "route", 0, true);
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(2) input"); // uncheck B -> triggers capture
+      check("CS: disabled-checked row not recorded as unchecked", await waitFor(page, () => { const raw = localStorage.getItem("mat-session"); if (!raw) return false;
+          const u = JSON.parse(raw).moduleState["corridor-scoring"].uncheckedFeatures || [];
+          return u.length === 1 && u[0].type === "route" && u[0].id !== App.routes[0].properties.routeIdx; }, 10000));
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(2) input"); // re-check B
+      // Select all / Clear
+      await clickEl(page, "#csSelectNone");
+      await clickEl(page, "#csSelectAll");
+      let sa = [await rowOf(page, L, 1), await rowOf(page, L, 2)];
+      check("CS: Select all ticks enabled only; Clear clears all", !sa[0].checked && sa[1].checked);
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(1) label");
+      check("CS: clicking a disabled row's label does nothing", !(await rowOf(page, L, 1)).checked);
+      // hidden-only selection, toggle off
+      await clickEl(page, "#csSelectNone");
+      await hide(page, "route", 0, false);
+      await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input"); // check A only
+      await hide(page, "route", 0, true);
+      await clickEl(page, "#csScoreBtn");
+      check("CS: hidden-only selection (toggle off) shows the hidden message",
+        await waitFor(page, () => document.getElementById("csStatus").textContent.includes("Selected features are hidden")), await text(page, ST));
+      // toggle on
+      await clickEl(page, "#csIncludeHidden");
+      r = await rowOf(page, L, 1);
+      check("CS: toggle on enables the hidden row (still tagged)", !r.disabled && r.tag && !r.muted);
+      await clickEl(page, "#csScoreBtn");
+      check("CS: toggle on: run completes", await waitFor(page, () => document.getElementById("csStatus").textContent.includes("Scored"), 30000), await text(page, ST));
+      check("CS: results disclose hidden features", (await text(page, "#csHiddenNote")).includes("Includes 1 feature hidden on the map."));
+      check("CS: fresh results not stale", !(await page.evaluate(() => !!document.querySelector("#csStatus.rf-status-stale"))));
+      const stale = (p) => p.evaluate(() => !!document.querySelector("#csStatus.rf-status-stale"));
+      await hide(page, "route", 1, true); await sleep(300);
+      check("CS: hiding an unselected feature does NOT mark stale", !(await stale(page)));
+      await hide(page, "route", 1, false); await sleep(300);
+      check("CS: showing an unselected feature does NOT mark stale", !(await stale(page)));
+      await hide(page, "route", 0, false);
+      check("CS: changing hidden state of a selected feature marks stale", await waitFor(page, () => !!document.querySelector("#csStatus.rf-status-stale"), 5000));
+      await clickEl(page, "#csScoreBtn");
+      check("CS: re-run clears stale", await waitFor(page, () => document.getElementById("csStatus").textContent.includes("Scored") && !document.querySelector("#csStatus.rf-status-stale"), 30000));
+      await clickEl(page, "#csIncludeHidden"); // off
+      check("CS: changing the toggle after a run marks stale", await waitFor(page, () => !!document.querySelector("#csStatus.rf-status-stale"), 5000));
+      await clickEl(page, "#csIncludeHidden"); // on
+      await page.evaluate(() => App.cache.save());
+      await waitFor(page, () => { const raw = localStorage.getItem("mat-session");
+        return !!raw && JSON.parse(raw).moduleState["corridor-scoring"].includeHidden === true; }, 10000);
+      await reloadPage(page, url);
+      await page.evaluate(() => App.openModulePopup("corridor-scoring"));
+      await page.waitForSelector("#csIncludeHidden");
+      check("CS: toggle survives a reload", await page.evaluate(() => document.getElementById("csIncludeHidden").checked));
+      await clickEl(page, "#csIncludeHidden");
+      await page.evaluate(() => App.cache.save());
+    }
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
