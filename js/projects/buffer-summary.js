@@ -15,7 +15,7 @@
     year: "2024",
     apportionByArea: true,
     checkedVars: [], // persisted checkbox values (restored before DOM exists)
-    featureFilter: null,
+    featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs (Phase 4b)
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
     useDisplayBuffers: false
   };
@@ -189,17 +189,30 @@
              pointIndices: pointIndices, polygonIndices: polygonIndices };
   }
 
-  function filterHas(filter, type, idx) {
+  // The checked rows as stable { type, id } refs — what _state.featureFilter stores
+  // and the session persists. (getFeatureFilter() above returns run-time array
+  // indices and is only for the run in progress.)
+  function getCheckedRefs() {
+    var out = [];
+    var boxes = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].checked) continue;
+      var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
+    }
+    return out;
+  }
+
+  function filterHas(filter, type, id) {
     if (!filter) return true;
-    var key = type + "Indices";
-    return Array.isArray(filter[key]) && filter[key].indexOf(idx) !== -1;
+    return Array.isArray(filter) && filter.some(function (r) { return r.type === type && r.id === id; });
   }
 
   function applyFeatureFilterToCheckboxes(filter) {
     var boxes = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       boxes[i].checked = filterHas(filter, boxes[i].getAttribute("data-type"),
-        parseInt(boxes[i].getAttribute("data-idx"), 10));
+        parseInt(boxes[i].getAttribute("data-feature-id"), 10));
     }
   }
 
@@ -209,22 +222,24 @@
     var previous = {};
     var existing = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < existing.length; i++) {
-      previous[existing[i].getAttribute("data-type") + ":" + existing[i].getAttribute("data-idx")] = existing[i].checked;
+      previous[existing[i].getAttribute("data-type") + ":" + existing[i].getAttribute("data-feature-id")] = existing[i].checked;
     }
     el.innerHTML = "";
     var hasFeatures = false;
 
     function addRow(type, idx, feature, fallback, badge) {
       hasFeatures = true;
-      var key = type + ":" + idx;
+      var ref = App.featureRef(type, idx);
+      var key = ref ? App.featureRefKey(ref) : type + ":?";
       var row = document.createElement("div");
       row.className = "rf-feature-check-row";
       var cb = document.createElement("input");
       cb.type = "checkbox";
       cb.setAttribute("data-type", type);
       cb.setAttribute("data-idx", String(idx));
+      if (ref) cb.setAttribute("data-feature-id", String(ref.id));
       cb.checked = Object.prototype.hasOwnProperty.call(previous, key)
-        ? previous[key] : filterHas(_state.featureFilter, type, idx);
+        ? previous[key] : filterHas(_state.featureFilter, type, ref ? ref.id : null);
       var label = document.createElement("label");
       label.style.cssText = "flex:1;cursor:pointer;";
       label.textContent = (feature.properties && feature.properties.name) || fallback;
@@ -234,12 +249,12 @@
       label.addEventListener("click", function (event) {
         event.preventDefault();
         cb.checked = !cb.checked;
-        _state.featureFilter = getFeatureFilter();
+        _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
       });
       cb.addEventListener("change", function () {
-        _state.featureFilter = getFeatureFilter();
+        _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
       });
@@ -305,7 +320,7 @@
     }
     _state.bufferMiles = App.readAnalysisBufferMiles("basBufferMiles", App.ANALYSIS_BUFFER_DEFAULT_MILES);
     _state.useDisplayBuffers = !!(document.getElementById("basUseDisplayBuffers") || {}).checked;
-    _state.featureFilter = featureFilter;
+    _state.featureFilter = getCheckedRefs();
     var bufferSet = _state.useDisplayBuffers
       ? App.buildDisplayBufferSet(featureFilter)
       : App.buildAnalysisBufferSet(featureFilter, _state.bufferMiles);
@@ -1286,14 +1301,14 @@
       document.getElementById("basFeatureSelectAll").addEventListener("click", function (event) {
         event.preventDefault();
         document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
-        _state.featureFilter = getFeatureFilter();
+        _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
       });
       document.getElementById("basFeatureSelectNone").addEventListener("click", function (event) {
         event.preventDefault();
         document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
-        _state.featureFilter = getFeatureFilter();
+        _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
       });
@@ -1390,7 +1405,7 @@
       if (document.getElementById("varSelect")) {
         _state.checkedVars = collectCheckedVars();
       }
-      if (document.getElementById("basFeatureChecklist")) _state.featureFilter = getFeatureFilter();
+      if (document.getElementById("basFeatureChecklist")) _state.featureFilter = getCheckedRefs();
     },
 
     clear: function () { clearAll(); },
@@ -1416,7 +1431,13 @@
           year: _state.year,
           apportionByArea: _state.apportionByArea,
           checkedVars: vars,
-          featureFilter: document.getElementById("basFeatureChecklist") ? getFeatureFilter() : _state.featureFilter,
+          // Schema v2: checked features as stable { type, id } refs, or null (= all).
+          // v1 saved a { routeIndices, ... } index filter, migrated in apply().
+          schemaVersion: 2,
+          featureRefs: (function () {
+            var refs = document.getElementById("basFeatureChecklist") ? getCheckedRefs() : _state.featureFilter;
+            return Array.isArray(refs) ? refs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; }) : null;
+          })(),
           bufferMiles: _state.bufferMiles,
           useDisplayBuffers: _state.useDisplayBuffers,
           mapVar: _mapVar,
@@ -1430,7 +1451,16 @@
         if (data.year) _state.year = data.year;
         if (typeof data.apportionByArea === "boolean") _state.apportionByArea = data.apportionByArea;
         if (Array.isArray(data.checkedVars)) _state.checkedVars = data.checkedVars;
-        if (data.featureFilter) _state.featureFilter = data.featureFilter;
+        // v1 sessions saved checked array indices. Features are restored in saved
+        // order and given IDs before module hooks run, so an old index still names
+        // the right feature RIGHT NOW — convert to IDs here.
+        if (data.schemaVersion >= 2) {
+          if (Array.isArray(data.featureRefs)) {
+            _state.featureFilter = data.featureRefs.filter(function (r) { return r && App.featureRefKey(r); });
+          }
+        } else if (data.featureFilter) {
+          _state.featureFilter = App.indexFilterToRefs(data.featureFilter);
+        }
         if (Number.isFinite(data.bufferMiles)) _state.bufferMiles = data.bufferMiles;
         if (typeof data.useDisplayBuffers === "boolean") _state.useDisplayBuffers = data.useDisplayBuffers;
         // Geometry/results are not persisted (see clearAll()/_lastGeoData) — this

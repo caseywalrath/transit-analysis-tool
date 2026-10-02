@@ -19,7 +19,7 @@
       type: "FeatureCollection",
       features: polygons.filter(function (p) { return !p.properties.hidden; }).map(function (p) {
         var props = {};
-        for (var k in p.properties) { if (Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
+        for (var k in p.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("polygon", p);
         return { type: "Feature", properties: props, geometry: p.geometry };
       })
@@ -31,7 +31,7 @@
       type: "FeatureCollection",
       features: polygons.filter(function (p) { return !p.properties.hidden; }).map(function (f) {
         var props = {};
-        for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+        for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("polygon", f);
         return {
           type: "Feature",
@@ -243,7 +243,7 @@
 
     var feature = {
       type: "Feature",
-      properties: { name: "Polygon " + idx, polyIdx: idx, vertices: nVertices, color: "" },
+      properties: { name: "Polygon " + idx, polyIdx: App.nextFeatureId("polygon"), vertices: nVertices, color: "" },
       geometry: { type: "Polygon", coordinates: [ring] }
     };
     polygons.push(feature);
@@ -332,7 +332,7 @@
       type: "Feature",
       properties: {
         name: "Polygon " + idx,
-        polyIdx: idx,
+        polyIdx: App.nextFeatureId("polygon"),
         vertices: src.properties.vertices,
         color: src.properties.color || "",
         hidden: false

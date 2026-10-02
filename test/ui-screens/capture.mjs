@@ -408,6 +408,30 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_phase7-a11y-smoke", "fail", e.message);
   }
 
+  // ---- GTFS route browser (Layers tab, expanded) ----
+  try {
+    await page.evaluate(async () => {
+      const pts = (id, x0, n) => Array.from({ length: n }, (_, i) => id + "," + (38.8 + i * 0.001) + "," + (-104.8 + x0 + i * 0.01) + "," + (i + 1)).join("\n");
+      const t = (r, s, h, n) => Array.from({ length: n }, (_, i) => [r, "svc", r + "_" + s + "_" + i, h, s].join(",")).join("\n");
+      const zip = new window.JSZip();
+      zip.file("shapes.txt", "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n" + [pts("177198", 0, 6), pts("177198_A", 0, 4), pts("177202", 0.001, 5), pts("B1", 0.05, 4)].join("\n") + "\n");
+      zip.file("trips.txt", "route_id,service_id,trip_id,trip_headsign,shape_id\n" + [t("red", "177198", "Downtown", 3), t("red", "177198_A", "Downtown", 1), t("red", "177202", "Loop", 4), t("blue", "B1", "North", 2)].join("\n") + "\n");
+      zip.file("routes.txt", "route_id,route_short_name,route_long_name,route_type,route_color\nred,Red,Red Circulator,3,FF0000\nblue,,Blue Line,3,0000FF\n");
+      await window.App.loadGTFSFile(await zip.generateAsync({ type: "blob" }));
+    });
+    await page.waitForFunction("window.App.gtfsRouteIndex()", { timeout: 15000 });
+    await page.locator('.fp-tab-btn[data-fptab="layers"]').click();
+    await page.locator("#fp-tab-layers .lp-row", { hasText: "GTFS routes" }).first().locator(".lp-gtfs-browse-btn").click();
+    await page.locator("#fp-tab-layers .lp-gtfs-route", { hasText: "Red" }).locator(".lp-caret").click();
+    await page.locator("#fp-tab-layers .lp-gtfs-route", { hasText: "Blue" }).locator(".lp-gtfs-eye").click();
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#feature-panel", join(OUT_DIR, theme + "_gtfs-route-browser.png"), theme + "_gtfs-route-browser");
+    await page.evaluate(() => window.App.clearGTFS());
+    await page.locator('.fp-tab-btn[data-fptab="features"]').click();
+  } catch (e) {
+    record(theme + "_gtfs-route-browser", "fail", e.message);
+  }
+
   // ---- Per-feature attribute popup ----
   try {
     await page.evaluate(() => {

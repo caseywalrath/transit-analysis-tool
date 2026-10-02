@@ -4,7 +4,11 @@
 // Exports: setStatus, escapeHTML, escapeAttr, parseCSV, fillSelect,
 //          enableSelect, toNumberSafe, normalizeTractGEOID, guessHeader,
 //          VAR_META, GROUP_INFO, getMeta, getCheckboxGroups,
-//          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue
+//          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue,
+//          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds,
+//          featureRef, resolveFeatureRef, featureById, featureRefKey,
+//          parseFeatureRefKey, migrateIndexRefKey, indexFilterToRefs,
+//          uncheckedRefsFromIndexFilter
 
 (function () {
   var App = window.App = window.App || {};
@@ -81,7 +85,274 @@
     return "#2b6cb0"; // point, and any unrecognized type
   }
 
+  // --- Stable per-type feature IDs (docs/feature-merge-plan.md, Phase 1) ---
+  // Every drawn feature carries an integer ID in a per-type property
+  // (pointIdx / lineIdx / routeIdx / polyIdx). It is used to map a clicked map
+  // feature back to its array index and to link stops to routes
+  // (attributes.associatedRoutes[].featureId). IDs are handed out from a
+  // monotonic per-type counter, so they are never reused after a delete
+  // (the old `array.length + 1` scheme repeated IDs once anything was removed).
+  // Display names ("Route 3") are independent of the ID and unchanged.
+
+  App.FEATURE_ID_PROP = { point: "pointIdx", line: "lineIdx", route: "routeIdx", polygon: "polyIdx" };
+
+  var _featureIdCounters = { point: 1, line: 1, route: 1, polygon: 1 };
+
+  // Returns the next unused ID for a feature type and advances the counter.
+  function nextFeatureId(type) {
+    if (!App.FEATURE_ID_PROP[type]) throw new Error("nextFeatureId: unknown feature type " + type);
+    return _featureIdCounters[type]++;
+  }
+
+  function _isValidFeatureId(v) {
+    return typeof v === "number" && isFinite(v) && v >= 1 && Math.floor(v) === v;
+  }
+
+  // PURE (no DOM/map/turf — loaded directly by the golden harness).
+  // arraysByType = { point: [...], line: [...], route: [...], polygon: [...] }
+  // (any key may be absent). Walks each array in order and stamps a fresh ID
+  // on any feature whose ID is missing, not a positive integer, or duplicates
+  // an earlier feature of the same type — the first (older) occurrence keeps
+  // it. Fresh IDs start above every valid ID in that array. Mutates the
+  // features' properties; returns
+  //   { changes: [{ type, index, oldId, newId }], maxByType: { type: maxId } }.
+  // Idempotent: a second call on the same arrays changes nothing.
+  function assignFeatureIds(arraysByType) {
+    var changes = [];
+    var maxByType = {};
+    Object.keys(App.FEATURE_ID_PROP).forEach(function (type) {
+      var arr = (arraysByType && arraysByType[type]) || [];
+      var prop = App.FEATURE_ID_PROP[type];
+      var seen = {};
+      var max = 0;
+      var needsNew = [];
+      for (var i = 0; i < arr.length; i++) {
+        var props = arr[i] && arr[i].properties;
+        if (!props) continue;
+        var id = props[prop];
+        if (_isValidFeatureId(id) && !seen[id]) {
+          seen[id] = true;
+          if (id > max) max = id;
+        } else {
+          needsNew.push(i);
+        }
+      }
+      for (var n = 0; n < needsNew.length; n++) {
+        var idx = needsNew[n];
+        var p = arr[idx].properties;
+        var oldId = (p[prop] === undefined) ? null : p[prop];
+        p[prop] = ++max;
+        changes.push({ type: type, index: idx, oldId: oldId, newId: p[prop] });
+      }
+      maxByType[type] = max;
+    });
+    return { changes: changes, maxByType: maxByType };
+  }
+
+  // Runs assignFeatureIds over the live arrays and advances the counters past
+  // every ID in use. Called from cache.js applyState() after the features are
+  // pushed, which covers session restore, file import, shapefile/CSV/GeoJSON
+  // import and undo/redo. Returns the change list (empty when nothing moved).
+  // Limitation: a stop link (associatedRoutes[].featureId) that referenced a
+  // duplicated ID keeps pointing at the first (older) feature that holds it;
+  // the ambiguity cannot be resolved retroactively.
+  function ensureFeatureIds() {
+    var res = assignFeatureIds({
+      point: App.points, line: App.lines, route: App.routes, polygon: App.polygons
+    });
+    Object.keys(res.maxByType).forEach(function (type) {
+      if (res.maxByType[type] >= _featureIdCounters[type]) _featureIdCounters[type] = res.maxByType[type] + 1;
+    });
+    return res.changes;
+  }
+
+  // Snapshot of the counters for the session cache.
+  function getFeatureIdCounters() {
+    return { point: _featureIdCounters.point, line: _featureIdCounters.line,
+             route: _featureIdCounters.route, polygon: _featureIdCounters.polygon };
+  }
+
+  // Raise each counter to at least the stored value (never lowers one).
+  function advanceFeatureIdCounters(stored) {
+    if (!stored) return;
+    Object.keys(_featureIdCounters).forEach(function (type) {
+      var v = stored[type];
+      if (_isValidFeatureId(v) && v > _featureIdCounters[type]) _featureIdCounters[type] = v;
+    });
+  }
+
+  // --- Feature references by stable ID (docs/feature-merge-plan.md, Phase 4b) ---
+  // Array indices shift whenever an earlier feature is deleted or merged, so a
+  // module that remembers a feature by index silently retargets. A feature ref
+  // is { type, id } (type = point|line|route|polygon, id = the per-type stable
+  // ID above). Modules store refs, and resolve them to a current index at USE
+  // time via App.resolveFeatureRef — never cache the resolved index.
+
+  // PURE. First index in `arr` whose properties[prop] === id, else -1.
+  function findIndexById(arr, prop, id) {
+    if (!arr || !_isValidFeatureId(id)) return -1;
+    for (var i = 0; i < arr.length; i++) {
+      var p = arr[i] && arr[i].properties;
+      if (p && p[prop] === id) return i;
+    }
+    return -1;
+  }
+
+  // PURE. arraysByType = { point, line, route, polygon } (any may be absent).
+  // → { type, id } for the feature at `index`, or null (bad type, index out of
+  // range, or the feature has no valid ID).
+  function featureRefIn(arraysByType, type, index) {
+    var prop = App.FEATURE_ID_PROP[type];
+    var arr = prop && arraysByType && arraysByType[type];
+    var f = arr && arr[index];
+    var id = f && f.properties && f.properties[prop];
+    return _isValidFeatureId(id) ? { type: type, id: id } : null;
+  }
+
+  // PURE. ref = { type, id } → current index in arraysByType[type], or -1
+  // (unknown type, malformed ref, or the feature no longer exists).
+  function resolveRefIn(arraysByType, ref) {
+    if (!ref || !App.FEATURE_ID_PROP[ref.type]) return -1;
+    return findIndexById(arraysByType && arraysByType[ref.type], App.FEATURE_ID_PROP[ref.type], ref.id);
+  }
+
+  function _liveArrays() {
+    return { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons };
+  }
+  function featureRef(type, index) { return featureRefIn(_liveArrays(), type, index); }
+  function resolveFeatureRef(ref) { return resolveRefIn(_liveArrays(), ref); }
+  function featureById(type, id) {
+    var i = resolveRefIn(_liveArrays(), { type: type, id: id });
+    return i < 0 ? null : _liveArrays()[type][i];
+  }
+
+  // PURE. A ref as a "type:id" string — the form modules use as a <select>
+  // option value or checkbox key ("route:12" is route ID 12, NOT array index 12).
+  function featureRefKey(ref) {
+    return ref && App.FEATURE_ID_PROP[ref.type] && _isValidFeatureId(ref.id) ? ref.type + ":" + ref.id : "";
+  }
+
+  // PURE. Inverse of featureRefKey → { type, id } or null (malformed, unknown
+  // type, or a non-integer id). "all" and "" parse to null.
+  function parseFeatureRefKey(str) {
+    if (typeof str !== "string") return null;
+    var m = /^([a-z]+):(\d+)$/.exec(str);
+    if (!m || !App.FEATURE_ID_PROP[m[1]]) return null;
+    var ref = { type: m[1], id: parseInt(m[2], 10) };
+    return _isValidFeatureId(ref.id) ? ref : null;
+  }
+
+  // PURE. Legacy "type:<array index>" string ("route:3", as older sessions saved
+  // corridor selections) → the ID-based "type:<id>" key, resolved against
+  // arraysByType. "" when the index points at nothing. Only valid at the moment a
+  // legacy session is applied, when saved indices still match the live arrays.
+  function migrateIndexRefKeyIn(arraysByType, str) {
+    if (typeof str !== "string") return "";
+    var m = /^([a-z]+):(\d+)$/.exec(str);
+    if (!m) return "";
+    return featureRefKey(featureRefIn(arraysByType, m[1], parseInt(m[2], 10)));
+  }
+
+  // PURE. Legacy index filter { routeIndices, lineIndices, pointIndices,
+  // polygonIndices } (any key may be absent) → array of { type, id } refs for the
+  // features those indices name. Indices that resolve to nothing are dropped.
+  function indexFilterToRefsIn(arraysByType, filter) {
+    var out = [];
+    if (!filter) return out;
+    [["route", "routeIndices"], ["line", "lineIndices"],
+     ["point", "pointIndices"], ["polygon", "polygonIndices"]].forEach(function (pair) {
+      (filter[pair[1]] || []).forEach(function (i) {
+        var ref = featureRefIn(arraysByType, pair[0], i);
+        if (ref) out.push(ref);
+      });
+    });
+    return out;
+  }
+
+  // PURE. Legacy CHECKED-index filter → refs of the features of `types` that the
+  // filter leaves UNchecked (everything live not named by it). Modules remember a
+  // checklist as its unchecked refs so newly drawn features default to checked.
+  function uncheckedRefsFromIndexFilterIn(arraysByType, filter, types) {
+    var checked = {};
+    indexFilterToRefsIn(arraysByType, filter).forEach(function (r) { checked[featureRefKey(r)] = true; });
+    var out = [];
+    (types || []).forEach(function (type) {
+      var arr = (arraysByType && arraysByType[type]) || [];
+      for (var i = 0; i < arr.length; i++) {
+        var ref = featureRefIn(arraysByType, type, i);
+        if (ref && !checked[featureRefKey(ref)]) out.push(ref);
+      }
+    });
+    return out;
+  }
+
+  App.nextFeatureId = nextFeatureId;
+  App.getFeatureIdCounters = getFeatureIdCounters;
+  App.advanceFeatureIdCounters = advanceFeatureIdCounters;
+  App._assignFeatureIds = assignFeatureIds;
+  App.featureRef = featureRef;
+  App.resolveFeatureRef = resolveFeatureRef;
+  App.featureById = featureById;
+  App._featureRefIn = featureRefIn;
+  App._resolveRefIn = resolveRefIn;
+  App.featureRefKey = featureRefKey;
+  App.parseFeatureRefKey = parseFeatureRefKey;
+  App._migrateIndexRefKeyIn = migrateIndexRefKeyIn;
+  App._indexFilterToRefsIn = indexFilterToRefsIn;
+  App.migrateIndexRefKey = function (str) { return migrateIndexRefKeyIn(_liveArrays(), str); };
+  App._uncheckedRefsFromIndexFilterIn = uncheckedRefsFromIndexFilterIn;
+  App.uncheckedRefsFromIndexFilter = function (filter, types) {
+    return uncheckedRefsFromIndexFilterIn(_liveArrays(), filter, types);
+  };
+  App.indexFilterToRefs = function (filter) { return indexFilterToRefsIn(_liveArrays(), filter); };
+  App.ensureFeatureIds = ensureFeatureIds;
+
+  /* Feature usage hook (docs/feature-split-plan.md Phase 3). Analysis modules
+     register a provider fn(type, id) -> [label | {label, severity}] that says
+     how they refer to a feature; the Split and Merge dialogs ask
+     describeFeatureUsage(type, id) -> [{module, label, severity: "warn"|"info"}].
+     Lives here (the first App file) so every module can register at load time.
+     A provider that throws is ignored, never breaks the caller. */
+  var _usageProviders = [];
+  App.registerFeatureUsage = function (fn, opts) {
+    if (typeof fn !== "function") return;
+    var o = typeof opts === "string" ? { module: opts } : (opts || {});
+    _usageProviders.push({ fn: fn, module: o.module || "", severity: o.severity === "warn" ? "warn" : "info" });
+  };
+  App.describeFeatureUsage = function (type, id) {
+    var out = [];
+    if (!type || id == null) return out;
+    _usageProviders.forEach(function (p) {
+      var res;
+      try { res = p.fn(type, id); } catch (e) { return; }
+      if (!Array.isArray(res)) res = res ? [res] : [];
+      res.forEach(function (r) {
+        if (!r) return;
+        var label = typeof r === "string" ? r : r.label;
+        if (!label) return;
+        var sev = (r && r.severity) || p.severity;
+        out.push({ module: (r && r.module) || p.module, label: String(label), severity: sev === "warn" ? "warn" : "info" });
+      });
+    });
+    return out;
+  };
+
+  // "Last action wins" (docs/feature-color-sync-plan.md): a type-wide color
+  // chosen in the Layers tab must reach every feature of that type, so each
+  // feature's own override is cleared and it inherits the type setting again.
+  // Does not re-render or push undo -- App.setTypeColor (features.js) does both.
+  // Labels are excluded (they have their own section color control).
+  function clearFeatureColorOverrides(featureType) {
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[featureType];
+    var n = 0;
+    (arr || []).forEach(function (f) {
+      if (f && f.properties && f.properties.color) { f.properties.color = ""; n++; }
+    });
+    return n;
+  }
+
   App.resolveFeatureColor = resolveFeatureColor;
+  App.clearFeatureColorOverrides = clearFeatureColorOverrides;
   App._nextColorSeq = nextColorSeq;
   App._advanceColorSeqPast = advanceColorSeqPast;
 

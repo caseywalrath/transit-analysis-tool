@@ -19,6 +19,217 @@
   var _clickPopup   = null;  // maplibregl.Popup for click details
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
 
+  // ---- Route browser state (Phase 1 of docs/gtfs-route-browser-plan.md) ----
+  var _routeIndex    = null;      // result of buildRouteIndex, or null when no shapes
+  var _hiddenRoutes  = {};        // routeKey -> true
+  var _hiddenShapes  = {};        // shape_id -> true
+  var _pendingHidden = null;      // { routes: [], shapes: [] } from a restored session
+  var UNASSIGNED_KEY = "__unassigned__";
+  var HL_CASING = "gtfs-shapes-hl-casing";
+  var HL_LAYER  = "gtfs-shapes-hl";
+
+  // ---- Pure browse helpers (no DOM / map / turf; golden-tested) ----
+
+  // Natural, case-insensitive comparison: "2" < "10", "A2" < "A10".
+  function naturalCompare(a, b) {
+    a = a == null ? "" : String(a).toLowerCase();
+    b = b == null ? "" : String(b).toLowerCase();
+    var re = /(\d+)|(\D+)/g;
+    var pa = a.match(re) || [], pb = b.match(re) || [];
+    var n = Math.min(pa.length, pb.length);
+    for (var i = 0; i < n; i++) {
+      var x = pa[i], y = pb[i];
+      var xd = /^\d/.test(x), yd = /^\d/.test(y);
+      if (xd && yd) {
+        var d = parseInt(x, 10) - parseInt(y, 10);
+        if (d !== 0) return d < 0 ? -1 : 1;
+        if (x.length !== y.length) return x.length < y.length ? -1 : 1;
+      } else if (x !== y) {
+        return x < y ? -1 : 1;
+      }
+    }
+    if (pa.length !== pb.length) return pa.length < pb.length ? -1 : 1;
+    return 0;
+  }
+
+  // Equirectangular polyline length in miles.
+  function lineLengthMi(coords) {
+    var R = 3958.7613, rad = Math.PI / 180, sum = 0;
+    for (var i = 1; i < coords.length; i++) {
+      var a = coords[i - 1], b = coords[i];
+      var dLat = (b[1] - a[1]) * rad;
+      var dLon = (b[0] - a[0]) * rad * Math.cos(((a[1] + b[1]) / 2) * rad);
+      sum += Math.sqrt(dLat * dLat + dLon * dLon) * R;
+    }
+    return sum;
+  }
+
+  function normColor(c) {
+    c = String(c == null ? "" : c).replace(/^#/, "");
+    return (c.length === 6 && /^[0-9a-fA-F]{6}$/.test(c) && c.toLowerCase() !== "ffffff")
+      ? "#" + c.toLowerCase() : "";
+  }
+
+  function routeSortName(r) { return r.short || r.long || r.route_id || ""; }
+
+  // Build the browsable route index.
+  // Returns [{ routeKey, route_id, short, long, type, color ("#rrggbb" or ""),
+  //   agency_id, shapes: [{ shape_id, lengthMi, tripCount, headsigns: [] }],
+  //   tripCount }], routes naturally sorted (short, else long, else route_id),
+  // shapes sorted tripCount desc then length desc. Shapes with no known route
+  // (no trips / no routes row) go under a synthetic "Unassigned shapes" route
+  // (routeKey "__unassigned__") that always sorts last. Routes with no drawn
+  // shape are omitted. Trips referencing a shape not in shapesFC are ignored.
+  function buildRouteIndex(shapesFC, tripsRows, routesRows) {
+    var feats = (shapesFC && shapesFC.features) || [];
+    var shapeLen = {}, shapeOrder = [];
+    feats.forEach(function (f) {
+      var sid = f.properties && f.properties.shape_id;
+      if (sid == null || sid in shapeLen) return;
+      shapeLen[sid] = lineLengthMi(f.geometry.coordinates);
+      shapeOrder.push(sid);
+    });
+    var routeById = {};
+    (routesRows || []).forEach(function (r) {
+      if (r && r.route_id) routeById[r.route_id] = r;
+    });
+    // routeKey -> shape_id -> { tripCount, headsigns{} }
+    var acc = {}, assigned = {};
+    (tripsRows || []).forEach(function (t) {
+      var sid = t && t.shape_id;
+      if (!sid || !(sid in shapeLen)) return;
+      var rid = t.route_id;
+      if (!rid || !routeById[rid]) return;
+      var byShape = acc[rid] || (acc[rid] = {});
+      var rec = byShape[sid] || (byShape[sid] = { tripCount: 0, headsigns: {} });
+      rec.tripCount++;
+      var h = (t.trip_headsign || "").trim();
+      if (h) rec.headsigns[h] = true;
+      assigned[sid] = true;
+    });
+    function shapeRows(byShape) {
+      var rows = Object.keys(byShape).map(function (sid) {
+        return { shape_id: sid, lengthMi: shapeLen[sid], tripCount: byShape[sid].tripCount,
+                 headsigns: Object.keys(byShape[sid].headsigns).sort(naturalCompare) };
+      });
+      rows.sort(function (a, b) {
+        return (b.tripCount - a.tripCount) || (b.lengthMi - a.lengthMi) ||
+               naturalCompare(a.shape_id, b.shape_id);
+      });
+      return rows;
+    }
+    function total(rows) { return rows.reduce(function (s, r) { return s + r.tripCount; }, 0); }
+
+    var out = Object.keys(acc).map(function (rid) {
+      var r = routeById[rid], shapes = shapeRows(acc[rid]);
+      return { routeKey: rid, route_id: rid, short: r.route_short_name || "", long: r.route_long_name || "",
+               type: r.route_type || "", color: normColor(r.route_color), agency_id: r.agency_id || "",
+               shapes: shapes, tripCount: total(shapes) };
+    });
+    out.sort(function (a, b) {
+      return naturalCompare(routeSortName(a), routeSortName(b)) || naturalCompare(a.route_id, b.route_id);
+    });
+    var unassigned = shapeOrder.filter(function (sid) { return !assigned[sid]; });
+    if (unassigned.length) {
+      var by = {};
+      unassigned.forEach(function (sid) { by[sid] = { tripCount: 0, headsigns: {} }; });
+      out.push({ routeKey: UNASSIGNED_KEY, route_id: "", short: "", long: "Unassigned shapes", type: "",
+                 color: "", agency_id: "", shapes: shapeRows(by), tripCount: 0 });
+    }
+    return out;
+  }
+
+  // Case-insensitive substring match on short/long name, route_id or any shape_id.
+  // Blank query returns the whole index.
+  function filterRoutes(index, query) {
+    var q = String(query == null ? "" : query).trim().toLowerCase();
+    if (!q) return (index || []).slice();
+    return (index || []).filter(function (r) {
+      if ((r.short || "").toLowerCase().indexOf(q) !== -1) return true;
+      if ((r.long || "").toLowerCase().indexOf(q) !== -1) return true;
+      if ((r.route_id || "").toLowerCase().indexOf(q) !== -1) return true;
+      return (r.shapes || []).some(function (s) {
+        return String(s.shape_id).toLowerCase().indexOf(q) !== -1;
+      });
+    });
+  }
+
+  // Most trips; tie -> longest; tie -> natural shape_id. null when no shapes.
+  function representativeShape(route) {
+    var best = null;
+    ((route && route.shapes) || []).forEach(function (s) {
+      if (!best || s.tripCount > best.tripCount ||
+          (s.tripCount === best.tripCount && (s.lengthMi > best.lengthMi ||
+            (s.lengthMi === best.lengthMi && naturalCompare(s.shape_id, best.shape_id) < 0)))) best = s;
+    });
+    return best;
+  }
+
+  // MapLibre filter showing every shape except hidden routes/shapes; null when
+  // nothing is hidden. Inputs are arrays or plain {key:true} objects/Sets of
+  // route keys / shape_ids. The unassigned route ("__unassigned__") matches
+  // shapes with no route_id property.
+  function toList(x) {
+    if (!x) return [];
+    if (Array.isArray(x)) return x.slice();
+    if (typeof x.forEach === "function" && typeof x.size === "number") {
+      var o = []; x.forEach(function (v) { o.push(v); }); return o;
+    }
+    return Object.keys(x).filter(function (k) { return x[k]; });
+  }
+  function buildVisibilityFilter(hiddenRoutes, hiddenShapes) {
+    var routes = toList(hiddenRoutes).map(function (k) { return k === UNASSIGNED_KEY ? "" : String(k); }).sort();
+    var shapes = toList(hiddenShapes).map(String).sort();
+    var clauses = [];
+    if (routes.length) clauses.push(["!", ["in", ["coalesce", ["get", "route_id"], ""], ["literal", routes]]]);
+    if (shapes.length) clauses.push(["!", ["in", ["coalesce", ["get", "shape_id"], ""], ["literal", shapes]]]);
+    if (!clauses.length) return null;
+    return clauses.length === 1 ? clauses[0] : ["all"].concat(clauses);
+  }
+
+  // shape_id -> "Outbound" | "Inbound" | "" for one route's trips: GTFS
+  // direction_id 0 -> Outbound, 1 -> Inbound, only when EVERY trip of that
+  // route on that shape carries the same valid value; otherwise "" (blank —
+  // the user sets it). Plan Phase 3 "Copy all as grouped Service".
+  function shapeDirections(tripsRows, routeId) {
+    var seen = {};   // sid -> "0" | "1" | "?" (mixed / missing)
+    (tripsRows || []).forEach(function (t) {
+      if (!t || !t.shape_id || String(t.route_id) !== String(routeId)) return;
+      var d = String(t.direction_id == null ? "" : t.direction_id).trim();
+      if (d !== "0" && d !== "1") d = "?";
+      var sid = t.shape_id;
+      if (!(sid in seen)) seen[sid] = d;
+      else if (seen[sid] !== d) seen[sid] = "?";
+    });
+    var out = {};
+    Object.keys(seen).forEach(function (sid) {
+      out[sid] = seen[sid] === "0" ? "Outbound" : seen[sid] === "1" ? "Inbound" : "";
+    });
+    return out;
+  }
+
+  // base, or "base (2)", "base (3)" … — the first not in existingIds (array).
+  function uniqueServiceId(base, existingIds) {
+    var used = {};
+    (existingIds || []).forEach(function (k) { if (k != null) used[String(k).trim()] = true; });
+    base = String(base || "Service").trim() || "Service";
+    if (!used[base]) return base;
+    for (var n = 2; ; n++) {
+      if (!used[base + " (" + n + ")"]) return base + " (" + n + ")";
+    }
+  }
+
+  App.gtfsBrowse = {
+    shapeDirections: shapeDirections,
+    uniqueServiceId: uniqueServiceId,
+    naturalCompare: naturalCompare,
+    buildRouteIndex: buildRouteIndex,
+    filterRoutes: filterRoutes,
+    representativeShape: representativeShape,
+    buildVisibilityFilter: buildVisibilityFilter,
+    UNASSIGNED_KEY: UNASSIGNED_KEY
+  };
+
   // GTFS files in preferred display order
   var FILE_ORDER = [
     "agency.txt", "stops.txt", "routes.txt", "trips.txt", "stop_times.txt",
@@ -129,6 +340,7 @@
       }
     }
 
+    _pendingHidden = null; // a fresh upload never inherits a session's hidden sets
     applyGtfsData(data);
     App.setStatus("GTFS loaded: " + data.size + " file(s).");
   }
@@ -157,6 +369,7 @@
     });
     if (dataMap.size === 0) return;
     applyGtfsData(dataMap);
+    applyPendingHidden();
     App.setStatus("GTFS restored: " + dataMap.size + " file(s).");
   }
 
@@ -172,6 +385,10 @@
   function clearGTFS() {
     _gtfsData = null;
     _selectedFile = null;
+    _routeIndex = null;
+    _hiddenRoutes = {};
+    _hiddenShapes = {};
+    _pendingHidden = null;
     removeMapLayers(); // also removes popups
     updateDropdownUI();
     if (isPopupVisible()) {
@@ -180,6 +397,7 @@
       var mc = document.getElementById("gtfsMapControls");
       if (mc) mc.style.display = "none";
     }
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
     App.setStatus("GTFS feed cleared.");
   }
 
@@ -275,6 +493,9 @@
     if (!map) return;
 
     removeMapLayers();
+    _routeIndex = null;
+    _hiddenRoutes = {};
+    _hiddenShapes = {};
 
     var before = firstUserLayer();
 
@@ -285,6 +506,9 @@
     if (_gtfsData && _gtfsData.has("shapes.txt")) {
       var shapesFC = buildShapesGeoJSON(_gtfsData.get("shapes.txt").rows, routeLookup);
       _shapesFC = shapesFC;
+      _routeIndex = buildRouteIndex(shapesFC,
+        _gtfsData.has("trips.txt") ? _gtfsData.get("trips.txt").rows : [],
+        _gtfsData.has("routes.txt") ? _gtfsData.get("routes.txt").rows : []);
       map.addSource("gtfs-shapes", { type: "geojson", data: shapesFC });
       map.addLayer({
         id:     "gtfs-shapes-layer",
@@ -298,6 +522,23 @@
           "line-dasharray": [4, 2]
         }
       }, before);
+      // Highlight overlay (white casing + route-colored line), above the base
+      // shapes, below drawn features. Matches nothing until gtfsHighlight().
+      var none = ["==", ["get", "shape_id"], "\u0000none"];
+      map.addLayer({
+        id: HL_CASING, type: "line", source: "gtfs-shapes", filter: none,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.85 }
+      }, before);
+      map.addLayer({
+        id: HL_LAYER, type: "line", source: "gtfs-shapes", filter: none,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": map.getPaintProperty("gtfs-shapes-layer", "line-color"),
+                 "line-width": 6, "line-opacity": 0.9 }
+      }, before);
+      [HL_CASING, HL_LAYER].forEach(function (id) {
+        map.setLayoutProperty(id, "visibility", _showRoutes ? "visible" : "none");
+      });
       map.setLayoutProperty("gtfs-shapes-layer", "visibility",
         _showRoutes ? "visible" : "none");
     }
@@ -337,7 +578,7 @@
       map.off(rec.event, rec.layerId, rec.handler);
     }
     _layerListeners = [];
-    ["gtfs-shapes-layer", "gtfs-stops-layer"].forEach(function (id) {
+    [HL_LAYER, HL_CASING, "gtfs-shapes-layer", "gtfs-stops-layer"].forEach(function (id) {
       if (map.getLayer(id)) map.removeLayer(id);
     });
     ["gtfs-shapes", "gtfs-stops"].forEach(function (id) {
@@ -349,8 +590,9 @@
     _showRoutes = visible;
     var map = App.map;
     if (map && map.getLayer("gtfs-shapes-layer")) {
-      map.setLayoutProperty("gtfs-shapes-layer", "visibility",
-        visible ? "visible" : "none");
+      [HL_CASING, HL_LAYER, "gtfs-shapes-layer"].forEach(function (id) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+      });
     }
   }
 
@@ -375,9 +617,14 @@
     11: "Bus"
   };
 
-  function copyShapeToLine(props) {
+  // Copies one shape as an editable Line; returns the new line's array index,
+  // or -1 when nothing was created. opts (optional): { multi: true } appends
+  // " – <shape_id>" to the name; { group } sets attributes.group;
+  // { serviceId, direction } set those attributes (grouped-Service copy).
+  function copyShapeToLine(props, opts) {
+    opts = opts || {};
     var shapeId = props.shape_id;
-    if (!shapeId || !_shapesFC) return;
+    if (!shapeId || !_shapesFC) return -1;
 
     var fullFeature = null;
     for (var i = 0; i < _shapesFC.features.length; i++) {
@@ -386,10 +633,11 @@
         break;
       }
     }
-    if (!fullFeature) return;
+    if (!fullFeature) return -1;
 
     var coords = fullFeature.geometry.coordinates;
     var name = props.route_short_name || props.route_long_name || shapeId;
+    if (opts.multi && name !== shapeId) name += " \u2013 " + shapeId;
     var routeType = parseInt(props.route_type, 10);
     var lineMode = ROUTE_TYPE_TO_LINE_MODE[routeType] || null;
 
@@ -401,18 +649,22 @@
 
     var attrs = {};
     if (lineMode) attrs.mode = lineMode;
+    if (opts.group) attrs.group = opts.group;
+    if (opts.serviceId) attrs.serviceId = opts.serviceId;
+    if (opts.direction) attrs.direction = opts.direction;
     var notesParts = [];
     if (props.route_id) notesParts.push("route_id: " + props.route_id);
     if (shapeId) notesParts.push("shape_id: " + shapeId);
     if (notesParts.length) attrs.notes = notesParts.join(", ");
 
-    if (typeof App.addLineFromCoords === "function") {
-      App.addLineFromCoords(coords, {
-        name: name,
-        color: color,
-        attributes: attrs
-      });
-    }
+    if (typeof App.addLineFromCoords !== "function") return -1;
+    var before = App.lines ? App.lines.length : 0;
+    App.addLineFromCoords(coords, {
+      name: name,
+      color: color,
+      attributes: attrs
+    });
+    return (App.lines && App.lines.length > before) ? App.lines.length - 1 : -1;
   }
 
   function copyStopToPoint(props, lngLat) {
@@ -524,30 +776,49 @@
 
         var lngLat = e.lngLat;
         var multiple = feats.length > 1;
-        var flagged = isStop ? {} : flagDuplicateShapes(feats);
         var options = [];
 
-        feats.forEach(function (f, idx) {
-          var props = f.properties;
-          if (isStop) {
+        if (isStop) {
+          feats.forEach(function (f) {
+            var props = f.properties;
             options.push({
               label: multiple ? "Copy As Point: " + stopName(props) : "Copy As Point",
               action: function () { copyStopToPoint(props, lngLat); }
             });
-          } else {
-            var label = "Copy As Line";
-            if (multiple) {
-              var headsign = shapeHeadsign(props);
-              label += ": " + shapeName(props) +
-                       (headsign ? " → " + headsign : "") +
-                       (flagged[idx] ? " [" + props.shape_id + "]" : "");
-            }
-            options.push({
-              label: label,
-              action: function () { copyShapeToLine(props); }
+          });
+        } else {
+          // Group shapes by route (first-seen order), most trips first within
+          // a route; a route heading appears only when 2+ routes are present.
+          var groups = [], byRoute = {};
+          feats.forEach(function (f) {
+            var rk = f.properties.route_id || "";
+            if (!byRoute[rk]) { byRoute[rk] = { name: shapeName(f.properties), items: [] }; groups.push(byRoute[rk]); }
+            byRoute[rk].items.push({ props: f.properties, trips: shapeTripCount(f.properties.shape_id) });
+          });
+          groups.forEach(function (g) {
+            g.items.sort(function (a, b) { return (b.trips || 0) - (a.trips || 0); });
+            if (groups.length > 1) options.push({ divider: true, label: g.name });
+            g.items.forEach(function (it) {
+              var props = it.props, label = "Copy as line";
+              if (multiple) {
+                var nm = shapeName(props);
+                label += ": " + (nm === props.shape_id ? nm : nm + " \u00b7 " + props.shape_id) +
+                         (it.trips ? " \u00b7 " + it.trips + (it.trips === 1 ? " trip" : " trips") : "");
+              }
+              options.push({
+                label: label,
+                action: function () { copyShapeToLine(props); },
+                // Preview-highlight on hover; restore the Layers-panel pin
+                // (or clear) when the pointer leaves or the menu closes.
+                onHover: function (entering) {
+                  if (entering) App.gtfsHighlight({ shapeId: props.shape_id });
+                  else if (typeof App.gtfsRestoreHighlight === "function") App.gtfsRestoreHighlight();
+                  else App.gtfsHighlight(null);
+                }
+              });
             });
-          }
-        });
+          });
+        }
 
         if (typeof App.showContextMenu === "function") {
           App.showContextMenu(
@@ -572,6 +843,14 @@
   // Given the overlapping feature array, return a set (object) of indexes whose
   // name + headsign collides with another entry — those need a shape_id suffix
   // so the listed entries stay distinguishable even without a headsign.
+  function shapeTripCount(shapeId) {
+    if (!_routeIndex) return 0;
+    var n = 0;
+    _routeIndex.forEach(function (r) {
+      r.shapes.forEach(function (sh) { if (sh.shape_id === shapeId) n += sh.tripCount; });
+    });
+    return n;
+  }
   function flagDuplicateShapes(feats) {
     var counts = {}, keys = [];
     for (var i = 0; i < feats.length; i++) {
@@ -919,10 +1198,12 @@
 
   // ---- Wire Add Data dropdown buttons ----
 
-  var _fileInput = document.getElementById("gtfs-file-input");
-  var _dropdown  = document.getElementById("add-data-dropdown");
-  var _loadBtn   = document.getElementById("gtfs-load-btn");
-  var _clearBtn  = document.getElementById("gtfs-clear-btn");
+  // `document` is absent in the golden-test sandbox (pure helpers only).
+  var _hasDoc    = typeof document !== "undefined";
+  var _fileInput = _hasDoc ? document.getElementById("gtfs-file-input") : null;
+  var _dropdown  = _hasDoc ? document.getElementById("add-data-dropdown") : null;
+  var _loadBtn   = _hasDoc ? document.getElementById("gtfs-load-btn") : null;
+  var _clearBtn  = _hasDoc ? document.getElementById("gtfs-clear-btn") : null;
 
   if (_loadBtn && _fileInput) {
     _loadBtn.addEventListener("click", function () {
@@ -958,6 +1239,165 @@
     if (typeof setRouteLayerVisibility === "function") setRouteLayerVisibility(visible);
     if (typeof setStopLayerVisibility  === "function") setStopLayerVisibility(visible);
   };
+
+
+  // ---- Route browser public API ----
+
+  function findIndexRoute(routeId) {
+    if (!_routeIndex) return null;
+    for (var i = 0; i < _routeIndex.length; i++) {
+      if (_routeIndex[i].routeKey === routeId || _routeIndex[i].route_id === routeId) return _routeIndex[i];
+    }
+    return null;
+  }
+  function routeDisplayName(r) { return r.short || r.long || r.route_id || ""; }
+  function shapeFeature(shapeId) {
+    if (!_shapesFC) return null;
+    for (var i = 0; i < _shapesFC.features.length; i++) {
+      if (_shapesFC.features[i].properties.shape_id === shapeId) return _shapesFC.features[i];
+    }
+    return null;
+  }
+  function afterVisibilityChange() {
+    var map = App.map;
+    if (map && map.getLayer("gtfs-shapes-layer")) {
+      map.setFilter("gtfs-shapes-layer", buildVisibilityFilter(_hiddenRoutes, _hiddenShapes));
+    }
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+  }
+  function applyPendingHidden() {
+    var p = _pendingHidden;
+    _pendingHidden = null;
+    if (!p || !_routeIndex) return;
+    var shapeIds = {};
+    _routeIndex.forEach(function (r) { r.shapes.forEach(function (s) { shapeIds[s.shape_id] = true; }); });
+    (p.routes || []).forEach(function (k) { if (findIndexRoute(k)) _hiddenRoutes[k] = true; });
+    (p.shapes || []).forEach(function (k) { if (shapeIds[k]) _hiddenShapes[k] = true; });
+    afterVisibilityChange();
+  }
+
+  App.gtfsRouteIndex = function () { return _routeIndex; };
+  App.gtfsHiddenState = function () {
+    return { routes: Object.keys(_hiddenRoutes), shapes: Object.keys(_hiddenShapes) };
+  };
+  App.gtfsSetRouteHidden = function (routeId, hidden) {
+    if (!_routeIndex) return;
+    if (hidden) _hiddenRoutes[routeId] = true; else delete _hiddenRoutes[routeId];
+    afterVisibilityChange();
+  };
+  App.gtfsSetShapeHidden = function (shapeId, hidden) {
+    if (!_routeIndex) return;
+    if (hidden) _hiddenShapes[shapeId] = true; else delete _hiddenShapes[shapeId];
+    afterVisibilityChange();
+  };
+  // routeIds = array of routeKeys to keep visible; null/undefined = show all.
+  App.gtfsShowOnly = function (routeIds) {
+    if (!_routeIndex) return;
+    _hiddenRoutes = {}; _hiddenShapes = {};
+    if (routeIds) {
+      var keep = {};
+      routeIds.forEach(function (k) { keep[k] = true; });
+      _routeIndex.forEach(function (r) { if (!keep[r.routeKey]) _hiddenRoutes[r.routeKey] = true; });
+    }
+    afterVisibilityChange();
+  };
+  App.gtfsShowAll = function () { App.gtfsShowOnly(null); };
+
+  // target = { routeId } | { shapeId } | null (clears the highlight).
+  App.gtfsHighlight = function (target) {
+    var map = App.map;
+    if (!map || !map.getLayer(HL_LAYER)) return;
+    var f = ["==", ["get", "shape_id"], "\u0000none"];
+    if (target && target.shapeId != null) {
+      f = ["==", ["get", "shape_id"], String(target.shapeId)];
+    } else if (target && target.routeId != null) {
+      f = target.routeId === UNASSIGNED_KEY
+        ? ["==", ["coalesce", ["get", "route_id"], ""], ""]
+        : ["==", ["coalesce", ["get", "route_id"], ""], String(target.routeId)];
+    }
+    map.setFilter(HL_CASING, f);
+    map.setFilter(HL_LAYER, f);
+  };
+
+  App.gtfsZoomTo = function (target) {
+    var map = App.map;
+    if (!map || !_shapesFC || !target) return;
+    var ids = null;
+    if (target.shapeId != null) ids = [String(target.shapeId)];
+    else if (target.routeId != null) {
+      var r = findIndexRoute(target.routeId);
+      if (r) ids = r.shapes.map(function (s) { return s.shape_id; });
+    }
+    if (!ids) return;
+    var w = 180, s = 90, e = -180, n = -90, any = false;
+    ids.forEach(function (id) {
+      var f = shapeFeature(id);
+      if (!f) return;
+      f.geometry.coordinates.forEach(function (c) {
+        any = true;
+        if (c[0] < w) w = c[0]; if (c[0] > e) e = c[0];
+        if (c[1] < s) s = c[1]; if (c[1] > n) n = c[1];
+      });
+    });
+    if (any) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 16 });
+  };
+
+  // opts = { routeId, mode: "representative"|"each"|"shape"|"service", shapeId }.
+  // "service" copies every shape like "each" and also groups them as ONE
+  // transit Service: shared attributes.serviceId (route name, made unique)
+  // and a per-shape direction from GTFS direction_id when unambiguous.
+  // Returns the array indices (into App.lines) of the created lines.
+  App.gtfsCopy = function (opts) {
+    opts = opts || {};
+    var created = [];
+    var route = opts.routeId != null ? findIndexRoute(opts.routeId) : null;
+    var shapes = [];
+    var asService = opts.mode === "service";
+    if (opts.mode === "shape") {
+      if (opts.shapeId != null) shapes = [String(opts.shapeId)];
+    } else if (route) {
+      if (opts.mode === "each" || asService) shapes = route.shapes.map(function (s) { return s.shape_id; });
+      else { var rep = representativeShape(route); if (rep) shapes = [rep.shape_id]; }
+    }
+    var multi = (opts.mode === "each" || asService) && shapes.length > 1;
+    var named = route && route.routeKey !== UNASSIGNED_KEY;
+    var group = (multi || asService) && named ? routeDisplayName(route) : "";
+    var serviceId = "", dirs = {};
+    if (asService && named) {
+      var existing = [];
+      (App.routes || []).concat(App.lines || []).forEach(function (f) {
+        var a = f && f.properties && f.properties.attributes;
+        if (a && a.serviceId) existing.push(a.serviceId);
+      });
+      serviceId = uniqueServiceId(routeDisplayName(route), existing);
+      var tripRows = (_gtfsData && _gtfsData.has("trips.txt")) ? _gtfsData.get("trips.txt").rows : [];
+      dirs = shapeDirections(tripRows, route.route_id);
+    }
+    function copyAll() {
+      shapes.forEach(function (sid) {
+        var f = shapeFeature(sid);
+        if (!f) return;
+        var idx = copyShapeToLine(f.properties, { multi: multi, group: group,
+          serviceId: serviceId, direction: serviceId ? (dirs[sid] || "") : "" });
+        if (idx >= 0) created.push(idx);
+      });
+    }
+    // Several lines in one go are ONE undo step.
+    if (shapes.length > 1 && App.undo && typeof App.undo.batch === "function") App.undo.batch(copyAll);
+    else copyAll();
+    return created;
+  };
+
+  if (App.cache && typeof App.cache.registerModule === "function") {
+    App.cache.registerModule("gtfs-browse", {
+      collect: function () { return _routeIndex ? App.gtfsHiddenState() : {}; },
+      apply: function (data) {
+        // The feed itself is restored later (restoreGTFSFromData consumes this).
+        if (data && (data.routes || data.shapes)) _pendingHidden = { routes: data.routes || [], shapes: data.shapes || [] };
+      }
+    });
+  }
 
   // ---- Register analysis module ----
   App.registerModule({

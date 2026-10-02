@@ -1,0 +1,381 @@
+{
+  "natural/2-lt-10": -1,
+  "natural/10-gt-2": 1,
+  "natural/case-insensitive-equal": 0,
+  "natural/A2-lt-A10": -1,
+  "natural/prefix-shorter-first": -1,
+  "natural/null-first": -1,
+  "index/full": [
+    {
+      "routeKey": "x2",
+      "route_id": "x2",
+      "short": "2",
+      "long": "Two",
+      "type": "",
+      "color": "",
+      "agency_id": "",
+      "shapes": [
+        {
+          "shape_id": "X2",
+          "lengthMi": 0.5384712454236896,
+          "tripCount": 1,
+          "headsigns": []
+        }
+      ],
+      "tripCount": 1
+    },
+    {
+      "routeKey": "x10",
+      "route_id": "x10",
+      "short": "10",
+      "long": "Ten",
+      "type": "",
+      "color": "",
+      "agency_id": "",
+      "shapes": [
+        {
+          "shape_id": "X10",
+          "lengthMi": 0.5384712454236896,
+          "tripCount": 1,
+          "headsigns": []
+        }
+      ],
+      "tripCount": 1
+    },
+    {
+      "routeKey": "blue",
+      "route_id": "blue",
+      "short": "",
+      "long": "Blue Line",
+      "type": "3",
+      "color": "",
+      "agency_id": "",
+      "shapes": [
+        {
+          "shape_id": "tie_long",
+          "lengthMi": 2.1538849816939933,
+          "tripCount": 1,
+          "headsigns": [
+            "L"
+          ]
+        },
+        {
+          "shape_id": "B1",
+          "lengthMi": 1.0769424908466139,
+          "tripCount": 1,
+          "headsigns": []
+        },
+        {
+          "shape_id": "tie_short",
+          "lengthMi": 1.0769424908466139,
+          "tripCount": 1,
+          "headsigns": [
+            "S"
+          ]
+        }
+      ],
+      "tripCount": 3
+    },
+    {
+      "routeKey": "red",
+      "route_id": "red",
+      "short": "Red",
+      "long": "Red Circulator",
+      "type": "3",
+      "color": "#ff0000",
+      "agency_id": "A",
+      "shapes": [
+        {
+          "shape_id": "177202",
+          "lengthMi": 2.1538849816939933,
+          "tripCount": 4,
+          "headsigns": [
+            "Loop"
+          ]
+        },
+        {
+          "shape_id": "177198",
+          "lengthMi": 2.6923562271169175,
+          "tripCount": 3,
+          "headsigns": [
+            "Downtown",
+            "Mall"
+          ]
+        },
+        {
+          "shape_id": "177198_A",
+          "lengthMi": 1.6154137362703036,
+          "tripCount": 1,
+          "headsigns": [
+            "Downtown"
+          ]
+        }
+      ],
+      "tripCount": 8
+    },
+    {
+      "routeKey": "__unassigned__",
+      "route_id": "",
+      "short": "",
+      "long": "Unassigned shapes",
+      "type": "",
+      "color": "",
+      "agency_id": "",
+      "shapes": [
+        {
+          "shape_id": "orphan",
+          "lengthMi": 1.6154137362703036,
+          "tripCount": 0,
+          "headsigns": []
+        }
+      ],
+      "tripCount": 0
+    }
+  ],
+  "index/no-trips-all-unassigned": [
+    {
+      "routeKey": "__unassigned__",
+      "route_id": "",
+      "short": "",
+      "long": "Unassigned shapes",
+      "type": "",
+      "color": "",
+      "agency_id": "",
+      "shapes": [
+        {
+          "shape_id": "177198",
+          "lengthMi": 2.6923562271169175,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "177202",
+          "lengthMi": 2.1538849816939933,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "tie_long",
+          "lengthMi": 2.1538849816939933,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "177198_A",
+          "lengthMi": 1.6154137362703036,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "orphan",
+          "lengthMi": 1.6154137362703036,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "B1",
+          "lengthMi": 1.0769424908466139,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "tie_short",
+          "lengthMi": 1.0769424908466139,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "X2",
+          "lengthMi": 0.5384712454236896,
+          "tripCount": 0,
+          "headsigns": []
+        },
+        {
+          "shape_id": "X10",
+          "lengthMi": 0.5384712454236896,
+          "tripCount": 0,
+          "headsigns": []
+        }
+      ],
+      "tripCount": 0
+    }
+  ],
+  "index/empty": [],
+  "index/null-inputs": [],
+  "filter/blank-returns-all-ids": [
+    {
+      "route_id": "a",
+      "short": "A",
+      "long": "",
+      "shapes": []
+    }
+  ],
+  "filter/by-short-name": [
+    {
+      "route_id": "r1",
+      "short": "Red",
+      "long": "Circulator",
+      "shapes": []
+    }
+  ],
+  "filter/by-long-name": [
+    {
+      "route_id": "r1",
+      "short": "Red",
+      "long": "Circulator",
+      "shapes": []
+    }
+  ],
+  "filter/by-route-id": [
+    {
+      "route_id": "r2",
+      "short": "Blue",
+      "long": "",
+      "shapes": []
+    }
+  ],
+  "filter/by-shape-id": [
+    {
+      "route_id": "r1",
+      "short": "Red",
+      "long": "",
+      "shapes": [
+        {
+          "shape_id": "177198_A"
+        }
+      ]
+    }
+  ],
+  "filter/no-match": [],
+  "rep/most-trips": {
+    "shape_id": "b",
+    "tripCount": 5,
+    "lengthMi": 1
+  },
+  "rep/tie-longest": {
+    "shape_id": "b",
+    "tripCount": 3,
+    "lengthMi": 4
+  },
+  "rep/all-zero-trips-longest": {
+    "shape_id": "b",
+    "tripCount": 0,
+    "lengthMi": 4
+  },
+  "rep/no-shapes": null,
+  "filterexpr/nothing-hidden": null,
+  "filterexpr/null-inputs": null,
+  "filterexpr/routes-only": [
+    "!",
+    [
+      "in",
+      [
+        "coalesce",
+        [
+          "get",
+          "route_id"
+        ],
+        ""
+      ],
+      [
+        "literal",
+        [
+          "blue",
+          "red"
+        ]
+      ]
+    ]
+  ],
+  "filterexpr/shapes-only": [
+    "!",
+    [
+      "in",
+      [
+        "coalesce",
+        [
+          "get",
+          "shape_id"
+        ],
+        ""
+      ],
+      [
+        "literal",
+        [
+          "177198"
+        ]
+      ]
+    ]
+  ],
+  "filterexpr/both": [
+    "all",
+    [
+      "!",
+      [
+        "in",
+        [
+          "coalesce",
+          [
+            "get",
+            "route_id"
+          ],
+          ""
+        ],
+        [
+          "literal",
+          [
+            "red"
+          ]
+        ]
+      ]
+    ],
+    [
+      "!",
+      [
+        "in",
+        [
+          "coalesce",
+          [
+            "get",
+            "shape_id"
+          ],
+          ""
+        ],
+        [
+          "literal",
+          [
+            "B1"
+          ]
+        ]
+      ]
+    ]
+  ],
+  "filterexpr/unassigned-route": [
+    "!",
+    [
+      "in",
+      [
+        "coalesce",
+        [
+          "get",
+          "route_id"
+        ],
+        ""
+      ],
+      [
+        "literal",
+        [
+          ""
+        ]
+      ]
+    ]
+  ],
+  "dirs/agree-mixed-missing": {
+    "a": "Outbound",
+    "b": "Inbound",
+    "c": "",
+    "d": "",
+    "e": ""
+  },
+  "serviceid/free": "Red",
+  "serviceid/taken": "Red (3)"
+}

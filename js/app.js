@@ -9,7 +9,7 @@
 
   // ---- Draw mode ----
 
-  App.drawMode = null; // null | "point" | "line" | "route" | "polygon" | "label" | "measure"
+  App.drawMode = null; // null | "point" | "line" | "route" | "polygon" | "label" | "measure" | "box-select"
 
   // ---- Variable checkbox UI ----
   // The variable checkbox list is built at runtime by buffer-summary.js from
@@ -459,7 +459,7 @@
   function _withResolvedColorForOffset(featureType, arr) {
     return arr.filter(function (f) { return !f.properties.hidden; }).map(function (f) {
       var props = {};
-      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
       props.resolvedColor = App.resolveFeatureColor(featureType, f);
       return { type: "Feature", properties: props, geometry: f.geometry };
     });
@@ -694,7 +694,8 @@
         if (typeof App.setMeasurePreview === "function") App.setMeasurePreview(null);
 
         // Clear feature selection when entering a draw mode
-        if (App.drawMode && typeof App.clearSelection === "function") App.clearSelection();
+        // (box select keeps it — Shift/Ctrl drags add to / remove from it).
+        if (App.drawMode && App.drawMode !== "box-select" && typeof App.clearSelection === "function") App.clearSelection();
 
         // Update cursor for draw mode
         if (App.drawMode) {
@@ -703,7 +704,9 @@
           App.map.getCanvas().style.cursor = "grab";
         }
 
-        App.setStatus(App.drawMode
+        App.setStatus(App.drawMode === "box-select"
+          ? "Box select: drag to select (Shift adds, Ctrl removes, Alt = fully inside)"
+          : App.drawMode
           ? App.drawMode.charAt(0).toUpperCase() + App.drawMode.slice(1) + " mode"
           : "Ready");
       });
@@ -797,6 +800,7 @@
       if (e.key === "Escape" && App.popup.isOpen()) {
         App.popup.close();
       }
+      if (App.drawMode === "split-pick") return; // Split out section… pick: no undo/redo/delete until it ends
       var tag = e.target.tagName;
       // Ctrl+Z / Cmd+Z = Undo
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
@@ -823,19 +827,33 @@
           else if (ft === "polygon") App.removePolygon(fi);
           if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
           e.preventDefault();
+          return;
+        }
+        // Delete on a feature selection → confirm dialog (one undo step).
+        if (tag === "SELECT" || (App.drawMode && App.drawMode !== "box-select")) return;
+        // Analysis panels are non-modal: only a key pressed inside one is ignored.
+        if (e.target && e.target.closest && e.target.closest("#module-popup, #fp-attr-popup, #fp-mini-popup")) return;
+        if (App.merge && App.merge.isDialogOpen && App.merge.isDialogOpen()) return;
+        if (App.bulkFeatures && typeof App.getSelectedFeatures === "function") {
+          var bsel = App.bulkFeatures.usable(App.getSelectedFeatures());
+          if (bsel.length) {
+            App.bulkFeatures.confirmRemove(bsel);
+            e.preventDefault();
+          }
         }
       }
     });
 
-    // Draw-tool shortcuts (S/L/R/P/M/T/B) + Enter-to-finish. Kept as a separate
+    // Draw-tool shortcuts (S/L/R/P/M/T/B/A) + Enter-to-finish. Kept as a separate
     // listener so it stays isolated from the Escape/Ctrl+Z/Delete handler above.
     var TOOL_KEYS = {
       s: "point", l: "line", r: "route", p: "polygon",
-      b: "label", t: "textbox", m: "measure"
+      b: "label", t: "textbox", m: "measure", a: "box-select"
     };
     document.addEventListener("keydown", function (e) {
       // Never hijack typing, dropdown navigation, or modifier combos (Ctrl+Z etc.).
       var tag = e.target.tagName;
+      if (App.drawMode === "split-pick") return; // Split out section… pick mode owns the keyboard
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 

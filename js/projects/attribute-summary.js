@@ -272,18 +272,10 @@
     return attrs ? attrs[fieldDef.key] : undefined;
   }
 
+  // Shared with Feature Merge (js/core/merge.js) so the two features agree on
+  // what counts as "has a value".
   function copyFieldHasValue(fieldDef, attrs) {
-    var v = attrs ? attrs[fieldDef.key] : undefined;
-    if (fieldDef.kind === "number")     return v != null && !isNaN(v);
-    if (fieldDef.kind === "routearray") return Array.isArray(v) && v.length > 0;
-    if (fieldDef.kind === "bands") {
-      if (!v) return false;
-      var w = (v.weekday  || []).length;
-      var s = (v.saturday || []).length;
-      var u = v.sundayMirrorsSaturday ? s : (v.sunday || []).length;
-      return (w + s + u) > 0;
-    }
-    return v != null && v !== ""; // text / select
+    return App.mergeAttrs.fieldHasValue(fieldDef.kind, attrs ? attrs[fieldDef.key] : undefined);
   }
 
   function copyFieldSetValue(fieldDef, attrs, val) {
@@ -647,13 +639,11 @@
     sw.type = "button";
     sw.className = "as-swatch";
     sw.title = "Change color";
-    sw.style.background = feature.properties.color ||
-      (typeof App.getTypeDefaultColor === "function" ? App.getTypeDefaultColor(featureType) : "#999");
+    sw.style.background = App.resolveFeatureColor(featureType, feature);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
       if (typeof App.openColorPicker !== "function") return;
-      App.openColorPicker(sw, feature.properties.color || sw.style.background, function (newColor) {
-        feature.properties.color = newColor;
+      App.openColorPicker(sw, App.resolveFeatureColor(featureType, feature), function (newColor) {
         sw.style.background = newColor;
         if (typeof App.updateFeatureColor === "function") {
           App.updateFeatureColor(featureType, featureIndex, newColor);

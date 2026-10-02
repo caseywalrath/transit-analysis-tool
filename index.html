@@ -185,6 +185,12 @@
               <line x1="18" y1="6" x2="18" y2="13" stroke="#6b46c1" stroke-width="1.5"/>
             </svg>
           </button>
+          <button class="tool-btn" data-mode="box-select" title="Select by box (A) — Shift adds, Ctrl removes, Alt = fully inside" aria-label="Select features by box">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="16" height="16" rx="1" stroke="#2b6cb0" stroke-width="1.8" stroke-dasharray="3 2.5"/>
+              <path d="M14 13l7 3-3 1.2L16.8 21z" fill="#2b6cb0"/>
+            </svg>
+          </button>
         </div>
         <div id="draw-actions">
           <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
@@ -395,8 +401,11 @@
     <script src="js/core/osm-pois.js"></script>
     <script src="js/core/editing.js"></script>
     <script src="js/core/selection.js"></script>
+    <script src="js/core/box-select.js"></script>
     <script src="js/core/features.js"></script>
     <script src="js/core/feature-attributes.js"></script>
+    <script src="js/core/merge.js"></script>
+    <script src="js/core/split.js"></script>
     <script src="js/core/layers-panel.js"></script>
     <script src="js/core/census.js"></script>
     <script src="js/core/lodes.js"></script>

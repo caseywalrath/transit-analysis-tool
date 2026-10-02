@@ -340,7 +340,7 @@
         warnIcon = ' <span class="rc-warn-badge" title="' + escapeAttr(tip) + '">&#9888;</span>';
       }
       var typeBadge = svc.isGroup
-        ? '<span class="rc-pill rc-pill-group">Paired</span>'
+        ? '<span class="rc-pill rc-pill-group">' + (svc.patterns.length >= 3 ? 'Grouped' : 'Paired') + '</span>'
         : '<span class="rc-pill rc-pill-solo">Solo</span>';
 
       html +=
@@ -410,7 +410,9 @@
     var lenSum  = ps.reduce(function (s, p) { return s + p.lengthMiles; }, 0);
     var oneWaySum = oneWays.reduce(function (s, v) { return s + v; }, 0);
 
-    if (ps.length === 2) {
+    // 2 patterns = out + back; 3+ patterns (each a one-way stream) report the
+    // same sums for the header columns.
+    if (ps.length >= 2) {
       return { rtHrs: oneWaySum, rtMiles: lenSum, oneWays: oneWays };
     }
     // Single pattern
@@ -438,7 +440,8 @@
       oneWayRuntimeHrs: oneWayRuntimeHrs,
       oneWayRuntimeHrsFromSettings: oneWayRuntimeHrsFromSettings,
       computeRoundTrip: computeRoundTrip,
-      computeLayoverHrs: computeLayoverHrs
+      computeLayoverHrs: computeLayoverHrs,
+      computeService: function (svc, settings) { return computeService(svc, settings); }
     };
   }
 
@@ -458,14 +461,24 @@
     }
 
     var rt = computeRoundTrip(svc, settings);
-    var layHrs = computeLayoverHrs(rt.rtHrs, settings);
+    var multi = svc.patterns.length >= 3;
+    // 3+ patterns: layover is charged per one-way trip, at half what a cycle of
+    // two of that pattern's trips gets (docs/gtfs-route-browser-plan.md
+    // "Phase 3 design") — the per-trip share a 2-pattern Service pays.
+    var layPerTrip = multi ? rt.oneWays.map(function (ow) {
+      return computeLayoverHrs(2 * ow, settings) / 2;
+    }) : null;
+    var layHrs = multi ? layPerTrip.reduce(function (s, v) { return s + v; }, 0)
+                       : computeLayoverHrs(rt.rtHrs, settings);
     var cycleHrs = rt.rtHrs + layHrs;
 
     // tripsPerCycle: how many one-way trips constitute one cycle (for layover allocation)
     // - Paired (2 patterns): 2 (one of each direction per cycle)
     // - Solo "Both": 2 (out and back per cycle)
     // - Solo Loop/CW/CCW: 1 (the one-way IS the full cycle)
-    var tripsPerCycle = (svc.patterns.length === 2) ? 2
+    // - 3+ patterns: N (informational — layover/fleet are computed per pattern)
+    var tripsPerCycle = multi ? svc.patterns.length
+                      : (svc.patterns.length === 2) ? 2
                       : (svc.patterns[0].direction === "Both") ? 2
                       : 1;
 
@@ -475,6 +488,13 @@
       saturday: { minHeadway: Infinity, trips: 0, revHrs: 0, miles: 0 },
       sunday:   { minHeadway: Infinity, trips: 0, revHrs: 0, miles: 0 }
     };
+    // 3+ patterns only: per-day, per-pattern trips + min headway.
+    var multiDay = multi ? { weekday: [], saturday: [], sunday: [] } : null;
+    if (multi) {
+      ["weekday", "saturday", "sunday"].forEach(function (day) {
+        svc.patterns.forEach(function () { multiDay[day].push({ trips: 0, minHeadway: Infinity }); });
+      });
+    }
     var bandRows = [];
 
     DAYS.forEach(function (day) {
@@ -502,6 +522,11 @@
           perDay[day].miles   += bandMiles;
 
           if (headway < perDay[day].minHeadway) perDay[day].minHeadway = headway;
+          if (multi) {
+            var md = multiDay[day][pi];
+            md.trips += trips;
+            if (headway < md.minHeadway) md.minHeadway = headway;
+          }
 
           bandRows.push({
             day:         day,
@@ -530,13 +555,22 @@
     DAYS.forEach(function (day) {
       var d = perDay[day];
       d.cycles      = (tripsPerCycle > 0) ? (d.trips / tripsPerCycle) : 0;
-      d.layoverHrs  = d.cycles * layHrs;
+      d.layoverHrs  = multi
+        ? multiDay[day].reduce(function (s, md, pi) { return s + md.trips * layPerTrip[pi]; }, 0)
+        : d.cycles * layHrs;
       d.deadheadHrs = d.revHrs * dh;
       d.platHrs     = d.revHrs + d.layoverHrs + d.deadheadHrs;
       d.cost        = d.platHrs * settings.costPerHour;
       d.annualCost  = d.cost    * daysMap[day];
       // Per-day fleet
-      if (isFinite(d.minHeadway) && d.minHeadway > 0) {
+      if (multi && isFinite(d.minHeadway) && d.minHeadway > 0) {
+        // Σ over patterns running today of (one-way + per-trip layover) / headway.
+        d.peakVehiclesRaw = multiDay[day].reduce(function (s, md, pi) {
+          if (!(isFinite(md.minHeadway) && md.minHeadway > 0)) return s;
+          return s + ((rt.oneWays[pi] + layPerTrip[pi]) * 60) / md.minHeadway;
+        }, 0);
+        d.peakVehiclesRounded = Math.ceil(d.peakVehiclesRaw);
+      } else if (isFinite(d.minHeadway) && d.minHeadway > 0) {
         d.peakVehiclesRaw     = (cycleHrs * 60) / d.minHeadway;
         d.peakVehiclesRounded = Math.ceil(d.peakVehiclesRaw);
       } else {
@@ -1424,7 +1458,7 @@
 
   function saveRcState(/* mode */) {
     var data = {
-      version:        2,   // v2: per-day-type structure; explicit layover/deadhead
+      version:        3,   // v3: solo Service keys are ID-based ("solo-route-id12"); v2: per-day-type structure
       settings:       Object.assign({}, _settings),
       selectedKeys:   getSelectedServiceKeys(),
       interlineGroups: _interlineGroups.map(function (g) {
@@ -1466,6 +1500,19 @@
     return data;
   }
 
+  // Upgrade legacy index-based solo keys ("solo-route-3") to ID-based ones
+  // ("solo-route-id12"), dropping any that no longer resolve. Valid only inside
+  // apply(): cache.applyState has already pushed the features in their saved
+  // order, so a legacy index still points at the feature that was selected.
+  function migrateKeyList(keys) {
+    var out = [];
+    keys.forEach(function (k) {
+      var mk = App.migrateServiceKey(k);
+      if (mk) out.push(mk);
+    });
+    return out;
+  }
+
   function restoreRcState(data) {
     if (!data) return;
     if (data.settings) {
@@ -1474,18 +1521,18 @@
     if (Array.isArray(data.selectedKeys)) {
       // Migrate legacy "group-…" keys (pre-Service rename) to "service-…"
       // so checkbox selections survive the upgrade.
-      _restoredSelectedKeys = data.selectedKeys.map(function (k) {
+      _restoredSelectedKeys = migrateKeyList(data.selectedKeys.map(function (k) {
         return (typeof k === "string" && k.indexOf("group-") === 0)
           ? "service-" + k.slice(6)
           : k;
-      });
+      }));
     }
     if (Array.isArray(data.interlineGroups)) {
       _interlineGroups = data.interlineGroups.map(function (g) {
         return {
           id:          g.id || ("ilg-" + (++_ilGroupCounter)),
           name:        g.name || "",
-          serviceKeys: Array.isArray(g.serviceKeys) ? g.serviceKeys.slice() : [],
+          serviceKeys: Array.isArray(g.serviceKeys) ? migrateKeyList(g.serviceKeys) : [],
           days:        Object.assign({ weekday: true, saturday: false, sunday: false }, g.days || {})
         };
       });
@@ -1499,6 +1546,12 @@
         summary:  data.lastSummary.summary || {},
         services: data.lastSummary.services
       };
+      // Same legacy-key upgrade for the per-Service rows (kept verbatim when a
+      // legacy index no longer resolves — the row is display-only).
+      _lastResult.services.forEach(function (r) {
+        var mk = App.migrateServiceKey(r.key);
+        if (mk) r.key = mk;
+      });
     }
   }
 
@@ -1521,6 +1574,26 @@
   };
 
   // ---- Register module ----
+
+  // ---- Feature usage (Split / Merge dialogs) ----
+  // Service membership (by serviceId) and whether that Service is in the last
+  // costing results. Uses the live assembly; closure state only otherwise.
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      if (typeof App.buildTransitServices !== "function") return [];
+      var svcs = App.buildTransitServices() || [];
+      for (var i = 0; i < svcs.length; i++) {
+        var s = svcs[i];
+        var hit = (s.patterns || []).some(function (p) { return p.featureType === type && p.featureId === id; });
+        if (!hit) continue;
+        var inResults = _lastResult && (_lastResult.services || []).some(function (r) { return r && r.key === s.key; });
+        if (!s.isGroup && !inResults) return [];
+        return [(s.isGroup ? "Route Costing · pattern of Service '" + s.name + "' (" + s.patterns.length + " patterns)" : "Route Costing · costed as '" + s.name + "'") +
+          (inResults ? "; in the last costing results" : "")];
+      }
+      return [];
+    }, { module: "Route Costing", severity: "info" });
+  }
 
   App.registerModule({
     id:         "route-costing",

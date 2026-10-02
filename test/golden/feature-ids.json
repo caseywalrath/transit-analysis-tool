@@ -1,0 +1,178 @@
+{
+  "assign/already-unique-no-changes": {
+    "changes": [],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 3,
+      "polygon": 0
+    }
+  },
+  "assign/unique-but-gappy-no-changes": {
+    "changes": [],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 7,
+      "polygon": 0
+    }
+  },
+  "assign/missing-ids": {
+    "changes": [
+      {
+        "type": "route",
+        "index": 0,
+        "oldId": null,
+        "newId": 2
+      },
+      {
+        "type": "route",
+        "index": 2,
+        "oldId": null,
+        "newId": 3
+      }
+    ],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 3,
+      "polygon": 0
+    }
+  },
+  "assign/duplicate-first-keeps-id": {
+    "changes": [
+      {
+        "type": "route",
+        "index": 1,
+        "oldId": 1,
+        "newId": 2
+      },
+      {
+        "type": "route",
+        "index": 2,
+        "oldId": 1,
+        "newId": 3
+      }
+    ],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 3,
+      "polygon": 0
+    }
+  },
+  "assign/duplicate-after-higher-id": {
+    "changes": [
+      {
+        "type": "route",
+        "index": 1,
+        "oldId": 3,
+        "newId": 10
+      },
+      {
+        "type": "route",
+        "index": 3,
+        "oldId": 3,
+        "newId": 11
+      }
+    ],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 11,
+      "polygon": 0
+    }
+  },
+  "assign/non-numeric-and-invalid": {
+    "changes": [
+      {
+        "type": "route",
+        "index": 0,
+        "oldId": "2",
+        "newId": 3
+      },
+      {
+        "type": "route",
+        "index": 1,
+        "oldId": 0,
+        "newId": 4
+      },
+      {
+        "type": "route",
+        "index": 2,
+        "oldId": -4,
+        "newId": 5
+      },
+      {
+        "type": "route",
+        "index": 3,
+        "oldId": 1.5,
+        "newId": 6
+      },
+      {
+        "type": "route",
+        "index": 4,
+        "oldId": null,
+        "newId": 7
+      }
+    ],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 7,
+      "polygon": 0
+    }
+  },
+  "assign/empty-and-absent-types": {
+    "changes": [],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 0,
+      "polygon": 0
+    }
+  },
+  "assign/null-input": {
+    "changes": [],
+    "maxByType": {
+      "point": 0,
+      "line": 0,
+      "route": 0,
+      "polygon": 0
+    }
+  },
+  "assign/mixed-types": {
+    "changes": [
+      {
+        "type": "point",
+        "index": 1,
+        "oldId": 1,
+        "newId": 2
+      },
+      {
+        "type": "line",
+        "index": 0,
+        "oldId": null,
+        "newId": 3
+      },
+      {
+        "type": "polygon",
+        "index": 1,
+        "oldId": 4,
+        "newId": 5
+      },
+      {
+        "type": "polygon",
+        "index": 2,
+        "oldId": "a",
+        "newId": 6
+      }
+    ],
+    "maxByType": {
+      "point": 2,
+      "line": 3,
+      "route": 6,
+      "polygon": 6
+    }
+  }
+}

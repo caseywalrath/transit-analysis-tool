@@ -6334,6 +6334,96 @@ body.dark-mode .as-copy-warning { background: #3a2f1a; border-color: #78350f; }
 body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 
 /* ============================================================
+   Feature Merge dialog (.fm- prefix) — js/core/merge.js
+   App-level modal (fixed, unlike the popup-scoped .rf-weights-modal-overlay)
+   reusing the .rf-weights-modal-title / -actions, .rf-btn-sm and
+   .rf-action-primary primitives.
+   ============================================================ */
+.fm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.45);
+}
+.fm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px 16px;
+  width: 480px;
+  max-width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+.fm-intro { color: var(--text-secondary); font-size: var(--text-xs); margin-bottom: var(--space-3); }
+.fm-section { margin-top: var(--space-3); }
+.fm-section-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+.fm-radio-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.fm-radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+  cursor: pointer;
+}
+.fm-radio-row input[type="radio"] { margin: 0; cursor: pointer; }
+.fm-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.fm-radio-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-hint { color: var(--text-secondary); font-size: var(--text-xs); margin-top: var(--space-1); }
+.fm-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.fm-list li + li { margin-top: 2px; }
+.fm-note {
+  margin-top: var(--space-3);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: var(--text-xs);
+}
+.fm-note ul { margin: 0; padding-left: var(--space-4); overflow-wrap: anywhere; }
+.fm-note li + li { margin-top: 2px; }
+.fm-note-warn  { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-text); }
+.fm-note-error { background: var(--err-bg);  border-color: var(--err-bd);  color: var(--err-text); }
+.fm-busy {
+  margin-top: var(--space-3); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-alt); color: var(--text-secondary); font-size: var(--text-xs);
+}
+.fm-footnote { margin-top: var(--space-3); color: var(--text-secondary); font-size: var(--text-xs); font-style: italic; }
+@media (max-width: 520px) {
+  .fm-overlay { padding: var(--space-2); }
+  .fm-dialog { padding: 16px; }
+}
+
+/* ============================================================
    Wetland & Channel Mitigation Needs module (.mn- prefix)
    Mock RFP-demo module. Reuses .rf-*, .cs-*, .pill.*, .tpi-legend-*.
    Only the resource toggle + a couple of readouts are module-specific.
@@ -6384,3 +6474,94 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
 }
 .mn-detail-raw strong { color: #1a202c; }
 
+
+/* --- GTFS route browser (Layers tab, under the "GTFS routes" row) --- */
+.lp-gtfs-browser { padding: 2px 0 var(--space-2) var(--space-2); }
+.lp-gtfs-filter { width: 100%; box-sizing: border-box; margin-bottom: var(--space-1); font-size: var(--text-sm); }
+.lp-gtfs-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-1); }
+.lp-gtfs-actions .rf-btn-sm { padding: 2px var(--space-2); font-size: var(--text-xs); white-space: nowrap; }
+.lp-gtfs-actions .rf-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+.lp-gtfs-route { padding-left: 0; }
+.lp-gtfs-route > .lp-caret { padding: 0; }
+.lp-gtfs-browse-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: 0;
+  min-width: 22px;
+  min-height: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lp-gtfs-browse-btn.open { color: var(--accent); border-color: var(--accent); }
+.lp-gtfs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+/* Two-line text block: name on top, details muted beneath; both ellipsize. */
+.lp-gtfs-text { flex: 1; min-width: 0; }
+.lp-gtfs-title { display: block; }
+.lp-gtfs-sub {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-gtfs-shape { padding-left: var(--space-4); }
+.lp-gtfs-route:focus-visible,
+.lp-gtfs-shape:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.lp-row.lp-gtfs-pinned { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+/* Always-visible eye + menu: the hidden state must read at a glance. */
+.lp-gtfs-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.lp-gtfs-btn:hover { color: var(--accent); background: var(--surface-hover); }
+.lp-gtfs-btn:focus-visible { outline: 2px solid var(--accent); }
+.lp-gtfs-btn.lp-eye-off { color: var(--text-disabled); }
+/* Feature Split dialog (js/core/split.js) — extends the .fm- shell */
+.fs-piece-row { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
+.fs-piece-row input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.fs-piece-len { color: var(--text-secondary); font-size: var(--text-xs); white-space: nowrap; }
+.fs-piece-svc { white-space: nowrap; margin-top: 0; }
+.fs-opposite-body { margin: var(--space-1) 0 0 var(--space-5); }
+
+/* ---- Box select tool (js/core/box-select.js) ---- */
+.box-select-rect {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  border: 1.5px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.box-select-rect.box-select-within { border-style: solid; }
+.box-select-badge {
+  position: absolute;
+  pointer-events: none;
+  z-index: 6;
+  padding: 2px var(--space-2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}

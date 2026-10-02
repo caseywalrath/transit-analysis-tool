@@ -243,6 +243,22 @@
       if (typeof App.updateLabelAppearance === "function") App.updateLabelAppearance(featureIndex);
     }
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+  };
+
+  // Type-wide color from the Layers tab (nc = a hex color, or null/"" for
+  // Automatic). Last action wins: every feature of the type drops its own
+  // color so it inherits the new setting. One undo step covers all of it.
+  App.setTypeColor = function (featureType, nc) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    if (!App.sectionColors) App.sectionColors = {};
+    App.sectionColors[featureType] = nc || null;
+    App.clearFeatureColorOverrides(featureType);
+    rerenderForType(featureType);
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    refreshFeaturePanel();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    if (typeof App.refreshAttrPopupColor === "function") App.refreshAttrPopupColor();
   };
 
   /* ---- Default color helper ---- */
@@ -312,10 +328,27 @@
 
   var _ctxMenu = null;
 
+  // Optional per-item hook: `onHover(isEntering)` is called with true on
+  // mouseenter/focus and false on mouseleave/blur. It is also called with
+  // false if the menu closes (item click, outside click, or being replaced by
+  // another menu) while an item is still hovered, so callers can always undo a
+  // hover preview. Items without it behave exactly as before.
+  function closeContextMenu(menu) {
+    if (!menu) return;
+    if (typeof menu._endHover === "function") menu._endHover();
+    if (typeof menu._unlisten === "function") menu._unlisten();
+    menu.remove();
+    if (_ctxMenu === menu) _ctxMenu = null;
+  }
+
   function showContextMenu(x, y, options) {
-    if (_ctxMenu) _ctxMenu.remove();
+    if (_ctxMenu) closeContextMenu(_ctxMenu);
     var menu = document.createElement("div");
     menu.id = "fp-context-menu";
+    var hoverEnd = null;
+    menu._endHover = function () {
+      if (hoverEnd) { var f = hoverEnd; hoverEnd = null; f(); }
+    };
     options.forEach(function (opt) {
       // Divider: a plain hairline separator, or (with a label) a section
       // heading row. Neither is clickable.
@@ -336,10 +369,20 @@
         if (opt.checked) btn.classList.add("fp-ctx-checked");
       }
       btn.textContent = opt.label;
+      if (typeof opt.onHover === "function") {
+        var enter = function () {
+          menu._endHover();
+          hoverEnd = function () { opt.onHover(false); };
+          opt.onHover(true);
+        };
+        btn.addEventListener("mouseenter", enter);
+        btn.addEventListener("focus", enter);
+        btn.addEventListener("mouseleave", menu._endHover);
+        btn.addEventListener("blur", menu._endHover);
+      }
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        menu.remove();
-        _ctxMenu = null;
+        closeContextMenu(menu);
         opt.action();
       });
       menu.appendChild(btn);
@@ -352,12 +395,18 @@
     var top  = Math.min(y, window.innerHeight - mh - 8);
     menu.style.left = Math.max(4, left) + "px";
     menu.style.top  = Math.max(4, top)  + "px";
-    setTimeout(function () {
-      document.addEventListener("click", function close(e) {
-        if (!menu.contains(e.target)) { menu.remove(); _ctxMenu = null; }
-        document.removeEventListener("click", close);
-      });
-    }, 0);
+    // Close on the next mouse press outside the menu, or on Escape. Listening
+    // starts immediately: the right-click that opened the menu has already had
+    // its mousedown, so it cannot close it. (A click listener added after a
+    // setTimeout could miss a fast outside click and leave the menu open.)
+    function onDown(e) { if (!menu.contains(e.target)) closeContextMenu(menu); }
+    function onKey(e) { if (e.key === "Escape") closeContextMenu(menu); }
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    menu._unlisten = function () {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
   }
 
   /* ---- Group / ungroup helpers ---- */
@@ -572,22 +621,23 @@
     typeIcon.innerHTML = TYPE_ICON_SVGS[featureType] || "";
     typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[featureType] || featureType) + " color";
     typeIcon.setAttribute("aria-label", typeIcon.title);
-    var _currentColor = feature.properties.color || getTypeDefaultColor(featureType);
+    var _currentColor = App.resolveFeatureColor(featureType, feature);
     typeIcon.style.color = _currentColor;
-    (function (btn, ft, fi) {
+    (function (btn, ft, fi, feat) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         if (typeof App.openColorPicker !== "function") return;
-        var curColor = btn.style.color || getTypeDefaultColor(ft);
+        var curColor = App.resolveFeatureColor(ft, feat);
         App.openColorPicker(btn, curColor, function (newColor) {
           if (typeof App.updateFeatureColor === "function") {
             App.updateFeatureColor(ft, fi, newColor);
           }
           btn.style.color = newColor;
           if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+          if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
         });
       });
-    })(typeIcon, featureType, featureIndex);
+    })(typeIcon, featureType, featureIndex, feature);
 
     var input = document.createElement("span");
     input.className = "fp-name";
@@ -684,6 +734,10 @@
           if (typeof dupFn === "function") {
             options.push({ label: "Duplicate", action: function () { dupFn(fi); } });
           }
+          // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
+          if (App.merge && App.merge.hasHistory(ft, fi)) {
+            options.push({ label: "Unmerge\u2026", action: function () { App.merge.openUnmergeDialog(ft, fi); } });
+          }
           options.push({ label: feat.properties.hidden ? "Show" : "Hide", action: function () {
             feat.properties.hidden = !feat.properties.hidden;
             if (App.cache && typeof App.cache.save === "function") App.cache.save();
@@ -692,6 +746,19 @@
           }});
           options.push({ label: "Delete", action: function () { onDelete(); } });
         })(featureType, featureIndex, feature);
+      }
+      // Merge… (2+ selected: one mergeable type, or lines + routes). The right-clicked row is
+      // the default primary — the feature that survives.
+      var mergeSel = App.merge && App.merge.mergeableSelection(selected);
+      var mergeItem = mergeSel ? { label: "Merge\u2026", action: function () {
+        App.merge.openDialog(mergeSel.type, mergeSel.indices, mergeSel.primaryFor(featureType, featureIndex));
+      }} : null;
+      // 2+ selected: Zoom to selection, Merge…, Hide N, Delete N… (labels are ignored by bulkFeatures).
+      var bulkUsable = selected.length >= 2 && App.bulkFeatures ? App.bulkFeatures.usable(selected) : [];
+      if (bulkUsable.length) {
+        App.bulkFeatures.groupMenuItems(selected, mergeItem).forEach(function (it) { options.push(it); });
+      } else if (mergeItem) {
+        options.push(mergeItem);
       }
       var anyInGroup = selected.some(function (s) {
         var feat = getFeatureByTypeIndex(s.type, s.index);
@@ -849,7 +916,7 @@
     });
 
     // Color swatch — applies color to all features in the group
-    var firstColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
+    var firstColor = App.resolveFeatureColor(items[0].type, items[0].feature);
     header.style.borderLeftColor = firstColor;
     var sw = document.createElement("button");
     sw.className = "fp-swatch fp-item-swatch";
@@ -858,7 +925,7 @@
     sw.setAttribute("aria-label", "Change color for group " + groupName);
     sw.addEventListener("click", function (e) {
       e.stopPropagation();
-      var curColor = items[0].feature.properties.color || getTypeDefaultColor(items[0].type);
+      var curColor = App.resolveFeatureColor(items[0].type, items[0].feature);
       App.openColorPicker(sw, curColor, function (newColor) {
         sw.style.background = newColor;
         header.style.borderLeftColor = newColor;
@@ -1417,6 +1484,7 @@
 
   App.refreshFeaturePanel = refreshFeaturePanel;
   App.getTypeDefaultColor = getTypeDefaultColor;
+  App.closeContextMenu = function () { closeContextMenu(_ctxMenu); };
   App.showContextMenu     = showContextMenu;
   App.rerenderForType     = rerenderForType;
   // Shared with the Layers panel so it can list/group drawn features

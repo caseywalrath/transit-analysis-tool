@@ -9,13 +9,14 @@
   var _redoStack = [];
   var MAX_STACK = 50;
   var _restoring = false;
+  var _batchDepth = 0;
 
   function snapshot() {
     return JSON.parse(JSON.stringify(App.cache.collectState("light")));
   }
 
   function push() {
-    if (_restoring) return;
+    if (_restoring || _batchDepth > 0) return;
     _undoStack.push(snapshot());
     if (_undoStack.length > MAX_STACK) _undoStack.shift();
     _redoStack.length = 0;
@@ -42,6 +43,14 @@
     _restoring = true;
     try {
       App.cache.applyState(state);
+      // A selected / vertex-edited feature that no longer exists after the restore
+      // (e.g. undoing a split that selected a new piece) would leave orphan handles.
+      var arrays = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons };
+      var stale = function (type, idx) { var a = arrays[type]; return !a || !a[idx]; };
+      var ed = App._editing, sel = App._selected;
+      if ((ed && ed.featureType && stale(ed.featureType, ed.featureIndex)) || (sel && sel.type && stale(sel.type, sel.index))) {
+        if (typeof App.exitEditMode === "function") App.exitEditMode();
+      }
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       App.cache.save();
     } finally {
@@ -59,10 +68,19 @@
     if (redoBtn) redoBtn.disabled = (_redoStack.length === 0);
   }
 
+  // Run fn as ONE undo step: one snapshot now, and every push() inside fn is a
+  // no-op (e.g. several App.addLineFromCoords calls). Returns fn's result.
+  function batch(fn) {
+    push();
+    _batchDepth++;
+    try { return fn(); } finally { _batchDepth--; }
+  }
+
   function isRestoring() { return _restoring; }
 
   App.undo = {
     push: push,
+    batch: batch,
     undo: undo,
     redo: redo,
     canUndo: function () { return _undoStack.length > 0; },

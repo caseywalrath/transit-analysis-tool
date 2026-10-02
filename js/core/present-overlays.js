@@ -111,9 +111,7 @@
       if (!t.arr) return;
       t.arr.forEach(function (feat, idx) {
         if (feat.properties && feat.properties.hidden) return;
-        var color = (feat.properties && feat.properties.color) ||
-                    (typeof App.getTypeDefaultColor === "function"
-                      ? App.getTypeDefaultColor(t.key) : "#999");
+        var color = App.resolveFeatureColor(t.key, feat);
         var fallback = t.key.charAt(0).toUpperCase() + t.key.slice(1) + " " + (idx + 1);
         var name = (feat.properties && feat.properties.name) || fallback;
         var grpName = feat.properties &&

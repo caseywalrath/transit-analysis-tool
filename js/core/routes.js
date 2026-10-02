@@ -124,7 +124,7 @@
       type: "FeatureCollection",
       features: routes.filter(function (r) { return !r.properties.hidden; }).map(function (r) {
         var props = {};
-        for (var k in r.properties) { if (Object.prototype.hasOwnProperty.call(r.properties, k)) props[k] = r.properties[k]; }
+        for (var k in r.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(r.properties, k)) props[k] = r.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("route", r);
         return { type: "Feature", properties: props, geometry: r.geometry };
       })
@@ -482,7 +482,7 @@
       type: "Feature",
       properties: {
         name: "Route " + idx,
-        routeIdx: idx,
+        routeIdx: App.nextFeatureId("route"),
         waypoints: currentWaypoints.slice(),
         color: "",
         colorSeq: App._nextColorSeq()
@@ -641,7 +641,7 @@
       type: "Feature",
       properties: {
         name: "Route " + idx,
-        routeIdx: idx,
+        routeIdx: App.nextFeatureId("route"),
         waypoints: offsetWaypoints,
         color: src.properties.color || "",
         hidden: false
@@ -651,6 +651,8 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    // Own palette slot when no explicit color (see duplicateLine).
+    if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();
     routes.push(copy);
     rebuildRouteBuffers(routeBufferRadiusMiles);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
@@ -676,6 +678,11 @@
   App._routeDrawingInProgress = function () { return currentWaypoints.length > 0; };
   App.insertRouteWaypoint = insertRouteWaypoint;
   App.rerouteFeature = rerouteFeature;
+  // Street-route a waypoint list exactly as drawing/editing does (local road
+  // network first, then the OSRM servers). Resolves to a coordinate array, or
+  // null when routing is unavailable (caller falls back to a straight line).
+  // Note: on total failure it also posts the "using straight line" status.
+  App.fetchRouteGeometry = function (waypoints) { return fetchRoute(waypoints); };
   App.refreshSavedWaypoints = function () {
     var src = App.map && App.map.getSource("routes-waypoints-saved");
     if (src) src.setData(savedWaypointsGeoJSON());

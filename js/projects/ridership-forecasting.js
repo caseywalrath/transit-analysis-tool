@@ -56,13 +56,13 @@
   var _systemResult = null;      // result from RM.computeSystemDemand() (calibration context)
   var _perRouteCDI = null;       // per-route CDI array (calibration context)
   var _matchResult = null;       // result from RM.matchRoutesToCSV()
-  var _selectedCorridor = ""; // "route:N" / "line:N" (specific corridor required)
-  var _calibFeatureFilter = null; // { routeIndices: [...], lineIndices: [...] } or null (all)
+  var _selectedCorridor = ""; // "route:<id>" / "line:<id>" — a stable feature ID, NOT an array index (specific corridor required)
+  var _calibFeatureFilter = null; // { routeIds: [...], lineIds: [...] } (stable feature IDs) or null (all)
 
   // Demand-phase state (independent TPI context when analyzing a different system)
   var _demandSystemResult = null;  // result from demand-phase RM.computeSystemDemand()
   var _demandPerRouteCDI = null;   // per-route CDI array (demand context)
-  var _demandFeatureFilter = null; // { routeIndices: [...], lineIndices: [...] } or null
+  var _demandFeatureFilter = null; // { routeIds: [...], lineIds: [...] } (stable feature IDs) or null
   var _demandUseSameSystem = false; // true = reuse calibration TPI data for demand
 
   // Shared-pool normalization state
@@ -388,7 +388,7 @@
 
     // Study area union is scoped to the combined calibration+demand selection —
     // fold only that subset's polygons out of the already-built full set.
-    var combinedFilter = combineFeatureFilters(_calibFeatureFilter, demandFilter);
+    var combinedFilter = filterToIndices(combineFeatureFilters(_calibFeatureFilter, demandFilter));
     var combinedPolys = [];
     (combinedFilter.routeIndices || []).forEach(function (idx) {
       var b = allBufferSet.get("route", idx); if (b) combinedPolys.push(b);
@@ -529,7 +529,7 @@
         var demandFilter = readFeatureFilter("rfDemandFeatureList");
         _demandFeatureFilter = demandFilter;
 
-        var demandBufferSet = buildRouteLineBufferSet(demandFilter);
+        var demandBufferSet = buildRouteLineBufferSet(filterToIndices(demandFilter));
         if (demandBufferSet.count === 0) {
           throw new Error("Could not build buffers for the selected demand features.");
         }
@@ -547,7 +547,7 @@
           apportionByArea: _apportionByArea,
           growthFactors: App.projGrowthFactors(),
           unionPolygon: customUnion,
-          featureFilter: demandFilter,
+          featureFilter: filterToIndices(demandFilter),
           bufferSet: demandBufferSet,
           onProgress: function (msg) {
             if (textEl) textEl.textContent = msg;
@@ -591,14 +591,9 @@
       if (!result && tpiResult) {
         var displayCDI;
         if (_selectedCorridor && activeRouteCDIs) {
-          var parts = _selectedCorridor.split(":");
-          var selType = parts[0];
-          var selIdx = parseInt(parts[1], 10);
-          for (var pi = 0; pi < activeRouteCDIs.length; pi++) {
-            if (activeRouteCDIs[pi].featureType === selType && activeRouteCDIs[pi].featureIndex === selIdx) {
-              displayCDI = { value: activeRouteCDIs[pi].cdi, scored: activeRouteCDIs[pi].geoCount, total: activeRouteCDIs[pi].geoCount };
-              break;
-            }
+          var selRow = findCorridorRow(activeRouteCDIs);
+          if (selRow) {
+            displayCDI = { value: selRow.cdi, scored: selRow.geoCount, total: selRow.geoCount };
           }
         }
         if (!displayCDI) {
@@ -609,7 +604,7 @@
         if (segLen > 0 && RM.computeSegments) {
           if (textEl) textEl.textContent = "Computing segments...";
           App.setStatus("Computing segments...");
-          segments = RM.computeSegments(tpiResult, segLen, _selectedCorridor, _bufferMiles);
+          segments = RM.computeSegments(tpiResult, segLen, corridorIndexKey(), _bufferMiles);
         }
 
         result = {
@@ -820,17 +815,16 @@
     var features = [];
     for (var i = 0; i < routeCDIs.length; i++) {
       var pr = routeCDIs[i];
-      var feat = pr.featureType === "route"
-        ? (App.routes || [])[pr.featureIndex]
-        : (App.lines  || [])[pr.featureIndex];
-      if (!feat || !feat.geometry) continue;
+      // Resolve by stable ID — pr.featureIndex is only the run-time position.
+      var feat = App.featureById(pr.featureType, pr.featureId);
+      if (!feat || !feat.geometry) continue;   // feature deleted since the run
       features.push({
         type: "Feature",
         properties: {
           name: pr.name || (pr.featureType + " " + (pr.featureIndex + 1)),
           cdiScore: Number.isFinite(pr.cdi) ? pr.cdi : 0,
           featureType: pr.featureType,
-          featureIndex: pr.featureIndex
+          featureId: pr.featureId
         },
         geometry: feat.geometry
       });
@@ -965,18 +959,100 @@
 
     // Look up per-route CDI for the selected corridor
     if (_selectedCorridor && activeRouteCDIs) {
-      var parts = _selectedCorridor.split(":");
-      var type = parts[0];
-      var idx = parseInt(parts[1], 10);
-      for (var i = 0; i < activeRouteCDIs.length; i++) {
-        if (activeRouteCDIs[i].featureType === type && activeRouteCDIs[i].featureIndex === idx) {
-          return activeRouteCDIs[i].cdi;
-        }
-      }
+      var selRow = findCorridorRow(activeRouteCDIs);
+      if (selRow) return selRow.cdi;
     }
     // Legacy fallback for uncalibrated demand (computeCorridorDemand path)
     if (_lastResult && _lastResult.corridorCDI) return _lastResult.corridorCDI.value;
     return NaN;
+  }
+
+  // ---- Stable-ID helpers (docs/feature-merge-plan.md, Phase 4b) ----
+  // Array positions shift when an earlier feature is deleted or merged, so the
+  // corridor selection, the checklist filters and the per-route CDI rows all
+  // identify a feature by its stable ID (properties.routeIdx / lineIdx).
+
+  // The per-route row for the selected corridor, or null (none selected / the
+  // feature has no row in this array).
+  function findCorridorRow(rows) {
+    var ref = App.parseFeatureRefKey(_selectedCorridor);
+    if (!ref || !rows) return null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].featureType === ref.type && rows[i].featureId === ref.id) return rows[i];
+    }
+    return null;
+  }
+
+  // The selected corridor as the "type:<array index>" string RM.computeSegments
+  // expects (index resolved NOW, never stored). "" = no selection; a feature that
+  // no longer exists maps to index -1 so the engine segments nothing rather than
+  // falling back to "all".
+  function corridorIndexKey() {
+    if (!_selectedCorridor) return "";
+    var ref = App.parseFeatureRefKey(_selectedCorridor);
+    if (!ref) return "";
+    return ref.type + ":" + App.resolveFeatureRef(ref);
+  }
+
+  // ID filter { routeIds, lineIds } → the run-time index filter the engine and the
+  // buffer helpers take { routeIndices, lineIndices }. IDs that no longer resolve
+  // (deleted/merged features) are dropped. null stays null (= all features).
+  function filterToIndices(f) {
+    if (!f) return null;
+    function toIdx(type, ids) {
+      var out = [];
+      (ids || []).forEach(function (id) {
+        var i = App.resolveFeatureRef({ type: type, id: id });
+        if (i >= 0) out.push(i);
+      });
+      return out.sort(function (x, y) { return x - y; });
+    }
+    return { routeIndices: toIdx("route", f.routeIds), lineIndices: toIdx("line", f.lineIds) };
+  }
+
+  // Legacy index filter { routeIndices, lineIndices } → ID filter. Only valid while
+  // the saved indices still match the live arrays (session apply, best-effort for
+  // an imported calibration file).
+  function indexFilterToIds(f) {
+    if (!f) return null;
+    function toIds(type, idxs) {
+      var out = [];
+      (idxs || []).forEach(function (i) {
+        var ref = App.featureRef(type, i);
+        if (ref) out.push(ref.id);
+      });
+      return out;
+    }
+    return { routeIds: toIds("route", f.routeIndices), lineIds: toIds("line", f.lineIndices) };
+  }
+
+  // Accept a filter in either shape (ID form passes through; legacy index form is
+  // converted against the live arrays); anything else → null.
+  function normalizeFilter(f) {
+    if (!f || typeof f !== "object") return null;
+    if (Array.isArray(f.routeIds) || Array.isArray(f.lineIds)) {
+      return { routeIds: (f.routeIds || []).slice(), lineIds: (f.lineIds || []).slice() };
+    }
+    if (Array.isArray(f.routeIndices) || Array.isArray(f.lineIndices)) return indexFilterToIds(f);
+    return null;
+  }
+
+  // Bring a per-route CDI array (saved session or imported calibration file) up to
+  // the ID-based shape: stamp featureId from the legacy featureIndex when absent
+  // and refresh featureIndex to the feature's CURRENT position (-1 when it no
+  // longer exists). Rows are kept even for deleted features — they still carry the
+  // calibration numbers — but nothing resolves them to a live feature.
+  function normalizeRouteCDIs(rows) {
+    if (!Array.isArray(rows)) return null;
+    return rows.map(function (r) {
+      var row = Object.assign({}, r);
+      if (!Number.isFinite(row.featureId)) {
+        var ref = App.featureRef(row.featureType, row.featureIndex);
+        row.featureId = ref ? ref.id : null;
+      }
+      row.featureIndex = App.resolveFeatureRef({ type: row.featureType, id: row.featureId });
+      return row;
+    });
   }
 
   function getTargetCorridorLength() {
@@ -984,15 +1060,8 @@
     // Prefer demand context, then calibration context.
     var activeRouteCDIs = _demandPerRouteCDI || _perRouteCDI;
     if (_selectedCorridor && activeRouteCDIs) {
-      var parts = _selectedCorridor.split(":");
-      var type = parts[0];
-      var idx = parseInt(parts[1], 10);
-      for (var i = 0; i < activeRouteCDIs.length; i++) {
-        var r = activeRouteCDIs[i];
-        if (r.featureType === type && r.featureIndex === idx) {
-          return (Number.isFinite(r.lengthMiles) && r.lengthMiles > 0) ? r.lengthMiles : 1;
-        }
-      }
+      var r = findCorridorRow(activeRouteCDIs);
+      if (r) return (Number.isFinite(r.lengthMiles) && r.lengthMiles > 0) ? r.lengthMiles : 1;
     }
     // "all" or no match: total length of all drawn routes
     var total = RM.getRouteLength();
@@ -1002,7 +1071,7 @@
   // ---- Feature selection checklists ----
 
   // Build a single checkbox row for a feature
-  function makeFeatureCheckRow(type, index, name, checked) {
+  function makeFeatureCheckRow(type, index, name, checked, id) {
     var row = document.createElement("div");
     row.className = "rf-feature-check-row";
     var cb = document.createElement("input");
@@ -1010,6 +1079,7 @@
     cb.checked = checked;
     cb.setAttribute("data-feature-type", type);
     cb.setAttribute("data-feature-index", String(index));
+    if (id != null) cb.setAttribute("data-feature-id", String(id));
     var badge = document.createElement("span");
     badge.className = "rf-feature-type-badge";
     badge.textContent = type === "route" ? "R" : "L";
@@ -1035,13 +1105,15 @@
     }
     for (var ri = 0; ri < routes.length; ri++) {
       var name = (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1));
-      var checked = !previousFilter || !previousFilter.routeIndices || previousFilter.routeIndices.indexOf(ri) !== -1;
-      container.appendChild(makeFeatureCheckRow("route", ri, name, checked));
+      var rRef = App.featureRef("route", ri);
+      var checked = !previousFilter || !previousFilter.routeIds || (rRef && previousFilter.routeIds.indexOf(rRef.id) !== -1);
+      container.appendChild(makeFeatureCheckRow("route", ri, name, !!checked, rRef ? rRef.id : null));
     }
     for (var li = 0; li < lines.length; li++) {
       var name = (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1));
-      var checked = !previousFilter || !previousFilter.lineIndices || previousFilter.lineIndices.indexOf(li) !== -1;
-      container.appendChild(makeFeatureCheckRow("line", li, name, checked));
+      var lRef = App.featureRef("line", li);
+      var checked = !previousFilter || !previousFilter.lineIds || (lRef && previousFilter.lineIds.indexOf(lRef.id) !== -1);
+      container.appendChild(makeFeatureCheckRow("line", li, name, !!checked, lRef ? lRef.id : null));
     }
   }
 
@@ -1057,47 +1129,48 @@
   }
 
   // Read checkbox state from a feature checklist and return a featureFilter
-  // object. Always explicit { routeIndices, lineIndices } arrays — never null.
+  // object in stable-ID form. Always explicit { routeIds, lineIds } arrays — never
+  // null. (Convert with filterToIndices() at the point of use.)
   function readFeatureFilter(containerId) {
     var container = document.getElementById(containerId);
-    var routeIndices = [];
-    var lineIndices = [];
-    if (!container) return { routeIndices: routeIndices, lineIndices: lineIndices };
+    var routeIds = [];
+    var lineIds = [];
+    if (!container) return { routeIds: routeIds, lineIds: lineIds };
     var cbs = container.querySelectorAll('input[type="checkbox"]');
     for (var i = 0; i < cbs.length; i++) {
       var type = cbs[i].getAttribute("data-feature-type");
-      var idx = parseInt(cbs[i].getAttribute("data-feature-index"), 10);
-      if (cbs[i].checked) {
-        if (type === "route") routeIndices.push(idx);
-        else if (type === "line") lineIndices.push(idx);
+      var id = parseInt(cbs[i].getAttribute("data-feature-id"), 10);
+      if (cbs[i].checked && Number.isFinite(id)) {
+        if (type === "route") routeIds.push(id);
+        else if (type === "line") lineIds.push(id);
       }
     }
-    return { routeIndices: routeIndices, lineIndices: lineIndices };
+    return { routeIds: routeIds, lineIds: lineIds };
   }
 
-  // Combine two feature filters by unioning their route/line index sets.
-  // A missing/null side is treated as contributing no indices (explicit-array
+  // Combine two feature filters by unioning their route/line ID sets.
+  // A missing/null side is treated as contributing no features (explicit-array
   // convention — never reinterpreted as "all features").
   function combineFeatureFilters(a, b) {
-    a = a || { routeIndices: [], lineIndices: [] };
-    b = b || { routeIndices: [], lineIndices: [] };
+    a = a || { routeIds: [], lineIds: [] };
+    b = b || { routeIds: [], lineIds: [] };
     var routeSet = {};
     var lineSet = {};
-    (a.routeIndices || []).concat(b.routeIndices || []).forEach(function (i) { routeSet[i] = true; });
-    (a.lineIndices  || []).concat(b.lineIndices  || []).forEach(function (i) { lineSet[i]  = true; });
+    (a.routeIds || []).concat(b.routeIds || []).forEach(function (i) { routeSet[i] = true; });
+    (a.lineIds  || []).concat(b.lineIds  || []).forEach(function (i) { lineSet[i]  = true; });
     return {
-      routeIndices: Object.keys(routeSet).map(Number).sort(function (x, y) { return x - y; }),
-      lineIndices:  Object.keys(lineSet).map(Number).sort(function (x, y) { return x - y; })
+      routeIds: Object.keys(routeSet).map(Number).sort(function (x, y) { return x - y; }),
+      lineIds:  Object.keys(lineSet).map(Number).sort(function (x, y) { return x - y; })
     };
   }
 
-  // Filter a routeCDIs array to only entries matching the given feature filter.
+  // Filter a routeCDIs array to only entries matching the given (ID) feature filter.
   // Returns all entries if filter is null.
   function filterRouteCDIs(all, filter) {
     if (!filter || !all) return all;
     return all.filter(function (r) {
-      if (r.featureType === "route") return filter.routeIndices.indexOf(r.featureIndex) !== -1;
-      if (r.featureType === "line")  return filter.lineIndices.indexOf(r.featureIndex)  !== -1;
+      if (r.featureType === "route") return (filter.routeIds || []).indexOf(r.featureId) !== -1;
+      if (r.featureType === "line")  return (filter.lineIds  || []).indexOf(r.featureId) !== -1;
       return false;
     });
   }
@@ -1120,11 +1193,11 @@
     var REF_HEADWAY = 30;
     var normElast = parseFloat((document.getElementById("rfFreqElastValue") || {}).value) || 0.6;
 
-    // Build lookup: (featureType:featureIndex) → shared-pool CDI entry
+    // Build lookup: (featureType:featureId) → shared-pool CDI entry
     var cdiLookup = {};
     for (var k = 0; k < calibPerRouteCDI.length; k++) {
       var r = calibPerRouteCDI[k];
-      cdiLookup[r.featureType + ":" + r.featureIndex] = r;
+      cdiLookup[r.featureType + ":" + r.featureId] = r;
     }
 
     var obs = [];
@@ -1134,8 +1207,9 @@
       var ridership = parseFloat(match.csvRow[colRidership]);
       if (!Number.isFinite(ridership)) continue;
 
-      // Look up shared-pool CDI by featureType+featureIndex (robust to name edits)
-      var key = match.routeCDI.featureType + ":" + match.routeCDI.featureIndex;
+      // Look up shared-pool CDI by featureType+featureId (robust to name edits and
+      // to deletions/merges shifting array positions)
+      var key = match.routeCDI.featureType + ":" + match.routeCDI.featureId;
       var sharedEntry = cdiLookup[key];
       var routeCDI = sharedEntry ? sharedEntry.cdi : match.routeCDI.cdi;
       if (!Number.isFinite(routeCDI) || routeCDI <= 0) continue;
@@ -1225,8 +1299,10 @@
     if (!data || data.length === 0) return;
     for (var i = 0; i < data.length; i++) {
       var pr = data[i];
+      // A row whose feature was deleted/merged away can't be forecast — skip it.
+      if (App.resolveFeatureRef({ type: pr.featureType, id: pr.featureId }) < 0) continue;
       var opt = document.createElement("option");
-      opt.value = pr.featureType + ":" + pr.featureIndex;
+      opt.value = App.featureRefKey({ type: pr.featureType, id: pr.featureId });
       opt.textContent = pr.name + " (CDI: " + (Number.isFinite(pr.cdi) ? pr.cdi.toFixed(2) : "N/A") + ")";
       sel.appendChild(opt);
     }
@@ -1268,9 +1344,10 @@
       if (!cbs[i].checked) continue;
       var type = cbs[i].getAttribute("data-feature-type");
       var idx = parseInt(cbs[i].getAttribute("data-feature-index"), 10);
+      var fid = parseInt(cbs[i].getAttribute("data-feature-id"), 10);
 
       // Look up feature name from App.routes / App.lines
-      var feat = type === "route" ? (App.routes || [])[idx] : (App.lines || [])[idx];
+      var feat = App.featureById(type, fid);
       var featName = (feat && feat.properties && feat.properties.name) ||
         (type === "route" ? "Route " : "Line ") + (idx + 1);
 
@@ -1279,7 +1356,7 @@
       var activeCDIs = _demandPerRouteCDI;
       if (activeCDIs) {
         for (var j = 0; j < activeCDIs.length; j++) {
-          if (activeCDIs[j].featureType === type && activeCDIs[j].featureIndex === idx) {
+          if (activeCDIs[j].featureType === type && activeCDIs[j].featureId === fid) {
             cdiStr = " (CDI: " + activeCDIs[j].cdi.toFixed(2) + ")";
             break;
           }
@@ -1287,7 +1364,7 @@
       }
 
       var opt = document.createElement("option");
-      opt.value = type + ":" + idx;
+      opt.value = App.featureRefKey({ type: type, id: fid });
       opt.textContent = featName + cdiStr;
       sel.appendChild(opt);
     }
@@ -1326,7 +1403,7 @@
       var featureFilter = readFeatureFilter("rfCalibFeatureList");
       _calibFeatureFilter = featureFilter;
 
-      var calibBufferSet = buildRouteLineBufferSet(featureFilter);
+      var calibBufferSet = buildRouteLineBufferSet(filterToIndices(featureFilter));
       if (calibBufferSet.count === 0) {
         throw new Error("Could not build buffers for the selected calibration features.");
       }
@@ -1341,7 +1418,7 @@
         apportionByArea: apportion,
         growthFactors: App.projGrowthFactors(),
         unionPolygon: customUnion,
-        featureFilter: featureFilter,
+        featureFilter: filterToIndices(featureFilter),
         bufferSet: calibBufferSet,
         onProgress: function (msg) {
           if (textEl) textEl.textContent = msg;
@@ -2272,14 +2349,9 @@
 
     if (_selectedCorridor && activeRouteCDIs) {
       // For corridor-specific CDI, re-run per-route CDI with the projected TPI
-      var projRouteCDIs = RM.computePerRouteCDI(tpiResult, featureFilter);
-      var parts = _selectedCorridor.split(":");
-      var type = parts[0], idx = parseInt(parts[1], 10);
-      for (var i = 0; i < projRouteCDIs.length; i++) {
-        if (projRouteCDIs[i].featureType === type && projRouteCDIs[i].featureIndex === idx) {
-          return projRouteCDIs[i].cdi;
-        }
-      }
+      var projRouteCDIs = RM.computePerRouteCDI(tpiResult, filterToIndices(featureFilter));
+      var projRow = findCorridorRow(projRouteCDIs);
+      if (projRow) return projRow.cdi;
     }
 
     // System-wide CDI from the re-scored TPI
@@ -2491,12 +2563,10 @@
 
   function _getCorridorLabel() {
     if (!_selectedCorridor) return "No corridor selected";
-    var parts = _selectedCorridor.split(":");
-    var type = parts[0], idx = parseInt(parts[1], 10);
-    var arr = type === "route" ? (App.routes || []) : (App.lines || []);
-    var feat = arr[idx];
-    var name = (feat && feat.properties && feat.properties.name) || ((type === "route" ? "Route " : "Line ") + (idx + 1));
-    return name;
+    var ref = App.parseFeatureRefKey(_selectedCorridor);
+    var feat = ref ? App.featureById(ref.type, ref.id) : null;
+    if (!feat) return "(deleted feature)";
+    return (feat.properties && feat.properties.name) || (ref.type === "route" ? "Route " : "Line ") + ref.id;
   }
 
   function _buildMetadata(extra) {
@@ -2554,6 +2624,7 @@
           corridor: rc.name || (rc.featureType + " " + (rc.featureIndex + 1)),
           featureType: rc.featureType,
           featureIndex: rc.featureIndex,
+          featureId: rc.featureId,
           cdi: rc.cdi,
           cdiClass: cls.label,
           geoCount: rc.geoCount,
@@ -2618,10 +2689,8 @@
       if (buf) {
         geom = buf.geometry || null;
       } else {
-        var arr = row.featureType === "route" ? (App.routes || []) : (App.lines || []);
-        if (row.featureIndex < arr.length && arr[row.featureIndex]) {
-          geom = arr[row.featureIndex].geometry || null;
-        }
+        var srcFeat = App.featureById(row.featureType, row.featureId);   // by stable ID; null if deleted
+        if (srcFeat) geom = srcFeat.geometry || null;
       }
       return { type: "Feature", properties: props, geometry: geom };
     });
@@ -2757,19 +2826,25 @@
       _calibration = result.calibration;
       // Restore v2 metadata if present
       if (result.weights) _weights = Object.assign({}, result.weights);
+      // A calibration file is standalone: its feature references can only be
+      // resolved against the features currently drawn. Files that carry stable IDs
+      // resolve by ID (right when re-imported into the project they came from);
+      // legacy files (array indices only) resolve BEST-EFFORT by position, so rows
+      // may not line up with the current features. Rows that don't resolve keep
+      // their calibration numbers but can't be selected as a corridor.
       if (result.perRouteCDI) {
-        _perRouteCDI = result.perRouteCDI;
+        _perRouteCDI = normalizeRouteCDIs(result.perRouteCDI);
         populateCorridorDropdown(_perRouteCDI);
       }
-      if (result.featureFilter) _calibFeatureFilter = result.featureFilter;
+      if (result.featureFilter) _calibFeatureFilter = normalizeFilter(result.featureFilter);
 
       // Restore v3 shared-pool fields from raw JSON (not passed through by importCoefficients)
       try {
         var rawData = JSON.parse(e.target.result);
         if (rawData.normalizationMode === "shared") {
           _sharedPoolMode = true;
-          if (rawData.demandFeatureFilter) _demandFeatureFilter = rawData.demandFeatureFilter;
-          if (rawData.sharedCalibPerRouteCDI) _sharedCalibPerRouteCDI = rawData.sharedCalibPerRouteCDI;
+          if (rawData.demandFeatureFilter) _demandFeatureFilter = normalizeFilter(rawData.demandFeatureFilter);
+          if (rawData.sharedCalibPerRouteCDI) _sharedCalibPerRouteCDI = normalizeRouteCDIs(rawData.sharedCalibPerRouteCDI);
         } else {
           _sharedPoolMode = false;
         }
@@ -2847,9 +2922,9 @@
     if (_calibStale) {
       App.renderModuleState({ statusEl: "rfSystemStatus", stale: true, onRerun: runSystemAnalysis });
     }
-    // On feature deletion, invalidate feature filters since indices may have shifted
-    _calibFeatureFilter = null;
-    _demandFeatureFilter = null;
+    // (The feature filters used to be reset here because array indices shift when a
+    // feature is deleted. They are stable feature IDs now, so they stay valid —
+    // IDs of deleted features are simply ignored when resolved to indices.)
     // Invalidate shared pool derived state (will be recomputed on next demand run)
     _sharedCalibPerRouteCDI = null;
     _sharedSystemResult = null;
@@ -3479,9 +3554,22 @@
     };
   }
 
+  // Per-route rows as persisted: featureId is the identity; the positional
+  // featureIndex is dropped (it goes stale and is recomputed on restore).
+  function savedRouteCDIs(rows) {
+    if (!rows) return null;
+    return rows.map(function (r) {
+      var row = Object.assign({}, r);
+      delete row.featureIndex;
+      return row;
+    });
+  }
+
   function saveRfState(mode) {
     var data = {
-      _schemaVersion: 3,
+      // v4: feature references (corridor, checklist filters, per-route rows) are stable
+      // IDs. v1-v3 saved array indices — migrated in restoreRfState.
+      _schemaVersion: 4,
       weights: Object.assign({}, _weights),
       apportionByArea: _apportionByArea,
       bufferMiles: _bufferMiles,
@@ -3495,10 +3583,10 @@
       selectedCorridor: _selectedCorridor,
       activeTab: _activeTab,
       // Calibration context
-      perRouteCDI: _perRouteCDI ? _perRouteCDI.slice() : null,
+      perRouteCDI: savedRouteCDIs(_perRouteCDI),
       calibFeatureFilter: _calibFeatureFilter,
       // Demand context
-      demandPerRouteCDI: _demandPerRouteCDI ? _demandPerRouteCDI.slice() : null,
+      demandPerRouteCDI: savedRouteCDIs(_demandPerRouteCDI),
       demandFeatureFilter: _demandFeatureFilter,
       demandUseSameSystem: _demandUseSameSystem,
       // Shared pool normalization (v3)
@@ -3552,15 +3640,23 @@
     if (Array.isArray(data.scenarios) && data.scenarios.length === 4) {
       for (var i = 0; i < 4; i++) _scenarios[i] = Object.assign({}, data.scenarios[i]);
     }
-    if (data.selectedCorridor && data.selectedCorridor !== "all") _selectedCorridor = data.selectedCorridor;
+    // v1-v3 saved array indices (corridor "route:N", index filters, per-route
+    // featureIndex). Features are restored in saved order and given IDs before module
+    // hooks run, so an old index still names the right feature RIGHT NOW — convert
+    // to IDs here (normalizeFilter / normalizeRouteCDIs accept either shape).
+    if (data.selectedCorridor && data.selectedCorridor !== "all") {
+      _selectedCorridor = (data._schemaVersion >= 4)
+        ? (App.parseFeatureRefKey(data.selectedCorridor) ? data.selectedCorridor : "")
+        : App.migrateIndexRefKey(data.selectedCorridor);
+    }
     if (data.activeTab) _activeTab = data.activeTab;
-    if (Array.isArray(data.perRouteCDI)) _perRouteCDI = data.perRouteCDI.slice();
+    if (Array.isArray(data.perRouteCDI)) _perRouteCDI = normalizeRouteCDIs(data.perRouteCDI);
 
     // v2 fields: feature filters and demand context
     if (data._schemaVersion >= 2) {
-      if (data.calibFeatureFilter) _calibFeatureFilter = data.calibFeatureFilter;
-      if (Array.isArray(data.demandPerRouteCDI)) _demandPerRouteCDI = data.demandPerRouteCDI.slice();
-      if (data.demandFeatureFilter) _demandFeatureFilter = data.demandFeatureFilter;
+      if (data.calibFeatureFilter) _calibFeatureFilter = normalizeFilter(data.calibFeatureFilter);
+      if (Array.isArray(data.demandPerRouteCDI)) _demandPerRouteCDI = normalizeRouteCDIs(data.demandPerRouteCDI);
+      if (data.demandFeatureFilter) _demandFeatureFilter = normalizeFilter(data.demandFeatureFilter);
       if (data.demandUseSameSystem != null) _demandUseSameSystem = !!data.demandUseSameSystem;
     }
 
@@ -3621,6 +3717,27 @@
   }
 
   // ---- Register module ----
+
+  // ---- Feature usage (Split / Merge dialogs) ----
+  // Calibration matches drawn features to the ridership CSV BY NAME, so a
+  // renamed / split / merged-away feature stops matching (warn). The selected
+  // corridor is a stable ID ref (info). Closure state only; never throws.
+  if (typeof App.registerFeatureUsage === "function") {
+    App.registerFeatureUsage(function (type, id) {
+      var out = [];
+      var matched = (_matchResult && _matchResult.matched) || [];
+      matched.forEach(function (m) {
+        var rc = m && m.routeCDI;
+        if (rc && rc.featureType === type && rc.featureId === id) {
+          out.push({ severity: "warn", label: "Ridership Forecasting · calibration matches '" + (rc.name || "this feature") +
+            "' to the ridership CSV by name" + (_calibration ? " (calibration exists)" : "") });
+        }
+      });
+      var key = type + ":" + id;
+      if (_selectedCorridor === key) out.push({ severity: "info", label: "Ridership Forecasting · selected analysis corridor" });
+      return out;
+    }, { module: "Ridership Forecasting" });
+  }
 
   App.registerModule({
     id: "ridership-forecasting",

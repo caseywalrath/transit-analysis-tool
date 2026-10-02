@@ -36,7 +36,7 @@
   function _withResolvedColor(featureType, arr) {
     return arr.map(function (f) {
       var props = {};
-      for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+      for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
       props.resolvedColor = App.resolveFeatureColor(featureType, f);
       return { type: "Feature", properties: props, geometry: f.geometry };
     });
@@ -348,6 +348,10 @@
       (canDel ? "" : " disabled") + ">" +
       (canDel ? "Delete node" : "Delete node (minimum reached)") +
       "</button>";
+    // Split at this node — interior vertices of lines / interior waypoints of routes (not loops).
+    var canSplit = (featureType === "line" || featureType === "route") && App.split && typeof App.split.nodeCut === "function" &&
+      !!App.split.nodeCut(featureType, featureIndex, vertexIdx);
+    if (canSplit) _ctxMenu.innerHTML += "<button id=\"vertex-ctx-split\">Split at this node</button>";
 
     _ctxMenu.style.display = "block";
     _ctxMenu.style.left = x + "px";
@@ -357,6 +361,14 @@
       hideVertexCtxMenu();
       if (canDel) deleteVertex(featureType, featureIndex, vertexIdx);
     });
+
+    if (canSplit) {
+      document.getElementById("vertex-ctx-split").addEventListener("click", function () {
+        hideVertexCtxMenu();
+        exitEditMode(); // leave vertex-edit mode (hides handles, clears selection) before the dialog opens
+        App.split.splitAtNode(featureType, featureIndex, vertexIdx);
+      });
+    }
 
     // Close menu on any next click outside
     setTimeout(function () {
@@ -590,7 +602,7 @@
                 type: "FeatureCollection",
                 features: App.polygons.map(function (f) {
                   var props = {};
-                  for (var k in f.properties) { if (Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
+                  for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
                   props.resolvedColor = App.resolveFeatureColor("polygon", f);
                   return {
                     type: "Feature",
@@ -792,10 +804,10 @@
 
     // ---- Right-click: vertex deletion (priority) or feature attributes ----
     map.on("contextmenu", function (e) {
-      if (App.drawMode) return;
+      if (App.drawMode && App.drawMode !== "box-select") return;
 
       // Priority 1: vertex handle hit during vertex-edit mode → delete vertex
-      if (editState && editState.type === "vertex-edit") {
+      if (!App.drawMode && editState && editState.type === "vertex-edit") {
         var editHits = safeQuery(e.point, [EDIT_LAYER]);
         if (editHits.length > 0) {
           e.preventDefault();
@@ -827,6 +839,20 @@
       else if (layerId === "polygons-fill")  { featureType = "polygon";  featureIndex = findPolygonIndex(hit); }
       if (featureType === null || featureIndex < 0) return;
 
+      // Group menu: right-click on a member of a 2+ selection keeps the selection.
+      var curSel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+      if (curSel.length >= 2 && typeof App.isFeatureSelected === "function" &&
+          App.isFeatureSelected(featureType, featureIndex) && App.bulkFeatures &&
+          typeof App.showContextMenu === "function" && App.bulkFeatures.usable(curSel).length) {
+        var gSel = App.merge && App.merge.mergeableSelection(curSel);
+        var gMerge = gSel ? { label: "Merge\u2026", action: function () {
+          App.merge.openDialog(gSel.type, gSel.indices, gSel.primaryFor(featureType, featureIndex));
+        }} : null;
+        App.showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY,
+          App.bulkFeatures.groupMenuItems(curSel, gMerge));
+        return;
+      }
+
       if (typeof App.selectFeature === "function") App.selectFeature(featureType, featureIndex);
 
       var dataMap = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons };
@@ -834,10 +860,7 @@
 
       if (typeof App.showContextMenu === "function") {
         var isHidden = !!feature.properties.hidden;
-        App.showContextMenu(
-          e.originalEvent.clientX,
-          e.originalEvent.clientY,
-          [
+        var menuItems = [
             { label: "Attributes", action: function () {
                 if (typeof App.openAttrPopup === "function") App.openAttrPopup(featureType, featureIndex, feature);
             }},
@@ -845,6 +868,19 @@
                 var dupFns = { point: App.duplicatePoint, line: App.duplicateLine, route: App.duplicateRoute, polygon: App.duplicatePolygon };
                 var fn = dupFns[featureType];
                 if (typeof fn === "function") fn(featureIndex);
+            }},
+            // Split here — lines/routes only; hidden on loops and within ~30 ft of an end.
+            { label: "Split here", hidden: !((featureType === "line" || featureType === "route") && App.split &&
+                App.split.canSplitAt(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat])), action: function () {
+                App.split.openDialog(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat]);
+            }},
+            // Split out section… — two-point pick (the right-click spot is the first point); offered on every line/route, the only split on a loop.
+            { label: "Split out section\u2026", hidden: !((featureType === "line" || featureType === "route") && App.split && App.split.startSectionPick), action: function () {
+                App.split.startSectionPick(featureType, featureIndex, [e.lngLat.lng, e.lngLat.lat]);
+            }},
+            // Unmerge… only for a feature that carries merge history (properties._mergedFrom).
+            { label: "Unmerge\u2026", hidden: !(App.merge && App.merge.hasHistory(featureType, featureIndex)), action: function () {
+                App.merge.openUnmergeDialog(featureType, featureIndex);
             }},
             { label: isHidden ? "Show" : "Hide", action: function () {
                 feature.properties.hidden = !feature.properties.hidden;
@@ -862,7 +898,11 @@
                 if (typeof fn === "function") fn(featureIndex);
                 if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
             }}
-          ]
+        ];
+        App.showContextMenu(
+          e.originalEvent.clientX,
+          e.originalEvent.clientY,
+          menuItems.filter(function (o) { return !o.hidden; })
         );
       }
     });
