@@ -584,6 +584,84 @@ async function main() {
       return Array.prototype.map.call(d.querySelectorAll(".lp-style-label"), (x) => x.textContent); })()`);
     check("point drawer: no Buffer row", pointDrawer.indexOf("Buffer") < 0 && pointDrawer.length > 0, pointDrawer);
     await page.evaluate(() => App.undo.__restore && App.undo.__restore());
+
+    // ---- Color picker variety (docs/color-picker-variety-plan.md) ----
+    console.log("\n# Color picker: 50-swatch grid, Recent row, Custom button");
+    await page.keyboard.press("Escape");
+    await page.click('.fp-tab-btn[data-fptab="features"]');
+    await page.evaluate(() => { while (App.undo.canUndo()) App.undo.undo(); localStorage.removeItem("mat-recent-colors"); });
+    const cpIcon = page.locator('#fp-tab-features .fp-item', { hasText: "Line 2" }).locator(".fp-type-icon");
+    await cpIcon.click();
+    check("grid has 50 cells", (await page.locator(POP + " .fp-cp-cell").count()) === 50);
+    check("grid cells are unique hex colors", await page.evaluate((s) => { var t = Array.prototype.map.call(document.querySelectorAll(s + " .fp-cp-cell"), (c) => c.title); return new Set(t).size === 50 && t.every((x) => /^#[0-9a-f]{6}$/.test(x)); }, POP));
+    const dims = await page.evaluate((s) => { var g = document.querySelector(s + " .fp-cp-grid").getBoundingClientRect(); var pr = document.querySelector(s).getBoundingClientRect(); var c = document.querySelector(s + " .fp-cp-cell").getBoundingClientRect(); return { g: g.width, pw: pr.width, cell: c.width, right: pr.right, vw: innerWidth }; }, POP);
+    check("grid <= 170px wide, cells ~15px, popover inside viewport", dims.g <= 170 && dims.cell >= 14 && dims.cell <= 17 && dims.right <= dims.vw, dims);
+    await page.screenshot({ path: join(SHOT_DIR, "color-picker-appearance-light.png"), clip: { x: Math.max(0, dims.right - dims.pw - 2), y: 0, width: dims.pw + 4, height: 700 } });
+    const seededRecent = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + " .fp-cp-recent-cell"), (c) => c.title), POP);
+    check("Recent seeded from colors in use on the map (hex, unique, <= 10)", seededRecent.length > 0 && seededRecent.length <= 10 && allUnique(seededRecent), seededRecent);
+    const picked2 = await page.evaluate((s) => document.querySelectorAll(s + " .fp-cp-cell")[23].title, POP);
+    await page.locator(POP + " .fp-cp-cell").nth(23).click();
+    check("pick applies to the feature", (await props(page, "line", 1)).color === picked2);
+    await page.keyboard.press("Escape");
+    await cpIcon.click();
+    const rec1 = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + " .fp-cp-recent-cell"), (c) => c.title), POP);
+    check("picked color appears first in Recent", rec1[0] === picked2 && allUnique(rec1) && rec1.length <= 10, rec1);
+    check("selected cell is marked", await page.evaluate((s) => document.querySelectorAll(s + " .fp-cp-cell-selected").length === 1, POP));
+    // hex path also feeds Recent, de-duplicated
+    await page.locator(POP + " .fp-cp-hex-input").fill("#123456");
+    await page.locator(POP + " .fp-cp-apply").click();
+    await cpIcon.click().catch(() => {});
+    if (!(await popOpen(page))) await cpIcon.click();
+    const rec2 = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + " .fp-cp-recent-cell"), (c) => c.title), POP);
+    check("hex apply goes first in Recent; earlier pick second", rec2[0] === "#123456" && rec2[1] === picked2, rec2);
+    // Custom: only `change` commits
+    await page.evaluate(() => { while (App.undo.canUndo()) App.undo.undo(); });
+    await page.evaluate(() => { var o = App.undo.push; window.__cpOrigPush = o; window.__cpPushes = 0; App.undo.push = function () { window.__cpPushes++; return o.apply(this, arguments); }; });
+    const cpBefore = (await props(page, "line", 1)).color;
+    await page.evaluate((s) => { var i = document.querySelector(s + " .fp-cp-custom-input"); i.value = "#abcdef"; i.dispatchEvent(new Event("input", { bubbles: true })); i.value = "#abcdee"; i.dispatchEvent(new Event("input", { bubbles: true })); }, POP);
+    check("custom input events do not commit", (await props(page, "line", 1)).color === cpBefore && (await page.evaluate(() => window.__cpPushes)) === 0);
+    await page.evaluate((s) => { var i = document.querySelector(s + " .fp-cp-custom-input"); i.value = "#abcdef"; i.dispatchEvent(new Event("change", { bubbles: true })); }, POP);
+    check("custom change applies exactly that color", (await props(page, "line", 1)).color === "#abcdef", (await props(page, "line", 1)).color);
+    check("custom change is exactly one undo snapshot", (await page.evaluate(() => window.__cpPushes)) === 1);
+    check("Custom button click leaves the popover open", await (async () => { await page.locator(POP + " .fp-cp-custom").click().catch(() => {}); await page.waitForTimeout(150); return await popOpen(page); })());
+    await page.evaluate(() => { App.undo.push = window.__cpOrigPush; });
+    // Recent survives reload
+    await page.waitForTimeout(700);
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("mat-recent-colors")));
+    check("Recent persisted under mat-recent-colors (newest first)", Array.isArray(stored) && stored[0] === "#abcdef" && stored.length <= 10, stored);
+    await page.reload({ waitUntil: "load" });
+    await page.waitForFunction("window.App && window.App.map && window.App.map.loaded() && App.cache && typeof App.buildScrubber === \"function\"", { timeout: 30000 });
+    await page.waitForTimeout(500);
+    await page.locator('#fp-tab-features .fp-item', { hasText: "Line 1" }).locator(".fp-type-icon").click();
+    const rec3 = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + " .fp-cp-recent-cell"), (c) => c.title), POP);
+    check("Recent survives a reload", rec3[0] === "#abcdef", rec3);
+    await page.screenshot({ path: join(SHOT_DIR, "color-picker-appearance-after-reload.png") });
+    await page.keyboard.press("Escape");
+    // Dark theme look
+    await page.evaluate(() => document.body.classList.add("dark-mode"));
+    await page.locator('#fp-tab-features .fp-item', { hasText: "Line 1" }).locator(".fp-type-icon").click();
+    const dd = await page.evaluate((s) => { var pr = document.querySelector(s).getBoundingClientRect(); return { x: pr.left, w: pr.width }; }, POP);
+    await page.screenshot({ path: join(SHOT_DIR, "color-picker-appearance-dark.png"), clip: { x: Math.max(0, dd.x - 2), y: 0, width: dd.w + 4, height: 700 } });
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => document.body.classList.remove("dark-mode"));
+    // Floating picker (labels, text boxes, type defaults) still works
+    console.log("\n# Floating picker");
+    const fl = await page.evaluate(() => {
+      var anchor = document.createElement("button"); anchor.id = "__cpAnchor"; anchor.textContent = "x";
+      anchor.style.cssText = "position:fixed;left:1300px;top:20px;z-index:1"; document.body.appendChild(anchor);
+      window.__fp = []; App.openColorPicker(anchor, "#ff0000", function (c) { window.__fp.push(c); });
+      var pk = document.getElementById("fp-color-picker"); var r = pk.getBoundingClientRect();
+      return { shown: pk.style.display !== "none", cells: pk.querySelectorAll(".fp-cp-cell").length, inView: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, hex: pk.querySelector(".fp-cp-hex-input").value, w: r.width };
+    });
+    check("floating picker opens with 50 cells, in viewport, seeded hex", fl.shown && fl.cells === 50 && fl.inView && fl.hex === "#ff0000", fl);
+    await page.screenshot({ path: join(SHOT_DIR, "color-picker-floating.png"), clip: { x: 1100, y: 0, width: 300, height: 340 } });
+    await page.locator("#fp-color-picker .fp-cp-custom").click().catch(() => {});
+    await page.waitForTimeout(150);
+    check("Custom click does not close the floating picker", await page.evaluate(() => document.getElementById("fp-color-picker").style.display !== "none"));
+    await page.locator("#fp-color-picker .fp-cp-cell").nth(2).click();
+    check("floating pick calls back once and closes", await page.evaluate(() => window.__fp.length === 1 && document.getElementById("fp-color-picker").style.display === "none"));
+    // Label / text box swatch path
+    await page.evaluate(() => { document.getElementById("__cpAnchor").remove(); });
     // ================= END ASSERTIONS =================
   } finally {
     if (browser) await browser.close().catch(() => {});

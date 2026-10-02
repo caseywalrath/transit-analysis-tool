@@ -98,13 +98,66 @@
 
   /* ---- Color picker (singleton popover) ---- */
 
+  // 10 hue columns x 4 shades (light, medium-light, medium, dark) + a neutral
+  // row. Shades are listed row by row; columns are red, orange, yellow, green,
+  // teal, cyan, blue, indigo, purple, pink. The neutral row is white -> black
+  // with a warm tan and brown at the end so a brown is reachable.
   var PICKER_COLORS = [
-    "#feb2b2","#fbd38d","#faf089","#9ae6b4","#bee3f8","#e9d8fd",
-    "#fc8181","#f6ad55","#f6e05e","#68d391","#63b3ed","#b794f4",
-    "#e53e3e","#dd6b20","#d69e2e","#319795","#3182ce","#805ad5",
-    "#c53030","#c05621","#b7791f","#276749","#2b6cb0","#553c9a",
-    "#ffffff","#e2e8f0","#a0aec0","#718096","#4a5568","#000000"
+    "#feb2b2","#f9d4b8","#f9eab8","#b8f9d0","#b2f5ea","#c4f1f9","#b8d7f9","#b8baf9","#d7b8f9","#f9b8d7",
+    "#ea7b7b","#eaab7b","#ead07b","#7beaa4","#7beadf","#7bd7ea","#7bafea","#7b7fea","#af7bea","#ea7baf",
+    "#cf3f3f","#dd6b20","#d69e2e","#3fcf74","#3fcfc1","#3fb7cf","#3182ce","#3f44cf","#823fcf","#d53f8c",
+    "#8d2525","#8d5225","#8d7525","#258d4b","#258d83","#257c8d","#25568d","#25298d","#56258d","#8d2556",
+    "#ffffff","#e2e8f0","#cbd5e0","#a0aec0","#718096","#4a5568","#2d3748","#000000","#a1887f","#6d4c41"
   ];
+
+  /* ---- Recent colors (per-browser convenience, not session state) ---- */
+  var RECENT_KEY = "mat-recent-colors";
+  var RECENT_MAX = 10;
+  var HEX_RE = /^#[0-9a-f]{6}$/;
+  var _recentSubs = [];
+
+  function readRecentStored() {
+    try {
+      var raw = localStorage.getItem(RECENT_KEY);
+      if (raw === null) return null;
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (c) { return typeof c === "string" && HEX_RE.test(c); }).slice(0, RECENT_MAX);
+    } catch (e) { return null; }
+  }
+  function writeRecent(list) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+  }
+  // Colors already in use on the map, unique, in feature order.
+  function seedRecentFromMap() {
+    var out = [];
+    try {
+      (App.collectDrawnFeatures ? App.collectDrawnFeatures() : []).forEach(function (it) {
+        var c = App.resolveFeatureColor(it.type, it.feature);
+        c = typeof c === "string" ? c.toLowerCase() : "";
+        if (HEX_RE.test(c) && out.indexOf(c) < 0) out.push(c);
+      });
+    } catch (e) { /* ignore */ }
+    return out.slice(0, RECENT_MAX);
+  }
+  function getRecent() {
+    var list = readRecentStored();
+    if (list && list.length) return list;
+    var seeded = seedRecentFromMap();
+    if (seeded.length) writeRecent(seeded);
+    return seeded;
+  }
+  function pushRecent(hex) {
+    hex = (hex || "").toLowerCase();
+    if (!HEX_RE.test(hex)) return;
+    var list = (getRecent() || []).filter(function (c) { return c !== hex; });
+    list.unshift(hex);
+    writeRecent(list.slice(0, RECENT_MAX));
+    // Refresh live bodies; drop ones that left the DOM (the Appearance popover
+    // rebuilds its body on every render).
+    _recentSubs = _recentSubs.filter(function (fn) { return !fn.__body || fn.__body.isConnected; });
+    _recentSubs.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
+  }
 
   var _picker = null;
   var _pickerCallback = null;
@@ -118,21 +171,62 @@
     var body = document.createElement("div");
     body.className = "fp-cp-body";
 
+    // Every pick path (grid, hex, custom) funnels through here so the Recent
+    // list sees it, whichever picker body it came from.
+    function pick(c) {
+      c = String(c).toLowerCase();
+      pushRecent(c);
+      onPick(c);
+    }
+
+    var cells = [];
     var grid = document.createElement("div");
     grid.className = "fp-cp-grid";
     PICKER_COLORS.forEach(function (c) {
       var cell = document.createElement("button");
+      cell.type = "button";
       cell.className = "fp-cp-cell";
       cell.style.background = c;
       cell.title = c;
       cell.setAttribute("aria-label", "Select color " + c);
       cell.addEventListener("click", function (e) {
         e.stopPropagation();
-        onPick(c);
+        pick(c);
       });
+      cells.push(cell);
       grid.appendChild(cell);
     });
     body.appendChild(grid);
+
+    // Recent row (hidden while empty)
+    var recentWrap = document.createElement("div");
+    recentWrap.className = "fp-cp-recent";
+    var recentLabel = document.createElement("div");
+    recentLabel.className = "fp-cp-recent-label";
+    recentLabel.textContent = "Recent";
+    var recentGrid = document.createElement("div");
+    recentGrid.className = "fp-cp-recent-grid";
+    recentWrap.appendChild(recentLabel);
+    recentWrap.appendChild(recentGrid);
+    function renderRecent() {
+      recentGrid.textContent = "";
+      var list = getRecent();
+      recentWrap.style.display = list.length ? "" : "none";
+      list.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "fp-cp-recent-cell";
+        b.style.background = c;
+        b.title = c;
+        b.setAttribute("aria-label", "Select recent color " + c);
+        b.addEventListener("click", function (e) { e.stopPropagation(); pick(c); });
+        recentGrid.appendChild(b);
+      });
+    }
+    body.appendChild(recentWrap);
+    renderRecent();
+    _recentSubs.push(renderRecent);
+    renderRecent.__body = body;
 
     var hexRow = document.createElement("div");
     hexRow.className = "fp-cp-hex-row";
@@ -150,7 +244,7 @@
       var val = hexInput.value.trim();
       if (val.charAt(0) !== "#") val = "#" + val;
       if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-        onPick(val.toLowerCase());
+        pick(val.toLowerCase());
       } else {
         hexInput.style.outline = "2px solid red";
         setTimeout(function () { hexInput.style.outline = ""; }, 1200);
@@ -162,10 +256,48 @@
     hexInput.addEventListener("input", function () {
       hexInput.style.outline = "";
     });
+
+    // Custom: native full-spectrum dialog. Only `change` (dialog confirmed)
+    // commits; `input` fires continuously while dragging and is ignored so one
+    // choice is one onPick (one undo step).
+    var customBtn = document.createElement("button");
+    customBtn.type = "button";
+    customBtn.className = "fp-cp-custom";
+    customBtn.textContent = "Custom\u2026";
+    customBtn.title = "Pick any color";
+    var customInput = document.createElement("input");
+    customInput.type = "color";
+    customInput.className = "fp-cp-custom-input";
+    customInput.tabIndex = -1;
+    customInput.setAttribute("aria-hidden", "true");
+    customInput.value = "#000000";
+    customBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      customInput.click();
+    });
+    customInput.addEventListener("click", function (e) { e.stopPropagation(); });
+    customInput.addEventListener("change", function () {
+      var v = (customInput.value || "").toLowerCase();
+      if (HEX_RE.test(v)) pick(v);
+    });
+
     hexRow.appendChild(hexInput);
     hexRow.appendChild(applyBtn);
+    hexRow.appendChild(customBtn);
+    hexRow.appendChild(customInput);
     body.appendChild(hexRow);
-    body.setColor = function (c) { hexInput.value = c || ""; hexInput.style.outline = ""; };
+
+    body.setColor = function (c) {
+      hexInput.value = c || "";
+      hexInput.style.outline = "";
+      var lc = (c || "").toLowerCase();
+      if (HEX_RE.test(lc)) customInput.value = lc;
+      cells.forEach(function (cell) {
+        cell.classList.toggle("fp-cp-cell-selected", cell.title === lc);
+      });
+    };
+    body.refreshRecent = renderRecent;
+    body.setColor(currentColor);
     return body;
   }
   App.buildColorPickerBody = buildColorPickerBody;
@@ -195,14 +327,14 @@
     _pickerCallback = callback;
     _pickerAnchor = anchorEl;
 
-    var hexInput = _picker.querySelector(".fp-cp-hex-input");
-    hexInput.value = currentColor || "";
-    hexInput.style.outline = "";
+    var pbody = _picker.querySelector(".fp-cp-body");
+    pbody.setColor(currentColor);
+    pbody.refreshRecent();
 
     _picker.style.display = "block";
 
     var rect = anchorEl.getBoundingClientRect();
-    var pw = _picker.offsetWidth || 192;
+    var pw = _picker.offsetWidth || 188;
     var ph = _picker.offsetHeight || 240;
     var top = rect.bottom + 4;
     var left = rect.left;
