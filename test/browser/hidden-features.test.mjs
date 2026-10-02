@@ -138,8 +138,8 @@ async function standardSection(page, cfg, url) {
   await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input");
   await hide(page, cfg.first.type, cfg.first.index, true);
   await clickEl(page, cfg.run);   // plain click: the message must come before any confirmation dialog
-  check(T + "hidden-only selection (toggle off) shows the hidden message",
-    await waitFor(page, (s) => document.querySelector(s).textContent.includes("Selected features are hidden"), 20000, ST), await text(page, ST));
+  const hm = await waitText(page, ST, "Selected features are hidden");
+  check(T + "hidden-only selection (toggle off) shows the hidden message", hm.includes("Selected features are hidden"), hm.trim());
   if (cfg.confirm) check(T + "no confirmation dialog for the hidden-only message", await page.evaluate(() => { const m = document.getElementById("rfAnalysisConfirmModal"); return !m || m.offsetParent === null; }));
   await clickEl(page, "#" + cfg.toggle);
   r = await rowOf(page, L, 1);
@@ -190,6 +190,15 @@ async function statusText(page) {
 }
 async function isStale(page) {
   return page.evaluate(() => !!document.querySelector("#basStatus.rf-status-stale"));
+}
+// Waits until the element's text contains `needle`; returns the text seen at that
+// moment ("" on timeout). The pass/fail AND the printed detail both come from this
+// one in-page read, because the status text is transient and a later re-read is empty.
+async function waitText(page, sel, needle, timeout = 20000) {
+  try {
+    const h = await page.waitForFunction(([s, n]) => { const t = (document.querySelector(s) || {}).textContent || ""; return t.includes(n) ? t : false; }, [sel, needle], { timeout });
+    return await h.jsonValue();
+  } catch (e) { return ""; }
 }
 async function waitFor(page, fn, timeout = 20000, arg = null) {
   try { await page.waitForFunction(fn, arg, { timeout }); return true; } catch (e) { return false; }
@@ -387,8 +396,8 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
       await clickEl(page, L + " .rf-feature-check-row:nth-child(1) input"); // check A only
       await hide(page, "route", 0, true);
       await clickEl(page, "#csScoreBtn");
-      check("CS: hidden-only selection (toggle off) shows the hidden message",
-        await waitFor(page, () => document.getElementById("csStatus").textContent.includes("Selected features are hidden")), await text(page, ST));
+      const csHm = await waitText(page, "#csStatus", "Selected features are hidden");
+      check("CS: hidden-only selection (toggle off) shows the hidden message", csHm.includes("Selected features are hidden"), csHm.trim());
       // toggle on
       await clickEl(page, "#csIncludeHidden");
       r = await rowOf(page, L, 1);
@@ -448,8 +457,8 @@ async function waitFor(page, fn, timeout = 20000, arg = null) {
         await clickEl(pg, A + " .rf-feature-check-row:nth-child(1) input");
         await hide(pg, "polygon", 0, true);
         await clickEl(pg, "#tcRunBtn");
-        check("TC: hidden-only service area (toggle off) shows the hidden message",
-          await waitFor(pg, () => document.getElementById("tcStatus").textContent.includes("Selected features are hidden"), 20000), await text(pg, "#tcStatus"));
+        const tcHm = await waitText(pg, "#tcStatus", "Selected features are hidden");
+        check("TC: hidden-only service area (toggle off) shows the hidden message", tcHm.includes("Selected features are hidden"), tcHm.trim());
         // restore: toggle on, polygon visible again, route 0 hidden again
         await clickEl(pg, "#tcIncludeHidden");
         await hide(pg, "polygon", 0, false);

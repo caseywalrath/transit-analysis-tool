@@ -1,6 +1,6 @@
 # Hidden features in analysis checklists — implementation plan
 
-Status: planned. Audience: Sonnet-level implementation agents, orchestrated by
+Status: implemented (Phases 1-4 complete). Audience: Sonnet-level implementation agents, orchestrated by
 an Opus agent that runs one phase at a time, reviews each diff, and runs the
 checks listed per phase before starting the next.
 
@@ -216,3 +216,44 @@ its ui-screens images.
   selection, adds raw hex chrome colors, or changes default (toggle-off)
   results for visible features.
 - Commit messages include the `Verified: node test/run-golden.mjs → N/N` line.
+
+## Phase 4 audit findings (read-only; no code changed)
+
+- **Title VI baseline checklist** (`title-vi.js`). The list shows hidden
+  routes/lines/polygons as normal ticked rows (`populateFeatureList`, ~L120-148,
+  no hidden check). At run time `buildUnionFromFilter` (~L686) reads
+  `App.routeBuffers`/`lineBuffers` by index. Hidden routes/lines have no
+  display buffer, so they are silently dropped; hidden polygons are used (raw
+  geometry, no hidden check). Result: a hidden route in the baseline is ignored
+  with no message, and a hidden-only selection gives a null union ("no
+  features" style message at ~L639). Also `TitleVI.buildImpactedArea`
+  `full_route_buffer` (`title-vi-engine.js` ~L475-487) unions all
+  route/line display buffers, so hidden ones are silently omitted, while
+  `user_polygon` (~L488) includes hidden polygons: inconsistent. Alteration
+  before/after dropdowns resolve by ID and do not check hidden (a hidden route
+  still computes via `computeAlterationMetrics`). Recommendation: highest
+  value of the three; adopt the Phase 2 pattern (disable+tag, Include hidden,
+  build via `buildAnalysisBufferSet` with `includeHidden`) for the baseline list
+  and `full_route_buffer`, and make polygons consistent.
+- **Walkshed point list** (`walkshed.js`). Hidden points are removed from the
+  list entirely (`buildPointChecklist` ~L281) and skipped at run time
+  (`getTargetPoints` ~L260-269, `ensurePointWalksheds` ~L243). Consistent, no
+  silent drop of a visible selection; the only gap is that the user cannot see
+  why a point is missing. If all points are hidden the list says "No points
+  placed", which is misleading. Recommendation: low priority; at most change
+  that empty text to mention hidden points, or show hidden points disabled+tagged.
+- **Transit Travelshed route list** (`transit-travelshed.js` ~L296). The
+  `hidden` check there applies only to the *stop Points* used to find real
+  stops, not to the routes/lines themselves. Hidden routes/lines still appear in
+  `#tsRouteList` as normal rows and are analyzed (the engine uses feature
+  geometry directly, not display buffers). A hidden stop point is silently
+  ignored, so the route falls back to sampled stops, changing results without
+  notice. Recommendation: medium; decide whether hidden routes should be
+  analyzed (currently yes, inconsistent with the other modules) and disclose or
+  disable them, and stop silently dropping hidden stop points (or note
+  "sampled stops used").
+- `RidershipModel.buildUnionFromFeatures` was handled in Phase 3.
+- Test review: the "hidden-only selection shows the hidden message" checks were
+  not vacuous (the pass condition is an in-page `includes` on the status text).
+  The empty text after the dash was because the status text is re-read after it
+  changes; the test now captures the matched text in the same read and prints it.
