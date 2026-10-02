@@ -682,6 +682,13 @@
         else _expandedLayerStyle[entry.styleKey] = true;
       });
       row.appendChild(caret);
+    } else {
+      // No style drawer, so no caret: reserve the caret's width so this row's
+      // grip and name line up with the expandable rows around it.
+      var spacer = document.createElement("span");
+      spacer.className = "lp-caret-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
     }
 
     var grip = document.createElement("span");

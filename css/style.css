@@ -528,6 +528,13 @@ button { cursor: pointer; }
   min-height: 24px;
 }
 .lp-caret.open { transform: rotate(180deg); }
+/* Stands in for .lp-caret on layer rows with no style drawer (same 24px width)
+   so every row's grip and name share one left edge. */
+.lp-caret-spacer {
+  flex-shrink: 0;
+  width: 24px;
+  min-width: 24px;
+}
 .lp-group-header {
   font-weight: var(--weight-semibold);
   border-left: 3px solid transparent;
