@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Phase 0 done; Phase 1 in progress
+**Status:** Phases 0 and 1 done (2026-10-02). Next: Phase 2.
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
@@ -117,6 +117,14 @@ The base revision defaults to `HEAD`, so the script checks uncommitted work. It 
 - Every exported `App.*` name, `window.*` engine and module id from the code is still mentioned in `CLAUDE.md` or a reference doc. A small script lists the exports and greps for each one.
 - Every rule from Common Issues to Prevent still exists word for word or in a shorter form. The commit message lists each rule and where it now lives.
 - `CLAUDE.md` is under 30 KB.
+
+---
+
+### Phase 1 results
+
+- `CLAUDE.md`: 309 KB → 20.6 KB. Per-file detail now lives in `docs/reference/` (19 files, 134 KB, down from 292 KB as first moved).
+- `node test/doc-coverage.mjs`: 309/396 public names documented before, 326/396 after. The remaining 70 were never documented; they are left for Phase 4.
+- 40 doc/code disagreements found, all doc-side and fixed (`docs/comment-cleanup-findings.md`); no **Bug?** entries.
 
 ---
 
