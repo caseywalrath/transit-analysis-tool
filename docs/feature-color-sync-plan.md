@@ -1,6 +1,7 @@
 # Feature color sync — plan
 
-Status: **implemented** (see `test/feature-color-smoke.mjs`).
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/layers-and-styling.md. This file is historical.
+
 Builds on `docs/feature-color-system-plan.md` (the color cascade).
 
 ## What the user asked for

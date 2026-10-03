@@ -1,5 +1,7 @@
 # Feature Area Analysis Choropleth & Shared Choropleth Engine — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
+
 **Status: Phases 1–3 complete.** The former Phase 4 (a standalone "Imported Geography
 Analysis" module for TAZ-style GeoJSON) has been rolled into `features.md` — see that
 file's "Imported Geography Analysis module" entry under Data & Analysis — since it's a

@@ -1,5 +1,7 @@
 # Feature Merge — implementation plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
+
 Status: complete — Phase 1 (unique, stable feature IDs), Phase 2 (merge engine, dialog, polygons and lines), Phase 3 (routes, points, line + route), Phase 4a (Unmerge) and Phase 4b (module references by stable ID: part 1 = shared `featureRef`/`resolveFeatureRef` helpers, service-assembly solo keys, Route Costing, Trip Builder, Title VI; part 2 = TPI, Ridership Forecasting, Corridor Scoring, Transit Coverage, Feature Area Analysis) are all done. Phases were built in order; each phase is one or more commits
 on the working branch and must leave the app fully working.
 

@@ -1,5 +1,7 @@
 # Feature Split (lines and routes) — design plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
+
 Status: Phases 1 (Split here) and 2 (Split out section…, loops, Split at this node) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phase 3 (module awareness, opposite direction) done.
 
 ## Goal

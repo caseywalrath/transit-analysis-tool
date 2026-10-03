@@ -1,5 +1,7 @@
 # Feature color system — implementation plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/layers-and-styling.md. This file is historical.
+
 Unifies drawn-feature color into one cascade that resolves at render time, so the Layers tab's
 "Style defaults" color swatch behaves like every other control in that drawer.
 
