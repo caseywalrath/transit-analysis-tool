@@ -1,8 +1,8 @@
 // js/app.js
-// Startup: wires core modules together, loads active project panel,
-// contains summary runners and core event bindings.
-// Depends on: all core modules (utils, map, points, census, lodes).
-// Exports: registerProject
+// Startup: module registry, shared module-state/inputs UI, Feature Settings,
+// toolbar/keyboard wiring and session restore (all inside the map "load" handler).
+// Loads after all core files; modules (js/projects/) load after it and register here.
+// Detail: docs/reference/core-app.md
 
 (function () {
   var App = window.App;
@@ -11,12 +11,7 @@
 
   App.drawMode = null; // null | "point" | "line" | "route" | "polygon" | "label" | "measure" | "box-select"
 
-  // ---- Variable checkbox UI ----
-  // The variable checkbox list is built at runtime by buffer-summary.js from
-  // VAR_META in utils.js (single source of truth). There is no sidebar Data
-  // Inputs panel — the checkboxes live inside the Feature Area Analysis popup.
-
-  // ---- Module registry (replaces single-project system) ----
+  // ---- Module registry ----
 
   var _modules = new Map(); // Map<id, moduleConfig>
 
@@ -24,15 +19,13 @@
     _modules.set(config.id, config);
   };
 
-  // Backward-compat alias so existing project files still work during migration
+  // Backward-compat alias.
   App.registerProject = App.registerModule;
 
   // ---- Shared module-state UI (stale banner + empty/onboarding state) ----
-  // Standardizes the two cross-cutting popup patterns so every analysis module
-  // looks/behaves the same:
-  //   (1) Stale banner with a working "Re-run" button.
-  //   (2) Friendly empty-state / first-open onboarding hint.
-  // Reuses the shared (despite the rf- prefix) .rf-status / .rf-info-box classes.
+  // Every analysis module uses this for its stale banner (with a working Re-run
+  // button) and empty/onboarding hint. The .rf-status / .rf-info-box classes are
+  // shared by all modules despite the rf- prefix.
   //
   // opts = {
   //   statusEl,            // .rf-status pill element OR its id string
@@ -54,7 +47,6 @@
 
     function hide(el) { if (el) el.style.display = "none"; }
 
-    // --- Empty / onboarding state wins ---
     if (opts.empty) {
       hide(statusEl);
       if (emptyEl) {
@@ -68,7 +60,7 @@
         } else if (typeof hint === "string" && hint) {
           emptyEl.innerHTML = '<p>' + hint + '</p>';
         }
-        // If no hint passed, leave whatever static markup the popup HTML shipped.
+        // No hint passed: keep the popup HTML's static markup.
       }
       return;
     }
@@ -76,13 +68,11 @@
     if (emptyEl) hide(emptyEl);
     if (!statusEl) return;
 
-    // --- Explicit status pill (neutral / running / done / error) ---
     if (opts.status) {
       _paintStatus(statusEl, opts.status.kind || "", opts.status.message || "", null);
       return;
     }
 
-    // --- Stale pill with Re-run button ---
     if (opts.stale) {
       _paintStatus(
         statusEl, "stale",
@@ -92,7 +82,6 @@
       return;
     }
 
-    // --- Nothing to show ---
     hide(statusEl);
   };
 
@@ -104,8 +93,7 @@
        kind === "error"   ? " rf-status-error"   :
        kind === "running" ? " rf-status-running" : "");
 
-    // The popup HTML ships a <span id="...StatusText"> inside the pill; keep using
-    // it when present so existing id references stay valid. Otherwise build one.
+    // Reuse the popup's <span id="...StatusText"> when present so id references stay valid.
     var textEl = statusEl.querySelector("[id$='StatusText'], .rf-status-text");
     if (!textEl) {
       statusEl.innerHTML = "";
@@ -115,7 +103,6 @@
     }
     textEl.textContent = message || "";
 
-    // Drop any prior Re-run button, then add a fresh one if requested.
     var oldBtn = statusEl.querySelector(".rf-status-rerun");
     if (oldBtn) oldBtn.parentNode.removeChild(oldBtn);
     if (onRerun) {
@@ -135,20 +122,11 @@
   }
 
   // ---- Shared collapsible module inputs ----
-  // Sibling of renderModuleState: the other cross-cutting popup pattern.
-  //
-  // WHY: a module's settings column is only interesting until you run it. In a
-  // narrow/stacked panel (see the @container rule in style.css) the settings sit
-  // ABOVE the results, so leaving them expanded pushes the answer below the fold.
-  // Collapsing them on a successful run hands the panel back to the results.
-  //
-  // The collapsed header still carries a one-line summary of what was actually
-  // run, so a collapsed panel can always answer "what am I looking at" without
-  // being reopened.
-  //
-  // TERMINOLOGY (a convention, not enforced by this code — see CLAUDE.md):
-  //   Inputs   — required selections; live in the settings column; collapse here.
-  //   Settings — optional/expert tuning; live behind a button, modal or <details>.
+  // WHY: in a narrow/stacked panel (see the @container rule in style.css) the
+  // settings column sits ABOVE the results, so leaving it expanded pushes the
+  // answer below the fold. A successful run collapses it; the header keeps a
+  // one-line summary of what was run.
+  // Inputs vs. Settings convention: see CLAUDE.md.
   //
   // opts = {
   //   hostEl,     // the module's .rf-settings-col element OR its id string
@@ -170,7 +148,6 @@
 
     var body = host.querySelector(":scope > .module-inputs-body");
 
-    // First call: build the header and move the existing content into a body.
     if (!body) {
       host.classList.add("module-inputs");
 
@@ -217,8 +194,7 @@
   };
 
   function _setInputsCollapsed(host, collapsed) {
-    // The caret rotation is driven purely by this class in CSS (down = expanded,
-    // right = collapsed), so there is no second piece of state to keep in sync.
+    // Caret rotation is driven by this class alone in CSS (no second state).
     host.classList.toggle("module-inputs-collapsed", collapsed);
     var header = host.querySelector(":scope > .module-inputs-header");
     if (header) header.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -239,8 +215,7 @@
     return combined;
   };
 
-  // Build a core API object for passing to project hooks.
-  // Rebuilt each call so values like lodesData are always current.
+  // The `core` object passed to module hooks; rebuilt per call so values like lodesData are current.
   function buildCore() {
     return {
       points: App.points,
@@ -274,7 +249,7 @@
   }
 
   // Notify all registered modules that data has changed.
-  // Called sequentially to avoid overwhelming Census API.
+  // Modules run sequentially to avoid overwhelming the Census API.
   async function notifyProject() {
     var core = buildCore();
     for (var entry of _modules.values()) {
@@ -282,10 +257,8 @@
         await entry.update(core);
       }
     }
-    // Keep the Layers tab current when features/analysis layers change.
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
-    // Re-apply the walk-network connector overlay if any Line's networkRole or
-    // geometry changed (cheap no-op when nothing did — see network-connectors.js).
+    // Cheap no-op unless a Line's networkRole/geometry changed (network-connectors.js).
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
   App.notifyProject = notifyProject;
@@ -300,11 +273,7 @@
     }
   }
 
-  // Note: runSummary(), MANDATORY_VARS, expandGroups, and aggDescription live
-  // in js/projects/buffer-summary.js. Variable metadata, checkbox groups, and
-  // percentage denominators are all driven by VAR_META in js/core/utils.js.
-
-  // ---- Build Analysis sidebar panel HTML ----
+  // ---- Analysis toolbar menu HTML ----
 
   function buildAnalysisButtonsHTML() {
     var html = '<div class="analysis-module-list">';
@@ -351,8 +320,6 @@
     return html;
   }
 
-  // ---- Feature delete hook (called by features.js) ----
-
   // ---- Overlap offset computation ----
 
   var _computingOffsets = false;
@@ -380,7 +347,6 @@
 
       if (features.length < 2) { _pushOffsetSources(); _computingOffsets = false; return; }
 
-      // Build tiny proximity buffers
       var miniBufs = [];
       for (var i = 0; i < features.length; i++) {
         try {
@@ -388,7 +354,6 @@
         } catch (e) { miniBufs.push(null); }
       }
 
-      // Pairwise overlap detection
       var adj = [];
       for (var i = 0; i < features.length; i++) adj.push([]);
       for (var i = 0; i < features.length; i++) {
@@ -474,7 +439,7 @@
     if (rs) rs.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("route", App.routes || []) });
   }
 
-  // ---- Feature deletion hook ----
+  // ---- Feature deletion hook (called by features.js) ----
 
   App.onFeatureDelete = function () {
     if (typeof App.exitEditMode === "function") App.exitEditMode();
@@ -614,13 +579,6 @@
     // Initialize hover/selection highlight layers
     if (typeof App.initHighlightLayers === "function") App.initHighlightLayers();
 
-    // ---- Sidebar disabled (scaffolding kept for future use) ----
-    // Panels formerly registered here have been relocated:
-    // - Census checkboxes → Feature Area Analysis popup (buffer-summary.js)
-    // - LODES → Add Data dropdown (index.html)
-    // - Analysis modules → Analysis toolbar dropdown (below)
-
-    // Wire popup system
     App.popup.wire(_modules, buildCore);
 
     // Public opener for the Attribute Summary "system" module (registered with
@@ -629,7 +587,6 @@
       App.popup.open("attribute-summary", _modules, buildCore);
     };
 
-    // Wire the entry buttons in Feature Settings
     var asBtn = document.getElementById("open-attribute-summary");
     if (asBtn) {
       asBtn.addEventListener("click", function () {
@@ -644,7 +601,6 @@
       }
     };
 
-    // Populate Analysis toolbar dropdown with module buttons
     var analysisDropdown = document.getElementById("analysis-dropdown");
     if (analysisDropdown && _modules.size > 0) {
       analysisDropdown.innerHTML = buildAnalysisButtonsHTML();
@@ -739,8 +695,6 @@
         (p && typeof p.then === "function") ? p.then(after) : after();
       }
     };
-
-    // Variable checkbox Select All / Clear All — now wired in buffer-summary.js init()
 
     // Dark mode toggle
     var _darkBtn = document.getElementById("darkmode-btn");
@@ -1329,8 +1283,6 @@
       }
     });
 
-    // PPACG Projection UI has moved to the Ridership Forecasting Projections tab.
-
     // Reset session button: clear everything AND localStorage
     var resetBtn = document.getElementById("reset");
     if (resetBtn) {
@@ -1789,14 +1741,10 @@
     });
 
     // ---- Whole-row click for feature checklists (UI only) ----
-    // Every module builds its checklist rows the same way:
-    //   div.rf-feature-check-row > input[type=checkbox] + label + span.badge
-    // The checkbox and the label already handle their own clicks, but the row's
-    // padding and the type badge did not, so a click just beside the name did
-    // nothing. Rather than edit ten near-identical addRow() builders, one
-    // delegated listener covers every module — current and future. It toggles
-    // the row's checkbox and dispatches a real "change" event, so each module's
-    // existing handler (markStale, etc.) runs exactly as if the box was clicked.
+    // Rows are div.rf-feature-check-row > input[type=checkbox] + label + span.badge.
+    // Only the box and label toggled; clicks on row padding or the badge did nothing.
+    // One delegated listener covers every module: it toggles the checkbox and
+    // dispatches a real "change" event so each module's handler runs as normal.
     document.addEventListener("click", function (e) {
       var row = e.target.closest && e.target.closest(".rf-feature-check-row");
       if (!row) return;
@@ -1814,9 +1762,7 @@
       cb.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    // Checkbox change listeners — now wired in buffer-summary.js init()
-
-    // Wrap render/rebuild functions to re-apply opacity + line width after layers are recreated
+    // Re-apply opacity + line width after layers are recreated.
     (function () {
       function _wrapRender(fnName, applyFn) {
         var orig = App[fnName];
