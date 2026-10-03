@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Phases 0–2 done (2026-10-03). Next: Phase 3.
+**Status:** Phases 0–3 done (2026-10-03). Next: Phase 4.
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
@@ -201,6 +201,14 @@ The batches are independent, so up to 3–4 can run at the same time. They must 
 - The guard always runs.
 - `node test/run-golden.mjs` runs for any batch that touches a golden-tested engine (3.1, 3.6, 3.7, 3.9, 3.13, 3.14, 3.16, 3.17, 3.18).
 - The browser tests cannot be affected when the guard passes, so they run only once, at the end of the phase.
+
+---
+
+### Phase 3 results
+
+- Comment lines in `js/` (excluding mitigation-needs): 6,171 → 5,500 (−11%). Largest cuts: road network (668 → 414), app.js, layer-palettes, walkshed/travelshed.
+- Every batch: comment-guard PASS; golden 521/521 where applicable. Browser suite after the phase: 138/138, 39/39, 18/18, 13/13.
+- Findings: 1 **Bug?** (batch 3.9, connector overlay leaves replaced segments in `_segmentIndex`), the rest Info; see `docs/comment-cleanup-findings.md`.
 
 ---
 
