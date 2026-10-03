@@ -1,25 +1,13 @@
 // js/core/network-connectors.js
-// Network Connectors: lets user-drawn Line features join the offline walk
-// network so Walkshed / Transit Travelshed can model planned or hypothetical
-// pedestrian connections. See docs/network-connectors-plan.md for the full
-// design and phased build order.
-//
-// Phase 1: a discreet, hideable reference layer showing the walkable network
-// (App.getWalkNetworkSegments(), road-network.js) so a user can see where to
-// draw a connector.
-//
-// Phase 4 (this file, current cut): the App-level orchestration layer. Owns
-// the global App.networkSettings (snap tolerance, shared by Walkshed and
-// Transit Travelshed — see the plan's §2 "Known conflict"), collects
-// networkRole:"connector" Lines from App.lines, and drives
-// App.setNetworkConnectors() (road-network.js) with a cheap signature guard
-// so it is safe to call from App.notifyProject(), vertex-drag-end, and
-// attribute onChange handlers without debouncing.
-//
-// Depends on: App.map, App.lines, App.getWalkNetworkSegments/roadNetworkLoaded/
-// setNetworkConnectors (road-network.js).
-// Exports: App.refreshWalkNetworkLayer, App.refreshNetworkConnectors,
-//          App.getConnectorReport
+// Network Connectors: lets user-drawn Lines (networkRole "connector") join the
+// offline walk network. Owns the global App.networkSettings, the "Walk network"
+// reference layer (incl. click-to-exclude streets) and join/orphan markers.
+// The only App.lines -> plain-geometry translation for road-network.js.
+// Depends on: App.map, App.lines, road-network.js (getWalkNetworkSegments,
+//   roadNetworkLoaded, setNetworkConnectors, getLastConnectorOverlayReport, setExcludedWays).
+// Exports: App.networkSettings, App.refreshWalkNetworkLayer, App.refreshNetworkConnectors,
+//          App.getConnectorReport, App.getConnectorReportSummary
+// Detail: docs/reference/road-network.md
 
 (function () {
   "use strict";
@@ -27,26 +15,15 @@
 
   var WN_SRC = "walk-network";
   var WN_LAYER = "walk-network-line";
-  var WN_EXCLUDED_LAYER = "walk-network-excluded-line"; // docs/sidewalk-data-plan.md Phase 4
+  var WN_EXCLUDED_LAYER = "walk-network-excluded-line";
   var NJ_SRC = "network-joins";
   var NJ_LAYER = "network-joins-point";
 
-  // Single global snap tolerance shared by Walkshed and Transit Travelshed —
-  // never per-module state (see docs/network-connectors-plan.md §2). Persisted
-  // as an additive field in the core session-cache state (cache.js), same
-  // pattern as featureSortMode — defaults gracefully when absent.
-  //
-  // crossingMajorSec/crossingMinorSec (docs/walkshed-bands-and-crossing-
-  // penalties-plan.md Phase 5): the same kind of global, shared setting,
-  // default 0 = off (opt-in only, no behavior change until the user raises
-  // one). `|| {}` above short-circuits on an already-created object, so
-  // backfill the two new keys defensively when they're absent (e.g. a page
-  // that only ever set snapToleranceFt before this phase shipped).
-  // excludedWayIds (docs/sidewalk-data-plan.md Phase 4): the user-excluded-
-  // street list, stored as a plain array (JSON-serializable for the session
-  // cache). road-network.js hydrates it into a private Set on every call to
-  // App.setExcludedWays() — that function, not this array, is the sanctioned
-  // write path; nothing should push directly into this array.
+  // Global settings shared by Walkshed and Transit Travelshed — never per-module.
+  // Persisted as additive session-cache fields (cache.js). Crossing penalties
+  // default 0 = off. Missing keys are backfilled because an existing object
+  // short-circuits the `||` default. excludedWayIds is written ONLY via
+  // App.setExcludedWays(); never push into it directly.
   App.networkSettings = App.networkSettings || { snapToleranceFt: 50, crossingMajorSec: 0, crossingMinorSec: 0, excludedWayIds: [] };
   if (App.networkSettings.crossingMajorSec == null) App.networkSettings.crossingMajorSec = 0;
   if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
@@ -57,9 +34,7 @@
   var _lastSignature = null;
   var _lastReport = null;
 
-  // Scans App.lines for networkRole:"connector" Lines, skipping hidden
-  // features. road-network.js never reads App.lines directly — this is the
-  // one place that translation happens.
+  // networkRole:"connector" Lines, skipping hidden features.
   function collectConnectorLines() {
     var lines = App.lines || [];
     var out = [];
@@ -75,10 +50,9 @@
     return out;
   }
 
-  // Cheap no-op guard: computes a signature from the collected connector
-  // geometries + tolerance and skips the rebuild entirely when unchanged.
-  // This is what makes it safe to call from App.notifyProject(), vertex-
-  // drag-end, and every attribute onChange without debouncing (plan §3).
+  // Signature guard (geometry + tolerance) skips the rebuild when unchanged —
+  // what makes it safe to call from App.notifyProject(), vertex drag-end and
+  // attribute onChange without debouncing.
   function refreshNetworkConnectors() {
     var connectors = collectConnectorLines();
     var toleranceFt = (App.networkSettings && App.networkSettings.snapToleranceFt) || 50;
@@ -98,9 +72,7 @@
     return _lastReport;
   }
 
-  // Resolves a report's connectorId ("line:"+idx, see collectConnectorLines())
-  // back to that Line's display name, for the connection-report footer
-  // (Phase 6). Falls back to a generic label if the Line no longer exists.
+  // connectorId ("line:"+idx) -> that Line's display name, for the report footer.
   function getConnectorLineName(connectorId) {
     var m = /^line:(\d+)$/.exec(connectorId || "");
     if (!m) return connectorId || "Connector";
@@ -111,12 +83,9 @@
 
   var FT_PER_KM = 3280.84;
 
-  // Builds a summary of the current connector report for the Walkshed /
-  // Transit Travelshed results footers (Phase 6), or null when there are no
-  // connectors to report on. { text, detail, warn } — warn is true when at
-  // least one connector end is unconnected, so callers can style it like the
-  // rest of their footer's warning treatment; detail names the worst-off
-  // orphan (nearest street distance in feet) when warn is true, else null.
+  // { text, detail, warn } for the Walkshed / Transit Travelshed footers, or
+  // null when there are no connectors. warn = some connector end is
+  // unconnected; detail then names the closest-to-joining orphan (ft), else null.
   function getConnectorReportSummary() {
     var report = _lastReport;
     if (!report || report.reason) return null;
@@ -163,10 +132,8 @@
       var seg = segments[i];
       features[i] = {
         type: "Feature",
-        // wayId (docs/sidewalk-data-plan.md Phase 4) drives hover/click
-        // exclusion; excluded drives the distinct red/dashed styling below.
-        // Both are additive — a legacy import has wayId: null and excluded:
-        // false on every segment, which the click handler guards on.
+        // wayId drives hover/click exclusion (null on legacy imports — the
+        // handlers guard on it); excluded drives the red/dashed layer.
         properties: { kind: seg.kind, excluded: !!seg.excluded, wayId: seg.wayId != null ? seg.wayId : null, name: seg.name || "" },
         geometry: { type: "LineString", coordinates: seg.coords }
       };
@@ -174,17 +141,11 @@
     return { type: "FeatureCollection", features: features };
   }
 
-  // Rebuilds the walk-network reference layer from current network state.
-  // Removes the source/layer entirely when no network is loaded, so the
-  // Layers panel row disappears rather than showing an empty toggle.
-  // Also the single choke point that keeps the join/orphan marker layer
-  // (Phase 6) in sync: it's called from road-network.js's updateUI() on
-  // every download/import/clear AND from refreshNetworkConnectors() after
-  // every overlay rebuild, so re-syncing _lastReport from the raw overlay
-  // report here covers a base-network reload too (which re-runs
-  // applyConnectorOverlay via rebuildNetwork() without going through
-  // App.setNetworkConnectors(), so refreshNetworkConnectors()'s own cache
-  // update alone would miss it).
+  // Rebuilds the walk-network layers; removes them entirely when no network is
+  // loaded (so the Layers row disappears). Also the choke point for join
+  // markers: _lastReport is re-synced from the raw overlay report here because
+  // a base-network reload re-runs the overlay without setNetworkConnectors(),
+  // and the markers would otherwise go stale.
   function refreshWalkNetworkLayer() {
     var map = App.map;
     if (!map) return;
@@ -227,18 +188,10 @@
         }
       }, firstUserLayer());
 
-      // Excluded segments (docs/sidewalk-data-plan.md Phase 4) render red/
-      // dashed on a SEPARATE layer, filtered rather than styled with a
-      // data-driven paint expression on the base layer above — MapLibre's
-      // line-dasharray does not support per-feature (data-driven) values,
-      // only a static array or a zoom function; a ["case", ...] there fails
-      // style validation and MapLibre just silently refuses to add the
-      // layer (no thrown error, just a console warning), which took the
-      // whole walk-network-line layer down with it the first time this was
-      // tried. `filter`, unlike a paint property, can vary per feature, so
-      // this overlay — same source, drawn on top — is the correct way to
-      // single out excluded segments. Must stay visible/clickable, never
-      // simply vanish, or there would be no way to undo an exclusion.
+      // Excluded segments render on a SEPARATE filtered layer: never put a
+      // data expression in line-dasharray — MapLibre silently refuses the
+      // whole layer (this once took down the walk network). Excluded streets
+      // must stay visible/clickable, or an exclusion could not be undone.
       map.addLayer({
         id: WN_EXCLUDED_LAYER,
         type: "line",
@@ -253,14 +206,9 @@
         }
       }, firstUserLayer());
 
-      // Whole-way hover highlight (Phase 4 step 8 — "hover must preview the
-      // whole way before a click commits it"). A single feature is one
-      // coordinate-pair segment, but a way is usually many of them, so this
-      // is a FILTERED highlight over the same source keyed on wayId, not a
-      // per-feature state — the only way to light up an entire way at once.
-      // Starts matching nothing (no wayId is ever null on a real segment
-      // filter target since legacy segments carry wayId: null, which the
-      // hover handler never sets as the filter value).
+      // Whole-way hover highlight: a way spans many segment features, so this
+      // filters on wayId rather than using feature-state. The sentinel filter
+      // value matches nothing.
       map.addLayer({
         id: WN_HOVER_LAYER,
         type: "line",
@@ -282,11 +230,9 @@
     refreshJoinMarkers();
   }
 
-  // ---- Hover/click interaction on walk-network-line (Phase 4 step 8) ----
-  // Wired exactly once, when WN_LAYER is first created — refreshWalkNetworkLayer()
-  // re-runs on every download/import/clear, but MapLibre event listeners on a
-  // layer id persist across setData() calls, so re-attaching here would stack
-  // duplicate handlers on every reload.
+  // ---- Hover/click interaction on walk-network-line ----
+  // Wired exactly once, when WN_LAYER is first created: layer listeners persist
+  // across setData(), so re-wiring would stack duplicate handlers.
 
   var WN_HOVER_LAYER = "walk-network-hover-line";
   var _wnFC = null;        // last built FeatureCollection — wayId -> {name, length} lookups
@@ -338,9 +284,8 @@
       if (!e.features || !e.features.length) return;
       var wayId = e.features[0].properties.wayId;
 
-      // Guard on wayId presence (§2, plan step 8) — a legacy import has
-      // none, so hovering it shows no highlight/tooltip rather than a
-      // half-working preview for a street that can't be excluded anyway.
+      // Legacy imports have no wayId: no highlight/tooltip for a street that
+      // can't be excluded anyway.
       if (wayId == null) {
         if (!App.drawMode) map.getCanvas().style.cursor = "grab";
         if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
@@ -389,12 +334,8 @@
     });
   }
 
-  // Builds the join/orphan marker layer (Phase 6) from the cached report's
-  // joins ("crossing"|"weld") and orphans, so a dangling connector end is
-  // findable at a glance. One data-driven layer, not three, matching the
-  // plan's stated requirement. Inserted just below the same beforeLayer as
-  // the walk-network line, so it stacks above it but still under drawn
-  // features.
+  // Join ("crossing"|"weld") and orphan markers as one data-driven layer.
+  // Inserted below drawn features but above the walk-network lines.
   function joinsToGeoJSON(report) {
     var features = [];
     if (!report || report.reason) return { type: "FeatureCollection", features: features };

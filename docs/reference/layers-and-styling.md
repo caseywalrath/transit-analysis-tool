@@ -1,0 +1,54 @@
+# Layers and styling
+
+Read the code when this and the code disagree. Design: `docs/archive/layer-color-customization-plan.md`.
+
+## layer-palettes.js
+
+Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-tested) and an App-level cascade that reads/writes `App.*` only at call time (same rule as `choropleth.js`).
+
+### window.LayerPalette (pure)
+- `PALETTES` — 11 presets `{label, family, colors5}`: sequential `blues`/`greens`/`heat`/`viridis`/`plasma`/`inferno`/`magma`/`cividis`/`gray`, diverging `rdbu`/`quality`. Light→dark (sequential) or low→high (diverging). Only `cividis` is colorblind-safe.
+- `list(allow)` → `[{id, label, family}]` filtered by family array (null = all, table order).
+- `rampColors(paletteId, n, reverse)` → `n` colors subsampled from `colors5` (same arithmetic as `choropleth.js`'s `pickRampColors`); unknown id → `null`. When `n < 5`, a color whose average channel exceeds `LIGHTNESS_CEILING` (180) is darkened toward it, hue kept — otherwise Blues/Greens/Gray's near-white end is invisible on Walkshed/Travelshed's `n: 3` outer band over a light basemap (225 was tried and still too faint). `n >= 5` (TPI/RF) bypasses the clamp, so no default changed; `gradientColors()` endpoints are exempt.
+- `gradientColors(from, to, n)` — channel-wise sRGB lerp (what MapLibre `interpolate linear` does). `rgba(hex, alpha)` — legend fragments need a translucent fill plus solid border from one color.
+- `matchExpr(prop, colors)` → `["match", ["get", prop], 0, colors[0], …, fallback]`.
+- `familyOf(id)` → `"sequential"|"diverging"|null`. `allows(spec, id)` → true when `spec.allow` is empty or includes the family — the single enforcement point keeping e.g. Corridor Scoring diverging-only.
+- `CUSTOM_ID` (`"custom"`), `specFor(styleKey)` → spec | null.
+- `LAYER_STYLES` — per styleKey: `walkshed`, `walkshed-seg`, `transit-travelshed`, `tpi`, `rf`, `corridor-scoring`, `gtfs-shapes`, `gtfs-stops`, `transit-coverage`, `title-vi`. Spec `{label, kind: "ramp"|"solid"|"categorical", n?, prop?, allow?, reverseDefault?, defaultColors, classes?, flattenOption?}`. `defaultColors` is an explicit array equal to exactly what the module paints with no override (keeps the default a visual no-op). `categorical` (`transit-coverage`, `title-vi`) has `classes: [{key, label}]` positional against `defaultColors` — independent semantic colors, one swatch each. `flattenOption: true` (only `walkshed`) adds a generic "Flatten overlaps" drawer row.
+
+### App cascade
+- `App.layerStyles` — `{styleKey: {palette, reverse, color, from, to, colors, flatten}}`; `App.mapPalette` — global palette id or null. Both persisted by `cache.js` (`layerStyles`/`mapPalette` fields).
+- `App.resolveLayerColors(styleKey)` → hex array, or null for unknown key. Order: (1) per-layer override; (2) for `ramp` only, `App.mapPalette` **only if** `allows(spec, mapPalette)`; (3) `spec.defaultColors.slice()`. Solid and categorical ignore `mapPalette`.
+- Ramp `reverse` defaults to `spec.reverseDefault`: `true` for Walkshed/Travelshed (dark = fewest minutes), `false` for TPI/RF/Corridor Scoring (dark = high score).
+- `palette: "custom"` → `gradientColors(ov.from, ov.to, spec.n)`. **Per-layer only, never global**: not in `PALETTES`, so `list`/`familyOf`/`allows` never see it. Offered even on Corridor Scoring (two deliberate picks can't happen by accident), while the global row stays curated so one click can't make a semantic layer unreadable. Literal: `from` = first class, `to` = last, ignoring `reverseDefault` and any stale `ov.reverse`.
+- `App.setLayerStyle(styleKey, patch)` — shallow-merge; deletes the entry once every field is null/absent; `App.cache.save()`; `App.repaintStyledLayers()`. `App.clearLayerStyle(styleKey)` — delete, save, repaint. `App.setLayerClassColor(styleKey, idx, color)` — the only writer of a categorical class's sparse `colors` array (pads/nulls/collapses so an all-default entry deletes).
+- `App.registerLayerRepainter(styleKey, fn)` / `App.repaintStyledLayers(only)` — one cheap callback per consuming module, each in its own try/catch (no live layer = no-op, never blocks others). Usually paint-only; a module may re-render geometry from its own cached results (Walkshed flatten) but never recomputes the analysis.
+- **Invariant:** these are the only write paths; nothing outside a module's own repainter calls `map.setPaintProperty` on a styled layer. Consumers: `choropleth.js` (`render()`'s `opts.colors`), `walkshed.js`, `transit-travelshed.js`, `transit-propensity.js`, `ridership-forecasting.js`, `corridor-scoring.js`, `transit-coverage.js`, `title-vi.js`, `gtfs.js`, the static legend fragments, and `layers-panel.js`.
+
+## layers-panel.js
+
+"Layers" tab of the right panel. Public API: `App.refreshLayersPanel()` (rebuilds from map state; no-op when the tab is hidden; called from the tab toggle, `App.notifyProject()`, `App.updateAddDataClearIcons()` and others) and `App.gtfsRestoreHighlight()` (re-applies the pinned GTFS highlight or clears; used by `gtfs.js`'s map right-click preview). Everything else is private. No own persistence: drawn visibility/color/opacity and `App.sectionColors` ride `cache.js`; reference/analysis order + visibility are per-session.
+
+**Bands:** Drawn (features nested by `attributes.group`, visibility + color), Analysis overlays and Reference/Imported (declarative `ANALYSIS`/`REFERENCE` manifests keyed by MapLibre layer id; only layers present on the map render) with show/hide, opacity, drag-reorder, ⋯ menu (zoom, open module, remove), and a Basemap selector. Reorder is clamped within a band via `map.moveLayer` (drawn features stay on top; drawn groups can't z-reorder since a geometry type shares one layer). Visibility syncs both ways with the Add Data eye/× icons. Rows without a drawer get a 24px `.lp-caret-spacer` for alignment.
+
+**Manifest notes:**
+- `ANALYSIS` first entry: `bas-choropleth-fill`/`-line` ("Feature Area Analysis", `moduleId: "buffer-summary"`).
+- Walkshed is two rows, `walkshed-fill` and `walkshed-seg` ("Walkshed — reachable streets"), so the streets layer hides independently.
+- `REFERENCE` "Walk network" row's `layers` array holds `walk-network-line`, `walk-network-excluded-line` and `network-joins-point` (opacity toggles together). "Sidewalk coverage" (`sidewalk-coverage-line`) is its **own** row right after — different semantics, hidden by default.
+- `styleKey` mapping: `walkshed-fill`→`walkshed`, `walkshed-seg`→`walkshed-seg`, `ts-travelshed-fill`→`transit-travelshed`, `tpi-choropleth-fill`→`tpi`, `rf-choropleth-fill`→`rf`, `corridor-scoring-routes-layer`→`corridor-scoring`, `gtfs-shapes-layer`→`gtfs-shapes`, `gtfs-stops-layer`→`gtfs-stops`, `transit-coverage-coverage-layer`→`transit-coverage`, `tvi-impacted-fill`→`title-vi`. Feature Area Analysis, walk network, OSM, census geos, muni boundaries, road-download area and FTA sites deliberately have none.
+- Toggling a styled entry's eye also calls `App.repaintStyledLayers(entry.styleKey)` so a module can react to visibility (e.g. Walkshed hides its legend's "Reachable streets" row).
+
+**Style defaults** (below the feature list): one drawer per drawn type in use (`DRAWN_TYPES`: Points/Lines/Routes/Polygons/Buffers) with SVG preview, color swatch, `App.buildScrubber` controls over `App.featureSettings`/`App.sectionColors`, and Reset. The swatch is a live default via `App.resolveFeatureColor` — changing it recolors every non-overridden feature, not just future ones. Automatic Lines/Routes show a gradient sampled from `App.FEATURE_COLORS`; a `.lp-style-clear` × resets to Automatic.
+
+**Per-feature overrides:** each feature row's caret opens a drawer built by `App.buildFeatureOverrideRows` (shared with the Appearance popover; no Buffer row — radius lives in `App.buildBufferRadiusControl`). The row's type-icon swatch opens `App.openAppearancePopup` and gains a `.lp-style-clear` × when `properties.color` is set (resets to `""` = inherit).
+
+**Analysis/reference style drawers:** `buildLayerRow()` wraps styled rows in `.lp-style-group`/`.lp-style-drawer`. `buildLayerStyleDrawer()`:
+- `ramp`: Palette select (`Default` + `LayerPalette.list(spec.allow)` + `Custom`) and Reverse checkbox (disabled while Default); "Flatten overlaps" when `spec.flattenOption`; Reset clears via `App.clearLayerStyle`. Choosing Custom swaps Reverse for two endpoint swatches seeded from the currently resolved first/last colors (a visual no-op).
+- `solid`: `.lp-swatch` → `App.openColorPicker` + × once overridden.
+- `categorical`: one label + swatch + × per class, via `App.setLayerClassColor`.
+- A global palette row (`buildGlobalPaletteRow()`) tops the Analysis band: `Default` + all palettes; sets `App.mapPalette`, saves, repaints. Selects reuse `.lp-basemap-select`.
+- **Every control writes through `App.setLayerStyle`/`App.clearLayerStyle`/`App.setLayerClassColor` — never `map.setPaintProperty`.**
+
+**GTFS route browser** (`docs/archive/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
+
+Also uses: `App.rerenderForType`, `App._openFpSlider`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, basemap API, `properties.hidden`.

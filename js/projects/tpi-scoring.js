@@ -1,9 +1,8 @@
 // js/projects/tpi-scoring.js
 // Transit Propensity Index (TPI) scoring engine.
-// Computes per-geography factor scores via corridor-only quintile normalization,
-// then combines into a weighted composite index.
-// No dependencies beyond App namespace (utils, census) and turf (CDN).
-// Exports: TPI namespace on window.TPI
+// Per-geography factor scores via corridor-only quintile normalization, combined
+// into a weighted composite. Depends on App (census.js ACS cache) and turf (CDN).
+// Exports: window.TPI. Detail: docs/reference/modules/transit-propensity.md
 
 (function () {
   "use strict";
@@ -241,14 +240,11 @@
   TPI.getRequiredAcsVars = getRequiredAcsVars;
 
   // =========================================================================
-  // Batch ACS fetch: fetches all required variables in one pass per county group
-  // Returns Map(geoid -> Map(varCode -> value))
+  // Batch ACS fetch. Returns Map(geoid -> Map(varCode -> value)).
   // =========================================================================
 
-  // Delegates to the shared session cache in census.js (App.fetchACSBatchCached),
-  // so TPI, Ridership, Corridor Scoring, and Title VI reuse the same fetched ACS
-  // values and agree on the numbers. Same signature and Map(geoid -> Map(varCode
-  // -> value)) return shape as the previous direct-fetch implementation.
+  // Delegates to the shared session cache in census.js (App.fetchACSBatchCached)
+  // so TPI, Ridership, Corridor Scoring and Title VI agree on the numbers.
   async function batchFetchACS(geoLevel, year, geoids, varCodes) {
     if (varCodes.length === 0 || geoids.length === 0) return new Map();
     if (typeof App.fetchACSBatchCached !== "function") {
@@ -490,7 +486,7 @@
   // =========================================================================
   // Main orchestrator: run full TPI computation
   // =========================================================================
-  // options: { geoLevel, year, weights, lodesData, onProgress, apportionByArea }
+  // options: { geoLevel, year, weights, lodesData, onProgress, apportionByArea, growthFactors }
   // Returns { geos, geoids, scores, factorScores, rawValues, ... }
 
   async function computeTPI(options) {

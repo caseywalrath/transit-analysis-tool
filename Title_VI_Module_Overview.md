@@ -1,456 +1,112 @@
-Title VI Module — Agent Build Brief
-1. Objective
-Implement a new browser-only analysis module that helps users complete Title VI service equity analysis workflows that are currently done manually in GIS.
-The module must support three capabilities:
-1.	determine whether a proposed service or fare action qualifies as a user-defined Major Service Change
-2.	evaluate minority and low-income equity impacts for affected corridors, routes, or system-wide changes
-3.	compare alternative scenarios for mitigation or redesign
-All thresholds, variable definitions, and comparison rules must be user-defined so the tool can support different agency policies.
-2. Architectural fit
-Implement this as a new popup-based analysis module, not as a core app rewrite.
-That matches the current architecture:
-•	the app already supports multiple analysis modules via App.registerModule()
-•	module popups are loaded through the generic popup manager
-•	modules receive a core object with access to routes, route buffers, union geometry, TIGERweb fetches, ACS fetches, LODES data, and helper utilities
-•	TPI already demonstrates cached recompute, stale-state handling, choropleth rendering, and export workflows that can be reused here 
-CHANGELOG
+# Title VI Module — Overview
 
-CLAUDE
+## 1. Purpose
 
-transit-propensity
+The Title VI module is a browser-only analysis module that replaces the manual GIS workflow for Title VI service equity analysis. It supports three tasks:
 
-3. Current-code assumptions the agent should honor
-•	No backend, no build tools, no npm; use plain <script> tags and window.App conventions. 
-CLAUDE
+1. Determine whether a proposed service or fare action qualifies as a Major Service Change under rules the user defines.
+2. Evaluate minority and low-income impacts for the area affected by the change, against a system baseline.
+3. Compare alternative scenarios (for example, a proposal and a mitigation alternative) side by side.
 
-•	Keep module-local state private inside the module IIFE unless a public engine namespace is clearly needed. TPI uses this pattern already.
-•	Prefer core.* access inside new modules instead of reaching into App.* directly where practical. 
-CLAUDE
+Major Service Change thresholds and the Disparate Impact / Disproportionate Burden thresholds are user-editable, so the module can follow different agency policies. The protected-population definitions are fixed (see Section 6).
 
-•	Preserve the popup pattern already used by TPI and intended for future analysis tools. 
-CHANGELOG
+## 2. How it fits the app
 
-•	Reuse existing session JSON import/export patterns rather than inventing a separate persistence system. The app already exports/imports analysis sessions as JSON.
-4. Scope of v1
-In scope
-•	policy-driven Major Service Change rule evaluation
-•	spatially defined impacted-area analysis using route/segment buffers or whole-route buffers
-•	minority and low-income demographic comparison using ACS-based population methods
-•	scenario duplication and side-by-side comparison
-•	JSON save/load of Title VI-specific state
-•	CSV/GeoJSON exports of findings and impacted areas
-Deferred to later phases
-•	GTFS-native stop change inference
-•	fare elasticity or ridership forecasting
-•	automated parsing of service changes from schedules/GTFS
-•	public notice workflow
-•	automated narrative report generation beyond structured summary tables
-•	mixed-geography analysis in the same run unless already unavoidable
-The repo already identifies mixed-geography support as future work, so do not make v1 depend on that. 
-TPI_plan
+- The module is a popup-based analysis module registered with `App.registerModule()` (`js/projects/title-vi.js`). It appears in the **General** group of the toolbar Analysis menu.
+- The popup is 1000 px wide and has three tabs: **Major Service Changes**, **Equity Analysis** and **Scenarios** (`projects/title-vi-popup.html`).
+- Pure calculation lives in `js/projects/title-vi-engine.js` (`window.TitleVI`, no DOM access). The module UI, map overlay, persistence and exports live in `title-vi.js`.
+- Census geography and ACS values come from TIGERweb and the Census API through the `core` object. No backend and no build tools are involved.
+- Module state is saved with the app session (autosave and session export/import) and also has its own Session JSON export/import on the Scenarios tab.
 
-5. Recommended file plan
-Create:
-•	js/projects/title-vi.js
-main module registration, popup wiring, state management, scenario manager, exports
-•	js/projects/title-vi-engine.js
-pure calculation engine for:
-o	major-change rule checks
-o	impacted-area construction
-o	ACS-based share calculations
-o	policy threshold evaluation
-o	scenario comparison
-•	projects/title-vi-popup.html
-popup body with 3 main tabs or columns:
-o	Policies & Inputs
-o	Analysis
-o	Scenarios
-•	projects/title-vi-help.html
-optional small methodology/help fragment if needed
-Modify:
-•	index.html to add the new script tags
-•	css/style.css for popup-specific Title VI styles only if reuse of existing module styles is insufficient
-This follows the existing popup module and TPI file layout patterns already documented in the repo.
-6. Reuse map from current codebase
-The agent should explicitly reuse these existing capabilities rather than rebuilding them:
-•	popup module lifecycle and HTML loading
-•	route drawing and route buffers
-•	polygon drawing
-•	union geometry access
-•	TIGERweb geography fetch
-•	ACS variable fetch
-•	area-weighted aggregation
-•	LODES availability for optional future extensions
-•	session import/export patterns
-•	stale-result notification patterns
-•	CSV/GeoJSON export patterns from TPI
-7. Data model
-Implement three top-level persisted objects inside Title VI state.
-A. policyProfile
-Represents one agency’s adopted rules.
-Suggested shape:
-{
-  id: "uuid-or-slug",
-  name: "Agency Default Policy",
-  version: 1,
-  majorChangeRules: [
-    {
-      id: "route_miles_pct",
-      label: "Route miles changed",
-      metric: "routeMilesPctChange",
-      operator: ">=",
-      threshold: 25,
-      appliesTo: "singleRoute",   // singleRoute | system | either
-      cumulative: false,
-      enabled: true
-    }
-  ],
-  adverseEffectRules: {
-    serviceDecrease: true,
-    serviceMilesDecrease: true,
-    frequencyDecrease: true,
-    spanDecrease: true,
-    stopRemoval: false,
-    fareIncrease: false
-  },
-  protectedPopulationDefs: {
-    minority: {
-      mode: "acs",
-      method: "nonHispanicWhiteInverse", // minority share = 1 - NH white non-Hispanic share
-      acsTable: "B03002"
-    },
-    lowIncome: {
-      mode: "acs",
-      method: "povertyPersons",          // configurable
-      numerator: ["B17001_002E"],
-      denominator: ["B01003_001E"]
-    }
-  },
-  comparisonMethod: {
-    baselineType: "system_population",   // system_population | system_ridership
-    geographyLevel: "block-group",
-    bufferDistanceMiles: 0.5
-  },
-  disparateImpactPolicy: {
-    thresholdPpt: 15
-  },
-  disproportionateBurdenPolicy: {
-    thresholdPpt: 15
-  }
-}
-B. scenario
-Represents one proposed action or alternative.
-Suggested shape:
-{
-  id: "scenario-1",
-  name: "Proposed Fall 2026 Reduction",
-  type: "service_change", // service_change | fare_change | mixed
-  affectedRoutes: [
-    {
-      routeId: "10",
-      routeName: "Route 10",
-      changeType: "reduction", // reduction | increase | elimination | reroute | fare
-      before: {
-        routeMiles: 12.4,
-        revenueHours: 18.0,
-        spanHours: 14,
-        stops: 42,
-        fare: 2.00
-      },
-      after: {
-        routeMiles: 8.7,
-        revenueHours: 12.5,
-        spanHours: 10,
-        stops: 31,
-        fare: 2.00
-      }
-    }
-  ],
-  spatialInputs: {
-    useExistingRouteGeometry: true,
-    existingRouteFeatureIds: [],
-    proposedRouteFeatureIds: [],
-    impactMethod: "changed_segments_buffer", // changed_segments_buffer | full_route_buffer | polygon
-    customPolygonIds: [],
-    bufferDistanceMiles: 0.5
-  },
-  riderSurveyFile: null,
-  notes: ""
-}
-C. baseline
-Represents the comparison benchmark.
-Suggested shape:
-{
-  id: "baseline-1",
-  type: "system_population", // system_population | system_ridership
-  geographyLevel: "block-group",
-  year: "2024",
-  values: {
-    minorityShare: 0.43,
-    lowIncomeShare: 0.28
-  },
-  sourceMeta: {
-    method: "ACS area-apportioned system union",
-    generatedAt: "ISO timestamp"
-  }
-}
-8. Input modes
-The module must support both spatial and non-spatial inputs.
-Spatial inputs
-Use existing map features:
-•	routes
-•	route buffers
-•	polygons
-Primary use cases:
-•	changed route alignment
-•	eliminated segment
-•	corridor buffer analysis
-•	custom mitigation polygons
-Non-spatial inputs
-Add CSV import for route/service metrics.
-Required for reliable Major Change checks on:
-•	revenue hours
-•	span of service
-•	stop counts
-•	fare changes
-Do not try to infer those from geometry.
-Recommended CSV schema:
-scenario,route_id,route_name,change_type,before_route_miles,after_route_miles,before_revenue_hours,after_revenue_hours,before_span_hours,after_span_hours,before_stops,after_stops,before_fare,after_fare
-base,10,Route 10,reduction,12.4,8.7,18,12.5,14,10,42,31,2.00,2.00
-9. Functional design
-9.1 Major Service Change engine
-Create a pure function in title-vi-engine.js:
-evaluateMajorChange(policyProfile, scenario)
-Return:
-{
-  triggered: true,
-  triggeredRules: [
-    {
-      ruleId: "route_miles_pct",
-      label: "Route miles changed",
-      metricValue: 29.8,
-      threshold: 25,
-      operator: ">=",
-      passed: true
-    }
-  ],
-  routeSummaries: [...],
-  cumulativeSummary: {...}
-}
-Rules to support in v1:
-•	percent route miles changed
-•	percent revenue hours changed
-•	percent span changed
-•	route added
-•	route removed
-•	all service removed on a day
-•	stop count changed
-•	fare changed
-•	cumulative multi-route threshold crossed
-The engine should support both single-route and cumulative system changes.
-9.2 Impacted-area engine
-Create:
-buildImpactedArea(core, scenario, policyProfile)
-Support these methods:
-•	changed_segments_buffer
-•	full_route_buffer
-•	custom_polygon
-•	union_of_routes
-For v1, if changed-segment geometry is hard to infer precisely, allow fallback to:
-•	user-selected route geometry buffer
-•	user-drawn polygon override
-Do not block the feature on perfect segment differencing.
-9.3 Demographic engine
-Create:
-computeProtectedPopulationShares(core, impactedArea, policyProfile, options)
-Flow:
-1.	fetch intersecting tracts or block groups with TIGERweb
-2.	fetch required ACS variables
-3.	area-apportion counts into impacted area
-4.	compute minority and low-income shares
-5.	return counts, denominators, and percentages
-Minority default:
-•	use B03002
-•	compute minority share as total population minus non-Hispanic White alone, divided by total population
-Low-income default:
-•	user-configurable
-•	initial default can be persons below poverty divided by total population
-This is directly analogous to the ACS fetch and per-geography calculation patterns already used for TPI.
-9.4 Findings engine
-Create:
-evaluateEquityFindings(policyProfile, impactedShares, baseline)
-Return separate findings for:
-•	minority / disparate impact
-•	low-income / disproportionate burden
-Example:
-{
-  minority: {
-    impactedShare: 0.45,
-    baselineShare: 0.30,
-    diffPpt: 15.0,
-    thresholdPpt: 15.0,
-    exceedsThreshold: true,
-    finding: "Potential Disparate Impact"
-  },
-  lowIncome: {
-    impactedShare: 0.39,
-    baselineShare: 0.28,
-    diffPpt: 11.0,
-    thresholdPpt: 15.0,
-    exceedsThreshold: false,
-    finding: "No Potential Disproportionate Burden"
-  }
-}
-9.5 Scenario comparison engine
-Create:
-compareScenarios(policyProfile, scenarios, baseline)
-Output a compact table-ready structure for:
-•	trigger results
-•	impacted population totals
-•	minority share
-•	low-income share
-•	threshold deltas
-•	finding labels
-•	affected route metrics
-10. UI design
-Use a popup structure similar in complexity to TPI.
-Tab 1: Policies & Inputs
-•	select/create/edit policy profile
-•	upload route metrics CSV
-•	choose affected routes or custom polygons
-•	select geography level and ACS year
-•	choose baseline method
-•	set buffer distance
-•	optional upload of ridership baseline CSV placeholder for future phase
-Tab 2: Analysis
-•	run Major Change evaluation
-•	show which policy rules triggered
-•	compute impacted demographics
-•	show minority and low-income findings
-•	show export buttons
-•	show stale-data warning if inputs changed
-Tab 3: Scenarios
-•	duplicate scenario
-•	rename scenario
-•	compare proposed and mitigation alternatives
-•	show side-by-side metric and finding table
-Copy the TPI behavior where cached raw data is reused for fast recomputation when only policy thresholds or comparison settings change, instead of re-fetching everything every time. TPI already supports cached instant rescore from raw values, and Title VI should use the same idea.
-11. Persistence and export
-Persist Title VI module state inside the existing session export/import model.
-At minimum, persist:
-•	policy profiles
-•	scenarios
-•	last selected baseline
-•	last analysis result
-•	stale flags
-•	export metadata
-Exports to add:
-•	title-vi-findings-YYYY-MM-DD.csv
-•	title-vi-impacted-area-YYYY-MM-DD.geojson
-•	title-vi-session-YYYY-MM-DD.json
-CSV export should include:
-•	scenario name
-•	route IDs
-•	major change trigger status
-•	impacted population totals
-•	minority share
-•	low-income share
-•	baseline shares
-•	threshold deltas
-•	finding labels
-•	policy profile name/version
-12. Implementation sequence
-Phase 1
-Build the popup shell, module registration, local Title VI state, and policy profile editor.
-Done when:
-•	module button appears in Analysis panel
-•	popup opens/closes correctly
-•	policy profile can be created and saved in module state
-Phase 2
-Build Major Service Change rule engine and route metrics CSV import.
-Done when:
-•	imported route metrics are parsed and validated
-•	scenario can be evaluated against multiple user-defined rules
-•	UI clearly shows whether a Major Service Change occurred and why
-Phase 3
-Build impacted-area selection and ACS-based minority/low-income analysis.
-Done when:
-•	user can run equity analysis from route or polygon inputs
-•	ACS/TIGERweb results are computed inside impacted geography
-•	minority and low-income shares are shown against baseline
-Phase 4
-Build scenario duplication and mitigation comparison.
-Done when:
-•	user can clone a scenario
-•	alternative scenarios can be compared side by side
-•	finding deltas are visible across alternatives
-Phase 5
-Add exports, session persistence, and polish.
-Done when:
-•	CSV/GeoJSON/JSON exports work
-•	stale-state handling is clear
-•	closing and reopening popup preserves module-local state
-13. Acceptance criteria
-A build is acceptable when all of the following are true:
-1.	a user can define a policy where Major Service Change is triggered by custom thresholds
-2.	a user can import route/service metrics and evaluate one or more routes
-3.	a user can select affected route geometry or draw a custom impacted polygon
-4.	the module computes minority and low-income shares for the impacted area using ACS data
-5.	the module compares those shares to a user-defined or computed system baseline
-6.	the module returns separate minority and low-income findings
-7.	the module supports at least one mitigation alternative scenario
-8.	a user can export findings and impacted geometries
-9.	state survives popup close/reopen and can be saved/restored through session export/import
-10.	no backend or build tooling is introduced
-14. Testing checklist
-Unit-ish engine tests
-Test pure calculation helpers with fixed objects:
-•	percentage change math
-•	rule operator handling
-•	cumulative threshold handling
-•	finding threshold comparison
-•	scenario comparison sorting/formatting
-Manual browser tests
-•	open popup, close popup, reopen popup
-•	import valid CSV
-•	reject malformed CSV
-•	draw route, buffer route, run analysis
-•	duplicate scenario and modify threshold
-•	change geometry after analysis and verify stale warning appears
-•	export CSV/GeoJSON/JSON and verify contents
-•	restore exported session and verify Title VI state loads correctly
-Edge-case tests
-•	no route geometry but CSV-only fare change
-•	multiple affected routes with overlap
-•	route removal scenario
-•	service increase scenario
-•	custom low-income definition
-•	no ACS data returned for part of area
-•	block group vs tract run
-•	zero denominator handling
-15. Known design risks
-•	Major Change rules are not purely spatial, so CSV/manual service metrics are necessary.
-•	Fare-only analyses may not have a spatial impacted area; the UI should allow non-spatial baseline comparison and mark spatial outputs as not applicable.
-•	Precise changed-segment detection may be harder than full-route buffering; use a fallback path rather than overengineering v1.
-•	Mixed geography support should not be required for first release.
-•	Ridership-survey baseline support is feasible but should be phase 2+ of the equity baseline subsystem, not a blocker for ACS-based v1.
-16. Default implementation choices if human feedback is absent
-Use these defaults unless the user explicitly changes them:
-•	popup width roughly similar to or slightly wider than TPI
-•	geography default: block groups
-•	ACS year default: current app default year selector if available
-•	buffer default: 0.5 miles
-•	minority definition: 1 - non-Hispanic White share
-•	low-income definition: persons below poverty / total population
-•	DI threshold: 15 percentage points
-•	DB threshold: 15 percentage points
-•	baseline: system population, not ridership
-17. Deliverable expectation for the coding agent
-The agent should produce:
-•	working module code
-•	concise notes on which files were added or modified
-•	a short explanation of any compromises made for v1
-•	a list of remaining follow-up items for later phases
-The agent should not refactor unrelated core modules unless required to expose a missing hook. The repo’s existing TPI plan explicitly treated the analysis module system as the right place for new functionality, and that same principle should hold here.
-If you want, I’ll turn this into a tighter “implementation ticket stack” version next.
+## 3. Where service metrics come from
 
+Before/after service metrics are not imported from a file. They come from two sources:
+
+- **Geometry (computed automatically).** The user draws or imports the existing and proposed alignments as Routes or Lines, then pairs them in a service adjustment. The module computes before and after route miles, the percent change in route miles, the percent of the existing route that has moved (the "altered" share, using a 0.1 mi divergence threshold sampled about every 0.05 mi), and the service loss and gain areas (buffer differences).
+- **Manual entry on the adjustment card.** Revenue hours, span of service (hours) and fare each have a Before and an After field. The module calculates the percent change from these. A blank or zero "before" value means that percent change is not calculated and the rule cannot trigger for that adjustment.
+
+Stop counts are not an input and not a rule.
+
+## 4. Using the module
+
+### Tab 1 — Major Service Changes
+
+**Agency Policies (left).** Each rule has an enable checkbox and, where applicable, a threshold. A change that meets any enabled rule is flagged as a Major Service Change. Percent rules compare the absolute change, so increases and decreases both count.
+
+| Rule | Default | Threshold |
+|---|---|---|
+| Route miles change | Enabled | 25% |
+| Revenue hours change | Enabled | 25% |
+| Span of service change | Disabled | 25% |
+| Route elimination | Enabled | Yes/no |
+| Eliminated / altered miles | Disabled | 25% |
+| Fare change | Disabled | 10% |
+
+Percent thresholds accept 1 to 100. The **Export MSC Results CSV** button writes the per-adjustment rule results.
+
+**Service Adjustments (right).** Use **+ Service Adjustment** to add one card per route change. Each card has:
+
+- A name and a change type: **Adjustment** (existing and proposed alignments), **Elimination** (existing alignment only; treated as 100% altered with the whole buffer counted as loss) or **New Route** (proposed alignment only; the whole buffer counts as gain, and route-miles change is not defined).
+- Before and After feature selectors, which point at drawn Routes or Lines. References are stored by stable feature ID. If a referenced feature is deleted, the card shows a warning and the analysis will not run until the reference is fixed or the adjustment is removed.
+- Manual Before/After fields for revenue hours, span (hours) and fare.
+
+### Tab 2 — Equity Analysis
+
+- **System Baseline.** Select the Routes, Lines and Polygons that represent the system and click **Calculate Baseline**. The module computes minority and low-income shares over the union of their buffers. This is the comparison benchmark. Only a system-population baseline is supported; a ridership-based baseline is not.
+- **Geography.** Census Tracts or Block Groups (default), and ACS year (2024 default; 2023, 2022 and 2021 available). Mixed-geography runs are not supported.
+- **Impacted Area Method.** Choose how the impacted area is built:
+  - Area losing coverage (buffer difference) — default.
+  - All affected area (loss plus gain).
+  - Full existing route buffer.
+  - Drawn polygon(s).
+  If no change areas can be computed, the area falls back to buffers around the "before" routes.
+- **Equity Thresholds.** Disparate Impact and Disproportionate Burden thresholds, in percentage points (default 15 each; accepted range 1 to 50).
+- **Run Equity Analysis.** Evaluates the Major Service Change rules and calculates demographics for the impacted area. Results show a Major Service Change verdict with the rule-by-rule outcome, then separate cards for Minority (Disparate Impact) and Low-Income (Disproportionate Burden). Each card shows the impacted-area share, the baseline share, the difference and the threshold. The loss and gain areas are drawn on the map. If inputs change after a run, a stale-results banner with a Re-run button appears. A failed run leaves the inputs open.
+- **Exports.** Findings CSV and Impacted Area GeoJSON.
+
+### Tab 3 — Scenarios
+
+- Scenario Manager: select, **Duplicate**, **Rename** and **Delete** scenarios. Each scenario holds its own adjustments and impact method, so a mitigation alternative is a duplicate with modified adjustments.
+- Scenario Comparison: run the equity analysis on each scenario, then compare Major Service Change trigger status, population, minority and low-income shares, differences and finding labels side by side.
+- **Export Comparison CSV**, **Export Session JSON**, and **Import Session JSON**.
+
+## 5. Findings logic
+
+- A finding is flagged when the impacted-area share exceeds the baseline share by at least the threshold (`difference >= threshold`, in percentage points). Only an impacted share above the baseline can flag; a lower share never does.
+- Labels: "Potential Disparate Impact" / "No Disparate Impact" for minority, and "Potential Disproportionate Burden" / "No Disproportionate Burden" for low-income.
+- If a threshold field is cleared or zero, the engine falls back to 15 ppt.
+
+## 6. Demographic definitions
+
+These are fixed in the engine and not user-configurable:
+
+- **Minority share** = (B03002_001E − B03002_003E) / B03002_001E, that is, everyone other than non-Hispanic White alone.
+- **Low-income share** = B17001_002E (persons below poverty) / B01003_001E (total population).
+- Counts are area-apportioned into the impacted area (or baseline union). At block-group level, if no poverty values return, the module falls back to tract-level poverty values mapped onto the block groups.
+
+## 7. Persistence and export
+
+The module state (policy, scenarios, baseline selection and result, stale flag) is saved with the app session and survives closing and reopening the popup. There is one policy per session, not a library of policy profiles. Exports:
+
+| File | Source |
+|---|---|
+| `title-vi-findings-YYYY-MM-DD.csv` | Findings CSV (Equity Analysis tab) |
+| `title-vi-impacted-area-YYYY-MM-DD.geojson` | Impacted Area GeoJSON (Equity Analysis tab) |
+| `title-vi-msc-results-YYYY-MM-DD.csv` | Export MSC Results CSV (Major Service Changes tab) |
+| `title-vi-comparison-YYYY-MM-DD.csv` | Export Comparison CSV (Scenarios tab) |
+| `title-vi-session-YYYY-MM-DD.json` | Export Session JSON (Scenarios tab) |
+
+## 8. Defaults
+
+Block groups, 0.5 mi buffer, ACS 2024, Disparate Impact 15 ppt, Disproportionate Burden 15 ppt, minority = 1 − non-Hispanic White share, low-income = persons below poverty / total population, baseline = system population.
+
+## 9. Known limits
+
+- Major Service Change rules are evaluated per adjustment. There is no cumulative multi-route rule, no "all service removed on a day" rule and no stop-count rule.
+- Revenue hours, span and fare are manual entries. Fare-only changes have no spatial impact area and need a drawn polygon or a paired alignment for the equity step.
+- Changed-segment detection is approximated by buffer differences between the paired existing and proposed alignments.
+- Not in scope: GTFS-native stop change inference, fare elasticity or ridership forecasting, public notice workflow, narrative report generation, mixed-geography runs.
+
+## 10. Not yet built / possible enhancement
+
+**Route/service-metrics CSV import.** The original design called for importing a CSV of per-route before/after metrics (route miles, revenue hours, span, stops, fare) so that non-geometric Major Service Change checks could be driven from agency data instead of manual entry. This was never built. There is no CSV import in the popup, and the module does not read or validate such files. It is tracked as "Title VI route/service-metrics CSV import" in `features.md`.

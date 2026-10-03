@@ -2,7 +2,7 @@
 // test/browser/line-style.test.mjs
 //
 // Behavior test for per-feature line style (properties._lineStyle on Lines and
-// Routes — docs/feature-appearance-plan.md Phase 3). Drawn lines/routes render
+// Routes — docs/archive/feature-appearance-plan.md Phase 3). Drawn lines/routes render
 // in three style layers over one source (solid keeps "lines-layer" /
 // "routes-layer"; plus "-dashed" / "-dotted"), because MapLibre's
 // line-dasharray cannot be data-driven. That is a map-layer-lifecycle change

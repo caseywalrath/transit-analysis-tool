@@ -1,8 +1,7 @@
-// js/projects/fta-small-starts.js
-// FTA Small Starts (Land Use): breakpoint classification, CRE / ESS / LBAR upload + computation.
-// Popup-based UI with 2 tabs (Ratings | Data Inputs).
-// Depends on: App namespace (utils, map, points, census, lodes), turf (CDN).
-// Exports: none (self-registers via App.registerModule)
+// js/projects/fta-small-starts.js — FTA Small Starts Land Use ratings: breakpoint classification,
+// CRE / ESS / LBAR upload + computation. Tabbed popup (Ratings | Data Inputs).
+// Depends on: App (utils, map, points, census, lodes), turf. Exports: none (self-registers).
+// Detail: docs/reference/modules/fta-small-starts.md
 
 (function () {
   "use strict";
@@ -325,19 +324,16 @@
     var year     = document.getElementById("ftaYearSelect").value;
     var geoLevel = document.getElementById("ftaGeoLevel").value;
 
-    // LBAR units in point union
     var lbarPoint = 0;
     for (var i = 0; i < LBAR_SITES.length; i++) {
       var s = LBAR_SITES[i];
       if (turf.booleanPointInPolygon(turf.point([s.lon, s.lat]), unionFeat)) lbarPoint += s.units;
     }
 
-    // Total housing units in point union
     var huPointRes  = await App.computeAcsValueOnly("B25001_001E", year, geoLevel);
     var huPoint     = huPointRes.value;
     var sharePoint  = (Number.isFinite(huPoint) && huPoint > 0) ? (lbarPoint / huPoint) : NaN;
 
-    // County share
     var counties = parseCountyListInput();
     if (counties.length === 0)
       return { ratio: NaN, sharePoint: sharePoint, shareCounty: NaN,
@@ -396,7 +392,6 @@
     var runBtn   = document.getElementById("ftaRun");
     if (runBtn) runBtn.disabled = true;
 
-    // Reset all pills
     setPill("bpPopPill",  "N/A", "na");
     setPill("bpEmpPill",  "N/A", "na");
     setPill("bpLbarPill", "N/A", "na");
@@ -624,7 +619,6 @@
     if (_initialized) return;
     _initialized = true;
 
-    // Tab switching
     var tabs = document.querySelectorAll(".fta-tab");
     for (var t = 0; t < tabs.length; t++) {
       tabs[t].addEventListener("click", function (e) {
@@ -632,11 +626,9 @@
       });
     }
 
-    // Compute Ratings
     var runBtn = document.getElementById("ftaRun");
     if (runBtn) runBtn.addEventListener("click", function () { updateBreakpointRatings(); });
 
-    // Export
     var exportBtn = document.getElementById("ftaExportCSV");
     if (exportBtn) exportBtn.addEventListener("click", exportRatingsCSV);
 

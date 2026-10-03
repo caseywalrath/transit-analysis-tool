@@ -24,7 +24,7 @@ export default {
     { id: "readBuffer/at-min-boundary", call: "App.readAnalysisBufferMiles", args: [{ value: "0.05" }] },
     { id: "readBuffer/at-max-boundary", call: "App.readAnalysisBufferMiles", args: [{ value: "5" }] },
 
-    // ---- includeHidden / hiddenCount (docs/hidden-features-analysis-plan.md Phase 1) ----
+    // ---- includeHidden / hiddenCount (docs/archive/hidden-features-analysis-plan.md Phase 1) ----
     // Runs the real builders against a stubbed turf (test/stubs/module-buffers-harness.js).
     ...(() => {
       const scen = {

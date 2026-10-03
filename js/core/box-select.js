@@ -1,7 +1,6 @@
 // js/core/box-select.js
-// Box select (drag a rectangle on the map to select features) —
-// docs/box-select-plan.md. Phase 1: pure hit-test helpers only. Phase 2 adds
-// the drag tool to this same file.
+// Box select (drag a rectangle on the map to select features), plus
+// App.bulkFeatures group actions. Detail: docs/reference/drawing-and-features.md
 //
 // ---- Pure helpers (App.boxSelectGeom) ----
 // No DOM, map, or turf access (so the golden harness loads this file as-is).
@@ -122,7 +121,7 @@
     polygonHits: polygonHits
   };
 
-  // ---- Drag tool (Phase 2) ----
+  // ---- Drag tool ----
   // Active while App.drawMode === "box-select" (toolbar button / A key, wired by
   // the generic tool-button handler in app.js). Mouse events are intercepted on
   // window in the CAPTURE phase, so MapLibre never sees the mousedown: the map
@@ -249,7 +248,7 @@
     _drag = null;
   }
 
-  // Phase 4: Shift+drag starts a box even with the tool off (no other draw
+  // Shift+drag starts a box even with the tool off (no other draw
   // mode active). MapLibre's own Shift+drag box zoom is disabled in map.js.
   function shiftStart(e) {
     return e.shiftKey && !App.drawMode;
@@ -357,7 +356,7 @@
   window.addEventListener("blur", endDrag);
   }
 
-  // ---- Group actions on a multi-selection (Phase 3): App.bulkFeatures ----
+  // ---- Group actions on a multi-selection App.bulkFeatures ----
   // Shared by the map right-click menu (editing.js), the Features-pane
   // right-click menu (features.js) and the Delete key (app.js). `list` is
   // [{type, index}]; labels and anything stale are ignored.

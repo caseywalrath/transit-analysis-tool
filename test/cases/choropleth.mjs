@@ -5,7 +5,7 @@
 // render/remove/setVisible/fillLegend touch App.map/maplibregl/the DOM and
 // are out of harness scope, same rationale as every other map-facing
 // function in this suite — this also covers render()'s "continuous" method
-// branch (Phase 3 Step 3.1 of docs/feature-area-choropleth-plan.md), which
+// branch (Phase 3 Step 3.1 of docs/archive/feature-area-choropleth-plan.md), which
 // only wires buildInterpolateColorExpr into that map-facing path; the pure
 // expression builder itself is what's pinned here.
 

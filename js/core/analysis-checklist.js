@@ -1,6 +1,6 @@
 // js/core/analysis-checklist.js
 // Shared helpers for analysis-module feature checklists that must cope with
-// features hidden on the map (docs/hidden-features-analysis-plan.md).
+// features hidden on the map (docs/archive/hidden-features-analysis-plan.md).
 // Depends on: App namespace only. DOM is touched only inside the functions.
 // Load right after module-buffers.js.
 

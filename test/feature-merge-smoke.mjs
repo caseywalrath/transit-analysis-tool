@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/feature-merge-smoke.mjs
 //
-// Browser smoke test for the Feature Merge work (docs/feature-merge-plan.md).
+// Browser smoke test for the Feature Merge work (docs/archive/feature-merge-plan.md).
 // Loads the real app, drives window.App through page.evaluate, and asserts.
 // Phase 1 covers unique, stable per-type feature IDs; Phase 2 covers the merge
 // engine, dialog, polygons and lines (including a pass through the real UI:

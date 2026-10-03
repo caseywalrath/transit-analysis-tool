@@ -1,5 +1,13 @@
 # Phase 8 — Multiple analysis panels
 
+> **Status:** Not started (verified 2026-10).
+> Remaining:
+> - Panel host and template (section 1): index.html still has the single `#module-popup`; no `#module-panel-host` or `module-panel-template`.
+> - Panel registry in popup.js (section 2): no `isModuleOpen`, `openModuleIds` or `closeAll` anywhere in js/.
+> - Per-panel focus, z-order, drag, collapse (section 3): popup.js keeps one shared shell and `currentModuleId`.
+> - Migrate visibility guards (section 4): 27 `currentModuleId` references remain in js/.
+> - Ownership audit, a11y/Escape behavior, multi-panel capture sequence (sections 5-7): no sign of them in js/ or test/ui-screens/capture.mjs.
+
 **Status:** planned. Added 2026-08-13 after the Phase 6 behavior checkpoint, when
 the new live-map floating panels made it useful to keep inputs and results from more
 than one analysis visible for comparison.

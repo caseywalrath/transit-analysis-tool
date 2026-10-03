@@ -10,14 +10,15 @@ This tool does not replace a full regional travel demand model. It is a decision
 
 The Ridership Forecasting module answers the question: **"If we run transit service along this corridor, how many riders might we expect?"**
 
-It works in four steps:
+It works in five steps:
 
-1. **Demand Analysis** -- Measures how much latent transit demand exists along the corridor based on who lives and works there
-2. **Calibration** (optional) -- Adjusts the demand estimate using observed ridership from real routes, so the forecast reflects actual local performance
+1. **Calibration** (optional) -- Adjusts the demand estimate using observed ridership from real routes, so the forecast reflects actual local performance
+2. **Demand Analysis** -- Measures how much latent transit demand exists along the corridor based on who lives and works there
 3. **Elasticity** -- Estimates how ridership responds to changes in service frequency and quality (e.g., switching from local bus to BRT)
 4. **Scenario Comparison** -- Compares multiple service configurations side-by-side, showing ridership, operating cost, and productivity for each
+5. **Projections** -- Re-scores demand under projected future population and shows how scenario ridership changes by horizon year
 
-Each step builds on the previous one. You can run Demand alone for a quick assessment, or work through all four tabs for a full corridor analysis.
+Each step builds on the previous one. You can run Demand alone for a quick assessment, or work through all five tabs for a full corridor analysis.
 
 ---
 
@@ -25,10 +26,10 @@ Each step builds on the previous one. You can run Demand alone for a quick asses
 
 1. Open the Micro Analysis Tool in your browser
 2. Draw a route (or place stations/lines) on the map to define your corridor
-3. In the left sidebar, find the **Analysis** panel
-4. Click the **Ridership Forecasting** button to open the module popup
+3. Open the **Analysis** menu in the toolbar
+4. Click **Ridership Forecasting** to open the module popup
 
-The popup has four tabs across the top: **Demand**, **Calibrate**, **Elasticity**, and **Scenarios**.
+The popup has five tabs across the top, in this order: **Calibrate**, **Demand**, **Elasticity**, **Scenarios**, and **Projections**. The Calibrate tab is shown first.
 
 ---
 
@@ -49,7 +50,7 @@ The CDI builds on the Transit Propensity Index (TPI), which scores every census 
 | Seniors (65+) | % of population age 65 and over | Often transit-dependent |
 | Disability | % of population with a disability | Often transit-dependent |
 | Minority | % of minority population | Equity consideration; historically underserved |
-| Youth (under 18) | % of population under 18 | Cannot drive; transit-dependent |
+| Young Adults 18–24 | % of population aged 18–24 (default weight 0; available to activate) | Younger adults with lower car access; optional factor |
 | Limited English Proficiency | % who speak English less than very well | Often transit-dependent |
 
 For each factor, every geography in the corridor is ranked against the other geographies in the same corridor using quintiles (fifths). A geography in the top 20% for population density gets a 5; one in the bottom 20% gets a 1. This means scores are always relative to your specific study area, not a national benchmark.
@@ -69,7 +70,62 @@ A CDI of 3.5 does not mean "3.5 riders." It is an index that feeds into the ride
 
 ---
 
-## Tab 1: Demand
+## Tab 1: Calibrate
+
+This tab is optional but recommended. It lets you adjust the model's output using observed ridership data from real transit routes, so forecasts reflect actual local performance rather than relying solely on demographics.
+
+### When to use calibration
+
+- If you have route-level ridership data from the transit agency you are analyzing (e.g., daily boardings by route)
+- If you have comparable data from a peer system (e.g., UTA route-level data for a Mountain West comparison)
+- If you have system-level NTD data and want to establish a baseline productivity ratio
+
+### Cross-system calibration
+
+You can calibrate using data from one transit system (e.g., UTA in Salt Lake City) and then apply that calibration to a different system (e.g., a proposed corridor in Colorado Springs). To do this:
+
+1. Draw routes for the calibration system AND the target system on the map
+2. In the Calibrate tab, use the **feature checklist** to select only the calibration system's routes (uncheck the target system corridors)
+3. Complete calibration as normal
+4. Switch to the Demand tab, uncheck "Same system as calibration," and select the target system's routes
+5. The calibration factor will be applied to CDI values computed independently within the target system's geography
+
+**Best practice**: When calibrating with a different system than your study corridor, do NOT include the study corridor in the calibration feature selection. This ensures the calibration quintile normalization reflects the system with observed ridership data, not the study corridor's demographics.
+
+### Data Requirements
+
+If you see a warning icon (⚠) next to the **ACS Year** label in the Calibrate tab, LODES employment data is not loaded. See the note under the Demand tab for details. The analysis will proceed without employment density, but employment is especially important for calibration if your observed ridership data comes from routes with significant job centers.
+
+### How to calibrate
+
+1. **Select Calibration Features** -- Use the feature checklist in Step 1 to choose which drawn routes/lines define the calibration system. Only selected features will be included in the TPI analysis and quintile normalization.
+
+2. **Analyze System** -- Click **Analyze System** to run the demand analysis for the selected features. This must be done before uploading ridership data. Each route gets a CDI score normalized within the calibration system.
+
+3. **Upload CSV** -- Click the upload button and select a CSV file containing observed ridership data. Expected columns include route name, daily ridership (or boardings per hour), peak headway, and service type. The tool will attempt to auto-detect which columns map to which fields.
+
+4. **Column Mapping** -- After upload, verify or correct the column assignments using the dropdown menus. The tool guesses based on common column names but you should confirm.
+
+5. **Choose a Method**:
+   - **Ratio-based (recommended)** -- Divides each route's observed ridership by its computed demand index and averages the results. Simple, robust, and works well with small datasets (as few as 3--5 routes). Produces a single calibration factor.
+   - **Simple regression (needs 3+ routes)** -- Fits a line through the data (observed ridership vs. demand index). Better if you have more data (10+ routes) and want to account for scatter. Produces an intercept and slope.
+
+4. **Review Results** -- The tool shows:
+   - **Calibration Factor** -- The multiplier that will be applied to CDI in all future forecasts
+   - **R-squared** -- How well the calibration fits the observed data (0 to 1; higher is better). Shown for both methods when at least two routes are matched.
+   - **Sample Size** -- How many routes were used
+
+5. **Warnings** -- If the sample size is very small (fewer than 5 routes), a warning appears. The calibration still works but should be interpreted with caution. (The ratio method itself needs only two valid routes; regression needs three.)
+
+### Import / Export Calibration
+
+- **Export Coefficients** -- Saves the calibration factor, method, fit statistics, factor weights, and per-route CDI data as a JSON file (`ridership-calibration-<date>.json`). This is a standalone artifact that can be reused across sessions without re-running the Census data fetch. Useful for sharing calibration settings between sessions or with colleagues.
+
+- **Import Coefficients** -- Loads a previously exported calibration file, restoring the factor and (in v2 format) per-route CDI data and weights without needing to re-upload and re-process the observed data. Supports both v1 (coefficients only) and v2 (with metadata) formats.
+
+---
+
+## Tab 2: Demand
 
 This tab runs the core demand analysis and produces the CDI score for the **target system** you are analyzing.
 
@@ -83,22 +139,28 @@ This tab runs the core demand analysis and produces the CDI score for the **targ
 
 ### Settings (continued)
 
-- **Geography Level** -- Choose between Census Tracts (faster, less detailed) or Block Groups (slower, more granular). Block Groups are the default and recommended for corridor-level work.
+- **Geography Level** -- Choose between Census Tracts (faster, less detailed) or Block Groups (slower, more granular). Block Groups are the default and recommended for corridor-level work. Four factors -- Zero-Vehicle Households, Low-Income (Poverty), Disability, and LEP -- are available only at the tract level. In a Block Group run, their values are fetched for the parent tract and applied identically to every block group in that tract, so they do not vary within a tract. (If another factor is missing for some block groups, the tool likewise fills those block groups from the parent tract unless Apportion by Area is on.)
 
 - **ACS Year** -- Which year of American Community Survey data to use. Default is 2024 (the most recent available). A small warning icon (⚠) appears next to this label if LODES employment data has not been uploaded. See the note below.
 
-- **Segment Length** -- If set above zero, the route is divided into equal-length segments (e.g., every half mile) and each segment gets its own CDI score. This shows where demand is strongest along the corridor. Set to 0 to skip segmentation.
+- **Segment Length** -- If set above zero, the route is divided into equal-length segments (e.g., every half mile) and each segment gets its own CDI score. This shows where demand is strongest along the corridor. Set to 0 to skip segmentation (the default is 0.5 mile).
 
 - **Apportion by Area** -- When checked, geographies that only partially overlap the corridor buffer are scaled proportionally. This is more accurate for edge cases but slightly slower.
+
+- **Buffer distance (mi)** -- How far from the route the corridor extends when selecting geographies (default 0.5, range 0.05--5). Calibrate and Demand share one buffer setting, with an option to use the display buffers instead.
+
+- **Normalize by Length** -- When checked, observed ridership is divided by route length before calibration and the baseline projection is scaled back up by corridor length.
+
+- **Include hidden** -- Toggles to include features that are currently hidden on the map.
 
 ### LODES Data Warning
 
 If you see a warning icon (⚠) next to the **ACS Year** label, it means the Employment Density factor (LODES data) has not been loaded. When LODES is absent:
 
 - The Employment Density factor **is excluded** from the TPI scoring
-- Its weight (typically 35% of the total) is automatically **redistributed to the other eight factors**
+- Its weight (typically 35% of the total) is automatically **redistributed equally among the other factors that have a non-zero weight** (eight with the default weights, since Young Adults 18–24 defaults to zero)
 - The analysis **still runs successfully** — results remain valid, just with a heavier emphasis on population density and socioeconomic factors
-- To include employment in the analysis, upload a LODES file via the **LODES** panel in the left sidebar (requires downloading from the Census Bureau for your state)
+- To include employment in the analysis, upload a LODES file using the **LODES Employment** button in the **Add Data** menu (requires downloading from the Census Bureau for your state)
 
 Employment data is most important for analyzing commute corridors with significant job centers. Population-only analysis is still useful for residential ridership assessment.
 
@@ -135,61 +197,6 @@ After the analysis completes, a message appears suggesting you either continue t
 
 ---
 
-## Tab 2: Calibrate
-
-This tab is optional but recommended. It lets you adjust the model's output using observed ridership data from real transit routes, so forecasts reflect actual local performance rather than relying solely on demographics.
-
-### When to use calibration
-
-- If you have route-level ridership data from the transit agency you are analyzing (e.g., daily boardings by route)
-- If you have comparable data from a peer system (e.g., UTA route-level data for a Mountain West comparison)
-- If you have system-level NTD data and want to establish a baseline productivity ratio
-
-### Cross-system calibration
-
-You can calibrate using data from one transit system (e.g., UTA in Salt Lake City) and then apply that calibration to a different system (e.g., a proposed corridor in Colorado Springs). To do this:
-
-1. Draw routes for the calibration system AND the target system on the map
-2. In the Calibrate tab, use the **feature checklist** to select only the calibration system's routes (uncheck the target system corridors)
-3. Complete calibration as normal
-4. Switch to the Demand tab, uncheck "Same system as calibration," and select the target system's routes
-5. The calibration factor will be applied to CDI values computed independently within the target system's geography
-
-**Best practice**: When calibrating with a different system than your study corridor, do NOT include the study corridor in the calibration feature selection. This ensures the calibration quintile normalization reflects the system with observed ridership data, not the study corridor's demographics.
-
-### Data Requirements
-
-If you see a warning icon (⚠) next to the **ACS Year** label in the Calibrate tab, LODES employment data is not loaded. See the note under the Demand tab for details. The analysis will proceed without employment density, but employment is especially important for calibration if your observed ridership data comes from routes with significant job centers.
-
-### How to calibrate
-
-1. **Select Calibration Features** -- Use the feature checklist in Step 1 to choose which drawn routes/lines define the calibration system. Only selected features will be included in the TPI analysis and quintile normalization.
-
-2. **Analyze System** -- Click the button to run the demand analysis for the selected features. Each route gets a CDI score normalized within the calibration system.
-
-3. **Upload CSV** -- Click the upload button and select a CSV file containing observed ridership data. Expected columns include route name, daily ridership (or boardings per hour), peak headway, and service type. The tool will attempt to auto-detect which columns map to which fields.
-
-4. **Column Mapping** -- After upload, verify or correct the column assignments using the dropdown menus. The tool guesses based on common column names but you should confirm.
-
-5. **Choose a Method**:
-   - **Ratio-based (recommended)** -- Divides each route's observed ridership by its computed demand index and averages the results. Simple, robust, and works well with small datasets (5--15 routes). Produces a single calibration factor.
-   - **Simple regression** -- Fits a line through the data (observed ridership vs. demand index). Better if you have more data (10+ routes) and want to account for scatter. Produces an intercept and slope.
-
-4. **Review Results** -- The tool shows:
-   - **Calibration Factor** -- The multiplier that will be applied to CDI in all future forecasts
-   - **R-squared** -- How well the calibration fits the observed data (0 to 1; higher is better). Only shown for regression.
-   - **Sample Size** -- How many routes were used
-
-5. **Warnings** -- If the sample size is very small (fewer than 5 routes), a warning appears. The calibration still works but should be interpreted with caution.
-
-### Import / Export Calibration
-
-- **Export Calibration** -- Saves the calibration factor, method, fit statistics, factor weights, and per-route CDI data as a JSON file. This is a standalone artifact that can be reused across sessions without re-running the Census data fetch. Useful for sharing calibration settings between sessions or with colleagues.
-
-- **Import Calibration** -- Loads a previously exported calibration file, restoring the factor and (in v2 format) per-route CDI data and weights without needing to re-upload and re-process the observed data. Supports both v1 (coefficients only) and v2 (with metadata) formats.
-
----
-
 ## Tab 3: Elasticity
 
 This tab estimates how ridership changes when you improve service frequency or upgrade the service type. It converts the CDI demand score into a ridership multiplier using transit industry elasticity values.
@@ -201,9 +208,9 @@ This tab estimates how ridership changes when you improve service frequency or u
   | Service Type | Description |
   |---|---|
   | **Local Bus** | Standard fixed-route bus service. This is the baseline -- all premiums are zero. |
-  | **Enhanced Bus** | Improved bus service with features like better stops, limited branding, or queue jumps. Moderate premiums for frequency, speed, and mode quality. |
-  | **Limited-Stop Express** | Skips intermediate stops for faster travel on longer trips. Premiums focused on speed improvement. |
-  | **BRT-Style** | Bus Rapid Transit characteristics: dedicated lanes, level boarding, real-time info, branded stations. Highest premiums across all categories. |
+  | **Enhanced Bus** | Improved bus service with features like better stops, limited branding, or queue jumps. Default premium 5% to 15%. |
+  | **Limited-Stop Express** | Skips intermediate stops for faster travel on longer trips. Default premium 0% to 10%. |
+  | **BRT-Style** | Bus Rapid Transit characteristics: dedicated lanes, level boarding, real-time info, branded stations. Highest default premium, 5% to 25%. |
 
 - **Baseline Headway** -- The current or comparison service frequency in minutes (e.g., 30-minute headways for existing local bus).
 
@@ -213,27 +220,28 @@ This tab estimates how ridership changes when you improve service frequency or u
 
 - **Service Span Elasticity** -- A slider and input box (range 0.1 to 1.0, default 0.7). This value controls how strongly ridership responds to changes in service hours per day (span). It is applied in the Scenarios tab when you change the "Span" input for each scenario — ridership estimates adjust relative to the 14-hour local bus baseline. The typical range is 0.5 to 0.9. See [Service Span Elasticity](#service-span-elasticity) below for details.
 
-### Service Type Premiums (right side)
+### Service Type Premium (right side)
 
-When you select a service type, the tool shows three premium categories:
+Each service type has a single ridership premium, expressed as a low and a high percentage relative to the Local Bus baseline. The **Conservative (%)** and **Optimistic (%)** sliders (range 0 to 150%) are set to the selected service type's defaults and can be adjusted; the Moderate value is the average of the two.
 
-| Premium | What it represents | Example (BRT-Style) |
+| Service Type | Conservative | Optimistic |
 |---|---|---|
-| **Frequency** | Ridership boost from improved frequency reliability and consistency | +15% to +35% |
-| **Speed** | Ridership boost from faster travel times (dedicated lanes, signal priority, fewer stops) | +15% to +35% |
-| **Mode** | Ridership boost from the quality and attractiveness of the service itself (branding, stations, comfort) | +25% to +50% |
+| Local Bus | 0% | 0% |
+| Enhanced Bus | 5% | 15% |
+| Limited-Stop Express | 0% | 10% |
+| BRT-Style | 5% | 25% |
 
-Each premium has a low, middle, and high value. These are applied multiplicatively to produce three ridership estimates.
+The premium is applied on top of the frequency effect (and, in Scenarios, the span effect) to produce three ridership estimates.
 
 ### Ridership Multiplier (right side)
 
-Once you have run a demand analysis (Tab 1), this section shows three estimates:
+Once you have run a demand analysis (Demand tab), this section shows three estimates:
 
-- **Conservative** -- Uses the low end of all premiums. Represents a cautious forecast.
-- **Moderate** -- Uses the middle of all premiums. The most likely outcome.
-- **Optimistic** -- Uses the high end of all premiums. Represents a best-case scenario.
+- **Conservative** -- Uses the low premium. Represents a cautious forecast.
+- **Moderate** -- Uses the average of the low and high premiums. The most likely outcome.
+- **Optimistic** -- Uses the high premium. Represents a best-case scenario.
 
-The estimates are shown as index values. They become actual ridership numbers when combined with calibration data and route-specific parameters in the Scenarios tab.
+The estimates are shown as index values. They become actual ridership numbers when combined with calibration data and route-specific parameters in the Scenarios tab. The Elasticity tab also has a **Model Uncertainty** slider (0--60%, default 25%) that sets a symmetric confidence band around the calibrated baseline before the service multipliers are applied.
 
 Two additional statistics are shown:
 - **Frequency Effect** -- The multiplier from the headway change alone (e.g., 1.52x for going from 30 to 15 minutes at 0.6 elasticity)
@@ -245,9 +253,9 @@ Two additional statistics are shown:
 
 This tab lets you define up to four different service configurations and compare them side-by-side on ridership, operating cost, and productivity metrics.
 
-### Scenario Sub-Tabs
+### Scenario Columns
 
-Four scenario slots are available: **A**, **B**, **C**, and **D**. Click a tab to switch between them. Your inputs are saved automatically when you switch.
+Four scenario slots are available, **A**, **B**, **C**, and **D**, shown side by side as input columns.
 
 ### Scenario Inputs
 
@@ -263,7 +271,7 @@ For each scenario, you define:
 | **Cost per Revenue Hour** | Operating cost including driver, fuel, maintenance, and overhead | $150 |
 | **Service Days per Year** | How many days per year the service operates | 260 (weekday only) |
 
-Service days presets: 260 (weekday only), 302 (weekday + Saturday), 312 (daily except holidays), 365 (daily).
+Service days presets: 260 (weekday only), 302 (weekday + Saturday), 312 (excluding holidays), 365 (daily).
 
 ### Build Scenarios (button)
 
@@ -290,6 +298,17 @@ After building scenarios, a table appears showing all four scenarios as columns 
 - **Export CSV** -- Downloads the comparison table as a spreadsheet-compatible file. One row per scenario with all metrics.
 
 - **Export JSON** -- Downloads the full scenario data in JSON format, including all input parameters and computed results. Useful for importing into other tools or archiving the analysis.
+
+---
+
+## Tab 5: Projections
+
+This tab estimates how scenario ridership may change under future population conditions. Complete the Calibrate and Scenarios tabs first.
+
+1. Click **Upload CSV** and select a population projection CSV (the tool references PPACG projections).
+2. Click **Run Projections**. Projected population counts are added to the Census ACS baseline and the demand indices are re-scored for each horizon year (2030, 2040, 2050), using the Scenarios tab parameters. No additional Census API calls are needed.
+3. Review the **Projection Timeline**: daily ridership (Moderate estimate, with the Low--High range in parentheses) and the CDI change for the current year and each horizon year.
+4. Click **Export CSV** to download the timeline. **Clear** removes the loaded projection file.
 
 ---
 
@@ -346,13 +365,13 @@ The service type premium has a low and high value (with mid = average), producin
 
 ### Ridership Estimate
 
-> **Estimated ridership = CDI score x multiplier x calibration factor**
+> **Estimated ridership = CDI score x calibration factor x multiplier**, with a baseline uncertainty band (default +/-25%) applied to the calibrated baseline before the multiplier. When Normalize by Length is on, the baseline is also multiplied by route length.
 
-If no calibration has been done, the calibration factor defaults to 1 (no adjustment). The CDI score here is the corridor-wide population-weighted average from Tab 1.
+If no calibration has been done, the calibration factor defaults to 1 (no adjustment). The CDI score here is the corridor-wide population-weighted average from the Demand tab.
 
 ### Operating Metrics
 
-> **Vehicles needed = ceiling of (2 x route length / average speed) / (headway / 60)**
+> **Vehicles needed = ceiling of (2 x route length / average speed) / (headway / 60)**, with a minimum of 1 vehicle
 
 This ensures enough buses are available to maintain the headway given the round-trip time.
 
@@ -435,7 +454,7 @@ Time: 5-10 minutes
 ### Full Scenario Analysis
 
 1. Draw the corridor route on the map
-2. Upload LODES employment data (optional, from the sidebar)
+2. Upload LODES employment data (optional, from the Add Data menu)
 3. Run **Analyze Demand** on the Demand tab
 4. Go to the **Calibrate** tab, upload observed ridership data, run calibration
 5. Go to the **Scenarios** tab
@@ -482,11 +501,12 @@ The forecasts should be used alongside professional judgment, local knowledge, a
 
 | Export | Tab | Format | Contents |
 |---|---|---|---|
-| Demand GeoJSON | Demand | `.geojson` | Every scored geography with CDI score, classification, raw factor values, and quintile scores. Openable in GIS. |
-| Demand CSV | Demand | `.csv` | Same data in tabular format. Openable in Excel. |
-| Calibration Coefficients | Calibrate | `.json` | Calibration factor, method, R-squared, and sample size. Importable in future sessions. |
-| Scenario Comparison CSV | Scenarios | `.csv` | One row per scenario with all operating and ridership metrics. Openable in Excel. |
-| Scenario Comparison JSON | Scenarios | `.json` | Full scenario parameters and results. Useful for archiving or feeding into other tools. |
+| Demand GeoJSON | Demand | `.geojson` (`corridor-cdi-<date>`) | Every scored geography with CDI score, classification, raw factor values, and quintile scores. Openable in GIS. |
+| Demand CSV | Demand | `.csv` (`corridor-cdi-<date>`) | Same data in tabular format. Openable in Excel. An "Include Shared Pool data" option adds the shared-pool geographies when a shared-pool run is active. |
+| Calibration Coefficients | Calibrate | `.json` (`ridership-calibration-<date>`) | Calibration factor, method, R-squared and sample size, plus (v2 format) factor weights, per-route CDI values and settings. Importable in future sessions (v1 and v2). |
+| Scenario Comparison CSV | Scenarios | `.csv` (`ridership-scenarios-<date>`) | One row per scenario with all operating and ridership metrics. Openable in Excel. |
+| Scenario Comparison JSON | Scenarios | `.json` (`ridership-scenarios-<date>`) | Full scenario parameters and results. Useful for archiving or feeding into other tools. |
+| Projection Timeline CSV | Projections | `.csv` (`projection-timeline_<date>`) | Current and horizon-year (2030, 2040, 2050) ridership and CDI values. |
 
 ---
 
@@ -504,7 +524,7 @@ The forecasts should be used alongside professional judgment, local knowledge, a
 | **Cost per Boarding** | Annual operating cost divided by annual ridership. Measures cost-effectiveness. |
 | **Elasticity** | How sensitive ridership is to changes in a variable (like frequency). An elasticity of 0.6 means a 10% increase in frequency yields about a 6% increase in ridership. |
 | **Headway** | Time between consecutive buses at a stop, in minutes. Lower headway = more frequent service. |
-| **LODES** | LEHD Origin-Destination Employment Statistics. Block-level employment data from the Census Bureau. Used to compute the Employment Density factor in TPI scoring. If LODES is not loaded, a warning icon (⚠) appears next to the ACS Year selector in the analysis popups, and the Employment factor is excluded (its weight redistributed to other factors). |
+| **LODES** | LEHD Origin-Destination Employment Statistics. Block-level employment data from the Census Bureau. Used to compute the Employment Density factor in TPI scoring. If LODES is not loaded, a warning icon (⚠) appears next to the ACS Year selector in the Ridership Forecasting Calibrate and Demand tabs, and the Employment factor is excluded (its weight redistributed to other factors). |
 | **NTD** | National Transit Database. Federal reporting system with system-level ridership and financial data for every US transit agency. |
 | **OLS Regression** | Ordinary Least Squares. A statistical method that fits a best-fit line through data points. |
 | **Quintile** | One-fifth of a ranked dataset. The top quintile (5) is the highest 20%; the bottom quintile (1) is the lowest 20%. |

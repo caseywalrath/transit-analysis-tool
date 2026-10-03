@@ -1,5 +1,5 @@
 // Golden cases for the pure feature-ID assigner (js/core/utils.js,
-// App._assignFeatureIds — docs/feature-merge-plan.md Phase 1). It mutates the
+// App._assignFeatureIds — docs/archive/feature-merge-plan.md Phase 1). It mutates the
 // feature objects it is given, so each case's golden value records both the
 // change list and the resulting IDs (`ids`) — pass features as plain
 // `{properties:{...}}` stubs. nextFeatureId/ensureFeatureIds touch live App

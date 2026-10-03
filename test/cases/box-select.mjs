@@ -1,5 +1,5 @@
 // Golden cases for the pure box-select hit-test helpers (js/core/box-select.js —
-// docs/box-select-plan.md Phase 1): App.boxSelectGeom. Screen-pixel coords,
+// docs/archive/box-select-plan.md Phase 1): App.boxSelectGeom. Screen-pixel coords,
 // plain arrays only — no DOM, map or turf.
 
 const R = { minX: 10, minY: 10, maxX: 20, maxY: 20 };

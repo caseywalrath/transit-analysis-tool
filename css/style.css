@@ -60,7 +60,7 @@
   /* ---- Motion ---- */
   --ease-fast: 0.12s ease;
 
-  /* ---- Form control sizing (phase 4) ----
+  /* ---- Form control sizing ----
      Two tiers. The comfortable tier is the default for popup/sidebar controls;
      the compact tier is for dense, many-rows-at-once surfaces (the floating
      attribute popup, the Attribute Summary grid, inline value boxes) where the
@@ -551,8 +551,7 @@ button { cursor: pointer; }
   font-style: italic;
 }
 /* Compact tier + the shared chevron: this select sits outside .module-popup-body
-   so it wasn't picked up by the phase 4 control rules, leaving it the only
-   native-arrow select left in the app chrome. */
+   so the shared control rules don't reach it. */
 .lp-basemap-select {
   flex: 1;
   font-size: var(--text-sm);
@@ -660,17 +659,15 @@ button { cursor: pointer; }
   cursor: pointer;
 }
 .lp-style-reset:hover { color: var(--danger); border-color: var(--danger-hover); }
-/* Layer palette select (docs/layer-color-customization-plan.md Phase 6) reuses
+/* Layer palette select reuses
    .lp-basemap-select, which is flex:1 for its usual full-width row context;
    inside the narrower .lp-style-control it needs a cap so a long palette
    label can't push the panel into horizontal scroll. */
 .lp-style-control .lp-basemap-select { max-width: 104px; flex: 0 1 auto; }
 /* --- Shared census-cache status line (analysis modules) --- */
-/* A status NOTE, not a control. It previously carried a filled background, a
-   full border and a radius, which — sitting directly under Corridor Scoring's
-   "Adjust Weights" outline button at the same width — read as a second button.
-   A left accent rule on a transparent ground says "information" instead. The
-   .cc-refetch-btn inside it stays a button; that one really is clickable. */
+/* A status NOTE, not a control: a left accent rule on a transparent ground,
+   because a filled/bordered box under an outline button reads as a second
+   button. The .cc-refetch-btn inside it really is clickable. */
 .cc-status {
   display: flex;
   align-items: center;
@@ -1644,8 +1641,7 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   display: flex;
   align-items: center;
   position: relative;
-  /* 3px, not 1px: phase 3 raised the row text to 14px and the old spacing left
-     the names visually crowded. */
+  /* 3px, not 1px: 14px row text looks crowded with tighter spacing. */
   padding: 3px 0;
   border-radius: 4px;
   transition: background 0.1s;
@@ -1903,7 +1899,7 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
 
 /* Section header row (e.g. "Transit service" / "Walk network" on Lines) —
    visually separates field groups within one feature type's attribute set.
-   See docs/network-connectors-plan.md §2. */
+   See docs/archive/network-connectors-plan.md §2. */
 .fp-attr-section {
   font-size: var(--text-2xs, 10px);
   font-weight: var(--weight-semibold, 600);
@@ -2232,7 +2228,7 @@ input.fp-attr-input[type="number"] {
 }
 
 /* Small differentiator chip on a Line row marked as a walk network connector
-   (attributes.networkRole === "connector") — see docs/network-connectors-plan.md §2. */
+   (attributes.networkRole === "connector") — see docs/archive/network-connectors-plan.md §2. */
 .fp-net-chip {
   flex: 0 0 auto;
   font-size: var(--text-2xs, 10px);
@@ -2526,11 +2522,8 @@ code { font-family: var(--font-mono); }
 }
 
 /* ---- BAS popup layout ---- */
-/* Feature Area Analysis. The popup moved onto the shared
-   .rf-section-row / .rf-settings-col / .rf-results-col schema, so the bespoke
-   .bas-popup-layout / .bas-variables / .bas-settings* wrappers it used to need
-   are gone; what remains is the variable checklist and this module's own
-   primary button.
+/* Feature Area Analysis uses the shared .rf-section-row / .rf-settings-col /
+   .rf-results-col layout; only the variable checklist and primary button live here.
 
    Tertiary/link actions — padded for a ≥24px hit area, matching
    .rf-feature-select-actions a. */
@@ -2911,7 +2904,7 @@ body.present-mode .module-popup {
   padding: 8px 10px;
 }
 
-/* ---- TPI popup body wrapper (new 2-column layout) ---- */
+/* ---- TPI popup body wrapper ---- */
 .tpi-body {
   padding: 16px;
   overflow-y: auto;
@@ -3138,7 +3131,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 }
 .fta-layer-toggle input { width: auto; margin: 0; }
 
-/* ---- TPI popup multi-column layout (legacy, kept for reference) ---- */
+/* ---- TPI popup multi-column layout ---- */
 .tpi-popup-layout {
   display: flex;
   gap: 16px;
@@ -3166,9 +3159,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   flex-direction: column;
   gap: 8px;
 }
-/* Sizing/look come from the shared button rules further down (phase 4); only
-   the column-fill width lives here. The raw hexes this block used to carry
-   (#fff / #eef1f5 / #2b6cb0 / #2c5282) are now tokens. */
+/* Sizing/look come from the shared button rules further down; only the
+   column-fill width lives here. */
 .tpi-popup-actions button { width: 100%; }
 .tpi-popup-actions button:disabled {
   opacity: 0.5;
@@ -3488,9 +3480,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   display: flex;
   gap: 20px;
 }
-/* 280, not 240: phase 4's 34px controls and their labels need the extra room.
-   Each module's popupWidth grew by the same 40px so the results column keeps
-   the width it had. */
+/* 280px: the 34px controls and their labels need the room. */
 .rf-settings-col {
   width: 280px;
   flex-shrink: 0;
@@ -3501,9 +3491,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   flex: 1;
 }
 
-/* Stable seams for later Advanced/Settings consolidation. These wrappers are
-   intentionally presentation-neutral: moving a complete group will not alter
-   element IDs, listeners, or the input-action footer. */
+/* Presentation-neutral wrappers: moving a whole group does not alter element
+   IDs, listeners, or the input-action footer. */
 .data-input-group + .data-input-group { margin-top: var(--space-4); }
 .module-input-actions {
   display: flex;
@@ -3586,7 +3575,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   color: var(--muted);
   margin-bottom: 8px;
 }
-/* ---- Field labels & rhythm (phase 4) ----
+/* ---- Field labels & rhythm ----
    .tiny is used two ways in the popup HTML: as a field label above a control,
    and as generic small print (<p class="tiny">, legend rows). Only the label
    form is restyled, and only when it isn't wrapping its own input — a label
@@ -3599,10 +3588,7 @@ label.tiny:not(:has(input)) {
   margin-bottom: var(--space-1);
 }
 
-/* Layout primitive for a label + control pair. Defined here so phase 4 and
-   phase 5 share one spec; phase 5 is what rolls the popup HTML onto it
-   (replacing the per-element inline margin-top:10px scattered through
-   projects/*.html). Nothing uses it yet. */
+/* Layout primitive for a label + control pair. */
 .form-field { margin-top: var(--space-3); }
 .form-field:first-child { margin-top: 0; }
 .form-field > label {
@@ -3629,11 +3615,11 @@ label.tiny:not(:has(input)) {
   gap: var(--space-2);
 }
 
-/* ---- Form controls (phase 4) ------------------------------------------
+/* ---- Form controls ------------------------------------------
    ONE spec for every text/number/select control in every analysis popup,
    applied by selector list so all 15 modules inherit at once. Everything is
    tokenized, so this block covers BOTH themes — there is deliberately no
-   matching body.dark-mode block (the old broad one was deleted).
+   matching body.dark-mode block.
 
    Two tiers:
      comfortable (--ctl-height, 34px)   — the default, used here
@@ -4439,11 +4425,9 @@ select.fp-attr-input,
   .rf-settings-col { width: 100%; border: none; padding: 0; }
 }
 
-/* Panel-width responsiveness (phase 4). Same stacking as the viewport rule
-   above, but keyed to the POPUP's own width via the container context on
-   .module-popup-dialog — so a module becomes a tall task panel (phase 6's
-   dock-right floating panels) by changing only its popupWidth, with no HTML
-   restructuring. Walkshed is the pilot at 460px.
+/* Panel-width responsiveness. Same stacking as the viewport rule above, but
+   keyed to the POPUP's own width via the container context on
+   .module-popup-dialog, so a docked panel stacks by changing only its popupWidth.
 
    Placement matters: @container adds no specificity, so this has to come
    after .rf-settings-col / .rf-feature-checklist are defined above. */
@@ -4593,9 +4577,6 @@ select.fp-attr-input,
   border-radius: 6px;
   padding: 10px 12px;
 }
-
-/* .tvi-stale-banner removed — Title VI now uses the shared .rf-status stale
-   banner via App.renderModuleState(). */
 
 .tvi-route-table {
   width: 100%;
@@ -5184,11 +5165,8 @@ body.view-only-mode #draw-actions button {
    DARK MODE  —  body.dark-mode overrides
    ================================================================ */
 body.dark-mode {
-  /* Legacy tokens: values intentionally UNCHANGED here — phase 1 is additive
-     only (see docs/ui-refresh/phase-1-design-tokens.md, "the only visible
-     change allowed is accent-color"). Consolidating these onto the new
-     semantic tokens below (some of which use different, refined hexes) is
-     phase 2's job, done under full screenshot review. */
+  /* Legacy tokens, still used by older rules; the semantic tokens below are
+     the preferred set. */
   --border: #374151;
   --muted:  #9ca3af;
   --bg:     #1e1e2e;
@@ -5207,7 +5185,7 @@ body.dark-mode {
 
   /* ---- Color tokens: text ---- */
   --text-primary:   #e2e8f0;
-  --text-secondary: #a8b2c1;   /* refined vs. legacy --muted (#9ca3af); phase 2 migrates */
+  --text-secondary: #a8b2c1;   /* refined vs. legacy --muted (#9ca3af) */
   --text-faint:     #9ca3af;   /* = legacy --muted's current value */
   --text-disabled:  #718096;
   /* Text ON a filled --accent / --danger button. Dark mode's accent (#63b3ed)
@@ -5218,7 +5196,7 @@ body.dark-mode {
   --text-invert:    #1a202c;
 
   /* ---- Color tokens: borders ---- */
-  /* --border stays (#374151) for now; --border-strong is new/unused until phase 2. */
+  /* --border stays (#374151). */
   --border-strong:  #4a5568;
 
   /* ---- Color tokens: accent ---- */
@@ -5232,7 +5210,7 @@ body.dark-mode {
   --danger-hover:   #f56565;
   --danger-soft:    rgba(252, 129, 129, 0.12);
   --ok-bg: #0c2b22;  --ok-bd: #1f5c46;  --ok-text: #6ee7b7;
-  --warn-bg: #2f2413; --warn-bd: #92610f; --warn-text: #fbbf24;   /* refined vs. legacy --warnbg/--warnbd; phase 2 migrates */
+  --warn-bg: #2f2413; --warn-bd: #92610f; --warn-text: #fbbf24;   /* refined vs. legacy --warnbg/--warnbd */
   --err-bg: #331b1b;  --err-bd: #7f2f2f; --err-text: #fca5a5;
   --info-bg: #16243a; --info-bd: #2c4a75; --info-text: #93c5fd;
 
@@ -5312,10 +5290,6 @@ body.dark-mode .fp-group-name-edit {
 }
 
 /* ---- Attribute popup ---- */
-/* body.dark-mode .fp-attr-input deleted in phase 4 — its color/border are now
-   token-driven by the compact control tier, which covers both themes. */
-/* body.dark-mode .fp-attr-confirm-no rules deleted in phase 4 — the base rule
-   is token-driven (--surface-alt / --surface-hover) and covers both themes. */
 body.dark-mode .fp-attr-confirm > span { color: #fca5a5; }
 body.dark-mode .fp-svc-section-title { color: #a0aec0; }
 body.dark-mode .fp-svc-header { color: #718096; border-bottom-color: #4a5568; }
@@ -5339,8 +5313,7 @@ body.dark-mode .fp-svc-mirror-empty { color: #718096; }
    CSS forces background-color:transparent with higher specificity
    (.maplibregl-ctrl-group button) than a plain .basemap-btn class selector
    can beat. Only a compound selector like this one has enough specificity
-   to win, in either theme - see the phase-2 slice 4 commit for how this
-   was found (a regression caught in dark_shell's diff). */
+   to win, in either theme. */
 body.dark-mode .basemap-btn { background: var(--surface-raised); }
 body.dark-mode .basemap-btn:hover { background: #374151; }
 
@@ -5351,13 +5324,8 @@ body.dark-mode .module-popup-dialog { background: #1e1e2e; }
 body.dark-mode .floating-widget { background: rgba(30,30,46,0.95); }
 
 /* ---- Analysis module buttons ---- */
-/* body.dark-mode .analysis-module-btn deleted in phase 4 — color is now
-   var(--text-primary) in the base rule, which covers both themes. */
-
-/* Generic inputs / selects inside popups: the old dark block here was deleted
-   in phase 4. Every declaration it carried (bg #2a2a3d, color #e2e8f0, border
-   #4a5568, focus #63b3ed + ring) is now produced by the tokenized "Form
-   controls" block, which serves both themes from one place. */
+/* Popup inputs/selects and .analysis-module-btn need no dark rules: the
+   tokenized "Form controls" block and base rules cover both themes. */
 
 /* ---- Pills and breakpoint items ---- */
 body.dark-mode .bpItem { background: #2a2a3d; }
@@ -5369,14 +5337,9 @@ body.dark-mode .pill.ml   { background: #3d2200; border-color: #9a4e00; color: #
 body.dark-mode .pill.low  { background: #3a1a1a; border-color: #7f1d1d; color: #fca5a5; }
 
 /* ---- Shared tab style (FTA / RF / TVI) ---- */
-/* Previously had dark overrides for the hover/active states here, but every
-   declaration now matches what the dark token block already supplies for
-   the tokenized .fta-tab/.rf-tab/.tvi-tab light rules - see phase-2 slices
-   5 and 6. */
+/* No overrides needed: the tokenized .fta-tab/.rf-tab/.tvi-tab rules cover dark mode. */
 
 /* ---- TPI ---- */
-/* body.dark-mode .tpi-popup-actions button rules deleted in phase 4 — the
-   shared secondary-button rule is token-driven and covers both themes. */
 body.dark-mode .tpi-status-done { background: #1a3a2a; border-color: #2d6a4f; }
 body.dark-mode .tpi-status-error { background: #3a1a1a; border-color: #7f1d1d; }
 body.dark-mode .tpi-composite-value { color: #f1f5f9; }
@@ -5426,8 +5389,6 @@ body.dark-mode .rf-proj-cdi-row td { background: rgba(99,179,237,0.10); }
 body.dark-mode .rf-route-score-row:hover { background: rgba(255,255,255,0.07); }
 body.dark-mode .rf-route-factor-bar-wrap { background: #374151; }
 body.dark-mode .rf-weights-modal-title { color: #f1f5f9; }
-/* body.dark-mode .rf-btn-sm deleted in phase 4 — color is now
-   var(--text-primary) in the base rule, which covers both themes. */
 
 /* ---- Title VI ---- */
 body.dark-mode .tvi-baseline-box { background: #1e3a5f; border-color: #2b6cb0; }
@@ -6154,7 +6115,7 @@ body.dark-mode .tb-trip-table td { border-color: #2d2d3d; color: #ddd; }
   margin: 6px 0 2px;
 }
 
-/* Dark mode for the new bits */
+/* Dark mode */
 body.dark-mode .tb-summary thead th { color: #a0aec0; border-color: #2d2d3d; }
 body.dark-mode .tb-summary tbody td { color: #ddd; border-color: #2d2d3d; }
 body.dark-mode .tb-summary .tb-summary-day-label { color: #ccc; }

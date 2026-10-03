@@ -1,5 +1,7 @@
 # Phase 6 — De-modalize the analysis popups
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/analysis-modules.md. This file is historical.
+
 **Goal (approved decision):** the map stays visible and fully interactive while a module
 popup is open. Popups become floating panels: draggable (already true), collapsible
 (new), no dimmed backdrop, no blocking.

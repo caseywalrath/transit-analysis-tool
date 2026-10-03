@@ -1,5 +1,7 @@
 # Phase 5 — Inline-style purge in popup HTML
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
+
 **Goal:** replace the ~370 static `style="…"` attributes across `projects/*-popup.html`
 with shared primitives, so spacing is governed by the token scale and future changes are
 global. Near-zero visual change.

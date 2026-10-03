@@ -1,8 +1,8 @@
 // js/projects/gtfs.js
-// GTFS Feed Viewer: loads a GTFS ZIP, renders shapes + stops as reference
-// map layers with hover/click popups, and provides a popup CSV table viewer
-// for all feed files.
-// Depends on: JSZip (CDN), PapaParse (CDN), maplibregl (CDN), App namespace.
+// GTFS Feed Viewer + route browser engine: loads a GTFS ZIP, renders shapes and
+// stops as reference layers, CSV table viewer, copy-to-feature helpers.
+// Pure browse helpers (top of file) are golden-tested and must not touch DOM/map.
+// Detail: docs/reference/modules/gtfs.md
 
 (function () {
   "use strict";
@@ -19,7 +19,7 @@
   var _clickPopup   = null;  // maplibregl.Popup for click details
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
 
-  // ---- Route browser state (Phase 1 of docs/gtfs-route-browser-plan.md) ----
+  // ---- Route browser state (design: docs/archive/gtfs-route-browser-plan.md) ----
   var _routeIndex    = null;      // result of buildRouteIndex, or null when no shapes
   var _hiddenRoutes  = {};        // routeKey -> true
   var _hiddenShapes  = {};        // shape_id -> true
@@ -190,7 +190,7 @@
   // shape_id -> "Outbound" | "Inbound" | "" for one route's trips: GTFS
   // direction_id 0 -> Outbound, 1 -> Inbound, only when EVERY trip of that
   // route on that shape carries the same valid value; otherwise "" (blank —
-  // the user sets it). Plan Phase 3 "Copy all as grouped Service".
+  // the user sets it). Used by the "service" copy mode.
   function shapeDirections(tripsRows, routeId) {
     var seen = {};   // sid -> "0" | "1" | "?" (mixed / missing)
     (tripsRows || []).forEach(function (t) {
@@ -447,7 +447,7 @@
   }
 
   // Colors resolve through the layer color cascade
-  // (docs/layer-color-customization-plan.md). Only the fallback color
+  // (docs/archive/layer-color-customization-plan.md). Only the fallback color
   // changes — a feed that ships its own route_color keeps using it
   // regardless of the palette, and circle-color stays the fixed white fill
   // of a hollow marker (not a data encoding).
@@ -1148,8 +1148,7 @@
     }
   }
 
-  // Thin alias on App.escapeHTML so the 11 existing callsites in this module
-  // keep working while escaping is centralized in utils.js.
+  // Thin alias; escaping is centralized in App.escapeHTML (utils.js).
   function escHtml(s) { return App.escapeHTML(s); }
 
   // ---- Module lifecycle ----

@@ -1,8 +1,6 @@
-// js/projects/buffer-summary.js
-// Feature Area Analysis module (formerly Buffer-Area Summary).
-// Census variable checkboxes live inside this module's popup.
-// Registers as a popup-based module via App.registerModule().
-// Depends on: App namespace (utils, census, lodes), App.popup, App.cache.
+// js/projects/buffer-summary.js — Feature Area Analysis module (ACS/LODES summaries over drawn features).
+// Variable checkboxes are built from VAR_META (utils.js) inside this module's popup.
+// Depends on: App (utils, census, lodes), App.popup, App.cache.  Detail: docs/reference/modules/feature-area-analysis.md
 
 (function () {
   "use strict";
@@ -15,38 +13,38 @@
     year: "2024",
     apportionByArea: true,
     checkedVars: [], // persisted checkbox values (restored before DOM exists)
-    featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs (Phase 4b)
+    featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
     useDisplayBuffers: false,
-    includeHidden: false // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+    includeHidden: false // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
   };
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
   var _stale = false; // true when features/walksheds changed since the last run
   // Snapshot taken at run time so update() can tell a relevant change from an
-  // unrelated hide/show (notifyProject now fires on every visibility change).
+  // unrelated hide/show (notifyProject fires on every visibility change).
   var _runSnap = null; // { geom: string, hidden: string, includeHidden: bool }
 
   // Currently selected #basMapVar value ("" = none / gray outline). Persisted
-  // via the cache collect/apply handlers below (Step 1.5) — geometry is not
+  // via the cache collect/apply handlers below — geometry is not
   // persisted, so the selection is only re-applied once a fresh run repopulates
   // the dropdown (see populateBasMapVarDropdown()).
   var _mapVar = "";
 
   // Currently selected #basMapNorm value: "count" (raw value, default) |
   // "percent" (of the variable's resolved denominator) | "density" (per sq
-  // mi, whole-geography area). Persisted alongside _mapVar (Step 2.2).
+  // mi, whole-geography area). Persisted alongside _mapVar.
   var _mapNorm = "count";
 
   // Currently selected #basMapRamp (App.choropleth.RAMPS key, default
   // "blues") and #basMapClasses ("quantile" default | "equal" | "continuous")
-  // values. Persisted alongside _mapVar/_mapNorm (Step 3.1).
+  // values. Persisted alongside _mapVar/_mapNorm.
   var _mapRamp = "blues";
   var _mapClasses = "quantile";
 
   // Per-geography detail retained from the last successful run (null until
   // then). Populated during runSummary()'s existing fetch/aggregate loop —
-  // no additional fetches. Consumed by the choropleth map (Step 1.4) and its
+  // no additional fetches. Consumed by the choropleth map and its
   // hover popup. Shape:
   //   {
   //     geoLevel, year, apportionByArea,
@@ -62,8 +60,7 @@
   //     perGeoParts,     // ratio varCode -> { num: Map, den: Map } (numerator/denominator
   //                      // maps, for a hover popup showing the parts of a ratio)
   //     denomVars,       // varCode -> App.getDenominator(varCode) result, for hover %
-  //     areas            // "<level>:<GEOID>" -> whole-geography area in sq mi (Step 2.2,
-  //                      // lazy-built on first "Density" shade-by request; absent until then)
+  //     areas            // "<level>:<GEOID>" -> whole-geography area in sq mi (lazy-built on first "Density" request)
   //   }
   var _lastGeoData = null;
 
@@ -351,7 +348,6 @@
       return;
     }
 
-    // displayVars = only what the user checked (these get table rows)
     var displayVars = selectedVars.slice();
 
     // Always fetch mandatory denominator variables for percent calculations,
@@ -361,7 +357,6 @@
     for (var mdi = 0; mdi < MANDATORY_VARS.length; mdi++) {
       if (!_seen[MANDATORY_VARS[mdi]]) { _seen[MANDATORY_VARS[mdi]] = true; selectedVars.push(MANDATORY_VARS[mdi]); }
     }
-    // selectedVars now = displayVars + any mandatory denoms not already selected
 
     var year = document.getElementById("basYearSelect").value;
     var geoLevel = document.getElementById("basGeoLevel").value;
@@ -405,7 +400,6 @@
     };
     var unionFeat = bufferSet.union;
 
-    // Save state
     _state.year = year;
     _state.geoLevel = geoLevel;
     _state.apportionByArea = apportionByArea;
@@ -423,7 +417,6 @@
       }
     }
 
-    // Initialize results table
     var tbody = document.getElementById("basResultsTbody");
     tbody.innerHTML = "";
     var tableEl = document.getElementById("basResultsTable");
@@ -472,7 +465,7 @@
       return;
     }
 
-    // Retain per-geography detail for this run (choropleth map, Step 1.4).
+    // Retain per-geography detail for this run (choropleth map).
     // Populated below as the existing fetch/aggregate loop runs — no
     // additional fetches happen anywhere in this function because of it.
     _lastGeoData = {
@@ -539,14 +532,13 @@
       geos = await App.fetchTigerwebGeos(geoLevel, unionFeat);
       _lastGeoData.geos = geos;
 
-      // Overlap fractions computed once per run (not per variable, as the
-      // inline version below this step did) \u2014 also needed by the
-      // choropleth hover popup's apportioned-share display (Step 1.4).
+      // Overlap fractions computed once per run (not per variable); also used by the
+      // choropleth hover popup's apportioned-share display.
       fractions = App.computeGeoOverlapFractions(unionFeat, geos, apportionByArea);
       _lastGeoData.fractions = fractions;
 
       // When apportioning by area, clip each geo to the union so the map
-      // display matches the math (same pattern as TPI's computeAreaFractions).
+      // display matches the math (same pattern as computeAreaFractions in tpi-scoring.js).
       if (apportionByArea) {
         var clippedForDisplay = [];
         geos.forEach(function (f) {
@@ -616,7 +608,7 @@
               result = { value: ratioVal, used: numAgg.used };
 
               // Per-geo derived ratio (num/den where den > 0), plus the raw
-              // parts, for the choropleth hover popup (Step 1.4).
+              // parts, for the choropleth hover popup.
               var ratioMap = new Map();
               numMap.forEach(function (nv, geoid) {
                 var dv = denMap.get(geoid);
@@ -670,7 +662,7 @@
           lRows[lri].children[2].textContent = lodesSum.toLocaleString(undefined, { maximumFractionDigits: 0 });
         }
 
-        // Per-geography rollup for the choropleth map + CSV export (Step 2.3).
+        // Per-geography rollup for the choropleth map + CSV export.
         // Reuses TPI's block-GEOID-prefix aggregator rather than new math; the
         // union-level number above (whole-block internal-points test) and this
         // per-geo rollup (block-prefix rollup) can differ slightly at buffer
@@ -766,7 +758,7 @@
     setStatus("Done", "done");
   }
 
-  // ---- Choropleth (Step 1.4) ----
+  // ---- Choropleth ----
 
   // Per-geography percent, mirroring the aggregate percent-column pass
   // (above) but evaluated at a single GEOID using the retained perGeo maps.
@@ -802,10 +794,9 @@
     return (numVal / denVal) * 100;
   }
 
-  // Hover popup for the "bas" choropleth. `props.payload` is a JSON string
-  // built in renderBasChoropleth() (TPI's stringify-a-nested-object pattern,
-  // transit-propensity.js:693) so the source-of-truth formatting lives in one
-  // place rather than being re-derived on every mousemove.
+  // Hover popup for the "bas" choropleth. `props.payload` is a JSON string built in
+  // renderBasChoropleth() (stringify-a-nested-object pattern, as in transit-propensity.js) so
+  // the formatting lives in one place rather than being re-derived on every mousemove.
   function basHoverHTML(props) {
     if (!props || !props.payload) return null;
     var payload;
@@ -838,7 +829,7 @@
     return html;
   }
 
-  // ---- Shade-by normalization (Step 2.2) ----
+  // ---- Shade-by normalization ----
 
   var SQ_MILE_IN_SQ_M = 2589988.110336;
 
@@ -929,7 +920,7 @@
   // "geographies analyzed" overlay. Otherwise builds one feature per
   // geography (whole-geography values from _lastGeoData.perGeo — clipped
   // geometry, uncut values, the settled design decision), shaded by the
-  // current #basMapNorm choice (Step 2.2), and renders through the shared
+  // current #basMapNorm choice, and renders through the shared
   // App.choropleth engine.
   function renderBasChoropleth(varCode) {
     _mapVar = varCode || "";
@@ -1082,8 +1073,8 @@
   }
 
   // Populates #basMapVar from _lastGeoData.displayVars after a successful
-  // run. LODES codes are included when their per-geo rollup succeeded (Step
-  // 2.3 — App.lodesData loaded + window.TPI present); otherwise they're
+  // run. LODES codes are included when their per-geo rollup succeeded (App.lodesData
+  // loaded + window.TPI present); otherwise
   // simply absent from perGeo and skipped like any other missing entry. The
   // previous selection is kept when the variable is still present in this
   // run's results; otherwise falls back to "None".
@@ -1112,7 +1103,7 @@
     renderBasChoropleth(keep);
   }
 
-  // ---- Per-geography CSV export (Step 2.1) ----
+  // ---- Per-geography CSV export ----
 
   function _dateStamp() {
     var d = new Date();
@@ -1220,7 +1211,7 @@
     var ihEl = document.getElementById("basIncludeHidden");
     if (ihEl) ihEl.checked = !!_state.includeHidden;
 
-    // Restore checkbox selections (LODES checkbox is now inside #varSelect).
+    // Restore checkbox selections (LODES checkbox lives inside #varSelect).
     if (_state.checkedVars && _state.checkedVars.length > 0) {
       var checkedSet = {};
       for (var i = 0; i < _state.checkedVars.length; i++) checkedSet[_state.checkedVars[i]] = true;
@@ -1338,26 +1329,20 @@
     name: "Feature Area Analysis",
     enabled: true,
     popupWidth: 1000,
-    // ONE width for both modes, at 600 — under the 620px @container breakpoint,
-    // so the panel is a narrow, vertically stacked task panel in every state
-    // (inputs collapse to a one-line bar on a run; results sit below them) and
-    // it never resizes when you run it. 600 rather than the settings column's
-    // natural ~520 because the 5-column results table needs ~556px of content
-    // width; at 520 it overflowed and forced the popup body to scroll sideways.
-    // 600 is simply the most room available without un-stacking.
+    // One width for both modes, under the 620px @container breakpoint, so the panel stays a
+    // narrow stacked task panel and never resizes on run. 600 (not the ~520 settings column)
+    // because the 5-column results table needs ~556px; at 520 the popup body scrolled sideways.
     panelWidths: { setup: 600, results: 600 },
     popupHTML: "projects/buffer-summary-popup.html",
 
     init: function (core) {
       _initialized = true;
 
-      // Populate the empty #varSelect fieldset from VAR_META.
-      // Must run before any querySelectorAll on the checkbox list below.
+      // Populate #varSelect from VAR_META; must run before any querySelectorAll on the checkbox list.
       var varSelectEl = document.getElementById("varSelect");
       if (varSelectEl) varSelectEl.innerHTML = buildVarChecklistHTML();
       buildFeatureChecklist();
 
-      // Wire Calculate Summary button
       document.getElementById("basRun").addEventListener("click", async function () {
         try {
           await runSummary();
@@ -1368,8 +1353,7 @@
         }
       });
 
-      // Wire Select All / Clear All buttons. LODES is a normal #varSelect
-      // checkbox now, so no special-case handling is needed.
+      // Wire Select All / Clear All buttons (LODES is a normal #varSelect checkbox).
       document.getElementById("varSelectAll").addEventListener("click", function () {
         var boxes = document.querySelectorAll('#varSelect input[type="checkbox"]');
         for (var i = 0; i < boxes.length; i++) boxes[i].checked = true;
@@ -1467,7 +1451,6 @@
         }
       });
 
-      // Auto-save on checkbox change
       document.querySelectorAll('#varSelect input[type="checkbox"]').forEach(function (cb) {
         cb.addEventListener("change", function () {
           _state.checkedVars = collectCheckedVars();
@@ -1476,7 +1459,6 @@
         });
       });
 
-      // Apply cached state to DOM
       applyStateToDOM();
       renderInputs(_hasResults ? undefined : false);
       var settingsEl = document.querySelector(".bas-body .rf-settings-col");
@@ -1484,7 +1466,6 @@
     },
 
     onOpen: function (core) {
-      // Re-apply state each time popup opens (in case restored from cache)
       buildFeatureChecklist();
       applyStateToDOM();
       renderInputs(false);

@@ -1,26 +1,25 @@
 // js/core/features.js
-// Right-side feature panel: lists all points, lines, routes, polygons
-// with editable names, per-item color swatches, and per-item delete buttons.
-// Depends on: App.points (points.js), App.lines (lines.js),
-//             App.polygons (polygons.js).
-// Exports: refreshFeaturePanel, openColorPicker, updateFeatureColor
+// Right-side Features panel: drawn features and labels, sorting, grouping,
+// color picker, context menus.
+// Public API (App.refreshFeaturePanel, openColorPicker, updateFeatureColor,
+// setFeatureLineStyle, setTypeColor, showContextMenu, ...) is assigned in
+// the export block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
 
-  // Tracks which route groups the user has manually collapsed.
-  // Persists across refreshFeaturePanel() calls (survives DOM rebuilds).
+  // Route groups the user collapsed; survives refreshFeaturePanel() rebuilds.
   var _expandedGroups = {};
 
-  // Tracks which feature-type sections the user has collapsed this session.
-  // Default is expanded; only collapsed sections are stored.
+  // Feature-type sections collapsed this session (default expanded; only collapsed stored).
   var _collapsedSections = {};
 
   // Universal group key for cross-type grouping (labels keep their own key)
   var UNIVERSAL_GROUP_KEY = "group";
   var LABEL_GROUP_KEY = "labelGroup";
 
-  // ---- Features list sort state (Tier 1: Name / Type / Date added / Group) ----
+  // ---- Features list sort state (Name / Type / Date added / Group) ----
   // Display-only — never reorders App.points/lines/routes/polygons. Applies to
   // the main unified Features list only; the Labels and Text section (built by
   // populateLabelGroupedList) is out of scope and always sorts by name.
@@ -393,8 +392,8 @@
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
   };
 
-  // Per-feature line style for a line/route (docs/feature-appearance-plan.md
-  // Phase 3). style: "dashed" | "dotted"; "solid"/""/null clears the override.
+  // Per-feature line style for a line/route.
+  // style: "dashed" | "dotted"; "solid"/""/null clears the override.
   // One undo step, re-render, save, panel refresh. Returns false if invalid.
   App.setFeatureLineStyle = function (featureType, featureIndex, style) {
     if (featureType !== "line" && featureType !== "route") return false;
@@ -496,11 +495,9 @@
 
   var _ctxMenu = null;
 
-  // Optional per-item hook: `onHover(isEntering)` is called with true on
-  // mouseenter/focus and false on mouseleave/blur. It is also called with
-  // false if the menu closes (item click, outside click, or being replaced by
-  // another menu) while an item is still hovered, so callers can always undo a
-  // hover preview. Items without it behave exactly as before.
+  // Optional per-item hook: `onHover(isEntering)` fires true on mouseenter/focus,
+  // false on mouseleave/blur, and false if the menu closes while an item is
+  // still hovered, so callers can always undo a hover preview.
   function closeContextMenu(menu) {
     if (!menu) return;
     if (typeof menu._endHover === "function") menu._endHover();
@@ -528,10 +525,8 @@
         return;
       }
       var btn = document.createElement("button");
-      // "checked" is a tri-state concept: only options that explicitly pass
-      // a boolean get the checkmark gutter, so plain {label, action} callers
-      // (the per-feature context menu, the Layers panel's ⋯ menu) render
-      // exactly as before.
+      // "checked" is tri-state: only options that pass a boolean get the
+      // checkmark gutter, so plain {label, action} items render without one.
       if (typeof opt.checked === "boolean") {
         btn.classList.add("fp-ctx-checkable");
         if (opt.checked) btn.classList.add("fp-ctx-checked");
@@ -815,7 +810,7 @@
 
     // Small differentiator chip: a Line marked as a walk network connector
     // (attributes.networkRole === "connector") is otherwise indistinguishable
-    // from a transit Line at a glance. See docs/network-connectors-plan.md §2.
+    // from a transit Line at a glance.
     var netChip = null;
     if (featureType === "line" && feature.properties.attributes &&
         feature.properties.attributes.networkRole === "connector") {
@@ -1220,10 +1215,9 @@
   /* ---- Collect all non-label features into unified list ---- */
 
   // Monotonic cross-type creation counter backing the "Date added" sort key.
-  // Stamped lazily here (not at each of the four creation sites) so every
-  // add path \u2014 which already calls refreshFeaturePanel() \u2014 picks it up for
-  // free, and a session restored from before this field existed gets a
-  // sensible legacy fallback (collect order) instead of an error.
+  // Stamped lazily here (not at each creation site) so every add path, which
+  // already calls refreshFeaturePanel(), picks it up; sessions restored without
+  // the field fall back to collect order.
   var _featureSeq = 0;
 
   function collectAllFeatures() {
@@ -1255,9 +1249,7 @@
     return name ? name : "\uffff" + item.type + item.index;
   }
 
-  // Name-only sort, unchanged from before the sort feature existed. Used by
-  // the Labels and Text section (out of scope for user-selectable sorting)
-  // and as the internal tiebreaker below.
+  // Name-only sort. Used by the Labels and Text section and as the tiebreaker below.
   function sortItems(arr) {
     arr.sort(function (a, b) {
       return naturalSort(featureSortKey(a), featureSortKey(b));
@@ -1310,8 +1302,8 @@
     return naturalSort(featureSortKey(a), featureSortKey(b));
   }
 
-  // Sorts `arr` in place by the current user-selected sort mode. Only used
-  // by the main unified Features list \u2014 labels always use sortItems().
+  // Sorts `arr` in place by the current sort mode. Main Features list only;
+  // labels always use sortItems().
   function sortFeatureItems(arr) {
     arr.sort(compareFeatureItems);
   }
@@ -1659,12 +1651,10 @@
   App.closeContextMenu = function () { closeContextMenu(_ctxMenu); };
   App.showContextMenu     = showContextMenu;
   App.rerenderForType     = rerenderForType;
-  // Shared with the Layers panel so it can list/group drawn features
-  // without duplicating the collection + grouping logic.
+  // Shared with the Layers panel (feature listing/grouping).
   App.collectDrawnFeatures = collectAllFeatures;
   App.UNIVERSAL_GROUP_KEY  = UNIVERSAL_GROUP_KEY;
-  // Shared with the Layers panel so its feature rows can show the same
-  // type-shaped, color-tinted glyph Features uses instead of a plain swatch.
+  // Shared with the Layers panel (same type-shaped glyph on its feature rows).
   App.TYPE_ICON_SVGS = TYPE_ICON_SVGS;
 
   // Session-cache read/write hooks for the Features list sort state

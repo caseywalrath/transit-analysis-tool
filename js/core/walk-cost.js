@@ -1,18 +1,10 @@
 // js/core/walk-cost.js
-// Intersection crossing-penalty classification + cost math (window.WalkCost),
-// the same engine-namespace convention as window.ConnectorGraph / window.TPI.
-//
-// CONSTRAINT: this file contains ONLY plain-value math — no turf, no DOM, no
-// Map/Set, no App state. Why: the golden harness (test/run-golden.mjs) loads
-// this file directly into a bare node:vm sandbox with no turf and no browser
-// globals. js/core/road-network.js (which needs turf/App state) is the only
-// consumer and cannot itself be golden-tested; this file exists precisely so
-// the crossing-penalty math still can be.
-//
-// See docs/walkshed-bands-and-crossing-penalties-plan.md Phase 4 for the
-// design. Node-uniform, not turn-aware — a deliberate, documented
-// approximation (see the plan's §0.6); motorway/trunk classes never reach
-// this file because they are already pedBlocked upstream in road-network.js.
+// Intersection crossing-penalty classification + cost math (window.WalkCost).
+// CONSTRAINT: plain-value math only — no turf, DOM, Map/Set or App state — so
+// the golden harness can load it into a bare node:vm sandbox (road-network.js,
+// the only consumer, cannot be golden-tested).
+// Node-uniform, not turn-aware (deliberate approximation); motorway/trunk never
+// reach it (already pedBlocked). Detail: docs/reference/road-network.md
 
 (function () {
   "use strict";
@@ -33,10 +25,8 @@
   }
 
   // hwyList: the highway classes of every edge meeting at one node.
-  // Fewer than 3 edges means the node is a shape point on a curve (2) or a
-  // dead end (1), not an intersection — no penalty applies there. This is
-  // what keeps the penalty off the tens of thousands of geometry vertices
-  // that aren't real intersections.
+  // Fewer than 3 edges = shape point (2) or dead end (1), not an intersection —
+  // this keeps the penalty off the many geometry vertices.
   function nodeTier(hwyList) {
     if (!hwyList || hwyList.length < 3) return null;
     for (var i = 0; i < hwyList.length; i++) {

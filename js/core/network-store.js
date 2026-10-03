@@ -1,19 +1,11 @@
-/* Road-network offline store (IndexedDB).
- *
- * The downloaded street network is the one piece of session state that is both
- * expensive to reacquire — the public Overpass endpoint frequently fails and
- * needs several retries — and far too large for localStorage (tens of MB on a
- * city-scale download). It therefore lives in its own IndexedDB database rather
- * than riding the session cache in js/core/cache.js.
- *
- * Everything here is strictly an optimization: the in-memory network is already
- * built and usable whether or not a write lands, so every failure path is
- * swallowed rather than surfaced. Browsers may also evict IndexedDB under
- * storage pressure at any time, so a cached network must never be assumed to
- * be there — callers always fall back to a fresh download.
- *
- * Helper shape (_idbOpen/_idbTx/_idbRequest, async/await, errors swallowed)
- * deliberately mirrors the Recent Projects store in js/core/cache.js.
+/* Road-network offline store (IndexedDB) — App.networkStore.
+ * The network is expensive to re-fetch from Overpass and far too large for
+ * localStorage, so it gets its own database. Strictly an optimization: every
+ * failure is swallowed, and browsers may evict the store at any time, so
+ * callers always fall back to a fresh download.
+ * Do NOT copy the _idbTx/await helper shape of cache.js's Recent Projects
+ * store — see _withStore().
+ * Detail: docs/reference/road-network.md
  */
 (function () {
   var App = window.App;
@@ -47,13 +39,10 @@
   }
 
   // Run one transaction. `fn` receives the object store and MUST issue its
-  // requests synchronously (or from another request's onsuccess, where the
-  // transaction is still active) — never after an await. An IndexedDB
-  // transaction deactivates as soon as control returns to the event loop, so
-  // awaiting a request and then touching the store again throws
-  // TransactionInactiveError whenever the main thread is busy enough to push
-  // the continuation past a task boundary. That is exactly the situation at
-  // page startup, where this store's whole reason for existing is to be read.
+  // requests synchronously (or from another request's onsuccess) — never after
+  // an await. A transaction deactivates when control returns to the event loop,
+  // so await-then-touch throws TransactionInactiveError whenever the main thread
+  // is busy — i.e. at page startup, exactly when this store is read.
   // `fn` may return a zero-arg getter for the value to resolve with, collected
   // after the transaction commits.
   function _withStore(mode, fn) {
@@ -97,11 +86,9 @@
     return _withStore("readwrite", function (store) { store.put(record); });
   }
 
-  // Store one network, then trim the store back to MAX_ENTRIES.
-  // A failed write (quota exceeded is the realistic case — these records are
-  // large) retries exactly once after dropping every OTHER stored network,
-  // which is the only recovery available to us; a second failure is logged and
-  // otherwise ignored.
+  // Store one network, then trim to MAX_ENTRIES. A failed write (realistically
+  // quota) retries once after dropping every OTHER stored network; a second
+  // failure is logged and ignored.
   async function save(record) {
     if (!supported() || !record || !record.id) return false;
     try {

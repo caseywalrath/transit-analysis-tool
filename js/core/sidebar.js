@@ -1,5 +1,5 @@
 // js/core/sidebar.js
-// Sidebar panel manager: registration, collapse/expand, render.
+// Dormant legacy sidebar manager (hidden, unused): registration, collapse/expand, render.
 // Depends on: utils.js (App namespace must exist).
 // Exports: App.sidebar
 

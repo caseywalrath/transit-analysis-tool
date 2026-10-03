@@ -63,7 +63,7 @@ export default {
     // --- computeLayoverHrs: percent vs minutes ---------------------------
     { id: "layover/percent", call: "App._rcTest.computeLayoverHrs", args: [1.0, { layoverMode: "percent", layoverValue: 10 }] },
     { id: "layover/minutes", call: "App._rcTest.computeLayoverHrs", args: [1.0, { layoverMode: "minutes", layoverValue: 12 }] },
-    // --- 3+ pattern Services (docs/gtfs-route-browser-plan.md Phase 3) ----
+    // --- 3+ pattern Services (docs/archive/gtfs-route-browser-plan.md Phase 3) ----
     // Each pattern is its own one-way trip stream: per-trip layover, fleet =
     // sum over patterns of (one-way + layover) / that pattern's headway.
     {

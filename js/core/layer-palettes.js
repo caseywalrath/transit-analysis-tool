@@ -4,25 +4,20 @@
 // engine-namespace convention as window.WalkCost / window.ConnectorGraph /
 // window.Travelshed).
 //
-// CONSTRAINT: this file's top section contains ONLY plain-value math — no
-// turf, no DOM, no App.map at load time — so the golden harness
-// (test/run-golden.mjs) loads it directly into a bare node:vm sandbox. The
-// App-level cascade (resolver/registry, added in Phase 3 of
-// docs/layer-color-customization-plan.md) reads window.App only inside
-// function bodies, never at load time, following the same rule
-// js/core/choropleth.js already follows.
-//
-// See docs/layer-color-customization-plan.md for the full design.
+// CONSTRAINT: the top section is plain-value math only — no turf, no DOM, no
+// App.map at load time — so the golden harness (test/run-golden.mjs) loads it
+// in a bare node:vm sandbox. The App-level cascade below reads window.App only
+// inside function bodies, like js/core/choropleth.js.
+// Detail: docs/reference/layers-and-styling.md; design in
+// docs/archive/layer-color-customization-plan.md.
 
 (function () {
   "use strict";
 
   // colors5 always runs LIGHT -> DARK (sequential) or LOW-END -> HIGH-END
-  // (diverging). Callers reverse via rampColors(..., reverse). blues/greens/
-  // heat/rdbu are byte-identical to js/core/choropleth.js's RAMPS table
-  // (Phase 4.7 duplicates these three into that file's own RAMPS for the
-  // Feature Area Analysis dropdown — if you change a color here, change it
-  // there too).
+  // (diverging). Callers reverse via rampColors(..., reverse). Seven of these
+  // (blues, greens, heat, viridis, gray, rdbu, quality) are duplicated
+  // byte-for-byte in js/core/choropleth.js's RAMPS — change both together.
   var PALETTES = {
     blues:   { label: "Blues",        family: "sequential", colors5: ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"] },
     greens:  { label: "Greens",       family: "sequential", colors5: ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"] },
@@ -37,34 +32,23 @@
     quality: { label: "Red–Green",  family: "diverging",  colors5: ["#C53030", "#C05621", "#D69E2E", "#68A357", "#276749"] }
   };
 
-  // The custom 2-stop gradient (Phase 7) is stored in the same `palette`
-  // slot as a preset id, but is deliberately NOT a member of PALETTES: it has
-  // no family, so list()/familyOf()/allows() never see it and the global
-  // palette row can never be set to it. That is the point — a custom gradient
-  // is a per-layer, deliberate two-color pick (the colorblind and
-  // agency-branding cases), while the global palette stays restricted to
-  // curated families so it can't make a semantic layer unreadable in one
-  // click. See the resolver's custom branch below.
+  // The custom 2-stop gradient is stored in the same `palette` slot as a
+  // preset id but is deliberately NOT in PALETTES: it has no family, so
+  // list()/familyOf()/allows() never see it and the global palette can never
+  // be set to it. It is a per-layer, deliberate two-color pick; the global
+  // palette stays restricted to curated families so one click can't make a
+  // semantic layer unreadable.
   var CUSTOM_ID = "custom";
 
-  // A subsampled ramp (n < 5) can land on a preset's near-white extreme —
-  // "blues"/"greens"/"gray"/"heat" all start colors5[0] within a few percent
-  // of pure white. That is a fine, deliberately subtle lowest class for a
-  // classed choropleth (TPI/RF always sample n === colors5.length, which
-  // bypasses this clamp below and returns colors5 untouched), but it reads
-  // as functionally invisible when it is instead the OUTERMOST band of a
-  // ring layer (Walkshed/Transit Travelshed, both n:3) painted over a light
-  // basemap — reported as "I don't see the outermost/lightest color" for
-  // Blues/Greens/Grayscale (a first pass at 225 was still too faint against
-  // a light basemap, though it read fine on a dark one — 180 gives a solidly
-  // visible mid-light tone on both). Scale any picked color whose average
-  // channel exceeds LIGHTNESS_CEILING down to that ceiling, preserving
-  // hue/relative saturation (a uniform per-channel scale-down, not a hue
-  // shift), so a subsampled ramp never hands back a color indistinguishable
-  // from a light map background. Deliberately NOT applied to
-  // gradientColors() — a custom gradient's endpoints are the user's own
-  // explicit picks (see the CUSTOM_ID comment above) and silently darkening
-  // one would be surprising.
+  // A subsampled ramp (n < 5) can land on a preset's near-white extreme
+  // (blues/greens/gray/heat start within a few percent of white). That is a
+  // fine subtle lowest class for a classed choropleth (TPI/RF sample
+  // n === colors5.length, which bypasses this clamp), but it is invisible as
+  // the OUTERMOST band of a ring layer (Walkshed/Transit Travelshed, n:3) on a
+  // light basemap. 225 was still too faint; 180 reads on light and dark.
+  // Colors whose average channel exceeds LIGHTNESS_CEILING are scaled down
+  // uniformly per channel (hue preserved). Deliberately NOT applied to
+  // gradientColors(): custom endpoints are the user's explicit picks.
   var LIGHTNESS_CEILING = 180;
   function ensureVisible(hex) {
     var c = hexToRgb(hex);
@@ -75,10 +59,8 @@
     return rgbToHex({ r: c.r * factor, g: c.g * factor, b: c.b * factor });
   }
 
-  // Same sampling arithmetic as js/core/choropleth.js's pickRampColors(),
-  // plus the ensureVisible() floor above (choropleth.js's twin does not
-  // apply it — see that function's comment for why the two are allowed to
-  // diverge here).
+  // Same sampling as js/core/choropleth.js's pickRampColors(), plus the
+  // ensureVisible() floor above (the choropleth twin deliberately omits it).
   function pickRampColors(colors5, n) {
     if (n >= colors5.length) return colors5.slice(0, n);
     if (n === 1) return [ensureVisible(colors5[Math.floor((colors5.length - 1) / 2)])];
@@ -127,12 +109,10 @@
     return expr;
   }
 
-  // ---- Color primitives (Phase 7) -------------------------------------
-  // Plain sRGB math on "#rgb"/"#rrggbb" strings. No color-space cleverness:
-  // a 2-stop gradient here is a straight channel-wise lerp, which is what
-  // MapLibre's own ["interpolate", ["linear"], ...] does between two stops,
-  // so a custom gradient looks the same whether it is sampled to N discrete
-  // classes here or interpolated continuously by the map.
+  // ---- Color primitives ------------------------------------------------
+  // Plain sRGB math on "#rgb"/"#rrggbb" strings. A 2-stop gradient is a
+  // channel-wise lerp, matching MapLibre's ["interpolate", ["linear"], ...],
+  // so sampled classes and a continuous map gradient look the same.
 
   function hexToRgb(hex) {
     if (typeof hex !== "string") return null;
@@ -196,8 +176,7 @@
   // True when spec.allow is absent/empty (no restriction) or includes the
   // family of paletteId. This single function is how the global-palette
   // restriction (e.g. Corridor Scoring accepting only diverging palettes) is
-  // enforced — both App.resolveLayerColors (Phase 3) and the Layers-panel UI
-  // (Phase 6) call it.
+  // enforced — both App.resolveLayerColors and the Layers-panel UI call it.
   function allows(spec, paletteId) {
     if (!spec || !spec.allow || !spec.allow.length) return true;
     return spec.allow.indexOf(familyOf(paletteId)) !== -1;
@@ -206,22 +185,17 @@
   // ---- Layer style spec table ----------------------------------------
   // One source of truth for which layers are colorable and what they paint
   // by default — the same role VAR_META plays in js/core/utils.js. Every
-  // defaultColors array below is byte-identical to what its module paints
-  // today; changing a default here without also changing the module's own
-  // constant would make Phase 4's "zero visual change" invariant false.
+  // defaultColors array below must stay byte-identical to what its module
+  // paints; change a default here and in the module's own constant together.
   var LAYER_STYLES = {
     "walkshed": {
       label: "Walkshed", kind: "ramp", n: 3, prop: "bandIdx",
       allow: ["sequential"], reverseDefault: true,
       defaultColors: ["#1e40af", "#3b82f6", "#93c5fd"],
-      // Display-only overlap flattening (see js/projects/walkshed.js's
-      // renderWalkshedLayers): when on, the FILL only ever shows the
-      // shortest-time band covering a given spot, unioned across every
-      // point, not just within one point's own bands; per-point band
-      // outlines are still drawn in full so an overlap stays visible.
-      // Generic drawer flag, not a walkshed-only code path — any other
-      // ramp-kind layer whose fill can overlap across features could opt in
-      // the same way. Off by default (see the drawer's own tooltip copy).
+      // Display-only overlap flattening (see walkshed.js's
+      // renderWalkshedLayers): the FILL shows only the shortest-time band at
+      // a spot, unioned across all points; per-point outlines stay in full.
+      // Generic drawer flag; off by default.
       flattenOption: true
     },
     "walkshed-seg": {
@@ -256,12 +230,10 @@
       label: "GTFS stops", kind: "solid",
       defaultColors: ["#718096"]
     },
-    // kind: "categorical" (Phase 7) — independent semantic colors, not a
-    // ramp. Each class gets its own swatch; `classes` supplies the drawer's
-    // row labels (two words max, per the plan's §3) and `defaultColors` is
-    // positional against it. Categorical layers ignore App.mapPalette
-    // entirely, for the same reason solid layers do: a global sequential
-    // ramp says nothing about which color "service loss" should be.
+    // kind: "categorical" — independent semantic colors, not a ramp. `classes`
+    // supplies the drawer's row labels (two words max) and `defaultColors` is
+    // positional against it. Ignores App.mapPalette, like solid layers: a
+    // global ramp says nothing about which color "service loss" should be.
     "transit-coverage": {
       label: "Transit Coverage", kind: "categorical",
       classes: [
@@ -299,11 +271,10 @@
     specFor: specFor
   };
 
-  // ---- App-level cascade (Phase 3 of docs/layer-color-customization-plan.md) ---
-  // Reads/writes App state only inside function bodies (never at the top
-  // level beyond the two default-init lines below), so this loads safely in
-  // the golden sandbox, which stubs window.App with no App.map/App.cache —
-  // same rule js/core/choropleth.js follows.
+  // ---- App-level cascade ---------------------------------------------
+  // Touches App only inside function bodies (beyond the two default-init
+  // lines below), so it loads in the golden sandbox, whose window.App stub has
+  // no App.map/App.cache.
 
   var App = window.App;
 
@@ -370,15 +341,13 @@
       palette: (patch.palette !== undefined) ? patch.palette : cur.palette,
       reverse: (patch.reverse !== undefined) ? patch.reverse : cur.reverse,
       color: (patch.color !== undefined) ? patch.color : cur.color,
-      // Phase 7: `from`/`to` are the custom gradient's two endpoints (ramp
-      // layers); `colors` is the sparse per-class array (categorical layers).
+      // `from`/`to`: custom gradient endpoints (ramp layers); `colors`:
+      // sparse per-class array (categorical layers).
       from: (patch.from !== undefined) ? patch.from : cur.from,
       to: (patch.to !== undefined) ? patch.to : cur.to,
       colors: (patch.colors !== undefined) ? patch.colors : cur.colors,
-      // Overlap flattening (spec.flattenOption layers only, e.g. "walkshed")
-      // — a display-only boolean, carried through the same cascade as every
-      // other per-layer override so it persists via the existing
-      // App.layerStyles/cache.js round trip with no new persistence code.
+      // Overlap flattening (spec.flattenOption layers only): display-only
+      // boolean persisted with the rest of App.layerStyles.
       flatten: (patch.flatten !== undefined) ? patch.flatten : cur.flatten
     };
     var anyClassColor = !!(next.colors && next.colors.some(function (c) { return !!c; }));
@@ -415,7 +384,7 @@
     App.repaintStyledLayers();
   };
 
-  // Each module registers a callback here (Phase 4) that re-applies its
+  // Each module registers a callback here that re-applies its
   // paint properties from App.resolveLayerColors(...) WITHOUT re-running the
   // analysis, so a palette change is instant. A module whose layer is not
   // currently on the map must no-op rather than throw — the try/catch below

@@ -1,10 +1,8 @@
 // js/core/cache.js
-// Session cache: save/restore/reset via localStorage.
-// JSON import/export via file download/upload.
-// Depends on: App.points, App.lines, App.routes, App.polygons,
-//             App.rebuildBuffers, App.rebuildLineBuffers, App.rebuildRouteBuffers,
-//             App.renderPolygonLayers, App.clearRoutes, App.refreshFeaturePanel.
-// Exports: App.cache
+// Session save/restore/reset (localStorage), schema migrations, file
+// import/export (JSON, CSV, KML, SHP), recent projects, share links.
+// Detail: docs/reference/core-app.md
+// Exports: App.cache, App.validateSessionState
 
 (function () {
   var App = window.App = window.App || {};
@@ -36,7 +34,7 @@
     return state;
   }
 
-  // v4 (docs/feature-color-system-plan.md, Phase 5): one-time conversion of
+  // v4 (docs/archive/feature-color-system-plan.md): one-time conversion of
   // stored line/route/polygon colors that were stamped at creation before
   // the color cascade existed, so features drawn under the old system follow
   // the type default like everything drawn since. For each line/route whose
@@ -162,8 +160,8 @@
       networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
       networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
       networkExcludedWayIds: (App.networkSettings && App.networkSettings.excludedWayIds) ? App.networkSettings.excludedWayIds.slice() : [],
-      // Layer color palette cascade (additive fields, docs/layer-color-customization-plan.md
-      // Phase 3 — absent on an old session, App.layerStyles/mapPalette keep their defaults).
+      // Layer color palette cascade (additive fields — absent on an old
+      // session, App.layerStyles/mapPalette keep their defaults).
       layerStyles: App.layerStyles ? JSON.parse(JSON.stringify(App.layerStyles)) : {},
       mapPalette: App.mapPalette || null,
       offsetOverlap: !!document.getElementById("offsetOverlap").checked,
@@ -174,9 +172,9 @@
       mapZoom: App.map ? App.map.getZoom() : null
     };
 
-    // Checkbox selections are now managed by the buffer-summary module
-    // via cache.registerModule("buffer-summary"). Kept for backward compat on restore.
-    // Note: geoLevel and year are also in state.moduleState["buffer-summary"].
+    // Checkbox selections, geoLevel and year live in
+    // state.moduleState["buffer-summary"]; restore still reads the old
+    // top-level fields for backward compat (step 5 of applyState).
 
     // Module state (TPI, RF, buffer-summary, etc.)
     state.moduleState = {};
@@ -248,7 +246,7 @@
     }
 
     // 2c. Make every feature ID unique and advance the per-type ID counters
-    // (docs/feature-merge-plan.md Phase 1). Idempotent: already-unique IDs
+    // (docs/archive/feature-merge-plan.md). Idempotent: already-unique IDs
     // (the normal case, including undo/redo) are left untouched. Imported
     // features arrive with no ID and are stamped here. Stop links that pointed
     // at a duplicated ID keep pointing at the first (older) feature.
@@ -328,18 +326,16 @@
     if (App.networkSettings && state.networkSnapToleranceFt != null) {
       App.networkSettings.snapToleranceFt = state.networkSnapToleranceFt;
     }
-    // 3a-3. Restore the global crossing-penalty settings (additive fields,
-    // docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5 — absent on
-    // an old session, App.networkSettings keeps its 0 default).
+    // 3a-3. Restore the global crossing-penalty settings (additive fields —
+    // absent on an old session, App.networkSettings keeps its 0 default).
     if (App.networkSettings && state.networkCrossingMajorSec != null) {
       App.networkSettings.crossingMajorSec = state.networkCrossingMajorSec;
     }
     if (App.networkSettings && state.networkCrossingMinorSec != null) {
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
     }
-    // 3a-3b. Restore user-excluded streets (docs/sidewalk-data-plan.md
-    // Phase 4 — additive field, absent on an old session leaves the
-    // exclusion set empty). Goes through the sanctioned write path
+    // 3a-3b. Restore user-excluded streets (additive field — absent on an
+    // old session leaves the exclusion set empty). Goes through the sanctioned write path
     // (App.setExcludedWays), not a direct App.networkSettings poke, so
     // road-network.js's private _excludedWays Set — the object it actually
     // reads at buildGraph time — stays in sync. No base network is loaded
@@ -349,9 +345,8 @@
       App.setExcludedWays(state.networkExcludedWayIds);
     }
 
-    // 3a-4. Restore the layer color palette cascade (additive fields,
-    // docs/layer-color-customization-plan.md Phase 3 — absent on an old
-    // session, App.layerStyles/mapPalette keep their defaults). Repainting
+    // 3a-4. Restore the layer color palette cascade (additive fields — absent
+    // on an old session, App.layerStyles/mapPalette keep their defaults). Repainting
     // happens once at the end of this function, after every module has had
     // a chance to register its repainter.
     if (state.layerStyles && typeof state.layerStyles === "object") {
@@ -396,14 +391,14 @@
     if (typeof App.renderLabelMarkers    === "function") App.renderLabelMarkers();
     if (typeof App.renderTextBoxMarkers  === "function") App.renderTextBoxMarkers();
 
-    // 4b. Restore map position (if saved)
+    // 4c. Restore map position (if saved)
     if (state.mapCenter && state.mapZoom != null && App.map) {
       App.map.jumpTo({ center: state.mapCenter, zoom: state.mapZoom });
     }
 
-    // 5. Restore checkbox selections — checkboxes now live in buffer-summary popup
-    // (lazy-loaded, not in DOM at restore time). Migrate into moduleState so the
-    // buffer-summary module's apply() handler picks them up.
+    // 5. Checkbox selections live in the lazy-loaded buffer-summary popup (not
+    // in the DOM at restore time). Migrate old top-level fields into
+    // moduleState so the buffer-summary module's apply() handler picks them up.
     if (!state.moduleState) state.moduleState = {};
     if (!state.moduleState["buffer-summary"]) {
       state.moduleState["buffer-summary"] = {
@@ -412,7 +407,6 @@
         apportionByArea: true
       };
     }
-    // Migrate checkedVars from top-level into buffer-summary module state
     if (Array.isArray(state.checkedVars) && !state.moduleState["buffer-summary"].checkedVars) {
       state.moduleState["buffer-summary"].checkedVars = state.checkedVars;
     }
@@ -457,10 +451,9 @@
       }
     }
 
-    // 10. Repaint any styled layers from the restored cascade (Phase 3 of
-    // docs/layer-color-customization-plan.md). Guarded with typeof — no
-    // module has registered a repainter yet until Phase 4, so this is a
-    // no-op today by design.
+    // 10. Repaint styled layers from the restored cascade, once, after every
+    // module has registered its repainter (App.repaintStyledLayers in
+    // layer-palettes.js).
     if (typeof App.repaintStyledLayers === "function") App.repaintStyledLayers();
   }
 
@@ -723,7 +716,7 @@
     return null; // null = valid
   }
 
-  // Keep the old name for any internal caller; both point at the same logic.
+  // Old internal name; same logic.
   function validateState(state) { return validateSessionState(state); }
   App.validateSessionState = validateSessionState;
 
@@ -733,9 +726,8 @@
     try {
       var state = collectState("full");
       if (scope === "visible") {
-        // Filter this call's own copy of the collected state — collectState()
-        // itself is untouched, so the localStorage autosave path (and
-        // exportFullState/Save State) keep including hidden features as always.
+        // Filter this call's own copy only — autosave and Save State keep
+        // hidden features.
         var arrs = getExportArrays(scope);
         state.points    = arrs.points;
         state.lines     = arrs.lines;

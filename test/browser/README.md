@@ -3,7 +3,7 @@
 Drives the real app in headless Chromium and asserts that it actually
 *behaves* correctly — not that its calculation math is right (`test/`'s
 golden harness) and not that its pixels look right (`test/ui-screens/`).
-See `docs/browser-test-harness-plan.md` for the full design rationale and
+See `docs/archive/browser-test-harness-plan.md` for the full design rationale and
 the motivating bug.
 
 ## What belongs here vs. the other two harnesses
@@ -50,7 +50,7 @@ resolution, the vendored-CDN route interceptor (`routeVendoredAssets`, with
 an optional `extraHandler` a test can use to stub an API — see
 `network-cache.test.mjs` stubbing Overpass), and the local static file
 server (`startStaticServer`). One copy, imported by both — see
-`docs/browser-test-harness-plan.md` for why that mattered enough to extract.
+`docs/archive/browser-test-harness-plan.md` for why that mattered enough to extract.
 
 A new test file only needs its own feature-specific setup and assertions;
 everything else comes from `harness.mjs`.

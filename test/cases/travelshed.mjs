@@ -3,7 +3,7 @@
 // comment in js/core/travelshed.js), so it loads clean in the vm sandbox.
 //
 // The two computeArrivalTimes toy networks are hand-computed in the commit
-// that seeded them (docs/transit-travelshed-plan.md Phase 3 instructs this —
+// that seeded them (docs/archive/transit-travelshed-plan.md Phase 3 instructs this —
 // "hand-compute the two toys before seeding so the golden file is verified,
 // not just recorded"). See PR/commit description for the worked arithmetic.
 
@@ -161,7 +161,7 @@ export default {
       }],
     },
 
-    // --- computeArrivalTimes: v2 walk-leg caps (docs/transit-travelshed-v2-walk-caps-plan.md §2.2) ---
+    // --- computeArrivalTimes: v2 walk-leg caps (docs/archive/transit-travelshed-v2-walk-caps-plan.md §2.2) ---
     //
     // Access cap: 2 independent routes, one boarded from a near origin node
     // (n1, 0.6 min walk) and one from a far origin node (n2, 6 min walk).

@@ -1,9 +1,8 @@
 // js/projects/ridership-forecasting.js
-// Ridership Forecasting module: registers as an analysis module,
-// opens in a popup with 4-tab layout (Demand, Calibrate, Elasticity, Scenarios).
-// Depends on: App namespace, RidershipModel (ridership-scoring.js), TPI (tpi-scoring.js),
-//             App.popup (popup.js), turf (CDN).
-// Exports: none (self-registers via App.registerModule)
+// Ridership Forecasting module (tabs: Calibrate, Demand, Elasticity, Scenarios, Projections).
+// Depends on: App, RidershipModel (ridership-scoring.js), TPI (tpi-scoring.js), App.popup, turf.
+// Exports: none (self-registers via App.registerModule).
+// Detail: docs/reference/modules/ridership-forecasting.md
 
 (function () {
   "use strict";
@@ -59,7 +58,7 @@
   var _selectedCorridor = ""; // "route:<id>" / "line:<id>" — a stable feature ID, NOT an array index (specific corridor required)
   var _calibFeatureFilter = null; // SELECTION { routeIds: [...], lineIds: [...] } (stable feature IDs) or null (all). Includes disabled-but-checked (hidden) rows; a run analyzes dropHidden(selection, toggle).
 
-  // Hidden features (docs/hidden-features-analysis-plan.md): one "Include hidden" toggle per checklist.
+  // Hidden features (docs/archive/hidden-features-analysis-plan.md): one "Include hidden" toggle per checklist.
   var _includeHiddenCalib = false;
   var _includeHiddenDemand = false;
   var _calibHiddenIncluded = 0;   // hidden features that took part in the last calibration run
@@ -395,10 +394,9 @@
     var demandRun = dropHidden(demandFilter, _includeHiddenDemand);
     var combinedRun = combineFeatureFilters(calibRun, demandRun);
 
-    // Buffer set for ALL drawn routes/lines (module's own analysis distance) —
+    // Buffer set for ALL drawn routes/lines (module's own analysis distance):
     // computePerRouteCDI needs every feature's buffer so featureFilter:null
-    // below can compute CDI for all of them, exactly as before this module
-    // carried its own buffer distance; only the geometry source changed.
+    // below can compute CDI for all of them.
     // Hidden features are in the set only when they are part of the run
     // (selected + their toggle on): every visible feature plus those.
     var allBufferSet = buildRouteLineBufferSet(allRoutesLinesFilter(combinedRun), true);
@@ -655,12 +653,10 @@
       _stale = false;
       _demandStale = false;
 
-      // Render choropleth
       var tpi = result.tpiResult;
       App.renderCensusOverlay(tpi.apportionByArea && tpi.clippedGeos ? tpi.clippedGeos : tpi.geos);
       renderChoropleth(result);
 
-      // Show legend
       App.popup.showFloatingWidget("rf-legend", "projects/ridership-legend.html", {
         position: "bottom-left",
         width: 170,
@@ -675,7 +671,6 @@
       App.renderModuleState({ statusEl: "rfDemandStatus", status: { kind: "done", message: "Demand analysis complete." } });
       App.setStatus("Demand analysis complete");
 
-      // Enable exports
       var expGJ = document.getElementById("rfExportDemandGeoJSON");
       var expCSV = document.getElementById("rfExportDemandCSV");
       if (expGJ) expGJ.disabled = false;
@@ -688,7 +683,6 @@
         if (!_sharedCalibPerRouteCDI) spToggle.checked = false;
       }
 
-      // Show next step guidance
       var nextStep = document.getElementById("rfNextStep1");
       if (nextStep) nextStep.style.display = "";
 
@@ -713,19 +707,16 @@
       dNote.style.display = dText ? "" : "none";
     }
 
-    // CDI score
     var cdiVal = document.getElementById("rfCDIValue");
     if (cdiVal) cdiVal.textContent = Number.isFinite(result.corridorCDI.value)
       ? result.corridorCDI.value.toFixed(2) : "\u2014";
 
-    // Classification badge
     var cdiBadge = document.getElementById("rfCDIClass");
     if (cdiBadge) {
       cdiBadge.textContent = result.classification.label;
       cdiBadge.className = "rf-cdi-badge rf-cdi-" + result.classification.label.toLowerCase().replace(/[^a-z]/g, "");
     }
 
-    // Stats
     var geoCount = document.getElementById("rfGeoCount");
     if (geoCount) geoCount.textContent = String(result.corridorCDI.scored);
 
@@ -791,8 +782,7 @@
     ];
   }
 
-  // Hover popup for the "rf" choropleth (Phase 3 Step 3.3 of
-  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  // Hover popup for the "rf" choropleth (see renderChoropleth).
   function rfHoverHTML(props) {
     return '<div style="font-size:12px;line-height:1.4;">' +
       '<b>GEOID:</b> ' + (props.GEOID || "\u2014") + '<br>' +
@@ -800,11 +790,8 @@
       '</div>';
   }
 
-  // Manual breaks [1,2,3,4] with the "blues" ramp reproduce the same 5 colors
-  // RF's old inline continuous interpolate used at integer scores, now as
-  // discrete classes (same tradeoff as TPI's Step 3.2 migration). Layer ids
-  // are exactly reproduced by the "<id>-choropleth-*" convention: id: "rf"
-  // yields rf-choropleth-fill/-line.
+  // App.choropleth with manual breaks [1,2,3,4] and the "blues" ramp (5 discrete classes).
+  // Layer ids follow the "<id>-choropleth-*" convention: id "rf" yields rf-choropleth-fill/-line.
   function renderChoropleth(result) {
     var map = App.map;
     if (!map || !result || !result.tpiResult) return;
@@ -1010,7 +997,7 @@
     return NaN;
   }
 
-  // ---- Stable-ID helpers (docs/feature-merge-plan.md, Phase 4b) ----
+  // ---- Stable-ID helpers ----
   // Array positions shift when an earlier feature is deleted or merged, so the
   // corridor selection, the checklist filters and the per-route CDI rows all
   // identify a feature by its stable ID (properties.routeIdx / lineIdx).
@@ -1282,8 +1269,8 @@
   }
 
   // A filter covering every drawn route and line — used by the shared-pool
-  // path, which needs a buffer set spanning ALL drawn features (matching the
-  // historical featureFilter:null "compute CDI for all routes" behavior),
+  // path, which needs a buffer set spanning ALL drawn features
+  // (featureFilter:null = "compute CDI for all routes"),
   // separately from whatever subset defines the study-area union.
   // runFilter (optional, ID form): hidden features are left out of the result unless
   // they are in runFilter (a hidden feature is only analyzed when selected + toggled on).
@@ -1636,12 +1623,10 @@
       if (demandYearEl) demandYearEl.value = year;
       // Apportion and NormalizeByLength already synced bidirectionally via shared _apportionByArea/_normalizeByLength
 
-      // Render choropleth
       var tpi = result.tpiResult;
       App.renderCensusOverlay(tpi.apportionByArea && tpi.clippedGeos ? tpi.clippedGeos : tpi.geos);
       renderChoropleth({ tpiResult: tpi, corridorCDI: result.systemCDI });
 
-      // Show legend
       App.popup.showFloatingWidget("rf-legend", "projects/ridership-legend.html", {
         position: "bottom-left",
         width: 170,
@@ -1661,7 +1646,6 @@
         populateCorridorDropdownFromCheckedFeatures();
       }
 
-      // Enable Step 2
       var step2 = document.getElementById("rfCalibStep2");
       if (step2) { step2.style.opacity = "1"; step2.style.pointerEvents = "auto"; }
 
@@ -1771,7 +1755,6 @@
       cNote.style.display = cText ? "" : "none";
     }
 
-    // Feature count
     var countEl = document.getElementById("rfSystemFeatureCount");
     if (countEl) countEl.textContent = String(result.routeCDIs.length);
 
@@ -1835,11 +1818,9 @@
       var nameEl = document.getElementById("rfCalibFileName");
       if (nameEl) nameEl.textContent = file.name + " (" + result.data.length + " rows)";
 
-      // Show column mapping
       var mappingEl = document.getElementById("rfCalibMapping");
       if (mappingEl) mappingEl.style.display = "";
 
-      // Fill column dropdowns
       var headers = result.meta.fields || [];
       var cols = ["rfCalibColName", "rfCalibColRidership", "rfCalibColHeadway", "rfCalibColServiceType"];
       var guesses = [
@@ -1859,7 +1840,6 @@
           opt.textContent = headers[h];
           sel.appendChild(opt);
         }
-        // Auto-guess
         var guess = App.guessHeader(headers, guesses[i]);
         if (guess) sel.value = guess;
       }
@@ -1875,14 +1855,12 @@
 
     _matchResult = RM.matchRoutesToCSV(_perRouteCDI, _calibData.data, colName);
 
-    // Display match results
     var listEl = document.getElementById("rfMatchList");
     var resultsEl = document.getElementById("rfMatchResults");
     if (resultsEl) resultsEl.style.display = "";
 
     if (listEl) {
       var html = "";
-      // Matched rows
       for (var m = 0; m < _matchResult.matched.length; m++) {
         var match = _matchResult.matched[m];
         var csvName = match.csvRow[colName] || "";
@@ -1895,7 +1873,6 @@
           '<span class="rf-match-cdi">CDI: ' + cdi + '</span>' +
           '</div>';
       }
-      // Unmatched rows
       for (var u = 0; u < _matchResult.unmatched.length; u++) {
         var unm = _matchResult.unmatched[u];
         var uName = unm.csvRow[colName] || "(empty)";
@@ -1908,7 +1885,6 @@
       listEl.innerHTML = html;
     }
 
-    // Show warnings
     var warnEl = document.getElementById("rfMatchWarnings");
     if (warnEl) {
       var warnings = [];
@@ -1950,7 +1926,7 @@
 
     // Reference headway for normalization (same default as Elasticity tab baseline)
     var REF_HEADWAY = 30;
-    // Use the Elasticity tab's current elasticity value if available, else 0.5
+    // Use the Elasticity tab's current elasticity value if available, else 0.6
     var normElast = parseFloat((document.getElementById("rfFreqElastValue") || {}).value) || 0.6;
 
     // Build observation array using per-route CDI
@@ -2003,7 +1979,6 @@
       _calibration.headwayNormCount = headwayNormCount;
     }
 
-    // Display results
     var resultsEl = document.getElementById("rfCalibResults");
     if (resultsEl) resultsEl.style.display = "";
 
@@ -2058,7 +2033,6 @@
     var expBtn = document.getElementById("rfExportCalibJSON");
     if (expBtn) expBtn.disabled = false;
 
-    // Show next step
     var nextStep = document.getElementById("rfCalibNextStep");
     if (nextStep) nextStep.style.display = "";
   }
@@ -2099,11 +2073,9 @@
     function toX(v) { return PAD.left + (v / maxX) * plotW; }
     function toY(v) { return PAD.top  + plotH - (v / maxY) * plotH; }
 
-    // Background
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, cssW, cssH);
 
-    // Light grid
     ctx.strokeStyle = "#f0f0f0";
     ctx.lineWidth = 1;
     var xTicks = 5, yTicks = 4;
@@ -2116,7 +2088,6 @@
       ctx.beginPath(); ctx.moveTo(PAD.left, gy); ctx.lineTo(PAD.left + plotW, gy); ctx.stroke();
     }
 
-    // Axes
     ctx.strokeStyle = "#718096";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -2422,7 +2393,6 @@
     // Build comparison table
     displayComparisonTable(builtScenarios);
 
-    // Enable exports
     var expCSV = document.getElementById("rfExportScenariosCSV");
     var expJSON = document.getElementById("rfExportScenariosJSON");
     if (expCSV) expCSV.disabled = false;
@@ -2439,13 +2409,11 @@
     var tbody = document.getElementById("rfCompareBody");
     if (!thead || !tbody) return;
 
-    // Build header
     thead.innerHTML = '<tr>' +
       '<th>Metric</th>' +
       scenarios.map(function (s) { return '<th>' + s.name + '</th>'; }).join("") +
       '</tr>';
 
-    // Build rows
     var metrics = [
       { label: "Service Type", key: function (s) { return RM.getServiceType(s.serviceTypeId).label; } },
       { label: "Headway (min)", key: function (s) { return s.headway; } },
@@ -2471,7 +2439,6 @@
         '</tr>';
     }).join("");
 
-    // Store for export
     _lastBuiltScenarios = scenarios;
   }
 
@@ -2625,7 +2592,6 @@
 
     displayProjectionTimeline(results);
 
-    // Enable export
     var expBtn = document.getElementById("rfExportProjCSV");
     if (expBtn) expBtn.disabled = false;
 
@@ -2647,7 +2613,6 @@
 
     var rows = [];
 
-    // CDI row
     rows.push('<tr class="rf-proj-cdi-row"><td>Corridor CDI</td>' +
       results.map(function (r) {
         return '<td>' + (Number.isFinite(r.cdi) ? r.cdi.toFixed(2) : "\u2014") + '</td>';
@@ -2689,14 +2654,12 @@
     var lines = [_metadataCSVHeader(meta)];
     lines.push("");
 
-    // Header
     var header = ["Metric"];
     for (var yi = 0; yi < _projectionResults.length; yi++) {
       header.push(_projectionResults[yi].year);
     }
     lines.push(header.join(","));
 
-    // CDI row
     var cdiRow = ["Corridor CDI"];
     for (var ci = 0; ci < _projectionResults.length; ci++) {
       cdiRow.push(Number.isFinite(_projectionResults[ci].cdi) ? _projectionResults[ci].cdi.toFixed(3) : "");
@@ -2871,8 +2834,7 @@
     var factors = TPI.FACTORS;
 
     // Prefer whichever run's own buffer set (module analysis distance) has
-    // this feature; fall back to the feature's own drawn geometry (matches
-    // the pre-buffer-distance behavior when no set is available, e.g. a
+    // this feature; fall back to the feature's own drawn geometry (e.g. a
     // restored session where geometry wasn't persisted).
     var geoBufferSet = (_demandSystemResult && _demandSystemResult.bufferSet) ||
                        (_systemResult && _systemResult.bufferSet) || null;
@@ -3130,9 +3092,7 @@
     if (_calibStale) {
       App.renderModuleState({ statusEl: "rfSystemStatus", stale: true, onRerun: runSystemAnalysis });
     }
-    // (The feature filters used to be reset here because array indices shift when a
-    // feature is deleted. They are stable feature IDs now, so they stay valid —
-    // IDs of deleted features are simply ignored when resolved to indices.)
+    // Feature filters are stable IDs, so they survive deletions (unresolvable IDs are ignored).
     // Invalidate shared pool derived state (will be recomputed on next demand run)
     _sharedCalibPerRouteCDI = null;
     _sharedSystemResult = null;
@@ -3178,7 +3138,6 @@
     if (_initialized) return;
     _initialized = true;
 
-    // Tab navigation
     var tabs = document.querySelectorAll(".rf-tab");
     for (var i = 0; i < tabs.length; i++) {
       tabs[i].addEventListener("click", function (e) {
@@ -3321,7 +3280,6 @@
     var calibBtn = document.getElementById("rfRunCalibration");
     if (calibBtn) calibBtn.addEventListener("click", runCalibration);
 
-    // Calibration export/import
     var expCalib = document.getElementById("rfExportCalibJSON");
     if (expCalib) expCalib.addEventListener("click", exportCalibJSON);
     var impCalibBtn = document.getElementById("rfImportCalibJSON");
@@ -3386,7 +3344,6 @@
           }
         }
       });
-      // Apply initial state
       var featureSection = document.getElementById("rfDemandFeatureSection");
       if (featureSection && _demandUseSameSystem) featureSection.style.display = "none";
     }
@@ -3459,11 +3416,9 @@
       });
     }
 
-    // Next step links
     var goElast = document.getElementById("rfGoToElasticity");
     if (goElast) goElast.addEventListener("click", function (e) { e.preventDefault(); switchTab("elasticity"); });
 
-    // Export demand
     var expGJ = document.getElementById("rfExportDemandGeoJSON");
     if (expGJ) expGJ.addEventListener("click", exportDemandGeoJSON);
     var expCSV = document.getElementById("rfExportDemandCSV");
@@ -3560,7 +3515,6 @@
       });
     }
 
-    // Scenarios tab
     var buildBtn = document.getElementById("rfBuildScenarios");
     if (buildBtn) buildBtn.addEventListener("click", buildAndCompareScenarios);
 
@@ -3569,7 +3523,6 @@
     var expScenJSON = document.getElementById("rfExportScenariosJSON");
     if (expScenJSON) expScenJSON.addEventListener("click", exportScenariosJSON);
 
-    // Projections tab
     var projUploadBtn = document.getElementById("rfProjUploadBtn");
     var projFileInput = document.getElementById("rfProjFile");
     if (projUploadBtn && projFileInput) {
@@ -3619,7 +3572,6 @@
 
   function onOpen(core) {
     document.querySelectorAll(".cc-status").forEach(function (s) { if (s.refresh) s.refresh(); });
-    // Sync apportion checkboxes
     var apportionCb = document.getElementById("rfApportionByArea");
     if (apportionCb) apportionCb.checked = _apportionByArea;
     var calibApportionCb = document.getElementById("rfCalibApportionByArea");
@@ -3631,20 +3583,17 @@
     syncBufferControl();
     updateDemandBufferNote();
 
-    // Sync normalize-by-length checkboxes
     var normCb = document.getElementById("rfNormalizeByLength");
     if (normCb) normCb.checked = _normalizeByLength;
     var calibNormCb = document.getElementById("rfCalibNormalizeByLength");
     if (calibNormCb) calibNormCb.checked = _normalizeByLength;
 
-    // Sync baseline uncertainty slider
     var uncertSlider = document.getElementById("rfBaseUncertSlider");
     var uncertValue = document.getElementById("rfBaseUncertValue");
     var uncertPctInt = Math.round(_baselineUncertaintyPct * 100);
     if (uncertSlider) uncertSlider.value = String(uncertPctInt);
     if (uncertValue) uncertValue.value = String(uncertPctInt);
 
-    // Sync span elasticity slider
     var spanElastSlider = document.getElementById("rfSpanElastSlider");
     var spanElastValue = document.getElementById("rfSpanElastValue");
     if (spanElastSlider) spanElastSlider.value = String(_spanElasticity);
@@ -3722,13 +3671,10 @@
 
     if (_stale) markStale();
 
-    // Restore active tab
     switchTab(_activeTab);
 
-    // Restore all scenario form values
     loadAllScenarioForms();
 
-    // LODES warning
     updateLodesWarnings();
 
     // Projections tab state
@@ -3737,7 +3683,6 @@
   }
 
   function onClose(core) {
-    // Save all scenario form state
     saveAllScenarioForms();
   }
 
@@ -3982,8 +3927,6 @@
         : (_sharedPoolMode ? makeSnap(combineFeatureFilters(calibRunR, demandRunR), "cd") : makeSnap(demandRunR, "d"));
     }
   }
-
-  // ---- Register module ----
 
   // ---- Feature usage (Split / Merge dialogs) ----
   // Calibration matches drawn features to the ridership CSV BY NAME, so a

@@ -1,9 +1,7 @@
 // js/projects/title-vi-engine.js
-// Title VI Service Equity Analysis — pure calculation engine.
-// No DOM access. Major-change evaluation, demographic computation,
-// finding evaluation, scenario comparison.
-// Depends on: App namespace (census), turf (CDN).
-// Exports: window.TitleVI namespace
+// Title VI Service Equity Analysis — calculation engine (no DOM access).
+// Depends on: App (census, feature lookup), turf (CDN). Exports: window.TitleVI
+// Detail: docs/reference/modules/title-vi.md
 
 (function () {
   "use strict";
@@ -78,7 +76,8 @@
    * @param {Feature<LineString>} beforeFeature
    * @param {Feature<LineString>} afterFeature
    * @param {number} [divergenceThresholdMiles=0.25] Distance beyond which a
-   *   sample point is considered divergent (default: half the 0.5mi buffer).
+   *   sample point is considered divergent. (computeAlterationMetrics passes
+   *   0.1 unless overridden, so 0.25 applies only to direct callers.)
    * @param {number} [sampleIntervalMiles=0.05] Sample spacing (~80m).
    * @returns {{ alteredPct, alteredMiles, totalMiles, divergentSegments[] }}
    */
@@ -91,8 +90,8 @@
     if (totalMiles <= 0) return { alteredPct: 0, alteredMiles: 0, totalMiles: 0, divergentSegments: [] };
 
     var numSamples = Math.max(1, Math.floor(totalMiles / interval));
-    var divergent = [];  // array of booleans
-    var distances = [];  // distance in miles from after-route
+    var divergent = [];  // per-sample: beyond threshold?
+    var distances = [];  // per-sample miles from the after-route
 
     for (var i = 0; i <= numSamples; i++) {
       var dist = Math.min(i * interval, totalMiles);
@@ -217,7 +216,6 @@
       divergentSegments: []
     };
 
-    // Resolve feature references
     var beforeFeature = resolveFeature(alteration.before);
     var afterFeature  = resolveFeature(alteration.after);
 
@@ -276,7 +274,6 @@
       }
     }
 
-    // Compute % changes for manual metrics
     var manual = alteration.manual || {};
     computed.revenueHoursPct = pctChangeNullable(
       manual.revenueHours && manual.revenueHours.before,

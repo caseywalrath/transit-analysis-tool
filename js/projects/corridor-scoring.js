@@ -1,10 +1,9 @@
 // js/projects/corridor-scoring.js
-// Corridor Scoring: registers as an analysis module, opens in a 2-column popup,
-// produces a ranked composite score per selected corridor using the per-route CDI engine.
+// Corridor Scoring: analysis module that ranks selected routes/lines by composite CDI
+// (per-route engine in RidershipModel, factors from TPI). No public API.
 // Depends on: App namespace, TPI namespace (tpi-scoring.js), RidershipModel (ridership-scoring.js),
 //   App.popup (popup.js), turf (CDN).
-// Step 1: scaffolding + static Settings column.
-// No public API.
+// Detail: docs/reference/modules/corridor-scoring.md
 
 (function () {
   "use strict";
@@ -14,19 +13,19 @@
   // ---- Module-local state (persists across popup open/close) ----
 
   var _weights           = TPI ? TPI.getDefaultWeights() : {};
-  var _pendingWeights    = null;   // temp copy while Adjust Weights modal is open (Step 2)
+  var _pendingWeights    = null;   // temp copy while Adjust Weights modal is open
   // Checklist selection is remembered as the features the user UNCHECKED, by stable
-  // { type, id } ref (Phase 4b) — array positions shift when an earlier feature is
+  // { type, id } ref — array positions shift when an earlier feature is
   // deleted or merged. Anything not listed (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
-  var _lastResult        = null;   // { routeCDIs, geoLevel, year, apportionByArea, unionPolygon, weights } (Step 3+)
+  var _lastResult        = null;   // { routeCDIs, geoLevel, year, apportionByArea, unionPolygon, weights }
   var _stale             = false;
   var _running           = false;
   var _initialized       = false;
   var _apportionByArea   = false;
   var _bufferMiles       = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
-  var _includeHidden     = false;  // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+  var _includeHidden     = false;  // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
   var _runSnap           = null;   // { refs: [{type,id}], hidden: string, includeHidden: bool }
@@ -37,7 +36,7 @@
     return App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "corridor-scoring";
   }
 
-  // ---- Feature filter helpers (routes + lines only per plan) ----
+  // ---- Feature filter helpers (routes + lines only) ----
 
   // Set by buildUnionFromFilter(), consumed immediately by runScoring() —
   // gives access to the full buffer set (and its .count) without changing
@@ -539,20 +538,11 @@
     if (!map || !result) return;
     var fc = buildScoredFeatureCollection(result);
 
-    // Phase 3 Step 3.4 of docs/feature-area-choropleth-plan.md: the step
-    // expression itself now comes from the shared engine so the ramp
-    // definition has one home, but CS keeps its own fixed red/orange/
-    // yellow/green corridor-quality breaks -- not one of App.choropleth's
-    // curated sequential ramps, since low/high CDI here is a quality
-    // judgment (poor -> excellent), not a plain magnitude gradient.
-    // Equivalent to the old inline expression for every real cdi value:
-    // a missing/non-numeric cdi now takes buildStepColorExpr's typeof-based
-    // noDataColor path instead of the old "coalesce to -1, add a 0 break"
-    // sentinel, which drew the same gray for the same case.
-    // Colors resolve through the layer color cascade
-    // (docs/layer-color-customization-plan.md) — restricted to diverging
-    // palettes only by the "corridor-scoring" spec's allow list, so this can
-    // never become an unreadable sequential ramp.
+    // Step expression comes from the shared engine, but CS keeps its own fixed
+    // red/orange/yellow/green quality breaks: low/high CDI is a quality judgment
+    // (poor -> excellent), not a magnitude gradient. Colors resolve through the
+    // layer color cascade, restricted to diverging palettes by the
+    // "corridor-scoring" spec's allow list.
     var csColors = (App.resolveLayerColors && App.resolveLayerColors("corridor-scoring")) ||
       ["#C53030", "#C05621", "#D69E2E", "#276749"];
     var colorExpr = App.choropleth.buildStepColorExpr(

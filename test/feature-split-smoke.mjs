@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/feature-split-smoke.mjs
 //
-// Browser smoke test for Feature Split (docs/feature-split-plan.md, Phase 1:
+// Browser smoke test for Feature Split (docs/archive/feature-split-plan.md, Phase 1:
 // "Split here" for lines and routes). Loads the real app, drives window.App
 // through page.evaluate and the real map right-click menu + dialog, and asserts:
 // piece count / IDs / inherited attributes / run-time share / Service choice /

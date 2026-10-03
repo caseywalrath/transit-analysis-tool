@@ -1,18 +1,14 @@
 // js/core/feature-appearance.js
 //
-// Shared per-feature Appearance editing (docs/feature-appearance-plan.md, Phase 1).
+// Shared per-feature Appearance editing. Detail: docs/reference/drawing-and-features.md
 //
-//  - App.openAppearancePopup(anchorEl, type, index, opts) — the singleton
-//    #fp-appearance-popover: color, opacity, width, offset (lines/routes) and
-//    Line style (lines/routes) and a Reset all button for ONE feature. Opened from the Features-pane type
-//    icon, the Attributes popup swatch, the Layers-tab feature row swatch and
-//    the Attribute Summary swatch.
-//  - App.buildFeatureOverrideRows(type, feature, opts) — the opacity / width /
-//    offset override rows (buffer radius is NOT here: it is geometry, edited in
-//    the Attributes popup's Study area section via App.buildBufferRadiusControl).
-//    The popover AND the Layers-tab per-feature
-//    drawer both call this, so the "muted default until overridden, × clears"
-//    cascade logic lives in exactly one place.
+//  - App.openAppearancePopup(anchorEl, type, index, opts): the singleton
+//    #fp-appearance-popover (color, opacity, width, offset, line style, Reset
+//    all) for ONE feature.
+//  - App.buildFeatureOverrideRows(type, feature, opts): the override rows, shared
+//    by the popover and the Layers-tab per-feature drawer so the "muted default
+//    until overridden, x clears" cascade lives in one place. Buffer radius is
+//    NOT here (it is geometry: App.buildBufferRadiusControl in the Attributes popup).
 //
 // Features are remembered by stable { type, id } ref and resolved on every
 // read/write, so an undo/redo (which replaces the feature objects), a merge or
