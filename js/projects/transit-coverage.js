@@ -1,11 +1,7 @@
-// js/projects/transit-coverage.js
-// Transit Coverage: registers as an analysis module, opens in a 2-column popup,
-// computes ACS population + LODES jobs coverage within a buffer distance of
-// selected transit routes/lines, clipped to a user-selected service area.
-// Depends on: App namespace, App.popup (popup.js), App.cache (cache.js),
-//   App.getEffectiveServiceBands (service-assembly.js), census.js, lodes.js, turf (CDN).
-// Step 2: checklists + input wiring + stale lifecycle.
-// No public API.
+// js/projects/transit-coverage.js — Transit Coverage module: ACS population + LODES jobs within a
+// buffer of selected transit routes/lines, clipped to a user-selected service area.
+// Depends on: App, App.popup, App.cache, App.getEffectiveServiceBands (service-assembly.js), census.js, lodes.js, turf.
+// No public API (App._tcTest is a test-only hook).  Detail: docs/reference/modules/transit-coverage.md
 
 (function () {
   "use strict";
@@ -13,12 +9,12 @@
 
   // ---- Module-local state (persists across popup open/close) ----
 
-  var _lastResult       = null;   // populated in Step 5: { geoLevel, year, ..., coverageClipped, thresholdClipped, serviceAreaUnion }
+  var _lastResult       = null;   // { geoLevel, year, ..., coverageClipped, thresholdClipped, serviceAreaUnion }
   var _stale            = false;
   var _running          = false;
   var _initialized       = false;
   // Checklist selection (transit features AND service-area polygons) is remembered as
-  // the features the user UNCHECKED, by stable { type, id } ref (Phase 4b) — array
+  // the features the user UNCHECKED, by stable { type, id } ref — array
   // positions shift when an earlier feature is deleted or merged. Anything not listed
   // (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
@@ -397,9 +393,8 @@
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
 
-  // Test-only: expose the pure helpers to the golden harness
-  // (test/run-golden.mjs). Guarded by __MAT_TEST__ so it has no effect in the
-  // browser. See test/README.md.
+  // Test-only: expose the pure helpers to the golden harness (test/run-golden.mjs); guarded by
+  // __MAT_TEST__ so it is inert in the browser. See test/README.md.
   if (typeof window !== "undefined" && window.__MAT_TEST__) {
     App._tcTest = {
       computePeakHeadway: computePeakHeadway,
@@ -505,11 +500,9 @@
     return { type: "FeatureCollection", features: features };
   }
 
-  // Colors resolve through the layer style cascade (Phase 7 of
-  // docs/archive/layer-color-customization-plan.md) — a categorical spec, one class
-  // per semantic fill. The fallback array is byte-identical to the spec's
-  // defaultColors so a missing layer-palettes.js degrades to the original
-  // hardcoded colors instead of throwing.
+  // Colors resolve through the layer style cascade — a categorical spec, one class per semantic
+  // fill. The fallback array equals the spec's defaultColors so a missing layer-palettes.js
+  // degrades to the original colors instead of throwing.
   var TC_DEFAULT_COLORS = ["#93c5fd", "#1d4ed8", "#374151"];
   function tcColors() {
     return (typeof App.resolveLayerColors === "function" &&
@@ -547,9 +540,7 @@
       });
     } else {
       map.getSource(TC_SOURCE).setData(fc);
-      // Refresh paint too — without this a palette changed while results were
-      // already on screen would survive only until the next re-run, which is
-      // the exact failure mode this whole plan exists to avoid.
+      // Refresh paint too, or a palette changed while results are on screen would only apply on re-run.
       repaintOverlay();
     }
   }
@@ -592,7 +583,7 @@
   // showFloatingWidget resolves asynchronously only on first creation (it
   // fetches the fragment); re-showing an existing widget returns an already
   // resolved promise. Branching on thenable keeps every caller synchronous —
-  // the same wrapper shape the four Phase 5 legends use.
+  // the same wrapper shape the other module legends use.
   function showCoverageLegend() {
     if (!App.popup || !App.popup.showFloatingWidget) return;
     var p = App.popup.showFloatingWidget("tc-legend", "projects/transit-coverage-legend.html", {
@@ -966,14 +957,12 @@
     if (_initialized) return;
     _initialized = true;
 
-    // Geography level / ACS year
     var geoLevel = document.getElementById("tcGeoLevel");
     if (geoLevel) geoLevel.addEventListener("change", markStale);
 
     var yearSel = document.getElementById("tcYearSelect");
     if (yearSel) yearSel.addEventListener("change", markStale);
 
-    // Coverage settings
     var bufferInput = document.getElementById("tcBufferMiles");
     if (bufferInput) bufferInput.addEventListener("change", markStale);
     var displayBuffersInput = document.getElementById("tcUseDisplayBuffers");
@@ -1007,7 +996,6 @@
       actionsEl.appendChild(toggleEl);
     }
 
-    // Transit features select all / clear
     var featSelectAll = document.getElementById("tcFeatSelectAll");
     if (featSelectAll) {
       featSelectAll.addEventListener("click", function (e) {
@@ -1027,7 +1015,6 @@
       });
     }
 
-    // Service-area select all / clear
     var areaSelectAll = document.getElementById("tcAreaSelectAll");
     if (areaSelectAll) {
       areaSelectAll.addEventListener("click", function (e) {
@@ -1047,11 +1034,9 @@
       });
     }
 
-    // Analyze Coverage
     var runBtn = document.getElementById("tcRunBtn");
     if (runBtn) runBtn.addEventListener("click", runCoverage);
 
-    // Exports
     var csvBtn = document.getElementById("tcExportCSV");
     if (csvBtn) csvBtn.addEventListener("click", exportCSV);
     var gjBtn = document.getElementById("tcExportGeoJSON");
@@ -1288,10 +1273,8 @@
     name:       "Transit Coverage",
     enabled:    true,
     popupWidth: 1000,
-    // One width for both modes, under the 620px @container breakpoint — narrow,
-    // stacked task panel in every state, never resizes on run (see the fuller
-    // note in buffer-summary.js). 600 gives the coverage results table the most
-    // room available without un-stacking.
+    // One width for both modes, under the 620px @container breakpoint (narrow stacked panel,
+    // never resizes on run); see the fuller note in buffer-summary.js.
     panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/transit-coverage-popup.html",
 
