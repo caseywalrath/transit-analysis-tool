@@ -1,11 +1,12 @@
 # Network Connectors — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/road-network.md. This file is historical.
+
 User-drawn Line features that join the offline walking network, so walksheds and
 travelsheds can model planned or hypothetical pedestrian connections (a new
 trail, a pedestrian bridge, a mid-block crossing, a path through a campus) that
 do not exist in OpenStreetMap.
 
-**Status:** planned, not started.
 **Scope owner note:** this plan is written to be executed phase-by-phase by a
 smaller model. Each phase is independently shippable and independently
 verifiable. Do not merge phases. Do not skip the "Verify" block at the end of

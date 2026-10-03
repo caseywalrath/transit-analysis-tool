@@ -1,9 +1,7 @@
 # Browser behavior tests — shared harness plan
 
-Status: Phases 0-4 done. `test/browser/harness.mjs` holds the shared plumbing,
-`network-cache.test.mjs` is refactored onto it with polled (not fixed-sleep)
-timing, and `run-browser.sh` + the READMEs/CLAUDE.md updates from Phase 4 are
-in place.
+> **Status:** Shipped (verified 2026-10). Current behavior: test/browser/README.md. This file is historical.
+
 
 ## Why this exists
 

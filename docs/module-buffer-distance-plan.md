@@ -1,5 +1,7 @@
 # Module-Owned Analysis Buffer Distance — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/analysis-modules.md. This file is historical.
+
 > Follow-up delivered: Feature Area Analysis now uses the same selected-feature
 > buffer controls. All five scoped modules also provide a default-off **Use
 > Display Buffers** option. It disables the distance field and uses the selected

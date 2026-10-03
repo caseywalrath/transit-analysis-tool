@@ -1,5 +1,7 @@
 # Color Picker Variety Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
+
 Goal: more color choice in the shared swatch picker without a materially larger popover.
 Single surface: `buildColorPickerBody(currentColor, onPick)` in `js/core/features.js` (~L101-170),
 styled by `.fp-cp-*` in `css/style.css` (~L4762). It is used by the floating `App.openColorPicker`

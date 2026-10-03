@@ -1,6 +1,14 @@
 # Sidewalk Data for Walkshed Analysis — Implementation Plan
 
-Status: **planned, not started.**
+> **Status:** Partial (verified 2026-10).
+> Shipped: Stage A (Phases 1-4: tag capture, coverage layer, coverage stats, manual street exclusion) in js/core/walk-audit.js, road-network.js, network-connectors.js.
+> Remaining:
+> - Phase 5 (gap analysis engine): no gap/worklist code in js/
+> - Phase 6 (gap markers and worklist UI): none in js/
+> - Phase 7 (attribute-vs-geometry gaps): none in js/
+> - Phase 8 (sidewalk-only traversal mode): no sidewalk-only mode in js/ (only a comment in walk-audit.js)
+> - Phase 9 (crossing penalties from mapped crossings, optional): not found
+
 
 ## How to use this doc
 

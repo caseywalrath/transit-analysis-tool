@@ -1,5 +1,7 @@
 # Transit Ridership Forecasting Tool — Strategic Evaluation & Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/ridership-forecasting.md. This file is historical.
+
 ## Context
 
 We have a browser-based geospatial analysis tool (no backend, no build step, no npm) with a Transit Propensity Index (TPI) module that scores census geographies on 9 demographic/equity factors. The goal is to evaluate a proposed 4-layer ridership forecasting model against our current capabilities and determine the best strategy for implementation — what belongs in the existing app, what might need a companion tool, and what should use external tools like Excel.

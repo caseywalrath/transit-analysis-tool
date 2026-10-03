@@ -1,5 +1,8 @@
 # Population Projections Integration — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
+> Deviation: shipped projections are additive population counts (pop_new = pop_census + pop_addition), not the multiplicative growth factors described below.
+
 ## Context
 
 The TPI and Ridership Forecasting modules use ACS census data for current-year population, which anchors both the population density factor (35% of TPI weight) and the population-weighted CDI aggregation used throughout the ridership scoring engine. This change adds the ability to upload a pre-computed growth factor CSV — derived offline from the PPACG MPO's TAZ-level population projections (2020–2050) — so that TPI and ridership analyses can be run against projected future-year populations (2030, 2040, or 2050) without changing the underlying census geography or ACS workflow.

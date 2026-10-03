@@ -1,5 +1,7 @@
 # Route Costing Module — Resume Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/route-costing.md. This file is historical.
+
 Resuming from archived session. Two commits already on branch
 `claude/resume-archived-session-IBiRG` (identical to the prior
 `claude/plan-route-costing-module-HXoPP` branch):

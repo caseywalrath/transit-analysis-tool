@@ -1,5 +1,9 @@
 # Display Settings rework — implementation plan
 
+> **Status:** Partial (verified 2026-10). Shipped: Phases 1-5 (Display Settings module removed, scrubber `App.buildScrubber`, Layers style drawers, Attribute Summary without appearance icons, style-presets entry in features.md).
+> Remaining:
+> - Phase 0 (resizable feature panel): no drag handle in index.html or js/core/features.js; `--fp-width` is still a fixed 250px in css/style.css:58.
+
 Replaces the 15-fader Display Settings matrix with per-type style drawers in the Layers panel,
 and separates appearance from analysis geometry and from attribute data.
 

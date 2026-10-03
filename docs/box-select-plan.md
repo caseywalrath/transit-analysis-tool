@@ -1,6 +1,7 @@
 # Box select (drag to select) — plan
 
-Status: **implemented** (Phases 1-5). Browser test: `test/box-select-smoke.mjs`; golden cases: `test/cases/box-select.mjs`.
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
+
 
 Notes from implementation:
 - The tool intercepts mouse events in the capture phase instead of toggling MapLibre's `dragPan`, so there is no map state to restore.

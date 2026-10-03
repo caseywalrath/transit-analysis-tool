@@ -1,6 +1,7 @@
 # Feature Appearance Plan — shared Appearance popover, Study-area buffer, Line style
 
-Status: **plan only — no code changed.** Branch: `claude/sleepy-wozniak-n391ii`.
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
+
 
 Three phases, each shippable on its own:
 

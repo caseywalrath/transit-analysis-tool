@@ -1,12 +1,7 @@
 # CARTO Basemap API Key — Implementation Plan
 
-**Status:** Fully implemented on `claude/carto-api-key`, real key committed to
-`js/core/config.js`. **Not yet verified against CARTO's live servers or on the deployed Pages
-URL** — this environment's network policy blocks `cartocdn.com` outright (confirmed via the
-proxy status endpoint, not just a timeout), so the URL construction and app wiring were
-verified with the network stubbed, but nobody has yet confirmed CARTO's servers accept this
-key or that domain scoping behaves as expected on `caseywalrath.github.io`. That is the one
-remaining step — see §9 step 4 and §2.
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical. Key wiring exists in js/core/config.js and js/core/map.js; the live-CARTO and Pages-URL acceptance checks (section 10) cannot be confirmed from the code.
+
 **Branch:** `claude/carto-api-key`
 **Trigger:** CARTO now requires an API key for `basemaps.cartocdn.com`. Unkeyed requests
 are served with an "API KEY REQUIRED" watermark. Three of this app's seven basemaps —
