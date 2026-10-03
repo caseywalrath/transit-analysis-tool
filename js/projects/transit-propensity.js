@@ -1,6 +1,6 @@
 // js/projects/transit-propensity.js
-// Transit Propensity Index: registers as an analysis module, opens in a 2-column popup,
-// renders choropleth + floating legend.
+// Transit Propensity Index module: UI, choropleth + floating legend, export.
+// Scoring lives in tpi-scoring.js. Detail: docs/reference/modules/transit-propensity.md
 // Depends on: App namespace, TPI namespace (tpi-scoring.js), App.popup (popup.js), turf (CDN).
 // Exports: App.getTpiWeights()
 
@@ -15,7 +15,7 @@
   var _weights = TPI.getDefaultWeights();
   var _pendingWeights = null;     // temporary copy while Adjust Weights modal is open
   // Checklist selection is remembered as the features the user UNCHECKED, by stable
-  // { type, id } ref (Phase 4b) — array positions shift when an earlier feature is
+  // { type, id } ref — array positions shift when an earlier feature is
   // deleted or merged. Anything not listed (including newly drawn features) is
   // checked. Run-time index arrays are still built from the live checkboxes.
   var _uncheckedRefs = [];
@@ -753,16 +753,12 @@
 
   // ---- Choropleth rendering ----
 
-  // Still referenced by the hide-toggle wiring below — App.choropleth.render()
-  // with id: "tpi" produces exactly these ids via its "<id>-choropleth-*"
-  // convention (js/core/choropleth.js), so they remain valid without a
-  // TPI_SOURCE constant (no longer used now that render()/remove() own the
-  // source directly).
+  // Layer ids App.choropleth.render() produces for id "tpi" via its
+  // "<id>-choropleth-*" convention (js/core/choropleth.js); used by the hide toggle.
   var TPI_FILL_LAYER = "tpi-choropleth-fill";
   var TPI_LINE_LAYER = "tpi-choropleth-line";
 
-  // Hover popup for the "tpi" choropleth (Phase 3 Step 3.2 of
-  // docs/archive/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  // Hover popup for the "tpi" choropleth.
   function tpiHoverHTML(props) {
     var score  = props.tpiScore;
     var geoid2 = props.GEOID || "\u2014";
@@ -790,13 +786,8 @@
     return html;
   }
 
-  // Manual breaks [1,2,3,4] with the "blues" ramp reproduce the same 5 colors
-  // TPI's old inline continuous interpolate used at integer scores
-  // (#eff3ff/#bdd7e7/#6baed6/#3182bd/#08519c), now as discrete classes rather
-  // than a gradient \u2014 the settled Phase 3 Step 3.2 tradeoff (pixel-for-pixel
-  // parity with the old continuous ramp is not required). A null/non-numeric
-  // tpiScore renders App.choropleth's no-data gray via its typeof guard,
-  // replacing the old coalesce-to-0-then-gray hack.
+  // Manual breaks [1,2,3,4] with the "blues" ramp give 5 discrete classes, one per
+  // integer score. A null/non-numeric tpiScore renders the engine's no-data gray.
   function renderChoropleth(result) {
     var map = App.map;
     if (!map || !result) return;
@@ -830,9 +821,8 @@
       });
     }
 
-    // Layer ids are load-bearing (Layers-panel manifest, ui-screens) and are
-    // exactly reproduced by the "<id>-choropleth-*" convention: id: "tpi"
-    // yields tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
+    // Layer ids are load-bearing (Layers-panel manifest, ui-screens): id "tpi"
+    // must yield tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
     App.choropleth.render({
       id: "tpi", features: features, valueProp: "tpiScore",
       breaks: [1, 2, 3, 4], ramp: "blues",
