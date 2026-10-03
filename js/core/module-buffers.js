@@ -1,11 +1,9 @@
 // js/core/module-buffers.js
-// Shared analysis-buffer helper. Feature Area Analysis, Transit Coverage,
-// Transit Propensity, Ridership Forecasting, and Corridor Scoring can carry a
-// module distance, independent of the Feature Settings global
-// buffer radius (App.routeBuffers / App.lineBuffers / App.buffers, rebuilt by
-// js/core/routes.js / lines.js / points.js). It never mutates those arrays and
-// it can build either a private distance-based set or a selected display-buffer
-// set for one analysis run.
+// Shared analysis-buffer helper: modules carry their own buffer distance,
+// independent of the Feature Settings radius (App.routeBuffers / lineBuffers /
+// buffers). Never mutates those arrays; builds either a private distance-based
+// set or a selected display-buffer set for one analysis run.
+// Detail: docs/reference/core-app.md
 // Depends on: App namespace, turf (CDN), App.points/lines/routes/polygons,
 //   App.getPointWalkshed (walkshed.js, optional — guarded).
 // No DOM access.

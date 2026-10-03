@@ -1,8 +1,8 @@
 // js/core/map.js
 // Map initialization: basemap via MapLibre GL JS, basemap switcher control.
 // Depends on: maplibregl (loaded via CDN), App.CARTO_API_KEY (config.js).
-// Exports: map, switchBasemap, getBasemaps, getCurrentBasemapId,
-//          getThemeBasemapId
+// Exports: map, switchBasemap, getBasemaps, getCurrentBasemapId, getThemeBasemapId,
+//          toggleMuniBoundaries, setMuniBoundariesLayerVisible
 
 (function () {
   var App = window.App = window.App || {};
@@ -92,13 +92,11 @@
   // ---- CARTO API key ----
   // CARTO requires a key on basemaps.cartocdn.com; unkeyed tiles come back
   // stamped "API KEY REQUIRED". The key is applied to every CARTO tile URL
-  // once, here at init, so both consumers below — the initial style and
-  // switchBasemap() — read already-keyed URLs and neither has to remember.
-  //
+  // once, here at init, so the initial style and switchBasemap() both read
+  // already-keyed URLs.
   // With no key we withdraw the CARTO basemaps entirely rather than render
-  // watermarked tiles. That is the state a fork, an exhausted quota, or (if
-  // the key turns out to be domain-locked) local development sees, so the
-  // remaining keyless basemaps have to carry the app on their own.
+  // watermarked tiles (a fork, an exhausted quota, or domain-locked local dev),
+  // so the keyless basemaps must carry the app on their own.
   // See js/core/config.js and docs/archive/carto-api-key-plan.md.
 
   var CARTO_TILE_HOST = "basemaps.cartocdn.com";
