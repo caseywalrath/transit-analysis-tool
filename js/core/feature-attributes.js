@@ -1,6 +1,7 @@
 // js/core/feature-attributes.js
-// Per-feature attribute popup: floating draggable dialog (singleton).
-// Only one popup open at a time; opening a different feature replaces content.
+// Per-feature attribute popup (floating, draggable singleton) plus ATTR_FIELDS and the
+// shared editors. Schema is duplicated in js/projects/attribute-summary.js: change both together.
+// Detail: docs/reference/drawing-and-features.md
 // Exports:
 //   App.openAttrPopup(featureType, featureIndex, feature)
 //   App.closeAttrPopup()
@@ -38,8 +39,7 @@
     { key: "runTime",   label: "Run time",  type: "number", unit: "min", placeholder: "e.g. 45" }
   ].map(function (f) { f.section = "Transit service"; return f; });
 
-  // Per-feature buffer radius (docs/archive/feature-appearance-plan.md Phase 2). It is
-  // study-area geometry, not appearance. Unlike every other field it lives on
+  // Per-feature buffer radius: study-area geometry, not appearance. Unlike every other field it lives on
   // feature.properties._bufferRadius, NOT feature.properties.attributes — the
   // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
   // never touches `attributes`.
@@ -47,9 +47,8 @@
 
   var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
 
-  // Fired when a Line's Walk network role changes (Not part of network ↔ Walk
-  // connector). Stub in Phase 2 of docs/archive/network-connectors-plan.md — Phase 4
-  // makes App.refreshNetworkConnectors() actually reweld the graph.
+  // Fired when a Line's Walk network role changes (Not part of network <-> Walk
+  // connector); re-welds the walk graph.
   function onNetworkRoleChange() {
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
@@ -1230,10 +1229,7 @@
     });
     body.appendChild(buildRow("Name", nameInput, null));
 
-    // Type-specific fields. A field carrying a new `section` value gets a
-    // small header row before it — used by Lines to visually separate
-    // "Transit service" fields (inherited from Routes) from "Walk network"
-    // fields (Lines only). Fields with no `section` render exactly as before.
+    // A field with a new `section` value gets a header row before it.
     var fields = ATTR_FIELDS[featureType] || [];
     var lastSection = null;
     fields.forEach(function (field) {
