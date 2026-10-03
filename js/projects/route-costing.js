@@ -1,12 +1,8 @@
 // js/projects/route-costing.js
-// Route Costing: high-level transit service costing module. Reads feature
-// attributes (length, avg speed, direction, service bands) and module-wide
-// Costing Settings to estimate daily/annual operating cost, trips, rev-hrs,
-// plat-hrs, and peak vehicles per Service.
-//
-// Depends on: App namespace, App.popup, App.cache (session persistence).
-// Step 2: skeleton — registration, popup wiring, Settings modal only.
-// No public API.
+// Route Costing: per-Service daily/annual operating cost, trips, revenue and
+// platform hours, and peak vehicles from feature attributes + Costing Settings.
+// Service assembly lives in js/core/service-assembly.js. No public API.
+// Detail: docs/reference/modules/route-costing.md
 
 (function () {
   "use strict";
@@ -32,7 +28,7 @@
   var _settings        = Object.assign({}, DEFAULT_SETTINGS);
   var _pendingSettings = null;    // temp copy while Settings modal is open
   var _lastServices    = null;    // last-assembled Service[] from App.buildTransitServices()
-  var _lastResult      = null;    // { services:[...], summary:{...}, settings } (Step 5)
+  var _lastResult      = null;    // { services:[...], summary:{...}, settings } 
   var _stale           = false;
   var _running         = false;
   var _initialized     = false;
@@ -51,7 +47,7 @@
 
   function setStatus(msg, kind) {
     if (!isPopupVisible()) return;
-    // Translate legacy kinds to the standardized status palette.
+    // Callers pass "ok"/"warn"; map them onto the shared status palette.
     var k = kind === "ok"   ? "done"  :
             kind === "warn" ? "stale" :
             kind || "";
@@ -463,8 +459,8 @@
     var rt = computeRoundTrip(svc, settings);
     var multi = svc.patterns.length >= 3;
     // 3+ patterns: layover is charged per one-way trip, at half what a cycle of
-    // two of that pattern's trips gets (docs/archive/gtfs-route-browser-plan.md
-    // "Phase 3 design") — the per-trip share a 2-pattern Service pays.
+    // two of that pattern's trips gets — the per-trip share a 2-pattern
+    // Service pays (design: docs/archive/gtfs-route-browser-plan.md).
     var layPerTrip = multi ? rt.oneWays.map(function (ow) {
       return computeLayoverHrs(2 * ow, settings) / 2;
     }) : null;
@@ -608,7 +604,7 @@
       perDay.sunday.peakVehiclesRaw
     );
 
-    // Backwards-compat aliases used by older code paths during transition.
+    // Legacy `daily` alias of perDay (kept for saved sessions and older readers).
     var daily = {
       weekday:  perDay.weekday,
       saturday: perDay.saturday,
@@ -716,7 +712,6 @@
     });
 
     // System-wide fleet metrics — the fleet you must own = max across day types.
-    // System-wide fleet metrics
     out.peakFleetRounded   = Math.max(out.perDay.weekday.fleetSumRounded,
                                        out.perDay.saturday.fleetSumRounded,
                                        out.perDay.sunday.fleetSumRounded);
@@ -1373,7 +1368,6 @@
       byId("rcExportCSV").addEventListener("click", exportCSV);
     }
 
-    // Select all / Clear checklist helpers (checkboxes populated in Step 3)
     if (byId("rcSelectAll")) {
       byId("rcSelectAll").addEventListener("click", function (e) {
         e.preventDefault();
@@ -1572,8 +1566,6 @@
       _restoredSelectedKeys = null;  // consume once
     }
   };
-
-  // ---- Register module ----
 
   // ---- Feature usage (Split / Merge dialogs) ----
   // Service membership (by serviceId) and whether that Service is in the last

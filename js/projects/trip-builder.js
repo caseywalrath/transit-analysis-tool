@@ -1,15 +1,10 @@
 // js/projects/trip-builder.js
-// Trip Builder: generates a high-level trip schedule for each Service from
-// the underlying Route/Line attributes (Direction, Time Bands, Frequency,
-// Run time, Avg speed). Two-column popup like Route Costing — left lists
-// every Service, right shows side-by-side Start/End tables per direction
-// per day type. Trips are direction-independent: each pattern's bands drive
-// its own column, so paired NB/SB use their own attributes; a solo "Both"
-// emits identical times into derived Outbound* / Inbound* columns.
-//
-// Depends on: App namespace, App.popup, App.cache (session persistence),
-//             turf (for feature length when avg speed is the runtime source).
-// No public API.
+// Trip Builder: generates a high-level trip schedule per Service from feature
+// attributes (Direction, Time Bands, Run time, Avg speed). Left column lists
+// Services; right shows Start/End tables per direction per day type. Each
+// pattern's own bands drive its own column; a solo "Both" emits identical
+// times into derived Outbound* / Inbound* columns. No public API.
+// Detail: docs/reference/modules/trip-builder.md
 
 (function () {
   "use strict";
@@ -45,7 +40,7 @@
 
   function setStatus(msg, kind) {
     if (!isPopupVisible()) return;
-    // Translate legacy kinds to the standardized status palette.
+    // Callers pass "ok"/"warn"; map them onto the shared status palette.
     var k = kind === "ok"   ? "done"  :
             kind === "warn" ? "stale" :
             kind || "";
@@ -94,10 +89,10 @@
     return "none";
   }
 
-  // ---- Direction column resolver (Q4 + Q6 ordering) ----
+  // ---- Direction column resolver ----
   // Returns one entry per Start/End table column (1 or 2 columns per Service; one per pattern for 3+).
 
-  // Order rank for column display per Q6:
+  // Order rank for column display:
   //   NB before SB, EB before WB, Inbound before Outbound, CW before CCW,
   //   Outbound* before Inbound* (derived from "Both"), Loop is solo.
   var DIRECTION_ORDER = {
@@ -114,8 +109,8 @@
     var ps = svc.patterns;
 
     if (ps.length >= 3) {
-      // 3+ patterns (docs/archive/gtfs-route-browser-plan.md "Phase 3 design"): one
-      // column per pattern. A direction shared by several patterns gets the
+      // 3+ patterns: one
+      // column per pattern (design: docs/archive/gtfs-route-browser-plan.md). A direction shared by several patterns gets the
       // pattern name appended so the columns stay distinguishable.
       var dirCount = {};
       ps.forEach(function (p) { dirCount[p.direction] = (dirCount[p.direction] || 0) + 1; });
@@ -146,7 +141,7 @@
       var p = ps[0];
       if (p.direction === "Both") {
         // Derived: emit Outbound* and Inbound* using the same pattern. Trips
-        // are simultaneous (same bands → same start times), per Q2.
+        // are simultaneous (same bands → same start times).
         cols.push({
           direction:    "Outbound*", label: "Outbound*", withAsterisk: true,
           color: p.color, patternName: p.name, pattern: p
@@ -156,7 +151,7 @@
           color: p.color, patternName: p.name, pattern: p
         });
       } else {
-        // Loop / CW / CCW — single column, no opposite (Q4).
+        // Loop / CW / CCW — single column, no opposite.
         cols.push({
           direction:    p.direction, label: p.direction, withAsterisk: false,
           color: p.color, patternName: p.name, pattern: p
@@ -164,7 +159,7 @@
       }
     }
 
-    // Stable sort per Q6 ordering rank.
+    // Stable sort by the ordering rank above.
     cols.sort(function (a, b) {
       var ra = DIRECTION_ORDER[a.direction] || 99;
       var rb = DIRECTION_ORDER[b.direction] || 99;
@@ -187,7 +182,7 @@
     return h * 60 + mn;
   }
 
-  // Format minutes-from-midnight (mod 1440) → "H:MM". Q3: clean format, no "+1d".
+  // Format minutes-from-midnight (mod 1440) → "H:MM". No "+1d" suffix.
   function formatMin(mins) {
     var t = ((mins % 1440) + 1440) % 1440;
     var h = Math.floor(t / 60);
@@ -215,7 +210,7 @@
       // Midnight wrap (e.g. 22:00 → 02:00).
       if (toMin <= fromMin) toMin += 1440;
       // Generate from the band start, stepping by headway, while < band end.
-      // Q5: trips whose end exceeds the band end are still emitted.
+      // Trips whose end exceeds the band end are still emitted.
       var emitted = 0;
       for (var t = fromMin; t < toMin; t += headway) {
         trips.push({ startMin: t, endMin: t + runtimeMin });
@@ -1160,8 +1155,6 @@
       _tripsByService = migrated;
     }
   }
-
-  // ---- Register module ----
 
   // ---- Feature usage (Split / Merge dialogs) ----
   if (typeof App.registerFeatureUsage === "function") {
