@@ -30,7 +30,7 @@
   // Per-section color overrides (null = use sequential or built-in default)
   App.sectionColors = { point: null, line: null, route: null, polygon: null };
 
-  // --- Feature color resolution (docs/feature-color-system-plan.md) ---
+  // --- Feature color resolution (docs/archive/feature-color-system-plan.md) ---
   // One cascade, for every drawn feature type, resolved fresh on every render:
   //   1. feature.properties.color, when non-empty — a per-feature override.
   //   2. App.sectionColors[type], when non-empty — a flat type-level default.
@@ -85,7 +85,7 @@
     return "#2b6cb0"; // point, and any unrecognized type
   }
 
-  // --- Stable per-type feature IDs (docs/feature-merge-plan.md, Phase 1) ---
+  // --- Stable per-type feature IDs (docs/archive/feature-merge-plan.md, Phase 1) ---
   // Every drawn feature carries an integer ID in a per-type property
   // (pointIdx / lineIdx / routeIdx / polyIdx). It is used to map a clicked map
   // feature back to its array index and to link stops to routes
@@ -181,7 +181,7 @@
     });
   }
 
-  // --- Feature references by stable ID (docs/feature-merge-plan.md, Phase 4b) ---
+  // --- Feature references by stable ID (docs/archive/feature-merge-plan.md, Phase 4b) ---
   // Array indices shift whenever an earlier feature is deleted or merged, so a
   // module that remembers a feature by index silently retargets. A feature ref
   // is { type, id } (type = point|line|route|polygon, id = the per-type stable
@@ -307,7 +307,7 @@
   App.indexFilterToRefs = function (filter) { return indexFilterToRefsIn(_liveArrays(), filter); };
   App.ensureFeatureIds = ensureFeatureIds;
 
-  /* Feature usage hook (docs/feature-split-plan.md Phase 3). Analysis modules
+  /* Feature usage hook (docs/archive/feature-split-plan.md Phase 3). Analysis modules
      register a provider fn(type, id) -> [label | {label, severity}] that says
      how they refer to a feature; the Split and Merge dialogs ask
      describeFeatureUsage(type, id) -> [{module, label, severity: "warn"|"info"}].
@@ -337,7 +337,7 @@
     return out;
   };
 
-  // "Last action wins" (docs/feature-color-sync-plan.md): a type-wide color
+  // "Last action wins" (docs/archive/feature-color-sync-plan.md): a type-wide color
   // chosen in the Layers tab must reach every feature of that type, so each
   // feature's own override is cleared and it inherits the type setting again.
   // Does not re-render or push undo -- App.setTypeColor (features.js) does both.
@@ -718,7 +718,7 @@
   App.nestedMapToObj = nestedMapToObj;
   App.nestedObjToMap = nestedObjToMap;
 
-  // ---- Per-feature line style (docs/feature-appearance-plan.md Phase 3) ----
+  // ---- Per-feature line style (docs/archive/feature-appearance-plan.md Phase 3) ----
   // Drawn Lines/Routes render in THREE layers over one source, one per
   // properties._lineStyle value, because MapLibre's line-dasharray cannot be a
   // data expression. The solid layer keeps the historical id. Never reference

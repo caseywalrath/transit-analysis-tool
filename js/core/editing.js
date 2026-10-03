@@ -659,7 +659,7 @@
         if (editState.featureType === "line") {
           App.updateLineVertex(editState.featureIndex, editState.vertexIndex, e.lngLat.lng, e.lngLat.lat);
           // Re-weld the connector overlay on drag END only, not per-frame — a
-          // moved connector vertex can change joins (docs/network-connectors-plan.md).
+          // moved connector vertex can change joins (docs/archive/network-connectors-plan.md).
           if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
         } else if (editState.featureType === "polygon") {
           App.updatePolygonVertex(editState.featureIndex, editState.vertexIndex, e.lngLat.lng, e.lngLat.lat);

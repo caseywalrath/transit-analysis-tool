@@ -8,11 +8,11 @@
 // turf, no DOM, no App.map at load time — so the golden harness
 // (test/run-golden.mjs) loads it directly into a bare node:vm sandbox. The
 // App-level cascade (resolver/registry, added in Phase 3 of
-// docs/layer-color-customization-plan.md) reads window.App only inside
+// docs/archive/layer-color-customization-plan.md) reads window.App only inside
 // function bodies, never at load time, following the same rule
 // js/core/choropleth.js already follows.
 //
-// See docs/layer-color-customization-plan.md for the full design.
+// See docs/archive/layer-color-customization-plan.md for the full design.
 
 (function () {
   "use strict";
@@ -299,7 +299,7 @@
     specFor: specFor
   };
 
-  // ---- App-level cascade (Phase 3 of docs/layer-color-customization-plan.md) ---
+  // ---- App-level cascade (Phase 3 of docs/archive/layer-color-customization-plan.md) ---
   // Reads/writes App state only inside function bodies (never at the top
   // level beyond the two default-init lines below), so this loads safely in
   // the golden sandbox, which stubs window.App with no App.map/App.cache —

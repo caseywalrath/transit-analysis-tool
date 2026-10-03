@@ -2,7 +2,7 @@
 
 > **Status:** Abandoned (verified 2026-10). Memo recommended no-go on a generic Layers-panel style affordance; no `styleSpec` exists in js/core/layers-panel.js. Related current behavior: docs/reference/layers-and-styling.md. This file is historical.
 
-Evaluation memo only, per `docs/feature-area-choropleth-plan.md` Phase 3 Step 3.5. No code in this step.
+Evaluation memo only, per `docs/archive/feature-area-choropleth-plan.md` Phase 3 Step 3.5. No code in this step.
 
 ## Question
 
@@ -39,7 +39,7 @@ the red-means-bad convention the whole module is built around.
   `#basMapRow` block as the map-variable and shade-by pickers. Splitting "which variable" (module
   popup) from "what color" (Layers panel) across two different UI surfaces for the one module that
   has both is a net UX regression for zero present benefit, since no second module needs the split.
-- This is also the plan's own settled decision (`docs/feature-area-choropleth-plan.md`, "Settled
+- This is also the plan's own settled decision (`docs/archive/feature-area-choropleth-plan.md`, "Settled
   design decisions"): styling controls live in the module popup "for now," with this evaluation as
   the checkpoint to revisit it.
 

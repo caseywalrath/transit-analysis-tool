@@ -1,5 +1,5 @@
 // js/core/merge.js
-// Feature Merge (docs/feature-merge-plan.md). Phases 2-3: lines, polygons,
+// Feature Merge (docs/archive/feature-merge-plan.md). Phases 2-3: lines, polygons,
 // routes, points ("combine stops") and line + route (result is a Line).
 // Phase 4a: every merge records its undo-independent history on the survivor
 // (properties._mergedFrom) so App.merge.unmerge() can split it apart later.
@@ -1322,7 +1322,7 @@
   }
 
   // Module references to each merged feature (App.describeFeatureUsage, the
-  // Phase 3 hook from docs/feature-split-plan.md). The survivor keeps its ID,
+  // Phase 3 hook from docs/archive/feature-split-plan.md). The survivor keeps its ID,
   // so its references now cover the merged feature; a removed feature's ID is
   // gone, so its references go missing. -> { warn: [..], info: [..] }
   function usageForMerge(plan) {

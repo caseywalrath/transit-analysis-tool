@@ -10,7 +10,7 @@
 // lookup) lives in js/core/road-network.js, which supplies this engine's
 // `candidates` argument and applies its returned addEdges/removeSegIds.
 //
-// See docs/network-connectors-plan.md §3 for the architecture and Phase 3
+// See docs/archive/network-connectors-plan.md §3 for the architecture and Phase 3
 // for this file's design. Exports (all on window.ConnectorGraph):
 // segmentIntersection, pointToSegmentKm, splitChain, planarizeConnectors.
 
@@ -112,7 +112,7 @@
   }
 
   // ---- planarizeConnectors: the top-level entry. See
-  // docs/network-connectors-plan.md Phase 3 for the full rule set.
+  // docs/archive/network-connectors-plan.md Phase 3 for the full rule set.
   //
   //   connectors : [{ id, coords: [[lng,lat], ...] }]
   //   candidates : [{ segId, coords: [a, b], pedBlocked }] — base segments

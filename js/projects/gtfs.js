@@ -19,7 +19,7 @@
   var _clickPopup   = null;  // maplibregl.Popup for click details
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
 
-  // ---- Route browser state (Phase 1 of docs/gtfs-route-browser-plan.md) ----
+  // ---- Route browser state (Phase 1 of docs/archive/gtfs-route-browser-plan.md) ----
   var _routeIndex    = null;      // result of buildRouteIndex, or null when no shapes
   var _hiddenRoutes  = {};        // routeKey -> true
   var _hiddenShapes  = {};        // shape_id -> true
@@ -447,7 +447,7 @@
   }
 
   // Colors resolve through the layer color cascade
-  // (docs/layer-color-customization-plan.md). Only the fallback color
+  // (docs/archive/layer-color-customization-plan.md). Only the fallback color
   // changes — a feed that ships its own route_color keeps using it
   // regardless of the palette, and circle-color stays the fixed white fill
   // of a hollow marker (not a data encoding).

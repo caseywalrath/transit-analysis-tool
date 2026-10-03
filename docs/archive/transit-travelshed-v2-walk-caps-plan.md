@@ -274,7 +274,7 @@ Implement §2.4 inside `runTravelshed()`. Notes:
    brainstorm" section, mark the egress-cap outcome as implemented via this
    plan and note that remaining brainstorm items are deferred pending
    measurement (§8).
-3. Cross-link this file from `docs/transit-travelshed-plan.md` (one line near
+3. Cross-link this file from `docs/archive/transit-travelshed-plan.md` (one line near
    the top: "Superseded in part by transit-travelshed-v2-walk-caps-plan.md for
    the walk-cap model and polygonization").
 

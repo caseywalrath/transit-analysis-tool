@@ -1,6 +1,6 @@
 # Feature area analysis
 
-Reference for changing Feature Area Analysis (`js/projects/buffer-summary.js`, popup `projects/buffer-summary-popup.html`). Read the code when this and the code disagree. Choropleth design: `docs/feature-area-choropleth-plan.md`.
+Reference for changing Feature Area Analysis (`js/projects/buffer-summary.js`, popup `projects/buffer-summary-popup.html`). Read the code when this and the code disagree. Choropleth design: `docs/archive/feature-area-choropleth-plan.md`.
 
 ## buffer-summary.js (module `"buffer-summary"`)
 

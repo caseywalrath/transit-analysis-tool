@@ -1,6 +1,6 @@
 // js/core/split.js
 //
-// Feature Split (docs/feature-split-plan.md, Phase 1: "Split here" for lines
+// Feature Split (docs/archive/feature-split-plan.md, Phase 1: "Split here" for lines
 // and routes). The reverse of Feature Merge: one cut makes two pieces, one
 // undo step, a short confirmation dialog, and merging the pieces back with
 // Merge… gives the original geometry.

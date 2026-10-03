@@ -2,7 +2,7 @@
 // test/feature-appearance-smoke.mjs
 //
 // Browser smoke test for the shared Appearance popover
-// (docs/feature-appearance-plan.md, Phase 1): it opens from the Features-pane
+// (docs/archive/feature-appearance-plan.md, Phase 1): it opens from the Features-pane
 // icon, the Attributes pop-up swatch, the Layers-tab row swatch and the
 // Attribute Summary swatch; edits color / opacity / width / offset with the
 // muted-default + x-clear semantics; takes one undo step per gesture; and the
@@ -585,7 +585,7 @@ async function main() {
     check("point drawer: no Buffer row", pointDrawer.indexOf("Buffer") < 0 && pointDrawer.length > 0, pointDrawer);
     await page.evaluate(() => App.undo.__restore && App.undo.__restore());
 
-    // ---- Color picker variety (docs/color-picker-variety-plan.md) ----
+    // ---- Color picker variety (docs/archive/color-picker-variety-plan.md) ----
     console.log("\n# Color picker: 50-swatch grid, Recent row, Custom button");
     await page.keyboard.press("Escape");
     await page.click('.fp-tab-btn[data-fptab="features"]');

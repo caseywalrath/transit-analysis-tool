@@ -36,7 +36,7 @@
     return state;
   }
 
-  // v4 (docs/feature-color-system-plan.md, Phase 5): one-time conversion of
+  // v4 (docs/archive/feature-color-system-plan.md, Phase 5): one-time conversion of
   // stored line/route/polygon colors that were stamped at creation before
   // the color cascade existed, so features drawn under the old system follow
   // the type default like everything drawn since. For each line/route whose
@@ -162,7 +162,7 @@
       networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
       networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
       networkExcludedWayIds: (App.networkSettings && App.networkSettings.excludedWayIds) ? App.networkSettings.excludedWayIds.slice() : [],
-      // Layer color palette cascade (additive fields, docs/layer-color-customization-plan.md
+      // Layer color palette cascade (additive fields, docs/archive/layer-color-customization-plan.md
       // Phase 3 — absent on an old session, App.layerStyles/mapPalette keep their defaults).
       layerStyles: App.layerStyles ? JSON.parse(JSON.stringify(App.layerStyles)) : {},
       mapPalette: App.mapPalette || null,
@@ -248,7 +248,7 @@
     }
 
     // 2c. Make every feature ID unique and advance the per-type ID counters
-    // (docs/feature-merge-plan.md Phase 1). Idempotent: already-unique IDs
+    // (docs/archive/feature-merge-plan.md Phase 1). Idempotent: already-unique IDs
     // (the normal case, including undo/redo) are left untouched. Imported
     // features arrive with no ID and are stamped here. Stop links that pointed
     // at a duplicated ID keep pointing at the first (older) feature.
@@ -329,7 +329,7 @@
       App.networkSettings.snapToleranceFt = state.networkSnapToleranceFt;
     }
     // 3a-3. Restore the global crossing-penalty settings (additive fields,
-    // docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5 — absent on
+    // docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5 — absent on
     // an old session, App.networkSettings keeps its 0 default).
     if (App.networkSettings && state.networkCrossingMajorSec != null) {
       App.networkSettings.crossingMajorSec = state.networkCrossingMajorSec;
@@ -350,7 +350,7 @@
     }
 
     // 3a-4. Restore the layer color palette cascade (additive fields,
-    // docs/layer-color-customization-plan.md Phase 3 — absent on an old
+    // docs/archive/layer-color-customization-plan.md Phase 3 — absent on an old
     // session, App.layerStyles/mapPalette keep their defaults). Repainting
     // happens once at the end of this function, after every module has had
     // a chance to register its repainter.
@@ -458,7 +458,7 @@
     }
 
     // 10. Repaint any styled layers from the restored cascade (Phase 3 of
-    // docs/layer-color-customization-plan.md). Guarded with typeof — no
+    // docs/archive/layer-color-customization-plan.md). Guarded with typeof — no
     // module has registered a repainter yet until Phase 4, so this is a
     // no-op today by design.
     if (typeof App.repaintStyledLayers === "function") App.repaintStyledLayers();

@@ -9,7 +9,7 @@
 // consumer and cannot itself be golden-tested; this file exists precisely so
 // the crossing-penalty math still can be.
 //
-// See docs/walkshed-bands-and-crossing-penalties-plan.md Phase 4 for the
+// See docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 4 for the
 // design. Node-uniform, not turn-aware — a deliberate, documented
 // approximation (see the plan's §0.6); motorway/trunk classes never reach
 // this file because they are already pedBlocked upstream in road-network.js.

@@ -178,7 +178,7 @@ around:
 - **User-excluded is not the same as class-blocked, for welding.**
   `connector-graph.js` skips `pedBlocked` candidates for both crossing splits
   (`:191`) and welds (`:243`) — the bridge/freeway mitigation from
-  `docs/network-connectors-plan.md` §1. That must keep applying to motorways but
+  `docs/archive/network-connectors-plan.md` §1. That must keep applying to motorways but
   **not** to user-excluded streets, or the exclude-coarsely-restore-precisely
   workflow in §1.5 silently fails: a connector drawn along an excluded street
   would not weld at its ends.
@@ -200,7 +200,7 @@ around:
 - **`App.networkSettings` is the home for shared network state** (the exclusion
   list, Stage D's walk mode), matching `snapToleranceFt` / `crossingMajorSec` /
   `crossingMinorSec`. Never per-module state — see
-  `docs/network-connectors-plan.md` §2.
+  `docs/archive/network-connectors-plan.md` §2.
 
 ---
 

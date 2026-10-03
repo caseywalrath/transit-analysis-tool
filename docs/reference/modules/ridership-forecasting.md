@@ -1,6 +1,6 @@
 # Ridership forecasting
 
-Reference for changing Ridership Forecasting. Read the code when this and the code disagree. Strategy: `docs/ridership-forecasting-plan.md`; user docs: `Ridership_Forecast_Readme.md`.
+Reference for changing Ridership Forecasting. Read the code when this and the code disagree. Strategy: `docs/archive/ridership-forecasting-plan.md`; user docs: `Ridership_Forecast_Readme.md`.
 
 ## ridership-scoring.js (`window.RidershipModel`, not on App)
 

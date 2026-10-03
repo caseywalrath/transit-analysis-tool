@@ -18,7 +18,7 @@
 //   solo:   "solo-<type>-id<stable ID>"      e.g. "solo-route-id12"
 // The solo key is built from the feature's stable ID (properties.routeIdx /
 // lineIdx), NOT its array index, so it survives deleting or merging an earlier
-// feature (docs/feature-merge-plan.md Phase 4b). The old format was
+// feature (docs/archive/feature-merge-plan.md Phase 4b). The old format was
 // "solo-<type>-<arrayIndex>" ("solo-route-3"); the "id" infix makes the two
 // formats impossible to confuse, and migrateServiceKey upgrades a legacy one.
 
@@ -64,7 +64,7 @@
   function validateService(svc, runtimeMode) {
     var ps = svc.patterns;
 
-    // 3+ patterns (docs/gtfs-route-browser-plan.md "Phase 3 design"): each
+    // 3+ patterns (docs/archive/gtfs-route-browser-plan.md "Phase 3 design"): each
     // pattern is costed as its own one-way trip stream, so the opposite-pair
     // rule cannot apply. Instead every pattern needs a one-way direction —
     // "Both" (also what a blank direction reads as) would be ambiguous.

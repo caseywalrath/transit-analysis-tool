@@ -1,7 +1,7 @@
 // Golden cases for the layer color palette engine (js/core/layer-palettes.js).
 // Only the pure section (rampColors/matchExpr/familyOf/allows/list) is
 // covered — App.resolveLayerColors and the rest of the App-level cascade
-// (Phase 3 of docs/layer-color-customization-plan.md) touch App.map-adjacent
+// (Phase 3 of docs/archive/layer-color-customization-plan.md) touch App.map-adjacent
 // state and are out of harness scope, same rationale as every other
 // map-facing function in this suite.
 

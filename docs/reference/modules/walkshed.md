@@ -1,6 +1,6 @@
 # Walkshed
 
-Read the code when this and the code disagree. See `docs/walkshed-bands-and-crossing-penalties-plan.md`, `docs/network-connectors-plan.md`, `docs/sidewalk-data-plan.md`.
+Read the code when this and the code disagree. See `docs/archive/walkshed-bands-and-crossing-penalties-plan.md`, `docs/archive/network-connectors-plan.md`, `docs/sidewalk-data-plan.md`.
 
 ## walkshed.js (module `"walkshed"`)
 

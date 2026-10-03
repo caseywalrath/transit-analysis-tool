@@ -36,7 +36,7 @@
 //
 // Shared plumbing (Playwright loading, Chromium resolution, vendored-CDN
 // route interception, the static server, small polling utilities) lives in
-// test/browser/harness.mjs — see docs/browser-test-harness-plan.md for why.
+// test/browser/harness.mjs — see docs/archive/browser-test-harness-plan.md for why.
 
 import { readFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -447,7 +447,7 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_attr-popup", "fail", e.message);
   }
 
-  // ---- Shared Appearance popover (docs/feature-appearance-plan.md Phase 1) ----
+  // ---- Shared Appearance popover (docs/archive/feature-appearance-plan.md Phase 1) ----
   try {
     await page.evaluate(() => {
       const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;

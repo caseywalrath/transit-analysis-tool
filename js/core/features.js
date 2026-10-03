@@ -393,7 +393,7 @@
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
   };
 
-  // Per-feature line style for a line/route (docs/feature-appearance-plan.md
+  // Per-feature line style for a line/route (docs/archive/feature-appearance-plan.md
   // Phase 3). style: "dashed" | "dotted"; "solid"/""/null clears the override.
   // One undo step, re-render, save, panel refresh. Returns false if invalid.
   App.setFeatureLineStyle = function (featureType, featureIndex, style) {
@@ -815,7 +815,7 @@
 
     // Small differentiator chip: a Line marked as a walk network connector
     // (attributes.networkRole === "connector") is otherwise indistinguishable
-    // from a transit Line at a glance. See docs/network-connectors-plan.md §2.
+    // from a transit Line at a glance. See docs/archive/network-connectors-plan.md §2.
     var netChip = null;
     if (featureType === "line" && feature.properties.attributes &&
         feature.properties.attributes.networkRole === "connector") {

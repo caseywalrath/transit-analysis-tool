@@ -283,7 +283,7 @@ CS renders a **line** layer (`:446-478`); the helper's polygon source management
 
 ### Step 3.5 — Layers-panel styling evaluation (memo, not code)
 
-Write `docs/layers-panel-styling-eval.md` (one page): now that every choropleth flows through one helper with a serializable style spec (`ramp`, `method`, `classes`), assess adding a generic "style…" affordance to Layers-panel `ANALYSIS` entries that reads/writes each module's spec. Recommend go/no-go + rough scope. **No implementation in this phase.**
+Write `docs/archive/layers-panel-styling-eval.md` (one page): now that every choropleth flows through one helper with a serializable style spec (`ramp`, `method`, `classes`), assess adding a generic "style…" affordance to Layers-panel `ANALYSIS` entries that reads/writes each module's spec. Recommend go/no-go + rough scope. **No implementation in this phase.**
 
 ### Step 3.6 — Docs + verification
 

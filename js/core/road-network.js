@@ -3,13 +3,13 @@
 // Allows local street-snapped routing when OSRM servers are unavailable.
 // Depends on: App.map (map.js), App.setStatus (utils.js), turf (CDN),
 //             window.WalkCost (walk-cost.js, optional — crossing penalties,
-//             see docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
+//             see docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
 // Exports: roadNetworkLoaded, findLocalRoute, fetchRoadNetwork,
 //          loadRoadNetworkFromFile, exportRoadNetwork, clearRoadNetwork,
 //          computeWalkshed, computeWalkCostMap, polygonizeNodeSet,
 //          nodeKeyToCoord, snapWalk, getRoadDownloadExtent,
 //          fetchRoadNetworkForExtent, getWalkNetworkSegments,
-//          setNetworkConnectors (docs/network-connectors-plan.md)
+//          setNetworkConnectors (docs/archive/network-connectors-plan.md)
 
 (function () {
   "use strict";
@@ -37,7 +37,7 @@
   var _networkEpoch = 0;    // bumped on every (re)build/clear — lets caches (e.g. walkshed) invalidate
   var _downloadedBboxPolygon = null; // turf Polygon of the last Overpass download extent (for the on-map outline)
 
-  // ---- Network Connectors overlay state (docs/network-connectors-plan.md Phase 4) ----
+  // ---- Network Connectors overlay state (docs/archive/network-connectors-plan.md Phase 4) ----
   // Plain geometry only — road-network.js never reads App.lines or any attribute;
   // network-connectors.js owns collecting connector Lines and calls
   // App.setNetworkConnectors() with the result. Preserved across a base-network
@@ -233,7 +233,7 @@
   // Rebuilds the graph from the current base GeoJSON, re-applies the connector
   // overlay, and bumps the epoch exactly once. This is the single choke point
   // every base-network load AND every connector change routes through (see
-  // docs/network-connectors-plan.md §3 "Rebuild orchestration"), so connectors
+  // docs/archive/network-connectors-plan.md §3 "Rebuild orchestration"), so connectors
   // are never merged into _roadGeoJSON and always survive a wholesale base
   // replacement (a fresh Overpass download, a file import).
   function rebuildNetwork() {
@@ -242,7 +242,7 @@
     _networkEpoch++;
   }
 
-  // ---- Network Connectors overlay (docs/network-connectors-plan.md Phase 4) ----
+  // ---- Network Connectors overlay (docs/archive/network-connectors-plan.md Phase 4) ----
   //
   // Welds/splits the current _connectors into the freshly-built base graph.
   // Runs immediately after buildGraph() inside rebuildNetwork(), before the
@@ -1112,7 +1112,7 @@
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km
   //   opts     : optional { crossingPenaltyKm: {major, minor} } — threaded to
-  //              floodDijkstra (docs/walkshed-bands-and-crossing-penalties-plan.md
+  //              floodDijkstra (docs/archive/walkshed-bands-and-crossing-penalties-plan.md
   //              Phase 5). Absent/no crossingPenaltyKm = no penalty, unchanged
   //              behavior — computeWalkCostMap deliberately never passes this.
   // Returns null when no network is loaded or the origin is outside walkable
@@ -1201,7 +1201,7 @@
   //                                 returns one nested polygon per entry (see
   //                                 `polygons` below). Absent = today's behavior,
   //                                 byte-identical — see
-  //                                 docs/walkshed-bands-and-crossing-penalties-plan.md
+  //                                 docs/archive/walkshed-bands-and-crossing-penalties-plan.md
   //                                 Phase 2.
   //               crossingPenaltyKm } — OPTIONAL { major, minor } km values,
   //                                 threaded to the flood (Phase 5). Absent/zero

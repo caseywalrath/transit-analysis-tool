@@ -11,7 +11,7 @@ Reference for the core shell files. Read the code when this and the code disagre
 
 ## config.js
 
-`App.CARTO_API_KEY`, `App.CENSUS_API_KEY`, plus a per-browser CARTO override in `localStorage` (`mat-carto-key`). Loads FIRST, before utils.js. **Everything here is public** (static site, public repo, GitHub Pages) — only public, rate-limited, read-only credentials. See `docs/carto-api-key-plan.md`.
+`App.CARTO_API_KEY`, `App.CENSUS_API_KEY`, plus a per-browser CARTO override in `localStorage` (`mat-carto-key`). Loads FIRST, before utils.js. **Everything here is public** (static site, public repo, GitHub Pages) — only public, rate-limited, read-only credentials. See `docs/archive/carto-api-key-plan.md`.
 
 ## utils.js
 
@@ -19,7 +19,7 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 
 **`VAR_META`** — single source of truth for variable metadata. Fields: `source` ("ACS"|"LODES"), `agg` ("sum"|"avg"|"ratio"), `fmt`, `label`, `category`, optional `codes` (multi-code sums), `tractOnly`, `numerator`/`denominator`/`ratioLabel` (ratio only). Checkbox fields: `displayInChecklist: true`, `group: "GROUP_X"`, `denominator: "<code>"|"$group"`. `GROUP_INFO` = group labels. `getCheckboxGroups()` → `{groupKey: [codes]}`. `getDenominator(code)` → `{type:"var", code}` | `{type:"group", codes}` | `null` (null for ratio aggs).
 
-**Stable feature IDs** (see `docs/feature-merge-plan.md`). Each drawn feature has a unique integer ID per type in `properties.pointIdx`/`lineIdx`/`routeIdx`/`polyIdx` (`App.FEATURE_ID_PROP` maps type → property). Used to map a clicked map feature to its array index (`editing.js`) and to link stops to routes (`attributes.associatedRoutes[].featureId`).
+**Stable feature IDs** (see `docs/archive/feature-merge-plan.md`). Each drawn feature has a unique integer ID per type in `properties.pointIdx`/`lineIdx`/`routeIdx`/`polyIdx` (`App.FEATURE_ID_PROP` maps type → property). Used to map a clicked map feature to its array index (`editing.js`) and to link stops to routes (`attributes.associatedRoutes[].featureId`).
 - **Always get a new ID from `App.nextFeatureId(type)`** (monotonic counter) — never reuse or derive from `array.length + 1`. Any code that pushes straight into `App.points/lines/routes/polygons` must stamp one. Display names ("Route 3") are independent of IDs.
 - `App._assignFeatureIds(arraysByType)` — pure repair pass (golden: `test/cases/feature-ids.mjs`): re-stamps missing, non-positive-integer, or duplicate IDs (the older feature keeps it) → `{changes: [{type, index, oldId, newId}], maxByType}`. `App.ensureFeatureIds()` runs it on the live arrays and advances counters; idempotent, called by `cache.js applyState()`. A stop link to a duplicated ID keeps the older feature.
 - Counters persist as the additive `featureIdCounters` session field (`App.getFeatureIdCounters()` / `App.advanceFeatureIdCounters(stored)`, which only raises) so a deleted feature's ID is not reissued after reload.
@@ -28,9 +28,9 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 - **Legacy-session migration:** `cache.applyState` pushes features in saved order (and runs `ensureFeatureIds`) BEFORE any module `apply()`, so a legacy saved index is still valid inside `apply()` — convert to ID refs there, idempotently, and turn an unresolvable index into a missing ref rather than guessing. Helpers: `App.migrateIndexRefKey(str)`, `App.indexFilterToRefs(filter)`, `App.uncheckedRefsFromIndexFilter(filter, types)` (pure `_…In` variants exported too). Run-time index arrays rebuilt from checkboxes may stay as indices.
 - Browser smoke test: `test/feature-merge-smoke.mjs`.
 
-**Feature usage hook** (lives in utils.js so every module can register at load time; see `docs/feature-split-plan.md`): `App.registerFeatureUsage(fn, {module, severity})` — `fn(type, id)` returns labels (strings or `{label, severity}`); `App.describeFeatureUsage(type, id)` → `[{module, label, severity: "warn"|"info"}]`, each provider try/catch-wrapped. Providers read closure state only (safe before the popup opens). Registered by Title VI (warn), Ridership Forecasting (warn for calibration CSV matches; info for selected corridor), Corridor Scoring, Transit Propensity, Route Costing (via `App.buildTransitServices`), Trip Builder (info). Shown by the Split and Merge dialogs; any new module that remembers features should register one.
+**Feature usage hook** (lives in utils.js so every module can register at load time; see `docs/archive/feature-split-plan.md`): `App.registerFeatureUsage(fn, {module, severity})` — `fn(type, id)` returns labels (strings or `{label, severity}`); `App.describeFeatureUsage(type, id)` → `[{module, label, severity: "warn"|"info"}]`, each provider try/catch-wrapped. Providers read closure state only (safe before the popup opens). Registered by Title VI (warn), Ridership Forecasting (warn for calibration CSV matches; info for selected corridor), Corridor Scoring, Transit Propensity, Route Costing (via `App.buildTransitServices`), Trip Builder (info). Shown by the Split and Merge dialogs; any new module that remembers features should register one.
 
-**Feature color cascade** (see `docs/feature-color-system-plan.md`, `docs/feature-color-sync-plan.md`). `resolveFeatureColor(type, feature)` returns, in order: (1) non-empty `properties.color` (per-feature override; `""`/absent = inherit); (2) non-empty `App.sectionColors[type]` (type default from the Layers tab); (3) Automatic (`null`): lines/routes use `FEATURE_COLORS[properties.colorSeq % length]`, points/polygons/labels a fixed built-in color.
+**Feature color cascade** (see `docs/archive/feature-color-system-plan.md`, `docs/archive/feature-color-sync-plan.md`). `resolveFeatureColor(type, feature)` returns, in order: (1) non-empty `properties.color` (per-feature override; `""`/absent = inherit); (2) non-empty `App.sectionColors[type]` (type default from the Layers tab); (3) Automatic (`null`): lines/routes use `FEATURE_COLORS[properties.colorSeq % length]`, points/polygons/labels a fixed built-in color.
 - `colorSeq` is stamped once at creation (`_nextColorSeq()`) so a palette slot survives deletions elsewhere; `_advanceColorSeqPast(n)` runs on restore so new features don't collide. A feature without `colorSeq` falls back to its array position.
 - `App.sectionColors` (`{point, line, route, polygon, label}`) is persisted by `cache.js`.
 - **Last action wins:** type-wide color changes go through `App.setTypeColor(type, color|null)` (features.js) — one undo snapshot, sets `sectionColors[type]`, **clears every feature's `properties.color` of that type** (`App.clearFeatureColorOverrides`), refreshes panels. A later `App.updateFeatureColor` wins for that feature.
@@ -75,7 +75,7 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 
 ## module-buffers.js
 
-Feature Area Analysis, Transit Coverage, Transit Propensity, Ridership Forecasting and Corridor Scoring each have a Buffer distance (mi) input plus a default-off **Use Display Buffers** toggle. Neither path mutates shared map buffers. See `docs/module-buffer-distance-plan.md`.
+Feature Area Analysis, Transit Coverage, Transit Propensity, Ridership Forecasting and Corridor Scoring each have a Buffer distance (mi) input plus a default-off **Use Display Buffers** toggle. Neither path mutates shared map buffers. See `docs/archive/module-buffer-distance-plan.md`.
 
 - `App.ANALYSIS_BUFFER_DEFAULT_MILES` 0.5, `App.ANALYSIS_BUFFER_MIN_MILES` 0.05, `App.ANALYSIS_BUFFER_MAX_MILES` 5.
 - `App.foldAnalysisUnion(polys)` — `turf.union` fold; `null` for empty.
@@ -87,7 +87,7 @@ Feature Area Analysis, Transit Coverage, Transit Propensity, Ridership Forecasti
 
 ## analysis-checklist.js
 
-Loads right after module-buffers.js (see `docs/hidden-features-analysis-plan.md`).
+Loads right after module-buffers.js (see `docs/archive/hidden-features-analysis-plan.md`).
 - `App.decorateHiddenRow(rowEl, checkboxEl, feature, includeHidden)` — disables + tags (`.ac-hidden`, `.ac-hidden-tag`) a hidden feature's row unless `includeHidden`; **never changes `checkboxEl.checked`**.
 - `App.buildIncludeHiddenToggle({id, checked, onChange})`, `App.hiddenSelectionMessage(hiddenCount)` → `{error, notes}`.
 - `App.hiddenSignature(refs)` — modules snapshot at run time and compare in `update()` to mark results stale; `App.featureGeomSignature`.
@@ -95,7 +95,7 @@ Loads right after module-buffers.js (see `docs/hidden-features-analysis-plan.md`
 
 ## choropleth.js
 
-`App.choropleth` (see `docs/feature-area-choropleth-plan.md`). Consumers: Feature Area Analysis (`"bas"`), TPI (`"tpi"`), Ridership Forecasting (`"rf"`), Corridor Scoring (color expression only — line layer). No App/map reads at load, so the math runs in the golden sandbox.
+`App.choropleth` (see `docs/archive/feature-area-choropleth-plan.md`). Consumers: Feature Area Analysis (`"bas"`), TPI (`"tpi"`), Ridership Forecasting (`"rf"`), Corridor Scoring (color expression only — line layer). No App/map reads at load, so the math runs in the golden sandbox.
 
 - `App.choropleth.RAMPS` — `{label, colors5}`: `blues` (default), `heat`, `greens`, `rdbu`.
 - `App.choropleth.computeClassBreaks(values, method, nClasses=5)` — pure, golden-tested; `"quantile"` (R-7) or `"equal"` → `{breaks, nEffective}`; `breaks` = `nClasses-1` inner breaks (class i covers `breaks[i-1] < v <= breaks[i]`), deduped on ties; all-equal → `{[], 1}`, empty → `{[], 0}`.

@@ -213,12 +213,12 @@ One module-wide distance, even though RF has two feature checklists (calibration
 1. `node test/run-golden.mjs` → PASS, including the new `module-buffers` cases and all six pre-existing case files unchanged at their current counts (89 before the new file is added).
 2. Browser smoke test per module: draw a route + line (+ point + polygon for TPI), run each of TPI / RF / CS at two clearly different distances, and confirm the geography counts and scores move; confirm the stale banner and its Re-run; confirm CSV/GeoJSON metadata records the distance; reload and confirm settings restore.
 3. Confirm the Feature Settings radius no longer affects TPI / RF / CS / Transit Coverage results (change it, re-run, results unchanged), while still redrawing the map buffers.
-4. Re-run the Transit Coverage checks from `docs/transit-coverage-plan.md` after Step 6.
+4. Re-run the Transit Coverage checks from `docs/archive/transit-coverage-plan.md` after Step 6.
 
 ## Handoff: implementing with cheaper models
 
 Start a **new Claude Code session** on `caseywalrath/micro-analysis-tool` based on this branch, select **Sonnet 5**, and prompt:
 
-> *"Implement docs/module-buffer-distance-plan.md exactly. Work through Steps 1–7 in order, committing after each step with a descriptive message. The 'Do-not-do notes' are binding. Finish with `node test/run-golden.mjs` and include the Verified line in the final commit."*
+> *"Implement docs/archive/module-buffer-distance-plan.md exactly. Work through Steps 1–7 in order, committing after each step with a descriptive message. The 'Do-not-do notes' are binding. Finish with `node test/run-golden.mjs` and include the Verified line in the final commit."*
 
 Steps 1, 2, and 6 are small and safe; Step 5 (Ridership Forecasting) is the one to review most carefully, since it has three run paths that each need the buffer set. The browser smoke tests need a human — pull the branch, open `index.html`, and walk the per-step Verify lists.

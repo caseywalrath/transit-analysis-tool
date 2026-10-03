@@ -10,7 +10,7 @@
 // 20 ft = 6.096 m = 0.006096 km.
 //
 // Each planarizeConnectors scenario below is one of the 9 minimum cases
-// listed in docs/network-connectors-plan.md Phase 3, worked out by hand
+// listed in docs/archive/network-connectors-plan.md Phase 3, worked out by hand
 // (see the inline comments) before being recorded with --update.
 
 export default {
@@ -152,7 +152,7 @@ export default {
     // but the base segment is flagged pedBlocked (a freeway) -> the crossing
     // must be skipped entirely (0 joins, 0 addEdges beyond the connector's
     // own untouched edge, 0 removeSegIds) — the bridge/freeway mitigation
-    // from docs/network-connectors-plan.md §1.
+    // from docs/archive/network-connectors-plan.md §1.
     {
       id: "planarize-pedblocked-exclusion",
       call: "ConnectorGraph.planarizeConnectors",
@@ -249,7 +249,7 @@ export default {
     // every pairing (parallel/collinear), so 0 crossing joins and the base
     // segment is left untouched. weldVertices is off, so both connector
     // endpoints are reported as orphans (this is the documented "harmless
-    // parallel edge" case from docs/network-connectors-plan.md §2 — the
+    // parallel edge" case from docs/archive/network-connectors-plan.md §2 — the
     // travel time is identical either way, so no join is needed).
     {
       id: "planarize-collinear-overlap-no-join",

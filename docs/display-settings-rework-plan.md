@@ -368,7 +368,7 @@ Settings is deleted.
 ### Scope note
 
 This phase concerns **drawn feature** styling only. It is unrelated to
-`docs/layers-panel-styling-eval.md`, which evaluated exposing *analysis choropleth* ramp/class
+`docs/archive/layers-panel-styling-eval.md`, which evaluated exposing *analysis choropleth* ramp/class
 specs in the Layers panel and recommended against it. That decision stands; do not revisit it and
 do not add style drawers to `ANALYSIS` or `REFERENCE` manifest entries.
 
@@ -638,7 +638,7 @@ Do not implement these as part of any phase above.
   prove out.
 - **Removing the override icons from the per-feature attribute popup.** Noted in 4.4.
 - **Analysis-layer (choropleth) style controls in the Layers panel.** Settled against in
-  `docs/layers-panel-styling-eval.md`.
+  `docs/archive/layers-panel-styling-eval.md`.
 - **Label and text box type-level style defaults.** Labels and text boxes are DOM markers, not map
   layers, and sit outside the `featureSettings` / paint-property model this plan works in. A
   Labels drawer is a reasonable later addition but needs its own design.

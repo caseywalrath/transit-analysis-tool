@@ -1,5 +1,5 @@
 // Golden cases for the pure Feature Split helpers (js/core/split.js —
-// docs/feature-split-plan.md Phase 1): App.splitGeom (cutAt, locate,
+// docs/archive/feature-split-plan.md Phase 1): App.splitGeom (cutAt, locate,
 // snapToVertex, partitionWaypoints, splitRunTime, assignStops, isLoop,
 // uniqueName, lengthMi). Plain arrays only — no turf, DOM or map. The split
 // operation and dialog are covered by test/feature-split-smoke.mjs.

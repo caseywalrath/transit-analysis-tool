@@ -64,7 +64,7 @@
     return null;
   }
 
-  // ---- Wait model (see docs/transit-travelshed-plan.md Appendix A) ----
+  // ---- Wait model (see docs/archive/transit-travelshed-plan.md Appendix A) ----
 
   // Initial (unlinked) boarding: riders can time their arrival for infrequent
   // service, so physical wait is capped — min(half-headway, Wmax) — plus a
@@ -181,7 +181,7 @@
   // }
   //
   // All plain-object loops in a fixed (input) order, so results are
-  // deterministic and golden-pinnable. See docs/transit-travelshed-plan.md
+  // deterministic and golden-pinnable. See docs/archive/transit-travelshed-plan.md
   // Phase 3 for the full step-by-step derivation.
   function computeArrivalTimes(input) {
     var budgetMin = input.budgetMin;

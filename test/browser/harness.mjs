@@ -7,7 +7,7 @@
 // test/ui-screens/capture.mjs (pixel regression) and every
 // test/browser/*.test.mjs (behavior assertions) so this plumbing exists in
 // exactly one place instead of two copies drifting apart. See
-// docs/browser-test-harness-plan.md.
+// docs/archive/browser-test-harness-plan.md.
 //
 // This repo has no npm install of its own (CLAUDE.md — "No build tools"), so
 // Playwright is installed once in a scratch directory OUTSIDE the repo and

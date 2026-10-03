@@ -25,7 +25,7 @@
 //     uses, and turning it back off restores the un-flattened fill exactly
 //
 // Shared plumbing lives in test/browser/harness.mjs — see
-// docs/browser-test-harness-plan.md.
+// docs/archive/browser-test-harness-plan.md.
 //
 // USAGE (same NODE_PATH dance as capture.mjs — this repo has no npm install)
 //   mkdir -p /tmp/pw-install && cd /tmp/pw-install && npm init -y >/dev/null

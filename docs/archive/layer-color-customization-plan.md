@@ -707,7 +707,7 @@ Check first — it may already fit.
 Then update `CLAUDE.md`: a File Structure entry for `js/core/layer-palettes.js`, a
 Script Load Order line, the `layers-panel.js` entry (styleKey drawers + global palette
 row), the `cache.js` entry (two additive fields), an App Namespace section for the
-cascade, and add "Layer palettes (`docs/layer-color-customization-plan.md`)" to the
+cascade, and add "Layer palettes (`docs/archive/layer-color-customization-plan.md`)" to the
 covered-engines list.
 
 ---

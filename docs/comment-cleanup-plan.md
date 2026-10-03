@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Phases 0 and 1 done (2026-10-02). Phase 2: status headers added and user-doc drift logged (2026-10-03); archive move awaits user approval.
+**Status:** Phases 0–2 done (2026-10-03). Next: Phase 3.
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
@@ -147,6 +147,14 @@ For each file in `docs/` (and the root-level `.md` files other than `CLAUDE.md` 
 **User-facing documents** (`Ridership_Forecast_Readme.md`, `TPI_Ridership_Forecast_Methodology.md`, `Title_VI_Module_Overview.md`, `features.md`, and so on) are not archived. They are checked against the code for factual drift only, and any drift goes in the findings log for the user. Their wording is for transit professionals, so it isn't trimmed.
 
 **Opus review:** confirms the archive list before the move commit.
+
+---
+
+### Phase 2 results
+
+- 25 plans archived to `docs/archive/` (24 Shipped, 1 Abandoned) with status headers; links updated repo-wide (comment-only in code, guard PASS 59/59).
+- Still in `docs/`: Partial `display-settings-rework-plan.md` and `sidewalk-data-plan.md` (remaining steps in their headers). `docs/ui-refresh/` was not triaged.
+- User-facing docs: 88 drift entries logged in `docs/comment-cleanup-findings.md` (Projection guide's growth-factor format is the most serious); not edited.
 
 ---
 

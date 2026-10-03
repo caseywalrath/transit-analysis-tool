@@ -59,7 +59,7 @@
   var _selectedCorridor = ""; // "route:<id>" / "line:<id>" — a stable feature ID, NOT an array index (specific corridor required)
   var _calibFeatureFilter = null; // SELECTION { routeIds: [...], lineIds: [...] } (stable feature IDs) or null (all). Includes disabled-but-checked (hidden) rows; a run analyzes dropHidden(selection, toggle).
 
-  // Hidden features (docs/hidden-features-analysis-plan.md): one "Include hidden" toggle per checklist.
+  // Hidden features (docs/archive/hidden-features-analysis-plan.md): one "Include hidden" toggle per checklist.
   var _includeHiddenCalib = false;
   var _includeHiddenDemand = false;
   var _calibHiddenIncluded = 0;   // hidden features that took part in the last calibration run
@@ -792,7 +792,7 @@
   }
 
   // Hover popup for the "rf" choropleth (Phase 3 Step 3.3 of
-  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  // docs/archive/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
   function rfHoverHTML(props) {
     return '<div style="font-size:12px;line-height:1.4;">' +
       '<b>GEOID:</b> ' + (props.GEOID || "\u2014") + '<br>' +
@@ -1010,7 +1010,7 @@
     return NaN;
   }
 
-  // ---- Stable-ID helpers (docs/feature-merge-plan.md, Phase 4b) ----
+  // ---- Stable-ID helpers (docs/archive/feature-merge-plan.md, Phase 4b) ----
   // Array positions shift when an earlier feature is deleted or merged, so the
   // corridor selection, the checklist filters and the per-route CDI rows all
   // identify a feature by its stable ID (properties.routeIdx / lineIdx).

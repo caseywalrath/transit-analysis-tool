@@ -1,6 +1,6 @@
 // js/core/box-select.js
 // Box select (drag a rectangle on the map to select features) —
-// docs/box-select-plan.md. Phase 1: pure hit-test helpers only. Phase 2 adds
+// docs/archive/box-select-plan.md. Phase 1: pure hit-test helpers only. Phase 2 adds
 // the drag tool to this same file.
 //
 // ---- Pure helpers (App.boxSelectGeom) ----

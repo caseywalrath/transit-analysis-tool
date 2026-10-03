@@ -1,6 +1,6 @@
 # GTFS
 
-Read the code when this and the code disagree. See `docs/gtfs-route-browser-plan.md`.
+Read the code when this and the code disagree. See `docs/archive/gtfs-route-browser-plan.md`.
 
 ## gtfs.js (module `"gtfs"`)
 

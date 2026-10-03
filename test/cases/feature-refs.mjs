@@ -1,4 +1,4 @@
-// Golden cases for the pure stable-ID reference helpers (docs/feature-merge-plan.md
+// Golden cases for the pure stable-ID reference helpers (docs/archive/feature-merge-plan.md
 // Phase 4b): App._featureRefIn / App._resolveRefIn (js/core/utils.js) and the
 // legacy-solo-key upgrade App.migrateServiceKey (js/core/service-assembly.js).
 // The live-array wrappers (featureRef / resolveFeatureRef / featureById) and the

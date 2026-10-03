@@ -23,7 +23,7 @@
   var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1, maxEdge: 0.3 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
-  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdge is
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/archive/network-connectors-plan.md): hull-detail maxEdge is
                             // displayed in feet but stored/persisted in km, same UI-boundary pattern
                             // as walkSpeedMph above and the connector snap-tolerance input.
 
@@ -115,7 +115,7 @@
   // parameters, and the loaded network (roadNetworkEpoch bumps on (re)load/clear).
   // Every budget must be included, not just one, or changing budget 2/3 won't
   // invalidate the cache. The two crossing-penalty seconds must be included too
-  // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5) — they change
+  // (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5) — they change
   // the result but don't bump the network epoch, so without this the cache
   // would serve stale polygons after a penalty change.
   function settingsKeyFor(pf) {
@@ -308,7 +308,7 @@
   // Band fill/line color, smallest band (index 0) darkest so it reads as "most
   // walkable" — same ["match", ["get", "bandIdx"], ...] pattern network-joins-point
   // uses in js/core/network-connectors.js. Resolved through the layer color
-  // cascade (docs/layer-color-customization-plan.md); guarded so a missing
+  // cascade (docs/archive/layer-color-customization-plan.md); guarded so a missing
   // layer-palettes.js script tag degrades to the original hardcoded colors
   // rather than throwing, same defensive pattern used elsewhere in this file
   // for window.WalkCost.
@@ -370,7 +370,7 @@
       fillWalkshedLegend(activeBudgets());
     };
     // Registered under both styleKeys — walkshed-fill and walkshed-seg are
-    // separate Layers-panel rows (docs/walkshed-bands-and-crossing-penalties-plan.md
+    // separate Layers-panel rows (docs/archive/walkshed-bands-and-crossing-penalties-plan.md
     // Phase 1) so either one's visibility toggle can refresh the legend's
     // "Reachable streets" row (see fillWalkshedLegend below).
     App.registerLayerRepainter("walkshed", refreshWalkshedPaintAndLegend);
@@ -422,7 +422,7 @@
   }
 
   // Reads the display-only "Flatten overlaps" toggle from the Layers panel's
-  // walkshed-fill style drawer (docs/layer-color-customization-plan.md's
+  // walkshed-fill style drawer (docs/archive/layer-color-customization-plan.md's
   // App.layerStyles cascade — this rides the same persisted override object
   // as palette/reverse, no new persistence needed). Purely a rendering
   // choice: bands[] itself, and every study-area/export consumer that reads
@@ -486,7 +486,7 @@
       var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
       // Ring-difference for rendering only (bands[] itself, which
       // getPointWalkshed()/exportGeoJSON() read, stays un-differenced — see
-      // docs/layer-color-customization-plan.md Phase 1). Largest-first so the
+      // docs/archive/layer-color-customization-plan.md Phase 1). Largest-first so the
       // innermost band stays solid; a turf.difference failure or null result
       // falls back to the un-differenced polygon for that band rather than
       // dropping it. Same approach as transit-travelshed.js's ring builder.
@@ -659,7 +659,7 @@
     renderCoverageReport();
   }
 
-  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // Connection-report footer line (docs/archive/network-connectors-plan.md Phase 6):
   // only rendered when at least one walk connector exists. Styled with the
   // module's existing warning color (#b45309) when a connector end isn't
   // joined to the network.
@@ -934,12 +934,12 @@
     if (s) s.value = _settings.walkSpeedMph;
     if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
-    // shared with Transit Travelshed (docs/network-connectors-plan.md §2), so
+    // shared with Transit Travelshed (docs/archive/network-connectors-plan.md §2), so
     // this module never stores its own copy of the value.
     var tol = document.getElementById("wsSnapTol");
     if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
     // Crossing-penalty seconds are GLOBAL state too, same sharing rationale
-    // (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
+    // (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
     var cMajor = document.getElementById("wsCrossMajor");
     var cMinor = document.getElementById("wsCrossMinor");
     if (App.networkSettings) {
@@ -994,7 +994,7 @@
   }
 
   // Crossing-penalty seconds are global state too, same sharing rationale as
-  // snap tolerance (docs/walkshed-bands-and-crossing-penalties-plan.md Phase 5)
+  // snap tolerance (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5)
   // — write straight to App.networkSettings. No connector overlay to re-run;
   // no network geometry changed, only the flood's cost function.
   function onCrossingChange() {

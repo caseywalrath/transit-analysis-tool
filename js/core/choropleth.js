@@ -1,7 +1,7 @@
 // js/core/choropleth.js
 // Shared choropleth rendering engine. First consumer is Feature Area Analysis
 // (js/projects/buffer-summary.js); TPI, Ridership Forecasting, and Corridor
-// Scoring migrate onto it in Phase 3 (see docs/feature-area-choropleth-plan.md).
+// Scoring migrate onto it in Phase 3 (see docs/archive/feature-area-choropleth-plan.md).
 // Depends on: App.map (map.js), maplibregl (CDN) — only inside the map-facing
 // functions. The classification math (computeClassBreaks, buildStepColorExpr,
 // formatBreakLabels) is pure — no DOM, no map — so it loads and runs fine in
@@ -21,7 +21,7 @@
 
   // DUPLICATED DATA: viridis/gray/quality below are byte-identical to their
   // entries in js/core/layer-palettes.js's PALETTES table (Phase 4.7 of
-  // docs/layer-color-customization-plan.md — Feature Area Analysis keeps its
+  // docs/archive/layer-color-customization-plan.md — Feature Area Analysis keeps its
   // own #basMapRamp dropdown rather than the Layers-panel drawer, so this
   // table can't simply delegate to that one). If you change a color in
   // either table, change it in both.
@@ -145,7 +145,7 @@
 
   // opts = { id, features, valueProp, method, classes, ramp, colors
   //   (optional — explicit color array in place of a RAMPS[ramp] lookup, e.g.
-  //   from App.resolveLayerColors(); see docs/layer-color-customization-plan.md
+  //   from App.resolveLayerColors(); see docs/archive/layer-color-customization-plan.md
   //   Phase 4.1), breaks (optional manual override), beforeLayer, fillOpacity,
   //   lineColor, lineWidth, lineOpacity, hoverHTML (fn(props) => html string |
   //   falsy, or null for no hover), noDataColor }

@@ -1,6 +1,6 @@
 # Layers and styling
 
-Read the code when this and the code disagree. Design: `docs/layer-color-customization-plan.md`.
+Read the code when this and the code disagree. Design: `docs/archive/layer-color-customization-plan.md`.
 
 ## layer-palettes.js
 
@@ -49,6 +49,6 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 - A global palette row (`buildGlobalPaletteRow()`) tops the Analysis band: `Default` + all palettes; sets `App.mapPalette`, saves, repaints. Selects reuse `.lp-basemap-select`.
 - **Every control writes through `App.setLayerStyle`/`App.clearLayerStyle`/`App.setLayerClassColor` — never `map.setPaintProperty`.**
 
-**GTFS route browser** (`docs/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
+**GTFS route browser** (`docs/archive/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
 
 Also uses: `App.rerenderForType`, `App._openFpSlider`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, basemap API, `properties.hidden`.

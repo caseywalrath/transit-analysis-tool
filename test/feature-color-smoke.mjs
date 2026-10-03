@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/feature-color-smoke.mjs
 //
-// Browser smoke test for color sync (docs/feature-color-sync-plan.md): the
+// Browser smoke test for color sync (docs/archive/feature-color-sync-plan.md): the
 // Features-pane icon, the Attributes pop-up swatch and the Layers-pane Style
 // defaults preview must match what the map draws, and "last action wins"
 // between feature-level colors (Features) and type-wide colors (Layers).

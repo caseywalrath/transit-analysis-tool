@@ -1,5 +1,5 @@
 // Golden cases for the pure GTFS route-browser helpers (App.gtfsBrowse in
-// js/projects/gtfs.js — docs/gtfs-route-browser-plan.md Phase 1). No DOM/map/turf.
+// js/projects/gtfs.js — docs/archive/gtfs-route-browser-plan.md Phase 1). No DOM/map/turf.
 
 const line = (x0, n) => ({ type: "LineString", coordinates: Array.from({ length: n }, (_, i) => [-104.8 + x0 + i * 0.01, 38.8]) });
 const shape = (id, x0, n, extra) => ({ type: "Feature", properties: Object.assign({ shape_id: id }, extra || {}), geometry: line(x0, n) });

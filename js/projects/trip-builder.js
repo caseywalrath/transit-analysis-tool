@@ -114,7 +114,7 @@
     var ps = svc.patterns;
 
     if (ps.length >= 3) {
-      // 3+ patterns (docs/gtfs-route-browser-plan.md "Phase 3 design"): one
+      // 3+ patterns (docs/archive/gtfs-route-browser-plan.md "Phase 3 design"): one
       // column per pattern. A direction shared by several patterns gets the
       // pattern name appended so the columns stay distinguishable.
       var dirCount = {};

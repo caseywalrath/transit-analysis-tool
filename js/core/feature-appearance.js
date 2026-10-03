@@ -1,6 +1,6 @@
 // js/core/feature-appearance.js
 //
-// Shared per-feature Appearance editing (docs/feature-appearance-plan.md, Phase 1).
+// Shared per-feature Appearance editing (docs/archive/feature-appearance-plan.md, Phase 1).
 //
 //  - App.openAppearancePopup(anchorEl, type, index, opts) — the singleton
 //    #fp-appearance-popover: color, opacity, width, offset (lines/routes) and

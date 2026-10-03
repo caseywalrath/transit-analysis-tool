@@ -15,7 +15,7 @@
 //             App.BUFFER_RADIUS_STEPS, App.sectionColors, App.featureSettings,
 //             App.getTypeDefaultColor, App.getBasemaps, App.switchBasemap,
 //             App.cache, App.refreshFeaturePanel.
-// Analysis/reference layer color styling (docs/layer-color-customization-plan.md
+// Analysis/reference layer color styling (docs/archive/layer-color-customization-plan.md
 // Phase 6) additionally depends on window.LayerPalette, App.resolveLayerColors,
 // App.setLayerStyle, App.clearLayerStyle, App.layerStyles, App.mapPalette,
 // App.repaintStyledLayers (js/core/layer-palettes.js) — all optional, guarded
@@ -409,7 +409,7 @@
   }
 
   // ---- Analysis/reference layer style drawer (Palette/Reverse/Color, per
-  // styleKey — docs/layer-color-customization-plan.md Phase 6). Mirrors
+  // styleKey — docs/archive/layer-color-customization-plan.md Phase 6). Mirrors
   // buildTypeStyleRow's shape but writes through App.setLayerStyle /
   // App.clearLayerStyle instead of App.sectionColors / App.featureSettings,
   // since these are analysis-rendered layers, not drawn features (see the

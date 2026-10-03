@@ -23,7 +23,7 @@
   // (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
-  var _includeHidden     = false;   // one toggle for BOTH lists (docs/hidden-features-analysis-plan.md)
+  var _includeHidden     = false;   // one toggle for BOTH lists (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
   var _runSnap           = null;    // { geom, hidden, refs: [{type,id}], includeHidden }
@@ -506,7 +506,7 @@
   }
 
   // Colors resolve through the layer style cascade (Phase 7 of
-  // docs/layer-color-customization-plan.md) — a categorical spec, one class
+  // docs/archive/layer-color-customization-plan.md) — a categorical spec, one class
   // per semantic fill. The fallback array is byte-identical to the spec's
   // defaultColors so a missing layer-palettes.js degrades to the original
   // hardcoded colors instead of throwing.

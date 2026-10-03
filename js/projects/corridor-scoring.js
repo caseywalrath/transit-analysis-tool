@@ -26,7 +26,7 @@
   var _apportionByArea   = false;
   var _bufferMiles       = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
-  var _includeHidden     = false;  // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+  var _includeHidden     = false;  // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
   var _runSnap           = null;   // { refs: [{type,id}], hidden: string, includeHidden: bool }
@@ -539,7 +539,7 @@
     if (!map || !result) return;
     var fc = buildScoredFeatureCollection(result);
 
-    // Phase 3 Step 3.4 of docs/feature-area-choropleth-plan.md: the step
+    // Phase 3 Step 3.4 of docs/archive/feature-area-choropleth-plan.md: the step
     // expression itself now comes from the shared engine so the ramp
     // definition has one home, but CS keeps its own fixed red/orange/
     // yellow/green corridor-quality breaks -- not one of App.choropleth's
@@ -550,7 +550,7 @@
     // noDataColor path instead of the old "coalesce to -1, add a 0 break"
     // sentinel, which drew the same gray for the same case.
     // Colors resolve through the layer color cascade
-    // (docs/layer-color-customization-plan.md) — restricted to diverging
+    // (docs/archive/layer-color-customization-plan.md) — restricted to diverging
     // palettes only by the "corridor-scoring" spec's allow list, so this can
     // never become an unreadable sequential ramp.
     var csColors = (App.resolveLayerColors && App.resolveLayerColors("corridor-scoring")) ||

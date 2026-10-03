@@ -291,7 +291,7 @@ Replace the `.lp-swatch` button (`js/core/layers-panel.js` ~line 731–749) with
 - `innerHTML = (App.TYPE_ICON_SVGS || {})[it.type] || ""` — fall back to keeping the plain
   swatch if the export is somehow missing, so load-order changes can't blank the row.
 - `style.color = App.resolveFeatureColor(it.type, it.feature)` — use the Phase 2 resolver from
-  `docs/feature-color-system-plan.md`, **not** `properties.color || getTypeDefaultColor(type)`.
+  `docs/archive/feature-color-system-plan.md`, **not** `properties.color || getTypeDefaultColor(type)`.
   The row must show the same color the map is actually painting, including the Automatic
   rainbow slot.
 - Same click handler as today (open `App.openColorPicker`, write `properties.color`,

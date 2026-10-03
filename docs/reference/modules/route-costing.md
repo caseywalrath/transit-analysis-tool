@@ -1,6 +1,6 @@
 # Route costing
 
-Read the code when this and the code disagree. Design history: `docs/route-costing-plan.md`.
+Read the code when this and the code disagree. Design history: `docs/archive/route-costing-plan.md`.
 
 ## route-costing.js (module `"route-costing"`, no public API)
 

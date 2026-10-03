@@ -6,7 +6,7 @@
 
 The app lacks the classic consulting coverage statistic: *"X% of service-area residents are within D miles of transit; Y% are within D miles of service running every N minutes or better."* All the machinery exists — TIGERweb/ACS pipeline, area-weighted aggregation, LODES block-level jobs, per-route time bands with headways, feature checklists, the popup module system — this plan assembles it into a new **Transit Coverage** analysis module.
 
-**This plan is written for execution by a cheaper model (Sonnet 5).** After approval it will be committed to the repo as `docs/transit-coverage-plan.md` and pushed, so an implementation session can read it directly. Steps are small, ordered, and independently verifiable; no design decisions are left open. A "Handoff" section at the end tells the user how to run the implementation session.
+**This plan is written for execution by a cheaper model (Sonnet 5).** After approval it will be committed to the repo as `docs/archive/transit-coverage-plan.md` and pushed, so an implementation session can read it directly. Steps are small, ordered, and independently verifiable; no design decisions are left open. A "Handoff" section at the end tells the user how to run the implementation session.
 
 ## Settled design decisions (from user)
 
@@ -196,9 +196,9 @@ Legend fragment: copy `projects/walkshed-legend.html` structure — rows: light-
 
 ## Handoff: implementing with cheaper models
 
-After approval, this plan is committed as `docs/transit-coverage-plan.md` on branch `claude/transit-analysis-brainstorm-xro1di` and pushed. Then, from the Claude desktop app:
+After approval, this plan is committed as `docs/archive/transit-coverage-plan.md` on branch `claude/transit-analysis-brainstorm-xro1di` and pushed. Then, from the Claude desktop app:
 
 1. Start a **new Claude Code session** on `caseywalrath/micro-analysis-tool`, based on branch `claude/transit-analysis-brainstorm-xro1di` (cloud session, same as this one). Select **Sonnet 5** as the session model (model picker at session creation, or `/model` in-session). Sonnet 5 is the right tier for the whole plan; Haiku 4.5 can handle individual steps but should be fed one step at a time.
-2. Prompt: *"Implement docs/transit-coverage-plan.md exactly. Work through Steps 1–8 in order, committing after each step with a descriptive message. The 'Do-not-do notes' are binding. Finish with `node test/run-golden.mjs` and include the Verified line in the final commit."*
+2. Prompt: *"Implement docs/archive/transit-coverage-plan.md exactly. Work through Steps 1–8 in order, committing after each step with a descriptive message. The 'Do-not-do notes' are binding. Finish with `node test/run-golden.mjs` and include the Verified line in the final commit."*
 3. Golden tests run in the cloud session; the **browser smoke tests need you**: after the session pushes, pull the branch locally (or download it) and open `index.html`, then walk the Step 5/6 verify lists. Report anything broken back to the implementation session as plain instructions ("the threshold row shows NaN when…").
 4. Keep this planning session available for escalation: if the cheaper model gets stuck on a step, bring the error here rather than letting it improvise outside the plan.

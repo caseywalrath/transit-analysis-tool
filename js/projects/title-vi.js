@@ -106,7 +106,7 @@
 
   // Checklist rows carry the feature's stable ID (data-feature-id), not its
   // array index, so a saved/remembered filter survives deleting or merging an
-  // earlier feature (docs/feature-merge-plan.md Phase 4b).
+  // earlier feature (docs/archive/feature-merge-plan.md Phase 4b).
   function makeFeatureCheckRow(type, id, name, checked) {
     var row = document.createElement("div");
     row.className = "rf-feature-check-row";
@@ -911,7 +911,7 @@
   // ---- Map overlay for impacted area ----
 
   // Colors resolve through the layer style cascade (Phase 7 of
-  // docs/layer-color-customization-plan.md) — a categorical spec with two
+  // docs/archive/layer-color-customization-plan.md) — a categorical spec with two
   // classes, [loss, gain]. Both the fill and the outline of each class share
   // one color, so a class is one swatch, not two. The fallback array is
   // byte-identical to the spec's defaultColors so a missing layer-palettes.js

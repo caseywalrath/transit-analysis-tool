@@ -1,6 +1,6 @@
 # Transit travelshed
 
-Read the code when this and the code disagree. See `docs/transit-travelshed-plan.md` and `docs/transit-travelshed-v2-walk-caps-plan.md`.
+Read the code when this and the code disagree. See `docs/archive/transit-travelshed-plan.md` and `docs/archive/transit-travelshed-v2-walk-caps-plan.md`.
 
 ## transit-travelshed.js (module `"transit-travelshed"`)
 

@@ -2,7 +2,7 @@
 // test/browser/hidden-features.test.mjs
 //
 // Behavior test for hidden features in analysis checklists
-// (docs/hidden-features-analysis-plan.md). Phase 2: Feature Area Analysis.
+// (docs/archive/hidden-features-analysis-plan.md). Phase 2: Feature Area Analysis.
 // Census/TIGERweb are unreachable in the sandbox (the harness aborts remote
 // hosts), so runs are asserted on status/progress text, not on results.
 //

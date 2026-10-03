@@ -2,14 +2,13 @@
 
 > **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
 
-Status: Phases 1 (Split here) and 2 (Split out section…, loops, Split at this node) done — `js/core/split.js`, `test/cases/split.mjs`, `test/feature-split-smoke.mjs`. Phase 3 (module awareness, opposite direction) done.
 
 ## Goal
 
 Let the user right-click a drawn Line or Route on the map and cut it into
 pieces: **Split here** (one cut, two pieces) or **Split out section…** (two
 cuts, the stretch between them becomes its own feature). It is the reverse of
-Feature Merge (`docs/feature-merge-plan.md`): one undo step, a short
+Feature Merge (`docs/archive/feature-merge-plan.md`): one undo step, a short
 confirmation dialog, and the resulting pieces can be merged back with the
 existing Merge… command to give the original geometry exactly.
 

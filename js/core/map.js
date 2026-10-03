@@ -99,7 +99,7 @@
   // watermarked tiles. That is the state a fork, an exhausted quota, or (if
   // the key turns out to be domain-locked) local development sees, so the
   // remaining keyless basemaps have to carry the app on their own.
-  // See js/core/config.js and docs/carto-api-key-plan.md.
+  // See js/core/config.js and docs/archive/carto-api-key-plan.md.
 
   var CARTO_TILE_HOST = "basemaps.cartocdn.com";
 

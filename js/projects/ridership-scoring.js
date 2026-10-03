@@ -75,7 +75,7 @@
   // Stable ID of the drawn feature at array position `index` (null if unknown).
   // Per-route results carry it alongside the positional featureIndex so callers
   // can re-find the feature after deletions/merges shift the arrays
-  // (docs/feature-merge-plan.md, Phase 4b).
+  // (docs/archive/feature-merge-plan.md, Phase 4b).
   function featureIdAt(type, index) {
     var ref = App.featureRef ? App.featureRef(type, index) : null;
     return ref ? ref.id : null;

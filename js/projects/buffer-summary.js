@@ -18,7 +18,7 @@
     featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs (Phase 4b)
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
     useDisplayBuffers: false,
-    includeHidden: false // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+    includeHidden: false // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
   };
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session

@@ -33,7 +33,7 @@
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
-  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdgeKm is
+  var FT_PER_KM = 3280.84; // Phase 7 (docs/archive/network-connectors-plan.md): hull-detail maxEdgeKm is
                             // displayed in feet but stored/persisted in km, same UI-boundary pattern
                             // as walkSpeedMph above and the connector snap-tolerance input.
 
@@ -600,7 +600,7 @@
 
   // Snap tolerance is global state, not a module setting — write straight to
   // App.networkSettings and re-run the connector overlay, per
-  // docs/network-connectors-plan.md §2 "Known conflict". Shared with Walkshed.
+  // docs/archive/network-connectors-plan.md §2 "Known conflict". Shared with Walkshed.
   function onSnapTolChange() {
     var el = document.getElementById("tsSnapTol");
     if (!el || !(+el.value > 0)) return;
@@ -739,7 +739,7 @@
   // 3-class Blues, innermost (band 0 = shortest budget) darkest — the repo's
   // only other `step`/classed color expression precedent is corridor-scoring.js.
   // Resolved through the layer color cascade
-  // (docs/layer-color-customization-plan.md); guarded so a missing
+  // (docs/archive/layer-color-customization-plan.md); guarded so a missing
   // layer-palettes.js script tag degrades to the original hardcoded colors
   // rather than throwing.
   function tsColorExpr() {
@@ -871,7 +871,7 @@
       coverageReportHTML();
   }
 
-  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
+  // Connection-report footer line (docs/archive/network-connectors-plan.md Phase 6):
   // only rendered when at least one walk connector exists. Styled with the
   // module's existing warning color (#b45309) when a connector end isn't
   // joined to the network. Shared logic with Walkshed's identical footer line.
@@ -1090,7 +1090,7 @@
       // the per-stop ones.
       floodStats.snapMs += originFlood.snapMs || 0;
       floodStats.floodMs += originFlood.floodMs || 0;
-      // Snap vs. flood diagnostic (docs/transit-travelshed-v2-walk-caps-plan.md
+      // Snap vs. flood diagnostic (docs/archive/transit-travelshed-v2-walk-caps-plan.md
       // follow-up): snapping used to scan every segment in the network per
       // call (turf allocations + turf.nearestPointOnLine per segment) and
       // dominated "Walking from stop x/y" on city-scale downloads; the fix is

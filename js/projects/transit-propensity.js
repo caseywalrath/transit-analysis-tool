@@ -27,7 +27,7 @@
   var _apportionByArea = false;
   var _bufferMiles = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
-  var _includeHidden = false;     // analyze features hidden on the map (docs/hidden-features-analysis-plan.md)
+  var _includeHidden = false;     // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
   var _runSnap = null;            // { geom, hidden, refs: [{type,id}], includeHidden }
@@ -762,7 +762,7 @@
   var TPI_LINE_LAYER = "tpi-choropleth-line";
 
   // Hover popup for the "tpi" choropleth (Phase 3 Step 3.2 of
-  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  // docs/archive/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
   function tpiHoverHTML(props) {
     var score  = props.tpiScore;
     var geoid2 = props.GEOID || "\u2014";

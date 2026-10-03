@@ -38,7 +38,7 @@
     { key: "runTime",   label: "Run time",  type: "number", unit: "min", placeholder: "e.g. 45" }
   ].map(function (f) { f.section = "Transit service"; return f; });
 
-  // Per-feature buffer radius (docs/feature-appearance-plan.md Phase 2). It is
+  // Per-feature buffer radius (docs/archive/feature-appearance-plan.md Phase 2). It is
   // study-area geometry, not appearance. Unlike every other field it lives on
   // feature.properties._bufferRadius, NOT feature.properties.attributes — the
   // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
@@ -48,7 +48,7 @@
   var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
 
   // Fired when a Line's Walk network role changes (Not part of network ↔ Walk
-  // connector). Stub in Phase 2 of docs/network-connectors-plan.md — Phase 4
+  // connector). Stub in Phase 2 of docs/archive/network-connectors-plan.md — Phase 4
   // makes App.refreshNetworkConnectors() actually reweld the graph.
   function onNetworkRoleChange() {
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
@@ -57,7 +57,7 @@
   // Lines share every Route field (a Line can be attributed as a transit
   // pattern too) plus one Walk network field Routes never get — Routes
   // already follow existing streets, so "connect this to the walk network"
-  // is meaningless for them. See docs/network-connectors-plan.md §2.
+  // is meaningless for them. See docs/archive/network-connectors-plan.md §2.
   var LINE_FIELDS = TRANSIT_FIELDS.concat([
     { key: "networkRole", label: "Walk network", type: "select", section: "Walk network",
       options: ["", "connector"],

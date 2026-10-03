@@ -122,7 +122,7 @@ Create one file that is the single home for third-party credentials, loaded **fi
 // step and no backend — every value here is served verbatim to the browser
 // and is readable via view-source or the Network tab. Never put a credential
 // here that grants anything beyond public, rate-limited, read-only access.
-// See docs/carto-api-key-plan.md.
+// See docs/archive/carto-api-key-plan.md.
 
 (function () {
   var App = (window.App = window.App || {});

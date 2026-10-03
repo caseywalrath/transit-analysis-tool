@@ -17,7 +17,7 @@
 // #  access and are safe to expose. Never a key that grants write access,    #
 // #  billing, or private data.                                               #
 // #                                                                          #
-// #  See docs/carto-api-key-plan.md for the full reasoning.                  #
+// #  See docs/archive/carto-api-key-plan.md for the full reasoning.                  #
 // ############################################################################
 
 (function () {

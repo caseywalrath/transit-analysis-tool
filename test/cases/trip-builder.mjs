@@ -31,7 +31,7 @@ export default {
     },
     { id: "merge/single", call: "App._tbTest.mergeIntervals", args: [[{ from: 100, to: 200 }]] },
     { id: "merge/empty", call: "App._tbTest.mergeIntervals", args: [[]] },
-    // --- 3+ pattern Services (docs/gtfs-route-browser-plan.md Phase 3) ----
+    // --- 3+ pattern Services (docs/archive/gtfs-route-browser-plan.md Phase 3) ----
     {
       id: "columns/three-pattern-repeated-direction",
       call: "App._tbTest.resolveColumnLabels",

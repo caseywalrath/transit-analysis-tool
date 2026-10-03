@@ -26,7 +26,7 @@
 //
 // Shared plumbing (Playwright loading, Chromium resolution, vendored-CDN
 // route interception, the static server) lives in test/browser/harness.mjs —
-// see docs/browser-test-harness-plan.md.
+// see docs/archive/browser-test-harness-plan.md.
 //
 // USAGE (same NODE_PATH dance as capture.mjs — this repo has no npm install)
 //   mkdir -p /tmp/pw-install && cd /tmp/pw-install && npm init -y >/dev/null
@@ -96,7 +96,7 @@ async function idbCount(page) {
 
 // Polls idbCount(page) until it equals `expected` or the deadline passes.
 // Replaces a fixed sleep for "wait for the deferred IndexedDB write/clear to
-// land" — see docs/browser-test-harness-plan.md Phase 3.
+// land" — see docs/archive/browser-test-harness-plan.md Phase 3.
 async function waitForIdbCount(page, expected, timeout = 5000) {
   const deadline = Date.now() + timeout;
   let last = -2;
@@ -115,7 +115,7 @@ async function waitForIdbCount(page, expected, timeout = 5000) {
 // comes first, rather than always sleeping the full bound like a flat
 // waitForTimeout would. In the common case (nothing restored) it still spends
 // the whole timeout — that is expected and is why this stays a bounded wait
-// rather than a real polled assertion (docs/browser-test-harness-plan.md
+// rather than a real polled assertion (docs/archive/browser-test-harness-plan.md
 // Phase 3).
 async function waitForStatusActivity(page, timeout = 1200) {
   const deadline = Date.now() + timeout;

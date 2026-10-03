@@ -463,7 +463,7 @@
     var rt = computeRoundTrip(svc, settings);
     var multi = svc.patterns.length >= 3;
     // 3+ patterns: layover is charged per one-way trip, at half what a cycle of
-    // two of that pattern's trips gets (docs/gtfs-route-browser-plan.md
+    // two of that pattern's trips gets (docs/archive/gtfs-route-browser-plan.md
     // "Phase 3 design") — the per-trip share a 2-pattern Service pays.
     var layPerTrip = multi ? rt.oneWays.map(function (ow) {
       return computeLayoverHrs(2 * ow, settings) / 2;

@@ -1,7 +1,7 @@
 // js/core/network-connectors.js
 // Network Connectors: lets user-drawn Line features join the offline walk
 // network so Walkshed / Transit Travelshed can model planned or hypothetical
-// pedestrian connections. See docs/network-connectors-plan.md for the full
+// pedestrian connections. See docs/archive/network-connectors-plan.md for the full
 // design and phased build order.
 //
 // Phase 1: a discreet, hideable reference layer showing the walkable network
@@ -32,7 +32,7 @@
   var NJ_LAYER = "network-joins-point";
 
   // Single global snap tolerance shared by Walkshed and Transit Travelshed —
-  // never per-module state (see docs/network-connectors-plan.md §2). Persisted
+  // never per-module state (see docs/archive/network-connectors-plan.md §2). Persisted
   // as an additive field in the core session-cache state (cache.js), same
   // pattern as featureSortMode — defaults gracefully when absent.
   //
