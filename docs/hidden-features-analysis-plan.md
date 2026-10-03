@@ -1,6 +1,6 @@
 # Hidden features in analysis checklists — implementation plan
 
-Status: implemented (Phases 1-4 complete). Audience: Sonnet-level implementation agents, orchestrated by
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/analysis-modules.md. This file is historical.
 an Opus agent that runs one phase at a time, reviews each diff, and runs the
 checks listed per phase before starting the next.
 

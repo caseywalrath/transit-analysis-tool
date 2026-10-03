@@ -1,5 +1,7 @@
 # Layer color customization — implementation plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/layers-and-styling.md. This file is historical.
+
 Lets a user restyle the colors of analysis output layers (walksheds, travelsheds,
 choropleths, scored corridors) and the GTFS reference layers, from one place, with
 the choice surviving a re-run and a page reload.

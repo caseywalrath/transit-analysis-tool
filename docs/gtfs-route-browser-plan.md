@@ -1,6 +1,6 @@
 # GTFS Route Browser — implementation plan
 
-Status: All phases done.
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/gtfs.md. This file is historical.
 
 ## Goal
 

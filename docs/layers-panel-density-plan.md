@@ -1,5 +1,7 @@
 # Layers panel density — implementation plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/layers-and-styling.md. This file is historical.
+
 Brings the Layers tab (`js/core/layers-panel.js`, `.lp-` styles in `css/style.css`) up to the
 space efficiency and interaction conventions the Features tab (`js/core/features.js`, `.fp-`
 styles) already uses, so the two tabs of the same 208px panel read as one design.

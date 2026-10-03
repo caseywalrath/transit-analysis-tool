@@ -1,5 +1,7 @@
 # Layers-panel styling affordance — evaluation (Phase 3 Step 3.5)
 
+> **Status:** Abandoned (verified 2026-10). Memo recommended no-go on a generic Layers-panel style affordance; no `styleSpec` exists in js/core/layers-panel.js. Related current behavior: docs/reference/layers-and-styling.md. This file is historical.
+
 Evaluation memo only, per `docs/feature-area-choropleth-plan.md` Phase 3 Step 3.5. No code in this step.
 
 ## Question

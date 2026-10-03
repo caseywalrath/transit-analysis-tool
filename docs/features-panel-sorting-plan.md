@@ -1,6 +1,6 @@
 # Features Panel Sorting — Implementation Plan
 
-**Status:** Approved, not yet implemented
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/drawing-and-features.md. This file is historical.
 **Branch:** `claude/features-menu-sorting-tr9xv8`
 **Scope decision:** Tier 1 sort keys only. Labels and Text section is **out of scope**.
 
