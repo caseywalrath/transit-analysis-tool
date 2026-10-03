@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Phases 0 and 1 done (2026-10-02). Next: Phase 2.
+**Status:** Phases 0 and 1 done (2026-10-02). Phase 2: status headers added and user-doc drift logged (2026-10-03); archive move awaits user approval.
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
