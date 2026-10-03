@@ -1,23 +1,19 @@
 // js/core/split.js
-//
-// Feature Split (docs/archive/feature-split-plan.md, Phase 1: "Split here" for lines
-// and routes). The reverse of Feature Merge: one cut makes two pieces, one
-// undo step, a short confirmation dialog, and merging the pieces back with
-// Merge… gives the original geometry.
+// Feature Split for lines and routes: "Split here" (one cut), "Split out
+// section…" (two cuts) and optionally the paired opposite-direction feature.
+// The reverse of Feature Merge: one undo step, a short confirmation dialog,
+// and merging the pieces back with Merge… gives the original geometry.
 //
 // Three layers, like merge.js:
 //   1. App.splitGeom — pure helpers (plain arrays, no turf/DOM/map), loaded by
-//      the golden harness (test/cases/split.mjs): cutAt, locate, snapToVertex,
-//      partitionWaypoints, splitRunTime, assignStops, isLoop, uniqueName,
-//      lengthMi.
+//      the golden harness (test/cases/split.mjs).
 //   2. App.split.analyze(type, index, cuts) -> plan (synchronous, no mutation)
 //      and App.split.run(...) -> the undoable operation.
 //   3. App.split.openDialog(type, index, lngLat | cuts) — the .fm-* dialog,
 //      reusing merge.js's App.merge._dialogKit.
 //
-// Inheritance rules (first piece keeps slot/ID/colorSeq/seq/name; new pieces
-// get new IDs, "(2)" names, copied attributes, a length share of runTime, a
-// Service choice, and re-linked stops) are documented in the plan's table.
+// Piece inheritance rules (first piece keeps slot/ID/colorSeq/seq/name, etc.):
+// docs/reference/drawing-and-features.md.
 //
 // Exports: App.splitGeom, App.split
 (function () {
@@ -316,7 +312,7 @@
     }
   }
 
-  // Phase 3: "also split the opposite direction". For each cut point
+  // "Also split the opposite direction": for each cut point
   // ([lng, lat]) find the nearest position on the opposite feature's line.
   // Rejected (ok:false) when a point is farther than maxFt (default 300) from
   // that line, or lands within endGuardFt (default 30) of one of its ends or of
@@ -547,7 +543,7 @@
 
   // analyze(type, index, cuts) -> plan. cuts: an array of {segIndex, t} or
   // click locations ([lng, lat] / {lng, lat}); a single cut may be passed bare.
-  // Phase 2 passes two cuts for "Split out section…". Never mutates anything.
+  // "Split out section…" passes two cuts. Never mutates anything.
   // plan = { ok, errors, warnings, type, index, featureId, name, cuts,
   //          pieces: [{coords, waypoints, lengthMi, name, runTime}],
   //          stops: [{pointId, name, pieces}], stopsMoved, stopsBoth,
@@ -675,7 +671,7 @@
       else if (st.pieces[0] !== 0) plan.stopsMoved++;
     });
 
-    // Module references (Phase 3 hook)
+    // Module references
     plan.usage = usageForSplit(type, plan.featureId, plan.name);
 
     // History
@@ -841,7 +837,7 @@
   }
 
   // openDialog(type, index, where): where is a click location or an array of
-  // cuts (Phase 2 passes two). Returns the plan shown (or null).
+  // cuts (Split out section… passes two). Returns the plan shown (or null).
   function openDialog(type, index, where) {
     var kit = App.merge && App.merge._dialogKit;
     if (!kit) return null;
@@ -989,7 +985,7 @@
   }
 
   /* =====================================================================
-     Split out section… — two-point pick mode (Phase 2)
+     Split out section… — two-point pick mode
      ===================================================================== */
 
   var PICK_MODE = "split-pick";
