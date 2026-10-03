@@ -11,6 +11,8 @@ Share of a service area's population and jobs within a buffer of selected routes
 - **Map:** one geojson source with `kind`-filtered layers (coverage fill, threshold fill, dashed service-area outline) + legend. Colors resolve through `App.resolveLayerColors("transit-coverage")` (categorical spec, one class per fill) at add time and in the `setData` branch; `repaintOverlay()` is registered via `App.registerLayerRepainter` (paint-only), and `fillLegendColors()` re-tints legend swatches (via `LayerPalette.rgba`) after mount and on repaint.
 - **Persistence:** schema **v2**, numbers + selections only. Selections are the UNCHECKED features of both checklists as stable `{type, id}` refs (`_uncheckedRefs`), so new features default to checked and deletes/merges can't shift selection; `headwayRows` carry `featureId`. v1 index selections migrate in `restoreTcState`. Geometry is not persisted; GeoJSON export is disabled until Re-run.
 
+`App._tcTest` → `{computePeakHeadway, formatPct, formatCount, buildStatSentence, _csvField}`. Test-only hook (exists only when `window.__MAT_TEST__`; used by `test/run-golden.mjs`).
+
 ## transit-coverage-popup.html
 
 `#tcFeatureList`, `#tcAreaList` (each with Select all / Clear), Analyze Coverage. Results: `#tcStatus.rf-status`, `#tcResultsTable`, `#tcStatSentence`, `#tcHeadwayList`, CSV/GeoJSON export, `#tcEmptyState.rf-info-box`.

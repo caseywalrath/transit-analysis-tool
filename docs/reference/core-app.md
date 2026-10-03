@@ -36,6 +36,10 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 - **Last action wins:** type-wide color changes go through `App.setTypeColor(type, color|null)` (features.js) — one undo snapshot, sets `sectionColors[type]`, **clears every feature's `properties.color` of that type** (`App.clearFeatureColorOverrides`), refreshes panels. A later `App.updateFeatureColor` wins for that feature.
 - **Every swatch/icon for a specific feature must use `App.resolveFeatureColor(type, feature)`**, never `properties.color || getTypeDefaultColor(type)` (ignores the rainbow slot). `getTypeDefaultColor` (features.js) is only for contexts with no specific feature. Test: `test/feature-color-smoke.mjs`.
 
+`App.escapeHTML(s)` → string with `& < > " '` escaped (null → ""); `App.escapeAttr(s)` → same output, alias for attribute contexts. `App.isTractOnly(code)` → true when `VAR_META[code].tractOnly`.
+
+`App._migrateIndexRefKeyIn` / `App._indexFilterToRefsIn` / `App._uncheckedRefsFromIndexFilterIn` → array-injected variants of `migrateIndexRefKey` / `indexFilterToRefs` / `uncheckedRefsFromIndexFilter` (take the feature arrays as first arg). Test-only hook (exists only when `window.__MAT_TEST__`; used by `test/run-golden.mjs`).
+
 ## map.js
 
 `App.map`, `switchBasemap(id)`, `getBasemaps()` → `[{id, name}]`, `getCurrentBasemapId()`, `getThemeBasemapId(isDark)`. Basemap ids: `carto-light` (default), `carto-dark`, `carto-voyager`, `osm`, `satellite`, `esri-dark-gray`, `esri-light-gray`.
@@ -44,17 +48,27 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 - **Dark-mode callers must use `getThemeBasemapId(isDark)`**, never hardcoded `carto-light`/`carto-dark`: those ids don't exist keyless, and `switchBasemap` silently ignores unknown ids.
 - CARTO/OSM attribution must stay visible on CARTO basemaps (license condition).
 
+`App.toggleMuniBoundaries(show)` → loads/removes the municipal-boundary line layer; `App.setMuniBoundariesLayerVisible(visible)` → shows/hides it without removing (loads it if absent and `visible`).
+
 ## selection.js
 
 `App.setSelection(list)` — replaces the selection with a de-duplicated `[{type, index}]`; same refresh as `selectFeature`; one item = `selectFeature`, empty = `clearSelection()`. Also: `selectFeature`, `toggleMultiSelect`, `shiftSelectFeature`, `clearSelection`, `isFeatureSelected`, `getSelectedFeatures`.
+
+`App.initHighlightLayers()` → creates highlight sources/layers (call after map style load). `App.setHoveredFeature(type, index, lngLat)` → sets hover highlight + tooltip (ignored while a multi-selection is locked); `App.clearHover()` → clears it; `App.hideHoverTooltip()` → hides only the tooltip; `App.applyPanelHighlight()` → syncs `.fp-hovered`/`.fp-selected` classes on Features-panel rows.
 
 ## census.js
 
 `renderCensusOverlay(geos)`, `clearCensusOverlay()` (empties the `census-geos` source via `setData`, keeping layers for reuse), `fetchAllTigerwebFeatures(layerUrl, params)`, `fetchTigerwebGeos(geoLevel, unionFeat)`, `parseGEOID(geoLevel, geoid)`, `fetchACSValues(geoLevel, year, varCode, geoids)`, `fetchACSCountyValues(year, varCode, counties)`, `aggregateWithinUnion(unionFeat, geos, valueMap, aggMode, options)` (optional `options.fractions` = precomputed map), `computeGeoOverlapFractions(unionFeat, geos, apportionByArea)` → `Map<GEOID, frac>` (compute once per run, reuse), `computeAcsValueOnly(varCode, year, geoLevel)`.
 
+`App.fetchACSBatchCached(geoLevel, year, varCodes, geoids, opts)` → Promise<Map(geoid → Map(var → value))>; fetches only vars not yet cached per (level, year, county); `opts.force` bypasses. Shared by TPI and Title VI. `App.fetchACSMultiValues(geoLevel, year, varCodes, geoids)` → Promise<Map(geoid → summed value)>; one API call per state-county group.
+
+`App.censusCache` → `{clear(), invalidate(geoLevel, year), fetchedAt(geoLevel, year), stats()}`; session ACS/geometry fetch cache control (`invalidate` backs the per-module Re-fetch). `App.buildCensusCacheStatus({geoSel, yearSel, onRefetch})` → DOM node (cache status text + Re-fetch button) with `el.refresh()`.
+
 ## lodes.js
 
 `STATE_FIPS_TO_ABBR`, `getStateFromMapCenter()`, `startDownload(url, filename)`, `lodesData` (Map or null), `lodesFileName`, `setLodesLoadedUI(loaded, name, nRows)`, `parseLodesFromUploadedFile(file)`, `fetchBlocksInternalPointsInUnion(unionFeat)`, `computeEmploymentServedOnly()`.
+
+`App.mergeLodesFile(jobsMap, name)` → adds a parsed LODES file's jobs to the loaded set and refreshes the UI; `App.clearLodesData()` → drops all loaded LODES; `App.serializeLodesData()` → `{entries, meta}` for session export, or null when empty; `App.restoreLodesFromData(entries, meta)` → rebuilds LODES from that payload on session restore.
 
 ## cache.js
 
@@ -68,6 +82,8 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
   - `layerStyles`/`mapPalette` are deep-copied onto `App.layerStyles`/`App.mapPalette`; `restore()` then calls `App.repaintStyledLayers()` once at the end (typeof-guarded — cache.js loads before modules register repainters).
 - **Merge history:** `properties._mergedFrom` is kept by every state path (autosave, undo/redo, session JSON) and **omitted from every feature export**: JSON (Features only) strips it via `App.mergeHistory.stripHistory`; CSV/KML/Shapefile write fixed columns. Any new feature-export path must strip it. Render functions copying `properties` into MapLibre sources skip `_mergedFrom`; `duplicateX` never copies it.
 - `registerModule(id, { collect(mode), apply(data) })` — `mode` is `"light"` (localStorage, skip heavy geometry) or `"full"` (file export). Stored under `state.moduleState[moduleId]`. Example: Ridership Forecasting registers as `"rf"`, schema v4 (stable-ID feature refs; v1–v3 index refs converted in `restoreRfState`).
+
+`App.validateSessionState(state)` → error string, or null when the imported/restored session object is valid (runs schema migration first, then checks version and feature arrays). `App.projYear` is saved/restored as session field `projYear` (accessor defined in projections.js).
 
 ## popup.js
 
@@ -109,6 +125,8 @@ Loads right after module-buffers.js (see `docs/archive/hidden-features-analysis-
 
 Presentation-mode legend, north arrow and title (draggable/resizable). Registers `"present-overlays"` cache state; listens for `mat:present-mode-change` from `App.setPresentMode()` (app.js). Legend and title auto-size until manually resized; manual title size persists.
 
+`App.clearPresentOverlays()` → resets legend/north-arrow/title visibility and positions to defaults.
+
 ## app.js
 
 Startup, module registry, event wiring. Exports: `drawMode`, `registerModule(config)`, `registerProject` (alias), `notifyProject()`, `onFeatureDelete()`, `openModulePopup(id)` (used by the Layers ⋯ menu), `updateAddDataClearIcons()` (Add Data eye/× icons + Layers panel; the visibility sync bridge), `exitDrawMode()`, `finishDrawing()` (Enter; commits via `App.saveLine`/`App.saveRoute`/`App.savePolygon`), `applyFeatureOpacity(type)`, `applyLineWidth(type)`, `applyBufferLineWidth()`.
@@ -123,3 +141,31 @@ Startup, module registry, event wiring. Exports: `drawMode`, `registerModule(con
 **`App.renderModuleInputs(opts)`** — shared collapsible inputs. `opts = {hostEl, collapsed, summary, label, onToggle}`; `hostEl` = `.rf-settings-col` element or id. First call moves the host's children into `.module-inputs-body` and prepends `.module-inputs-header` (listeners and ids preserved — no markup changes). Omit `collapsed` to keep state. Collapsed, the column becomes a full-width bar above results (`.rf-section-row:has(> .module-inputs-collapsed)`). **Collapse on a successful run only** — failed runs leave inputs open. Modules supply `inputsSummary()` (e.g. `"15 min · 3.1 mph · 2 points"`). Used by Walkshed, Transit Coverage, Transit Travelshed, Transit Propensity, Corridor Scoring, Feature Area Analysis and FTA Small Starts.
 
 **Inputs vs. Settings** (convention, not enforced): **Inputs** are required selections, inline, collapsing after a run (buffer distance, checklist, geography, ACS year). **Settings** are optional tuning behind a button, modal or `<details>` (Adjust Weights, Costing Settings, `maxEdge`).
+
+`App.clearOverlapOffsets()` → zeroes automatic `_offset` on lines/routes (manual `_offsetManual` offsets kept) when the overlap-offset toggle goes off. `App._bufOpacityValues(S)` → `{fill, border}` opacities for a 0-100 buffer-opacity slider (sibling of `_polyOpacityValues`). `App._closeFpSlider()` → closes the Feature Settings slider popover.
+
+`App.BUFFER_RADIUS_STEPS` → the discrete mile values (0-2) used by the buffer-radius sliders. `App.syncBufferInputs()` → re-reads `App.featureSettings` buffer radii into the Feature Settings number inputs. `App.onRecentsChanged()` → re-renders the recent-files list (alias of `renderRecents`).
+
+## labels.js
+
+`App.clearLabels()` → removes all map labels; `App.undoLastLabel()` → removes the newest; `App.duplicateLabel(index)` → copies one; `App.renderLabelMarkers()` → rebuilds all DOM markers from `App.labels`.
+
+## textboxes.js
+
+`App.textBoxes` → the live text-box feature array. `App.clearTextBoxes()` → removes all; `App.undoLastTextBox()` → removes the newest; `App.duplicateTextBox(index)` → copies one.
+
+## measure.js
+
+`App.initMeasureLayers()` → adds the `measure-line` / `measure-polygon` sources and layers. `App.setMeasurePreview(lngLat|null)` → rubber-band preview point. `App.undoLastMeasurePoint()` → pops the last point (or reopens a closed polygon). `App._measureDrawingInProgress()` → true while points exist.
+
+## osm.js / osm-pois.js
+
+`App.osmActiveCategory()` → the active OSM reference category id (or null). `App.osmPoiLoaded()` → true when the POI map layer exists; `App.setOsmPoiLayerVisible(v)` → shows/hides it.
+
+## search.js
+
+`App.clearSearch()` → clears the toolbar search input, hides its dropdown and cancels any pending lookup.
+
+## projections.js
+
+`App.projGrowthFactorsForYear(year)` → Map(geoid → population addition) for an explicit year without changing `App.projYear`, or null if none. `App.clearProjectionsData()` → drops the loaded projections CSV and resets the year selector. `App.projYear` is a getter/setter (setter refreshes the projection UI).

@@ -1,6 +1,6 @@
 # Comment and Documentation Cleanup Plan
 
-**Status:** Phases 0–3 done (2026-10-03). Next: Phase 4.
+**Status:** Phases 0–4 done (2026-10-03). Open: Bug? items in docs/comment-cleanup-findings.md await user decisions.
 **Goal:** Cut the tokens agents spend on documentation and comments, and remove claims that are no longer true. Nothing the app does may change.
 
 ## Background
@@ -32,7 +32,7 @@ Measured on 2026-10-02:
 3. **Code wins conflicts.** When a comment and the code disagree, fix the comment. If the code itself looks wrong, do **not** change it. Record it in that phase's findings log (below) for the user to decide.
 4. **One idea, one home.**
    - A detailed explanation lives in exactly one place: the code comment, a module reference doc, or a plan.
-   - Other places get at most a one-line pointer (`See docs/reference/walkshed.md`).
+   - Other places get at most a one-line pointer (`See docs/reference/modules/walkshed.md`).
 5. **Do not trim test comments that explain a check's purpose.** Test files are in scope only for redundancy and stale claims.
 6. **Small commits.** One batch per commit. Each message lists the guard result, e.g. `Verified: comment-guard 12/12 unchanged; node test/run-golden.mjs → N/N`.
 
@@ -233,3 +233,17 @@ The batches are independent, so up to 3–4 can run at the same time. They must 
 - Phase 4 comes last.
 
 The user checks in after Phase 1 to see the new `CLAUDE.md`, after Phase 2 to approve the archive list, and at Phase 4.
+
+### Phase 4 results
+
+| Measure | Before (2026-10-02) | After (2026-10-03) |
+|---|---|---|
+| `CLAUDE.md` | 309 KB | 20.9 KB |
+| Comment lines in `js/` (excl. mitigation-needs) | 6,171 | 5,500 |
+| `docs/**/*.md` excluding `docs/archive/` | ~656 KB plan files + 0 reference | 409 KB (incl. 141 KB `docs/reference/`) |
+| Public names documented (`test/doc-coverage.mjs`) | 309/396 | 396/396 |
+
+- Tests: golden 521/521; browser 138/138, 39/39, 18/18, 13/13; ui-screens 112/114 (2 expected skips).
+- `docs/ui-refresh/` triaged in place: phases 0–7 Shipped, phase 8 Not started, README Partial, DEVELOPER.md living reference.
+- Links: no references to missing `docs/` paths.
+- `CLAUDE.md` Conventions gained the "Comments explain why, not what" rule.

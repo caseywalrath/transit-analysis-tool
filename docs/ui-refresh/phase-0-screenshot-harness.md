@@ -1,5 +1,7 @@
 # Phase 0 — Screenshot harness + baseline capture
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
+
 **Goal:** a repeatable script that screenshots the app shell and every module popup in
 light and dark mode, so every later phase can verify its work mechanically.
 **No product code changes in this phase.**

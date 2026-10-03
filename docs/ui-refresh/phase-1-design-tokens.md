@@ -1,6 +1,6 @@
 # Phase 1 — Design tokens (additive only)
 
-**Status: ✅ Done and approved** — tokens landed and pushed to `claude/phase-0-screenshot-harness-na50o2`.
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
 
 **Goal:** define the complete semantic token system in `css/style.css` `:root`, plus a
 single dark-mode token override block. **This phase adds tokens; it migrates almost

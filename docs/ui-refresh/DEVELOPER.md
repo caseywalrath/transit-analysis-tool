@@ -1,5 +1,7 @@
 # Agent / Model Recommendations by Phase
 
+> **Status:** Reference (living). Checked 2026-10: the paths it cites (`test/run-golden.mjs`, `test/ui-screens/`, `/opt/pw-browsers/chromium`) exist. It is advice on which model to use per phase, not a plan. It covers only phases 0-7 although its intro says eight phases, and the branch `claude/modern-ui-refresh-plan-j66tes` is not checked here.
+
 This document maps each of the eight UI refresh phases to recommended agent/model choices,
 with rationale for the tier assignments.
 

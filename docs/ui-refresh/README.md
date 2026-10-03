@@ -1,5 +1,9 @@
 # Modern UI Refresh — Master Plan
 
+> **Status:** Partial (verified 2026-10). Phases 0-7 shipped; current behavior: docs/reference/core-app.md.
+> Remaining:
+> - Phase 8 (multiple analysis panels): no `isModuleOpen` or `#module-panel-host` in js/ or index.html; see phase-8-multi-analysis-panels.md.
+
 Status: **original refresh complete** — phases 0–7 are complete. Phase 8 is the next,
 separately scoped feature expansion. (2026-08-13)
 

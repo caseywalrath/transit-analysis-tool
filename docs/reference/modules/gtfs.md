@@ -32,6 +32,8 @@ The Layers-tab browser UI (over this `App.gtfs*` API) lives in `js/core/layers-p
 
 Tests: `test/gtfs-browser-smoke.mjs` (Playwright, synthetic feed; drives the Layers-tab UI and right-click menu); `test/ui-screens/capture.mjs` → `<theme>_gtfs-route-browser.png`.
 
+`App.setGtfsLayersVisible(visible)` → shows/hides both the GTFS route and stop map layers.
+
 ## gtfs-popup.html
 
 Left: file directory + layer visibility checkboxes + Clear. Right: CSV table with row/column count.

@@ -12,18 +12,26 @@ Polylines with snap-to-close, rubber-band preview, vertex editing, buffers (defa
 
 Saved lines render in three layers on source `lines`: `lines-layer` (solid), `lines-layer-dashed` (`[4, 2.5]`), `lines-layer-dotted` (`[0, 2]` + round cap), filtered on `properties._lineStyle` (utils.js line-style helpers). `App.applyFeatureOpacity`/`applyLineWidth` paint all three; `line-offset` is set on all three at creation.
 
+`App.addLineFromCoords(coords, opts)` → adds a Line from ≥2 coordinates (pushes undo; no drawing UI). `App.refreshSavedVertices()` → re-pushes saved-vertex data to the `lines-vertices` source. `App._lineDrawingInProgress()` → true while a line is being drawn (≥1 pending vertex).
+
 ## routes.js
 OSRM street-snapped routes. Exports: `routes`, `routeBuffers`, `handleRouteClick(lngLat)`, `setRoutePreview(lngLat)`, `rebuildRouteBuffers(radiusMiles)`, `routeBufferUnionPolygon()`, `removeRoute(index)`, `clearRoutes()`, `undoLastRoute()`, `cancelRouteDrawing()`, `renderRouteLayers()`, `updateRouteWaypoint(routeIndex, waypointIndex, lng, lat)`, `duplicateRoute(index)` (like `duplicateLine`), `fetchRouteGeometry(waypoints)` → `Promise<coords | null>` — same router as drawing (local network via `App.findLocalRoute` when loaded, then OSRM `https://router.project-osrm.org/route/v1/driving/`); `null` = caller draws a straight line (it also posts the "using straight line" status). Used by Feature Merge for route connectors.
 
 `properties.waypoints` (user clicks) is stored separately from the snapped `geometry.coordinates`; vertex handles are on waypoints only. Preview: straight line immediately, snapped after ~1 s idle (AbortController cancels stale fetches). Rendered in `routes-layer` / `-dashed` / `-dotted`, like lines.
 
+`App.insertRouteWaypoint(routeIdx, insertIdx, lng, lat)` → async; inserts a waypoint, re-routes, rebuilds buffers/layers and saves. `App.rerouteFeature(routeIdx)` → async; re-routes from the route's current waypoints. `App.refreshSavedWaypoints()` → re-pushes data to the `routes-waypoints-saved` source. `App._routeDrawingInProgress()` → true while waypoints are pending.
+
 ## polygons.js
 Vertex-by-vertex with snap-to-close. Exports: `polygons`, `handlePolygonClick(lngLat)`, `removePolygon(index)`, `clearPolygons()`, `undoLastPolygon()`, `cancelPolygonDrawing()`, `renderPolygonLayers()`, `setPolygonPreview(lngLat)`, `updatePolygonVertex(polyIndex, vertexIndex, lng, lat)`.
+
+`App.polygonUnionPolygon()` → turf union of all drawn polygons, or null if none. `App.duplicatePolygon(index)` → copies a polygon (pushes undo). `App._polygonDrawingInProgress()` → true while vertices are pending.
 
 ## editing.js
 Point drag, line/polygon/route vertex editing (orange handles). Exports `_editing` (state or null), `exitEditMode()`, `_initEditing()` (called from app.js on map load).
 - Every hit test queries `App.lineStyleLayerIds()` and classifies with `App.lineStyleLayerType(layerId)` so dashed/dotted features behave like solid ones. Drag previews copy all properties (incl. `_lineStyle`).
 - **Map right-click menu** single-selects, except right-clicking a member of a 2+ selection keeps it and shows `App.bulkFeatures.groupMenuItems` (with Merge… when mergeable). Also runs while `App.drawMode === "box-select"`. Single-feature items: Attributes, Duplicate, Split here, Split out section…, **Unmerge…** (only when `App.merge.hasHistory`, opens `App.merge.openUnmergeDialog`), Hide/Show, Delete.
+
+`App.activateVertexEdit(type, index)` / `App.deactivateVertexEdit()` → start/stop vertex editing of a feature without touching selection (selection.js calls these); `App.showEditVertices(type, index)` → redraws that feature's vertex handles (exposed for routes.js async callbacks).
 
 ## features.js
 Right-side panel: editable names, type icons tinted with the resolved color (click opens the Appearance popover), gear opens the attributes popup, row click selects on map only, trash with inline confirm strip. Header is a `Features | Layers` tab bar (`#fp-tab-features` / `#fp-tab-layers`); showing Layers calls `App.refreshLayersPanel()`. A Line with `attributes.networkRole === "connector"` gets a muted `.fp-net-chip` ("walk").
@@ -32,6 +40,8 @@ Right-side panel: editable names, type icons tinted with the resolved color (cli
 - Exports: `refreshFeaturePanel()`, `rerenderForType(type)`, `getTypeDefaultColor(type)`, `updateFeatureColor`, `App.collectDrawnFeatures()` → `[{feature, type, index}]` (shared with Layers), `UNIVERSAL_GROUP_KEY`.
 - `showContextMenu(x, y, options)` closes on the next outside press or Escape (listeners attach immediately, not after a timer); `App.closeContextMenu()`. Items may carry optional `onHover(isEntering)` — false also fires when the menu closes by any path while hovered.
 - `openColorPicker(anchorEl, color, onChange)` wraps `buildColorPickerBody(currentColor, onPick)` — the one picker body (also embedded by the Appearance popover), so a change applies to every picker (see docs/archive/color-picker-variety-plan.md). 50-swatch `PICKER_COLORS` grid (data colors, exempt from design tokens), a **Recent** row (max 10), hex entry, and **Custom…** (hidden `<input type=color>`; only `change` commits, so one choice = one `onPick` = one undo step). All pick paths go through one `pick()` that records Recent. Recent is per-browser, NOT session state: `localStorage` `mat-recent-colors` (try/catch), seeded from colors in use via `App.resolveFeatureColor`. Body exposes `setColor(c)` and `refreshRecent()`.
+
+`App.TYPE_ICON_SVGS` → per-type glyph SVG strings (shared with the Layers panel rows). `App.getFeatureSortState()` → `{mode, asc, showGroups, hiddenLast}`; `App.restoreFeatureSortState(s)` → applies a saved state (invalid fields ignored); both are session-cache hooks.
 
 ## box-select.js
 Loads right after `selection.js` (see docs/archive/box-select-plan.md; smoke test `test/box-select-smoke.mjs`).
@@ -59,6 +69,8 @@ Singleton popup `#fp-attr-popup` (fixed, z-index 9000, 320 px, docked at left 24
 - **Buffer radius:** `App.buildBufferRadiusControl(type, feature, {note})` — single implementation shared with the Attribute Summary Buffer column. Reads/writes **`properties._bufferRadius`, never `attributes`**; shows the type default (`App.featureSettings.bufferRadius`/`lineBufferRadius`/`routeBufferRadius`) muted until overridden. Buffers rebuild live per scrub tick (`App.rebuildBuffersForType(type)`), but undo snapshot, `App.cache.save()` and `App.notifyProject()` fire once per gesture. Disabled on walkshed points; `App.refreshBufferRadiusControls()` re-syncs (called from `onServiceAreaChange`). Holds a `{type, id}` ref.
 - `App.refreshAttrPopupSwatch()` re-syncs the header swatch (called by the Appearance popover). The old override icon strip / `App.buildOverrideIcons` was retired.
 - Shared helpers (popup + Attribute Summary + Trip Builder): `App.openTimeBandsPopup(feature, anchor, onChange)`, `App.openRoutePickerPopup(attrs, anchor, onChange)` (mutates `attrs.associatedRoutes`), `App.buildPointRouteBadge(pointFeature)` (`.fp-route-badge`), `App.buildTimeBandsBadge(feature)` (`.fp-bands-badge`, e.g. "3 · 1 · 0"), `App.openMiniPopup({title, content, anchor, onClose})` / `App.closeMiniPopup()`, `App.buildServiceScheduleEditor(feature)`. `#fp-mini-popup` is a separate singleton (z-index 9100, draggable, Escape closes) so it can coexist with `#fp-attr-popup`.
+
+`App.getAttrFieldDefaults(featureType)` → `{key: defaultValue}` for `ATTR_FIELDS` entries with a default (Unmerge's "edited since merging" check). `App.refreshAttrPopupColor()` → refreshes the open popup's header swatch after an external color change.
 
 ## merge.js
 Loads after `feature-attributes.js` and before `attribute-summary.js` (which delegates to `App.mergeAttrs.fieldHasValue`). See docs/archive/feature-merge-plan.md; smoke test `test/feature-merge-smoke.mjs`.

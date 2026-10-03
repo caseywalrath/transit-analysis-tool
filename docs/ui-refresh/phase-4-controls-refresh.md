@@ -1,5 +1,7 @@
 # Phase 4 — Form controls, buttons, checklists (the headline change)
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/core-app.md. This file is historical.
+
 **Goal:** modern, comfortable controls everywhere, changed at the shared-class level so
 all modules inherit at once. This is the phase the developer originally asked for; the
 prior phases exist so this one is written once, in tokens.

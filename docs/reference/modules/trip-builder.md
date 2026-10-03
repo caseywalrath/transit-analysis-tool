@@ -28,6 +28,8 @@ Generates a high-level trip schedule (Start/End per direction per day type) from
 
 **Not built:** add-trip, layovers between trips, per-pattern offsets (enter them in bands), blocking, Route Costing integration.
 
+`App._tbTest` → `{parseHHMMtoMin, formatMin, mergeIntervals, resolveColumnLabels, generateAllTrips}`. Test-only hook (exists only when `window.__MAT_TEST__`; used by `test/run-golden.mjs`).
+
 ## trip-builder-popup.html
 
 `#tbServiceList`; right: status pill, `#tbHeader`, `#tbGenerateBtn`, `#tbResults` (`.tb-day-section` / `.tb-day-grid`), `#tbExportCSV`, `#tbEmptyState` (points the user at in-module setup).
