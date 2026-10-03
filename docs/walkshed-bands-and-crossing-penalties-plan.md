@@ -1,5 +1,7 @@
 # Walkshed bands + intersection crossing penalties — implementation plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/walkshed.md (crossing penalties: docs/reference/road-network.md). This file is historical.
+
 Three related changes to the Walkshed module and the offline walk engine, in
 dependency order. Each phase is independently shippable and independently
 committable. **Do not start a phase until the previous one is committed and its

@@ -1,5 +1,7 @@
 # Transit Travelshed Engine — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/transit-travelshed.md. This file is historical.
+
 Superseded in part by `transit-travelshed-v2-walk-caps-plan.md` for the
 walk-cap model and polygonization.
 

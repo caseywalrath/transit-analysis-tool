@@ -1,5 +1,7 @@
 # Transit Travelshed v2 — Walk-leg caps & cluster-union polygons
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/transit-travelshed.md. This file is historical.
+
 **Status:** Implemented (2026-08-12), all 5 phases + docs. Golden tests pass
 129/129 (`node test/run-golden.mjs`), including new hand-verified cases for
 each cap and the `alightings` return field. The §8 manual browser smoke test

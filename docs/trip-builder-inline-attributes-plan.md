@@ -1,5 +1,7 @@
 # Trip Builder — inline attribute setup
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/trip-builder.md. This file is historical.
+
 Implementation plan. Written to be followed step by step; each step names the
 exact file, function, and line region to change.
 

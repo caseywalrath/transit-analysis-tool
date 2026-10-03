@@ -1,5 +1,7 @@
 # Transit Coverage Module — Implementation Plan
 
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/modules/transit-coverage.md. This file is historical.
+
 ## Context
 
 The app lacks the classic consulting coverage statistic: *"X% of service-area residents are within D miles of transit; Y% are within D miles of service running every N minutes or better."* All the machinery exists — TIGERweb/ACS pipeline, area-weighted aggregation, LODES block-level jobs, per-route time bands with headways, feature checklists, the popup module system — this plan assembles it into a new **Transit Coverage** analysis module.
