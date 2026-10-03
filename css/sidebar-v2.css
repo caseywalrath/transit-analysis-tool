@@ -1,7 +1,6 @@
 /* ============================================================
    sidebar-v2.css
-   Styles for the sidebar panel system.
-   All rules scoped under #sidebar.
+   Dormant legacy sidebar styles (see CLAUDE.md); all rules scoped under #sidebar.
    ============================================================ */
 
 /* ---- Container ---- */
@@ -326,8 +325,5 @@
 /* ---- Dark mode ---- */
 body.dark-mode #sidebar-wrap.sb-collapsed #sb-collapse-btn { background: #252535; }
 body.dark-mode #sidebar .sb2-panel-header:hover { background: rgba(255,255,255,0.06); }
-/* The dark control/button overrides that used to live here were deleted in
-   phase 4 — color/border/focus now come from tokens in the rules above, which
-   serve both themes. */
 body.dark-mode #sidebar .var-group-label { color: #9ca3af; }
 body.dark-mode #sidebar h3 { color: #e2e8f0; }
