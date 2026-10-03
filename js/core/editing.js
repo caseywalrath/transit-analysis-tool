@@ -1,12 +1,8 @@
 // js/core/editing.js
 // Feature editing: point click-drag, line/polygon/route vertex editing.
-// Depends on: App.map, App.points, App.lines, App.polygons, App.routes,
-//             App.movePoint, App.updateLineVertex, App.updatePolygonVertex,
-//             App.updateRouteWaypoint, App.insertRouteWaypoint, App.rerouteFeature,
-//             App.renderPointLayers, App.renderLineLayers, App.renderPolygonLayers,
-//             App.renderRouteLayers, App.refreshFeaturePanel.
 // Exports: App._editing, App.exitEditMode, App._initEditing,
 //          App.activateVertexEdit, App.deactivateVertexEdit, App.showEditVertices
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -182,8 +178,9 @@
 
   // ---- Edit mode transitions ----
 
-  // activateVertexEdit: sets editState + shows handles WITHOUT calling selectFeature.
-  // Called internally and exposed on App for selection.js to call.
+  // activate/deactivateVertexEdit change edit state and handles only; callers
+  // own selection (selection.js calls these, and enterVertexEditMode/exitEditMode
+  // below call them and then update selection).
   App.activateVertexEdit = function (type, index) {
     if (editState && editState.type === "vertex-edit" &&
         editState.featureType === type && editState.featureIndex === index) return; // already active
@@ -191,17 +188,14 @@
     App._editing = editState;
     showEditVertices(type, index);
     App.map.getCanvas().style.cursor = "pointer";
-    // Does NOT call selectFeature — caller is responsible
   };
 
-  // deactivateVertexEdit: clears editState + hides handles WITHOUT calling clearSelection.
   App.deactivateVertexEdit = function () {
     if (!editState) return;
     editState = null;
     App._editing = null;
     hideEditVertices();
     if (!App.drawMode) App.map.getCanvas().style.cursor = "grab";
-    // Does NOT call clearSelection — caller is responsible
   };
 
   function enterVertexEditMode(featureType, featureIndex) {
