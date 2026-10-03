@@ -1,8 +1,7 @@
 // js/core/labels.js
 // Map label management: text labels rendered as MapLibre Markers with custom HTML.
 // Depends on: App.map (map.js), maplibregl (CDN).
-// Exports: labels, addLabel, removeLabel, clearLabels, undoLastLabel,
-//          moveLabel, duplicateLabel, renderLabelMarkers, updateLabelAppearance
+// Exports: see the Exports block at the end of the file.
 
 (function () {
   var App = window.App = window.App || {};

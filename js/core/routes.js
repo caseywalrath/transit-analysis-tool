@@ -1,10 +1,8 @@
 // js/core/routes.js
 // Route drawing: waypoint-based lines snapped to the street network via OSRM.
 // Depends on: App.map (map.js), turf.
-// Exports: routes, routeBuffers, handleRouteClick, setRoutePreview,
-//          rebuildRouteBuffers, routeBufferUnionPolygon,
-//          removeRoute, clearRoutes, undoLastRoute, cancelRouteDrawing,
-//          renderRouteLayers, updateRouteWaypoint
+// Exports: see the App.* block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -495,8 +493,7 @@
     rebuildRouteBuffers(routeBufferRadiusMiles);
     App.setStatus("Route " + idx + " saved (" + nWp + " waypoints)");
     if (typeof App.exitDrawMode === "function") App.exitDrawMode();
-    // If the attributes popup is already open (on some other feature), follow
-    // it to this newly-drawn route. Never auto-open it if it wasn't open.
+    // Follow an already-open attributes popup to the new route; never auto-open it.
     if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
         typeof App.openAttrPopup === "function") {
       App.openAttrPopup("route", routes.length - 1, feature);
