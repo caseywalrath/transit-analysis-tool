@@ -236,7 +236,9 @@
     });
 
     // Split/welded base segments are replaced entirely by result.addEdges.
-    var removeSet = new Set(result.removeSegIds);
+    // removeSegIds arrive as strings (Object.keys in connector-graph.js); the
+    // index filter below compares numbers, so convert or nothing is removed.
+    var removeSet = new Set(result.removeSegIds.map(Number));
     removeSet.forEach(function (idx) {
       var seg = _segmentIndex[idx];
       if (!seg) return;
