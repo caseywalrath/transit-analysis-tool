@@ -1,16 +1,10 @@
 // js/projects/walkshed.js
-// Walkshed: registers as an analysis module, opens in a 2-column popup, and
-// computes true network walking isochrones from placed Points using the offline
-// road-network engine (App.computeWalkshed in road-network.js). No live external
-// service — the road network must be loaded/imported first (Add Data → Area Roads).
-//
-// v1: compute + render (walkshed fill/line + green reachable-segments proof) + area
-//     readout + GeoJSON export.
-// v2: a Point flagged with attributes.serviceAreaType === "walkshed" has its cached
-//     walkshed polygon substituted for the circular buffer inside points.js
-//     rebuildBuffers(), so every downstream demographic consumer (Buffer-Area
-//     Summary, Census, LODES, TPI, Title VI, FTA, corridor pickers) uses the
-//     walkshed as the study area with no changes to those modules.
+// Walkshed module: network walking isochrones from placed Points via
+// App.computeWalkshed (road-network.js). A Point with
+// attributes.serviceAreaType === "walkshed" has its cached (smallest-band)
+// polygon substituted for its circular buffer in points.js rebuildBuffers(),
+// so every demographic consumer uses it as the study area unchanged.
+// Detail: docs/reference/modules/walkshed.md
 //
 // Public API (on App): getPointWalkshed(pointIdx), ensurePointWalksheds(), dropPointWalksheds(ids).
 
@@ -23,9 +17,7 @@
   var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1, maxEdge: 0.3 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
-  var FT_PER_KM = 3280.84; // Phase 7 (docs/archive/network-connectors-plan.md): hull-detail maxEdge is
-                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
-                            // as walkSpeedMph above and the connector snap-tolerance input.
+  var FT_PER_KM = 3280.84; // hull-detail maxEdge is displayed in feet but stored/persisted in km
 
   var _settings      = Object.assign({}, DEFAULT_SETTINGS);
   var _walkshedCache = new Map();  // pointIdx -> entry (see computeForPoint)
@@ -114,8 +106,7 @@
   // Cache key — a walkshed is a pure function of the origin coords, the walk
   // parameters, and the loaded network (roadNetworkEpoch bumps on (re)load/clear).
   // Every budget must be included, not just one, or changing budget 2/3 won't
-  // invalidate the cache. The two crossing-penalty seconds must be included too
-  // (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5) — they change
+  // invalidate the cache. The two crossing-penalty seconds must be included too — they change
   // the result but don't bump the network epoch, so without this the cache
   // would serve stale polygons after a penalty change.
   function settingsKeyFor(pf) {
@@ -174,9 +165,8 @@
       };
     }
 
-    // options.budgetsKm always has >=1 entries (activeBudgets() never returns
-    // empty), so App.computeWalkshed always returns `polygons` — the fallback
-    // here only guards a caller running against a pre-Phase-2 engine.
+    // options.budgetsKm always has >=1 entries, so App.computeWalkshed returns
+    // `polygons`; the fallback is defensive only.
     var bandPolys = res.polygons || [{ budgetKm: maxBudgetKm, polygon: res.polygon, nodeCount: res.reachableCount }];
     var bands = [];
     for (var i = 0; i < s.budgets.length; i++) {
@@ -219,7 +209,7 @@
     return entry;
   }
 
-  // ---- Public API for the v2 study-area integration (points.js) ----
+  // ---- Public API for the study-area integration (points.js) ----
 
   // Returns a validated cached walkshed polygon Feature for a point, or null when
   // absent/stale (caller — rebuildBuffers — then falls back to the circular buffer).
@@ -306,12 +296,8 @@
   // ---- Map rendering ----
 
   // Band fill/line color, smallest band (index 0) darkest so it reads as "most
-  // walkable" — same ["match", ["get", "bandIdx"], ...] pattern network-joins-point
-  // uses in js/core/network-connectors.js. Resolved through the layer color
-  // cascade (docs/archive/layer-color-customization-plan.md); guarded so a missing
-  // layer-palettes.js script tag degrades to the original hardcoded colors
-  // rather than throwing, same defensive pattern used elsewhere in this file
-  // for window.WalkCost.
+  // walkable". Resolved through the layer color cascade; a missing
+  // layer-palettes.js degrades to the hardcoded colors rather than throwing.
   var WS_SEG_DEFAULT_COLOR = "#16a34a";
   function bandColorExpr() {
     if (typeof window.LayerPalette === "undefined") {
@@ -326,16 +312,10 @@
     return (colors && colors[0]) || WS_SEG_DEFAULT_COLOR;
   }
 
-  // Outline weight/opacity for the walkshed-line layer. Normally (flatten
-  // off) every per-point band boundary IS the visible edge of that band, so
-  // it stays a clearly visible line. With flatten on, the fill already
-  // shows the shortest band wherever walksheds overlap, so most of these
-  // same per-point boundaries now sit INSIDE the merged fill rather than on
-  // its real edge — left at full weight they read as visual clutter
-  // criss-crossing a region the fill already renders as one solid color.
-  // Nearly-invisible-but-still-there is the point: a user who wants to
-  // confirm "yes, an overlap happened here" can still find the line, but it
-  // no longer competes with the fill for attention.
+  // Outline weight/opacity for the walkshed-line layer. With flatten on, most
+  // per-point band boundaries sit INSIDE the merged fill rather than on its
+  // edge, so at full weight they read as clutter. Nearly invisible but still
+  // there: an overlap can still be confirmed without competing with the fill.
   var WS_OUTLINE_NORMAL   = { width: 2,   opacity: 0.9  };
   var WS_OUTLINE_FLATTENED = { width: 1,  opacity: 0.12 };
   function outlineStyle() {
@@ -370,8 +350,7 @@
       fillWalkshedLegend(activeBudgets());
     };
     // Registered under both styleKeys — walkshed-fill and walkshed-seg are
-    // separate Layers-panel rows (docs/archive/walkshed-bands-and-crossing-penalties-plan.md
-    // Phase 1) so either one's visibility toggle can refresh the legend's
+    // separate Layers-panel rows, so either one's visibility toggle can refresh the legend's
     // "Reachable streets" row (see fillWalkshedLegend below).
     App.registerLayerRepainter("walkshed", refreshWalkshedPaintAndLegend);
     App.registerLayerRepainter("walkshed-seg", refreshWalkshedPaintAndLegend);
@@ -422,9 +401,8 @@
   }
 
   // Reads the display-only "Flatten overlaps" toggle from the Layers panel's
-  // walkshed-fill style drawer (docs/archive/layer-color-customization-plan.md's
-  // App.layerStyles cascade — this rides the same persisted override object
-  // as palette/reverse, no new persistence needed). Purely a rendering
+  // walkshed-fill style drawer (the App.layerStyles override object, persisted
+  // alongside palette/reverse). Purely a rendering
   // choice: bands[] itself, and every study-area/export consumer that reads
   // it, is never touched by this flag.
   function flattenEnabled() {
@@ -485,8 +463,7 @@
       if (!e || e.failed) return;
       var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
       // Ring-difference for rendering only (bands[] itself, which
-      // getPointWalkshed()/exportGeoJSON() read, stays un-differenced — see
-      // docs/archive/layer-color-customization-plan.md Phase 1). Largest-first so the
+      // getPointWalkshed()/exportGeoJSON() read, stays un-differenced). Largest-first so the
       // innermost band stays solid; a turf.difference failure or null result
       // falls back to the un-differenced polygon for that band rather than
       // dropping it. Same approach as transit-travelshed.js's ring builder.
@@ -659,10 +636,8 @@
     renderCoverageReport();
   }
 
-  // Connection-report footer line (docs/archive/network-connectors-plan.md Phase 6):
-  // only rendered when at least one walk connector exists. Styled with the
-  // module's existing warning color (#b45309) when a connector end isn't
-  // joined to the network.
+  // Connection-report footer: only when at least one walk connector exists;
+  // warning color (#b45309) when a connector end isn't joined to the network.
   function renderConnectionReport() {
     var el = document.getElementById("wsConnReport");
     if (!el) return;
@@ -675,8 +650,7 @@
       (summary.detail ? "<br>" + escapeHtml(summary.detail) : "");
   }
 
-  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
-  // only rendered when a network is loaded — absent, not "0%", when there
+  // Sidewalk coverage footer: only rendered when a network is loaded — absent, not "0%", when there
   // isn't one. Same warning-color convention as renderConnectionReport().
   function renderCoverageReport() {
     var el = document.getElementById("wsCoverageReport");
@@ -697,11 +671,9 @@
   }
 
   // ---- Prompt-to-download street network ----
-  // Ported from the Transit Travelshed module (js/projects/transit-travelshed.js),
-  // which already does this: rather than refusing to run when the loaded network
-  // doesn't reach, offer a download scoped to exactly the area this analysis
-  // needs. Walkshed's version is simpler — no routes, no shed mode, just a walk
-  // circle per selected point.
+  // Rather than refusing to run when the loaded network doesn't reach, offer a
+  // download scoped to the area this analysis needs (simpler version of Transit
+  // Travelshed's: just a walk circle per selected point).
 
   var _pendingDownloadExtent = null; // Feature<Polygon> | null, consumed by #wsDownloadBtn
 
@@ -934,12 +906,10 @@
     if (s) s.value = _settings.walkSpeedMph;
     if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
-    // shared with Transit Travelshed (docs/archive/network-connectors-plan.md §2), so
-    // this module never stores its own copy of the value.
+    // shared with Transit Travelshed, so this module never stores its own copy.
     var tol = document.getElementById("wsSnapTol");
     if (tol && App.networkSettings) tol.value = App.networkSettings.snapToleranceFt;
-    // Crossing-penalty seconds are GLOBAL state too, same sharing rationale
-    // (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5).
+    // Crossing-penalty seconds are GLOBAL state too, same sharing rationale.
     var cMajor = document.getElementById("wsCrossMajor");
     var cMinor = document.getElementById("wsCrossMinor");
     if (App.networkSettings) {
@@ -950,8 +920,7 @@
     updateStudyAreaButtonLabel();
   }
 
-  // "Excluded streets: N — clear all" (docs/sidewalk-data-plan.md Phase 4
-  // step 9) — discoverability + bulk-undo for exclusions made by clicking
+  // "Excluded streets: N — clear all" — discoverability + bulk-undo for exclusions made by clicking
   // the walk-network layer directly, which this popup has no other view into.
   function syncExcludedWaysLine() {
     var countEl = document.getElementById("wsExcludedWaysCount");
@@ -983,7 +952,7 @@
   }
 
   // Snap tolerance is global state, not a module setting — write straight to
-  // App.networkSettings and re-run the connector overlay, per §2 "Known conflict".
+  // App.networkSettings and re-run the connector overlay. Shared with Transit Travelshed.
   function onSnapTolChange() {
     var el = document.getElementById("wsSnapTol");
     if (!el || !(+el.value > 0)) return;
@@ -994,8 +963,7 @@
   }
 
   // Crossing-penalty seconds are global state too, same sharing rationale as
-  // snap tolerance (docs/archive/walkshed-bands-and-crossing-penalties-plan.md Phase 5)
-  // — write straight to App.networkSettings. No connector overlay to re-run;
+  // snap tolerance — write straight to App.networkSettings. No connector overlay to re-run;
   // no network geometry changed, only the flood's cost function.
   function onCrossingChange() {
     var majorEl = document.getElementById("wsCrossMajor");
@@ -1112,8 +1080,7 @@
   // time — not re-derivable without that network — so they're included ONLY in full
   // mode (file Save/Load State), same rule Corridor Scoring's lastSummary follows,
   // and left out of the light/localStorage autosave to avoid growing on every
-  // settings tweak. A light-mode restore (page reload) still requires Calculate,
-  // same as before this was added.
+  // settings tweak. A light-mode restore (page reload) still requires Calculate.
 
   function collect(mode) {
     var data = {

@@ -1,15 +1,10 @@
 // js/core/travelshed.js
-// Transit Travelshed — pure calculation engine (window.Travelshed), the same
-// engine-namespace convention as window.TPI / window.RidershipModel.
-//
-// CONSTRAINT: this file contains ONLY plain-JSON math — no turf, no DOM, no
-// Map/Set, no App state. Why: the golden harness (test/run-golden.mjs) loads
-// this file directly into a bare node:vm sandbox with no turf and no browser
-// globals, so every function here must accept and return plain
-// numbers/strings/arrays/objects. Everything needing turf or the road graph
-// (stop resolution, snap/flood caches, rendering) lives in
-// js/core/road-network.js or js/projects/transit-travelshed.js, which convert
-// to/from these plain shapes at the boundary.
+// Transit Travelshed — pure calculation engine (window.Travelshed).
+// CONSTRAINT: plain-JSON math only — no turf, no DOM, no Map/Set, no App state.
+// The golden harness loads this file alone in a bare node:vm sandbox; turf/graph
+// work (stop resolution, floods, rendering) stays in road-network.js and
+// transit-travelshed.js, which convert to these plain shapes at the boundary.
+// Detail: docs/reference/modules/transit-travelshed.md
 //
 // Exports (all on window.Travelshed): parseHHMMtoMin, selectActiveBand,
 // initialWait, transferWait, rideMinAtDistance, sampleStopPositions,
@@ -22,9 +17,8 @@
 
   // Parse "HH:MM" -> minutes-from-midnight, or null on bad input. Re-implemented
   // rather than imported — a core engine must not depend on a js/projects/
-  // module — but the semantics deliberately mirror trip-builder.js:164
-  // parseHHMMtoMin (that one returns NaN instead of null; every caller here
-  // treats null as "not a number" the same way, via Number.isFinite checks).
+  // module — but deliberately mirrors trip-builder.js parseHHMMtoMin (which
+  // returns NaN instead of null).
   function parseHHMMtoMin(s) {
     if (typeof s !== "string") return null;
     var m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
@@ -39,8 +33,7 @@
   // every band has a blank/zero frequency). Wrap-aware: a band whose "to" is
   // <= its "from" is treated as spanning past midnight (toMin += 1440), and a
   // band matches at either analysisMin or analysisMin + 1440 — mirrors the
-  // midnight-wrap convention in trip-builder.js:164 generateTripsForPattern
-  // (reused, not reinvented, per the plan's verified reference points).
+  // midnight-wrap convention in trip-builder.js generateTripsForPattern.
   function selectActiveBand(bands, analysisMin) {
     if (!Array.isArray(bands)) return null;
     for (var i = 0; i < bands.length; i++) {
@@ -177,6 +170,7 @@
   // returns = {
   //   nodeTimes: { nodeKey: minutes },
   //   routeDiags: [{ routeId, boardings, firstBoardMin, usedTransfer }],
+  //   alightings: [{ stopKey, alightMin }],  // best per stop across all rounds
   //   stats: { stopsConsidered, stopsBoarded, transferBoardings, nodesReached }
   // }
   //
@@ -193,8 +187,8 @@
     var routes = input.routes || [];
     var stopCosts = input.stopCosts || {};
 
-    // Walk-leg caps (minutes). null/undefined = uncapped — backward compatible
-    // with callers/golden cases that predate v2's shedMode split.
+    // Walk-leg caps (minutes): accessMaxMin / transferMaxMin / egressMaxMin.
+    // null/undefined = uncapped ("door" mode, and golden cases without caps).
     var accessMax = (input.accessMaxMin != null) ? input.accessMaxMin : Infinity;
     var transferMax = (input.transferMaxMin != null) ? input.transferMaxMin : Infinity;
     var egressMax = (input.egressMaxMin != null) ? input.egressMaxMin : Infinity;
