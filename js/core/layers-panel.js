@@ -15,11 +15,12 @@
 //             App.BUFFER_RADIUS_STEPS, App.sectionColors, App.featureSettings,
 //             App.getTypeDefaultColor, App.getBasemaps, App.switchBasemap,
 //             App.cache, App.refreshFeaturePanel.
-// Analysis/reference layer color styling (docs/archive/layer-color-customization-plan.md
-// Phase 6) additionally depends on window.LayerPalette, App.resolveLayerColors,
+// Analysis/reference layer color styling additionally depends on
+// window.LayerPalette, App.resolveLayerColors,
 // App.setLayerStyle, App.clearLayerStyle, App.layerStyles, App.mapPalette,
 // App.repaintStyledLayers (js/core/layer-palettes.js) — all optional, guarded
 // with typeof checks so a missing script tag just omits the style drawers.
+// Detail: docs/reference/layers-and-styling.md
 (function () {
   var App = window.App = window.App || {};
 
@@ -79,10 +80,8 @@
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
     { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed", styleKey: "transit-travelshed",
       layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-line", op: "line-opacity" }] },
-    // Added after an audit found five map-rendering surfaces were never
-    // registered here, so their output was invisible to this panel — no
-    // show/hide, no opacity, no reorder. Entries only render when the layer is
-    // actually on the map (see entryPresent), so listing them all is safe.
+    // Entries only render when the layer is actually on the map (see
+    // entryPresent), so listing them all is safe.
     { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage", styleKey: "transit-coverage",
       layers: [{ id: "transit-coverage-coverage-layer", op: "fill-opacity" },
                { id: "transit-coverage-threshold-layer", op: "fill-opacity" },
@@ -409,8 +408,7 @@
   }
 
   // ---- Analysis/reference layer style drawer (Palette/Reverse/Color, per
-  // styleKey — docs/archive/layer-color-customization-plan.md Phase 6). Mirrors
-  // buildTypeStyleRow's shape but writes through App.setLayerStyle /
+  // styleKey). Mirrors buildTypeStyleRow's shape but writes through App.setLayerStyle /
   // App.clearLayerStyle instead of App.sectionColors / App.featureSettings,
   // since these are analysis-rendered layers, not drawn features (see the
   // App.registerLayerRepainter registry in layer-palettes.js — this drawer
@@ -524,8 +522,8 @@
       if (isCustom) {
         // Two endpoint picks in place of the Reverse row — reversing a 2-stop
         // gradient is just swapping these two, so a Reverse control here
-        // would be a redundant fourth row (the plan's §3 caps a drawer at
-        // three). The resolver paints From -> To literally for the same
+        // would be a redundant fourth row (a drawer holds at most three).
+        // The resolver paints From -> To literally for the same
         // reason, so these swatches always read the way the map does.
         var gRow = document.createElement("div");
         gRow.className = "lp-style-row";
@@ -1134,7 +1132,7 @@
   }
 
   // ---- GTFS route browser (under the "GTFS routes" reference row) ----
-  // Reads the Phase 1 API in js/projects/gtfs.js (App.gtfsRouteIndex & co).
+  // Reads the route-browser API in js/projects/gtfs.js (App.gtfsRouteIndex & co).
   // UI state lives here so it survives render() rebuilds; filter typing and
   // expand/collapse only touch the browser's own list, never the whole panel.
   var GTFS_ROW_ID = "gtfs-shapes-layer";
@@ -1598,8 +1596,7 @@
     return wrap;
   }
 
-  // ---- Global palette row (top of Analysis band — docs/layer-color-
-  // customization-plan.md Phase 6 §6.3). One shared palette choice that
+  // ---- Global palette row (top of Analysis band). One shared palette choice that
   // reaches every layer whose styleKey accepts that palette's family; a
   // layer with its own per-layer override (buildLayerStyleDrawer above)
   // keeps that override regardless of this selection. ----

@@ -1,11 +1,11 @@
 // js/core/choropleth.js
-// Shared choropleth rendering engine. First consumer is Feature Area Analysis
-// (js/projects/buffer-summary.js); TPI, Ridership Forecasting, and Corridor
-// Scoring migrate onto it in Phase 3 (see docs/archive/feature-area-choropleth-plan.md).
-// Depends on: App.map (map.js), maplibregl (CDN) — only inside the map-facing
-// functions. The classification math (computeClassBreaks, buildStepColorExpr,
-// formatBreakLabels) is pure — no DOM, no map — so it loads and runs fine in
-// the golden test sandbox.
+// Shared choropleth rendering engine (Feature Area Analysis, TPI, Ridership
+// Forecasting, Corridor Scoring).
+// Depends on: App.map, maplibregl — read only inside the map-facing functions.
+// The classification math (computeClassBreaks, buildStepColorExpr,
+// buildInterpolateColorExpr, formatBreakLabels) is pure, so it loads in the
+// golden test sandbox.
+// Detail: docs/reference/ (core-app).
 // Exports: App.choropleth.{RAMPS, computeClassBreaks, buildStepColorExpr,
 //   buildInterpolateColorExpr, formatBreakLabels, render, remove, setVisible,
 //   fillLegend}
@@ -19,12 +19,10 @@
 
   var DEFAULT_NO_DATA_COLOR = "rgba(200,200,200,0.35)";
 
-  // DUPLICATED DATA: viridis/gray/quality below are byte-identical to their
-  // entries in js/core/layer-palettes.js's PALETTES table (Phase 4.7 of
-  // docs/archive/layer-color-customization-plan.md — Feature Area Analysis keeps its
-  // own #basMapRamp dropdown rather than the Layers-panel drawer, so this
-  // table can't simply delegate to that one). If you change a color in
-  // either table, change it in both.
+  // DUPLICATED DATA: every ramp below is byte-identical to its entry in
+  // js/core/layer-palettes.js's PALETTES table (Feature Area Analysis keeps its
+  // own #basMapRamp dropdown, so this table can't delegate to that one). If
+  // you change a color in either table, change it in both.
   var RAMPS = {
     blues:   { label: "Blues",             colors5: ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"] },
     heat:    { label: "Heat (Yl-Or-Rd)",   colors5: ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"] },
@@ -80,10 +78,9 @@
     return { breaks: breaks, nEffective: breaks.length + 1 };
   }
 
-  // Builds a MapLibre paint-property expression: a step expression over
-  // `breaks`/`colors` (colors.length must equal breaks.length + 1), wrapped
-  // so a null/missing property value renders `noDataColor` instead of
-  // silently taking the first class.
+  // MapLibre step expression over `breaks`/`colors` (colors.length must equal
+  // breaks.length + 1), wrapped so a null/missing value renders `noDataColor`
+  // instead of silently taking the first class.
   function buildStepColorExpr(prop, breaks, colors, noDataColor) {
     noDataColor = noDataColor || DEFAULT_NO_DATA_COLOR;
     var stepExpr = ["step", ["get", prop], colors[0]];
@@ -93,9 +90,8 @@
     return ["case", ["==", ["typeof", ["get", prop]], "number"], stepExpr, noDataColor];
   }
 
-  // Builds a MapLibre "interpolate" (linear gradient) expression across
-  // `colors` evenly spaced from `min` to `max` — the ramp's endpoints plus
-  // its 3 interior stops — wrapped with the same no-data guard as
+  // MapLibre "interpolate" (linear gradient) expression across `colors`
+  // evenly spaced from `min` to `max`, with the same no-data guard as
   // buildStepColorExpr. MapLibre requires strictly ascending interpolate
   // stops, so a degenerate range (no data, or every value identical) falls
   // back to a single solid color instead of a 2-point gradient.
@@ -145,8 +141,7 @@
 
   // opts = { id, features, valueProp, method, classes, ramp, colors
   //   (optional — explicit color array in place of a RAMPS[ramp] lookup, e.g.
-  //   from App.resolveLayerColors(); see docs/archive/layer-color-customization-plan.md
-  //   Phase 4.1), breaks (optional manual override), beforeLayer, fillOpacity,
+  //   from App.resolveLayerColors()), breaks (optional manual override), beforeLayer, fillOpacity,
   //   lineColor, lineWidth, lineOpacity, hoverHTML (fn(props) => html string |
   //   falsy, or null for no hover), noDataColor }
   // Creates or updates source "<id>-choropleth" and layers
@@ -169,23 +164,17 @@
     var max = values.length ? Math.max.apply(null, values) : null;
 
     var rampDef = RAMPS[opts.ramp] || RAMPS.blues;
-    // Explicit colors (e.g. from App.resolveLayerColors()) take the place of
-    // a RAMPS[ramp] lookup for both branches below. Additive and backward
-    // compatible — every existing caller passes no opts.colors and behaves
-    // exactly as before.
+    // Explicit colors (e.g. from App.resolveLayerColors()) replace the
+    // RAMPS[ramp] lookup in both branches below.
     var explicitColors = (opts.colors && opts.colors.length) ? opts.colors : null;
     var noDataColor = opts.noDataColor || DEFAULT_NO_DATA_COLOR;
 
     var breaksResult, colors, colorExpr;
     if (opts.method === "continuous") {
-      // No discrete classes — a linear gradient across colors5, so there are
-      // no break values to report (the legend instead shows the min/max —
-      // and, for buffer-summary's row-based legend, the evenly-spaced stop
-      // values matching the gradient below). `colors` mirrors whatever
-      // buildInterpolateColorExpr actually painted: the full ramp for a real
-      // range, or just its one solid fallback color when the range is
-      // degenerate — a caller's legend must match the map, not always show
-      // 5 swatches when only one color was ever drawn.
+      // No discrete classes, so no break values to report. `colors` mirrors
+      // what buildInterpolateColorExpr actually painted: the full ramp for a
+      // real range, or its one solid fallback when the range is degenerate,
+      // so a caller's legend matches the map.
       var gradientColors = explicitColors || rampDef.colors5;
       var validRange = (min != null && max != null && max > min);
       colors = !validRange
@@ -201,9 +190,8 @@
       }
       var n = Math.max(breaksResult.nEffective, 1);
       if (explicitColors) {
-        // Caller already sized this ramp for exactly n colors (e.g.
-        // LayerPalette.rampColors(id, spec.n, ...)) — slice/pad rather than
-        // re-subsample a 5-color array like the RAMPS path does below.
+        // Caller already sized this ramp (LayerPalette.rampColors(id, spec.n,
+        // ...)), so slice/pad rather than re-subsample.
         colors = explicitColors.slice(0, n);
         var padColor = explicitColors[explicitColors.length - 1];
         while (colors.length < n) colors.push(padColor);
