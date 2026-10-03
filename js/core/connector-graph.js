@@ -1,45 +1,30 @@
 // js/core/connector-graph.js
-// Network Connectors — pure planarization engine (window.ConnectorGraph), the
-// same engine-namespace convention as window.Travelshed / window.TPI.
-//
-// CONSTRAINT: this file contains ONLY plain-JSON math — no turf, no DOM, no
-// Map/Set, no App state. Why: the golden harness (test/run-golden.mjs) loads
-// this file directly into a bare node:vm sandbox with no turf and no browser
-// globals. Coordinates are plain [lng, lat] pairs throughout. Everything
-// needing the live graph (_graph/_segmentIndex/_segGrid, candidate-segment
-// lookup) lives in js/core/road-network.js, which supplies this engine's
-// `candidates` argument and applies its returned addEdges/removeSegIds.
-//
-// See docs/archive/network-connectors-plan.md §3 for the architecture and Phase 3
-// for this file's design. Exports (all on window.ConnectorGraph):
-// segmentIntersection, pointToSegmentKm, splitChain, planarizeConnectors.
+// Network Connectors — pure planarization engine (window.ConnectorGraph).
+// CONSTRAINT: plain-JSON math only — no turf, DOM, Map/Set or App state — so
+// the golden harness can load it into a bare node:vm sandbox. Coordinates are
+// [lng, lat]. road-network.js supplies `candidates` and applies the results.
+// Detail: docs/reference/road-network.md (rule set: docs/archive/network-connectors-plan.md)
 
 (function () {
   "use strict";
 
-  // Same equirectangular-projection constants road-network.js uses for its
-  // own point-to-segment math (nearestOnSegmentKm) — kept consistent so the
-  // two engines agree on distances at the sub-km scale connectors operate at.
+  // Same equirectangular constants as road-network.js's nearestOnSegmentKm —
+  // keep them consistent so both engines agree on distances.
   var KM_PER_DEG_LAT = 110.574;
   function kmPerDegLng(lat) { return 111.32 * Math.cos(lat * Math.PI / 180); }
 
-  // Matches road-network.js's nodeKey() 6-decimal-place quantization (~0.1 m).
-  // Two coordinates within this tolerance are treated as "the same node" so
-  // we never emit a zero-length edge or a redundant split at a point that
-  // already exists.
+  // Matches road-network.js's nodeKey() 6-decimal quantization (~0.1 m):
+  // coordinates within it are the same node, so no zero-length edge or
+  // redundant split is ever emitted.
   var COORD_EPS_DEG = 1e-6;
 
   function coordsEqual(a, b) {
     return Math.abs(a[0] - b[0]) < COORD_EPS_DEG && Math.abs(a[1] - b[1]) < COORD_EPS_DEG;
   }
 
-  // ---- segmentIntersection: standard 2D segment/segment intersection, done
-  // in local km space (projected equirectangularly around segment AB's own
-  // start point) so results are metrically meaningful rather than degree-
-  // biased at low latitudes. Returns null for parallel/collinear segments
-  // (zero cross product) and for intersections that fall outside [0,1] on
-  // either parameter — including a small epsilon to avoid excluding a hit
-  // that lands almost exactly on an endpoint.
+  // ---- segmentIntersection: 2D segment intersection in local km space around
+  // `a` (not degree-biased). null for parallel/collinear or out-of-range hits;
+  // a small epsilon keeps hits landing almost exactly on an endpoint.
   function segmentIntersection(a, b, c, d) {
     var originLng = a[0], originLat = a[1];
     var kLng = kmPerDegLng(originLat), kLat = KM_PER_DEG_LAT;
@@ -49,7 +34,7 @@
     var sX = D[0] - C[0], sY = D[1] - C[1];
     var denom = rX * sY - rY * sX;
     var PARALLEL_EPS = 1e-9;
-    if (Math.abs(denom) < PARALLEL_EPS) return null; // parallel or collinear — see §2 "Collinear overlap"
+    if (Math.abs(denom) < PARALLEL_EPS) return null; // parallel or collinear — never split
 
     var qpX = C[0] - A[0], qpY = C[1] - A[1];
     var t = (qpX * sY - qpY * sX) / denom;
@@ -64,10 +49,8 @@
     return { point: [originLng + px / kLng, originLat + py / kLat], tAB: t, tCD: u };
   }
 
-  // ---- pointToSegmentKm: nearest point on segment A-B to point p, in local
-  // km space around p (the query point is the local origin, so the standard
-  // point-segment projection collapses to just A/B/t). Restates
-  // road-network.js's nearestOnSegmentKm so this engine is self-contained.
+  // ---- pointToSegmentKm: nearest point on A-B to p, in local km around p.
+  // Restates road-network.js's nearestOnSegmentKm so this engine is self-contained.
   function pointToSegmentKm(p, a, b) {
     var kLat = KM_PER_DEG_LAT, kLng = kmPerDegLng(p[1]);
     var ax = (a[0] - p[0]) * kLng, ay = (a[1] - p[1]) * kLat;
@@ -84,12 +67,10 @@
     return { distKm: Math.sqrt(nx * nx + ny * ny), point: [p[0] + nx / kLng, p[1] + ny / kLat], t: t };
   }
 
-  // ---- splitChain: cuts a polyline at a list of {segIndex, t, point}
-  // records (segIndex indexes the coords[i]->coords[i+1] segment being cut).
-  // Splits on the same segment are inserted in ascending t order. Returns
-  // the resulting ordered 2-point edges, dropping any edge whose endpoints
-  // coincide within COORD_EPS_DEG (a split landing exactly on an existing
-  // vertex must never produce a zero-length edge).
+  // ---- splitChain: cuts a polyline at {segIndex, t, point} records (segIndex
+  // = the coords[i]->coords[i+1] segment), ascending t per segment. Returns
+  // ordered 2-point edges; zero-length edges (split on an existing vertex)
+  // are dropped.
   function splitChain(coords, splits) {
     if (!coords || coords.length < 2) return [];
     var bySeg = {};
@@ -111,18 +92,15 @@
     return edges;
   }
 
-  // ---- planarizeConnectors: the top-level entry. See
-  // docs/archive/network-connectors-plan.md Phase 3 for the full rule set.
-  //
+  // ---- planarizeConnectors: the top-level entry.
   //   connectors : [{ id, coords: [[lng,lat], ...] }]
-  //   candidates : [{ segId, coords: [a, b], pedBlocked }] — base segments
-  //                near the connectors; the caller (road-network.js) does
-  //                the spatial query, this engine does no indexing.
+  //   candidates : [{ segId, coords: [a, b], pedBlocked, userExcluded }] — base
+  //                segments near the connectors (caller does the spatial query).
   //   opts       : { snapToleranceKm, weldVertices (default true),
   //                  splitCrossings (default false) }
-  //
-  // Returns { addEdges, removeSegIds, joins, orphans } — see the plan for
-  // the exact shape of each.
+  // Returns { addEdges: [{coords, kind, srcId}], removeSegIds (string keys),
+  //   joins: [{point, kind: "crossing"|"weld", connectorId, segId}],
+  //   orphans: [{connectorId, point, nearestKm}] }.
   function planarizeConnectors(connectors, candidates, opts) {
     opts = opts || {};
     var snapToleranceKm = opts.snapToleranceKm != null ? opts.snapToleranceKm : 0;
@@ -142,12 +120,10 @@
     });
     var synthCounter = 0;
 
-    // Replaces `entry` in the pool with the pieces produced by cutting it at
-    // `splitPts` ([{t, point}]). Removes any addEdges record this entry was
-    // already emitted under (so re-splitting an already-split piece — the
-    // "double crossing" case — doesn't leave a stale superseded edge behind)
-    // and emits the new pieces under the same kind/srcId. Base-origin entries
-    // additionally mark their original segId for removal from the live graph.
+    // Replaces `entry` in the pool with its pieces cut at `splitPts` ([{t, point}]).
+    // Drops any addEdges record this entry was already emitted under, so
+    // re-splitting an already-split piece (double crossing) leaves no stale
+    // edge. Base-origin entries also mark their segId for removal.
     function applySplit(entry, splitPts) {
       var idx = pool.indexOf(entry);
       if (idx < 0 || !splitPts.length) return;
@@ -188,11 +164,9 @@
           var poolHits = {}; // pool entry id -> { entry, pts: [{t, point}] }
           for (var pi = 0; pi < snapshot.length; pi++) {
             var seg = snapshot[pi];
-            // never auto-join across a bridge/freeway (§1) — but a user-
-            // excluded street (docs/sidewalk-data-plan.md §2) is NOT the same
-            // as class-blocked: it must stay weldable so a connector drawn
-            // along it can still join (the "exclude coarsely, restore
-            // precisely" workflow, plan §1.5).
+            // Never auto-join across a bridge/freeway — but a user-excluded
+            // street is not class-blocked and must stay joinable (the
+            // "exclude coarsely, restore precisely" workflow).
             if (seg.pedBlocked && !seg.userExcluded) continue;
             if (seg.origin === "connector" && seg.connectorId === connector.id) continue; // no self-crossing
             var hit = segmentIntersection(cA, cB, seg.coords[0], seg.coords[1]);
