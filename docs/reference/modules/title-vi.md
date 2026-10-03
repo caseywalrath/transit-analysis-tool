@@ -22,7 +22,7 @@ Pure calculation engine: no DOM. Uses turf and `window.App` (feature resolution 
 
 ## title-vi.js (module `"title-vi"`, no public API)
 
-3-tab popup (Policies & Inputs | Analysis | Scenarios); DOM ids `tvi` prefix, styles `.tvi-`. Stale state uses the shared `App.renderModuleState()` in `#tviStaleWarning` (with Re-run).
+3-tab popup (Major Service Changes | Equity Analysis | Scenarios); DOM ids `tvi` prefix, styles `.tvi-`. Stale state uses the shared `App.renderModuleState()` in `#tviStaleWarning` (with Re-run).
 
 - **Refs:** feature dropdowns (`buildFeatureSelect`/`parseFeatureRef`) encode `type:id`. A ref to a deleted feature shows as a selected `(deleted feature: name)` option plus a red card note, and `runAnalysis` **refuses to run** (naming the adjustment) rather than skipping it.
 - **Baseline filter:** `_baselineFeatureFilter` = `{ routeIds, lineIds, polygonIds }` stable IDs (`null` = all), resolved to indices only in `buildUnionFromFilter` at run time.

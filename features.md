@@ -208,7 +208,7 @@ The current LBAR workflow requires uploading a pre-formatted inventory file with
 
 ### Title VI Analysis Module — Implemented
 Popup module (`js/projects/title-vi.js` + engine `title-vi-engine.js` +
-`projects/title-vi-popup.html`), 3-tab (Policies & Inputs | Analysis |
+`projects/title-vi-popup.html`), 3-tab (Major Service Changes | Equity Analysis |
 Scenarios): route-alteration pairing, major-service-change rules,
 disparate-impact/disproportionate-burden findings vs. a system baseline,
 service loss/gain map overlay, scenario comparison, CSV/GeoJSON/JSON export.
@@ -224,6 +224,9 @@ low-income, and minority populations under a proposed vs. existing network. That
 needs job *access* via the Transit Travelshed Engine (buffer overlap isn't
 accessibility) and the New-vs-Old comparison via Scenario Save & Compare — the
 demographic-disaggregation half already lives here.
+
+### Title VI route/service-metrics CSV import — Not started
+Import a per-route before/after CSV (route miles, revenue hours, span, stops, fare) into Title VI service adjustments, replacing today's manual entry of revenue hours, span and fare on each adjustment card. This would make the non-geometric Major Service Change checks reliable and repeatable from agency data, and would allow a stop-count rule. Needs a column mapping, validation of malformed rows, and a way to match CSV route IDs to drawn Route/Line features.
 
 ### OSM Points of Interest — Implemented
 
