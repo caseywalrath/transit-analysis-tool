@@ -868,7 +868,13 @@
     _triggerDownload(JSON.stringify(fc, null, 2), "application/geo+json", "walkshed-" + _dateStamp() + ".geojson");
   }
 
+  function updateClearResultsButton() {
+    var b = document.getElementById("wsClearResults");
+    if (b) b.disabled = !_lastEntries.length;
+  }
+
   function setExportEnabled(on) {
+    updateClearResultsButton();
     var b = document.getElementById("wsExportGeoJSON");
     if (b) b.disabled = !on;
     var u = document.getElementById("wsUseStudyArea");
@@ -1018,6 +1024,13 @@
     var computeBtn = document.getElementById("wsComputeBtn");
     if (computeBtn) computeBtn.addEventListener("click", runWalkshed);
 
+    var clearResultsBtn = document.getElementById("wsClearResults");
+    if (clearResultsBtn) clearResultsBtn.addEventListener("click", function () {
+      if (App.undo && !App.undo.isRestoring()) App.undo.push();
+      clearAll();
+    });
+    updateClearResultsButton();
+
     var dlBtn = document.getElementById("wsDownloadBtn");
     if (dlBtn) dlBtn.addEventListener("click", downloadNetworkForPendingExtent);
 
@@ -1097,6 +1110,10 @@
       setExportEnabled(false);
       showEmpty();
     }
+    updateClearResultsButton();
+    // Study-area points fall back to circles; other modules must see the change.
+    if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   async function update(core) {
@@ -1105,6 +1122,7 @@
       clearWalkshedLayers();
       if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("ws-legend");
       _lastEntries = [];
+      updateClearResultsButton();
     }
     if (!isPopupVisible()) return;
     buildPointChecklist();

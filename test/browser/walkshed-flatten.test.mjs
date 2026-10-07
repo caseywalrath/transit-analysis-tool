@@ -255,6 +255,48 @@ function check(name, pass, detail) {
       restoredOutline.width === normalOutline.width && restoredOutline.opacity === normalOutline.opacity,
       JSON.stringify(restoredOutline));
 
+    // ---- Clear results: layers go, study-area buffer falls back to a circle ----
+    await page.evaluate(() => {
+      const p = App.points[0];
+      p.properties._bufferRadius = 0.5;
+      p.properties.attributes = Object.assign({}, p.properties.attributes, { serviceAreaType: "walkshed" });
+      App.refreshBuffers();
+    });
+    const bufBefore = await page.evaluate(() => ({
+      walkshed: !!(App.buffers[0] && App.buffers[0].properties.walkshed)
+    }));
+    check("study-area point's buffer is the walkshed polygon before clearing",
+      bufBefore.walkshed, JSON.stringify(bufBefore));
+    check("Clear results button is enabled when results exist",
+      await page.evaluate(() => !document.getElementById("wsClearResults").disabled));
+    // A finished run collapses the inputs (and the buttons in them); expand to reach the button.
+    if (!(await page.locator("#wsClearResults").isVisible())) {
+      await page.locator(".module-inputs-header").first().click();
+    }
+    await page.locator("#wsClearResults").click();
+    await page.waitForFunction(
+      () => !(App.buffers[0] && App.buffers[0].properties.walkshed),
+      { timeout: 5000 }
+    );
+    const cleared = await page.evaluate(() => {
+      const ring = App.buffers[0].geometry.coordinates[0];
+      const expected = turf.circle(turf.point(App.points[0].geometry.coordinates), 0.5, { units: "miles", steps: 64 });
+      return {
+        layers: ["walkshed-fill", "walkshed-line", "walkshed-seg"].map((id) => !!App.map.getLayer(id)),
+        fillFeatures: (App.map.getSource("walkshed-src") ? App.map.getSource("walkshed-src")._data.features.length : 0),
+        verts: ring.length,
+        expectedVerts: expected.geometry.coordinates[0].length,
+        flagKept: App.points[0].properties.attributes.serviceAreaType === "walkshed",
+        btnDisabled: document.getElementById("wsClearResults").disabled
+      };
+    });
+    check("Clear results removes all three walkshed layers",
+      cleared.layers.every((x) => !x) || cleared.fillFeatures === 0, JSON.stringify(cleared));
+    check("study-area buffer falls back to a circle (turf default vertex count)",
+      cleared.verts === cleared.expectedVerts, JSON.stringify(cleared));
+    check("study-area flag is kept after clearing", cleared.flagKept, JSON.stringify(cleared));
+    check("Clear results button is disabled once results are gone", cleared.btnDisabled, JSON.stringify(cleared));
+
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
     if (browser) await browser.close().catch(() => {});

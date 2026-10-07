@@ -36,7 +36,7 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 
 ## walkshed-popup.html
 
-Settings: three budget inputs `#wsMinutes`/`#wsMinutes2`/`#wsMinutes3` (reusing Transit Travelshed's `.ts-budget-row`/`.ts-budget-input`), walk speed, Advanced details (`maxEdge`, `#wsSnapTol`, `#wsCrossMajor`/`#wsCrossMinor` with help text that the penalty is node-uniform, not turn-aware, `#wsExcludedWaysCount`/`#wsClearExcludedWays`, `#wsEditStreets` toggle for map street-exclusion), point checklist `#wsPointList`, Calculate (disabled + `#wsNetWarn` with no network). Results: `#wsStatus.rf-status`, `#wsResultsTable`, study-area / Export GeoJSON buttons, `#wsEmptyState.rf-info-box`.
+Settings: three budget inputs `#wsMinutes`/`#wsMinutes2`/`#wsMinutes3` (reusing Transit Travelshed's `.ts-budget-row`/`.ts-budget-input`), walk speed, Advanced details (`maxEdge`, `#wsSnapTol`, `#wsCrossMajor`/`#wsCrossMinor` with help text that the penalty is node-uniform, not turn-aware, `#wsExcludedWaysCount`/`#wsClearExcludedWays`, `#wsEditStreets` toggle for map street-exclusion), point checklist `#wsPointList`, Calculate (disabled + `#wsNetWarn` with no network). `#wsClearResults` (Clear results; disabled with no results; `App.undo.push()` then `clearAll()`). `clearAll()` ends with `App.refreshBuffers()` + `App.notifyProject()` so points flagged "Use as study areas" fall back to circle buffers (the `serviceAreaType` flag is kept) and other modules update; no re-entry loop, since `update()` never calls `clearAll()`. Results: `#wsStatus.rf-status`, `#wsResultsTable`, study-area / Export GeoJSON buttons, `#wsEmptyState.rf-info-box`.
 
 ## walkshed-legend.html
 
