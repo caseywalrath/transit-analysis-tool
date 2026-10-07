@@ -527,7 +527,11 @@
       map.addSource(WS_SEG_SRC, { type: "geojson", data: segFc });
       map.addLayer({
         id: WS_SEG_LAYER, type: "line", source: WS_SEG_SRC,
-        layout: { "line-cap": "round", "line-join": "round" },
+        // Hidden on creation: the proof-of-reach streets clutter the map by
+        // default. Only the creating render sets it, so a later re-run's setData()
+        // keeps whatever the user chose in the Layers panel; clearing the results
+        // removes the layer, so the next run starts hidden again.
+        layout: { "line-cap": "round", "line-join": "round", "visibility": "none" },
         paint: { "line-color": segColor(), "line-width": 1.5, "line-opacity": 0.85 }
       });
     } else {

@@ -148,6 +148,29 @@ function check(name, pass, detail) {
     check("flatten off: outline matches fill (nothing flattened yet)",
       unflattened.line === unflattened.fill, JSON.stringify(unflattened));
 
+    // Reachable-streets proof layer starts hidden after a run; a user's choice
+    // in the Layers panel then survives a re-run (setData keeps the layout).
+    const segVis = () => page.evaluate(() => App.map.getLayoutProperty("walkshed-seg", "visibility"));
+    check("reachable streets layer is hidden by default after a run",
+      (await segVis()) === "none", String(await segVis()));
+    check("walkshed fill/outline layers stay visible",
+      await page.evaluate(() => ["walkshed-fill", "walkshed-line"].every(
+        (id) => App.map.getLayoutProperty(id, "visibility") !== "none")));
+    await page.evaluate(() => App.map.setLayoutProperty("walkshed-seg", "visibility", "visible"));
+    // Inputs collapse after a run, so click through the DOM; count setData calls
+    // to know the re-run has rendered.
+    await page.evaluate(() => {
+      const src = App.map.getSource("walkshed-src");
+      window.__wsSetData = 0;
+      const orig = src.setData.bind(src);
+      src.setData = (d) => { window.__wsSetData++; return orig(d); };
+      document.getElementById("wsComputeBtn").click();
+    });
+    await page.waitForFunction("window.__wsSetData > 0", { timeout: 20000 });
+    check("a re-run keeps the user's choice to show reachable streets",
+      (await segVis()) === "visible", String(await segVis()));
+    await page.evaluate(() => App.map.setLayoutProperty("walkshed-seg", "visibility", "none"));
+
     const normalOutline = await page.evaluate(() => ({
       width: App.map.getPaintProperty("walkshed-line", "line-width"),
       opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
