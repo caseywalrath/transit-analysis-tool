@@ -1036,6 +1036,27 @@
     if (map.getSource("tvi-gain")) map.removeSource("tvi-gain");
   }
 
+  // Drops computed output only (map overlay, results, baseline, caches, stale
+  // flag); scenarios, policy and other inputs stay. Called by Clear and Reset
+  // Session via the module registry, so the popup may never have been opened.
+  function clearAll() {
+    clearOverlay();
+    _results = {};
+    _baseline = null;
+    _cachedDemographics = {};
+    _cachedImpactedGeom = {};
+    _stale = false;
+    if (!_initialized) return;
+    App.renderModuleState({ statusEl: "tviStaleWarning" });
+    var baseBox = document.getElementById("tviBaselineBox");
+    if (baseBox) baseBox.style.display = "none";
+    var emptyEl = document.getElementById("tviResultsEmpty");
+    var wrapEl = document.getElementById("tviResultsWrap");
+    if (emptyEl) emptyEl.style.display = "";
+    if (wrapEl) wrapEl.style.display = "none";
+    updateComparisonTable();
+  }
+
   // ---- Scenario management ----
 
   function populateScenarioDropdown() {
@@ -1734,7 +1755,8 @@
     init: function (core) { init(core); },
     onOpen: function (core) { onOpen(core); },
     onClose: function () { onClose(); },
-    update: async function (core) { await update(core); }
+    update: async function (core) { await update(core); },
+    clear: clearAll
   });
 
 })();
