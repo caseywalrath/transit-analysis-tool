@@ -29,6 +29,8 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 
 "Layers" tab of the right panel. Public API: `App.refreshLayersPanel()` (rebuilds from map state; no-op when the tab is hidden; called from the tab toggle, `App.notifyProject()`, `App.updateAddDataClearIcons()` and others) and `App.gtfsRestoreHighlight()` (re-applies the pinned GTFS highlight or clears; used by `gtfs.js`'s map right-click preview). Everything else is private. No own persistence: drawn visibility/color/opacity and `App.sectionColors` ride `cache.js`; reference/analysis order + visibility are per-session.
 
+**Drawn feature rows** right-click menu: Zoom to feature, Hide/Show, Clear color override (when set), Edit attributes…, **Delete** (last; calls `App.deleteFeature(type, index)`, the same path as the Features list, so it is one undo step).
+
 **Bands:** Drawn (features nested by `attributes.group`, visibility + color), Analysis overlays and Reference/Imported (declarative `ANALYSIS`/`REFERENCE` manifests keyed by MapLibre layer id; only layers present on the map render) with show/hide, opacity, drag-reorder, ⋯ menu (zoom, open module, remove), and a Basemap selector. Reorder is clamped within a band via `map.moveLayer` (drawn features stay on top; drawn groups can't z-reorder since a geometry type shares one layer). Visibility syncs both ways with the Add Data eye/× icons. Rows without a drawer get a 24px `.lp-caret-spacer` for alignment.
 
 **Manifest notes:**

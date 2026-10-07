@@ -1014,6 +1014,10 @@
       opts.push({ label: "Edit attributes…", action: function () {
         if (typeof App.openAttrPopup === "function") App.openAttrPopup(it.type, it.index, it.feature);
       } });
+      opts.push({ label: "Delete", action: function () {
+        if (typeof App.deleteFeature === "function") App.deleteFeature(it.type, it.index);
+        render();
+      } });
       if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, opts);
     });
 

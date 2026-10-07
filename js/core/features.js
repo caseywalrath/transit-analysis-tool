@@ -1308,21 +1308,26 @@
     arr.sort(compareFeatureItems);
   }
 
+  // Single-feature delete shared by the Features list and the Layers panel so
+  // both close a matching attributes popup, push undo (inside the remove fn)
+  // and run the post-delete refresh the same way.
+  App.deleteFeature = function (ft, idx) {
+    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
+      var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
+      if (pf && pf.featureType === ft && pf.featureIndex === idx) App.closeAttrPopup();
+    }
+    var fn = getRemoveFnForType(ft);
+    if (fn) fn(idx);
+    if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
+  };
+
   /* ---- Build item wrapper with delete wiring ---- */
 
   function buildItemWrapperUnified(item, inGroup) {
     var wrapper = document.createElement("div");
     wrapper.className = "fp-item-wrapper" + (inGroup ? " fp-pattern" : "");
     var onDelete = (function (ft, idx) {
-      return function () {
-        if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-          var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
-          if (pf && pf.featureType === ft && pf.featureIndex === idx) App.closeAttrPopup();
-        }
-        var fn = getRemoveFnForType(ft);
-        if (fn) fn(idx);
-        if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
-      };
+      return function () { App.deleteFeature(ft, idx); };
     })(item.type, item.index);
     wrapper.appendChild(buildItem(item.feature, item.type, item.index, onDelete));
     return wrapper;
