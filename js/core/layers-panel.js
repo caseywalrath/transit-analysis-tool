@@ -819,7 +819,11 @@
     menu.addEventListener("click", function (e) {
       e.stopPropagation();
       if (typeof App.showContextMenu === "function") {
-        App.showContextMenu(e.clientX, e.clientY, layerMenuOptions());
+        // Keyboard activation (detail 0) has no pointer position; anchor to the button.
+        var b = menu.getBoundingClientRect();
+        var x = e.detail === 0 ? b.left : e.clientX;
+        var y = e.detail === 0 ? b.bottom : e.clientY;
+        App.showContextMenu(x, y, layerMenuOptions());
       }
     });
     row.appendChild(menu);

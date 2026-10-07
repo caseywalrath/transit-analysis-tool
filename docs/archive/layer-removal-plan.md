@@ -1,6 +1,6 @@
 # Removable analysis layers — implementation plan
 
-> **Status:** Not started.
+> **Status:** Complete (Phases 1–7). Deviations: Clear results sits in the collapsible Inputs; Sidewalk coverage returns on the next network load (no Add Data toggle exists); `clearCensusOverlay` now removes its layers; area-matched restore also edits walkshed.js and transit-travelshed.js.
 
 Lets the user remove any module-generated layer from the Layers panel, as they can already
 remove reference layers. On the way it fixes the toolbar **Clear** bug, gives every module a working
