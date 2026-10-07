@@ -74,7 +74,7 @@
       layers: [{ id: "bas-choropleth-fill", op: "fill-opacity" }, { id: "bas-choropleth-line", op: "line-opacity" }] },
     { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity", styleKey: "tpi",
       layers: [{ id: "tpi-choropleth-fill", op: "fill-opacity" }, { id: "tpi-choropleth-line", op: "line-opacity" }] },
-    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring",
+    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring", undoRestores: true,
       layers: [{ id: "corridor-scoring-routes-layer", op: "line-opacity" }] },
     { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
@@ -89,7 +89,7 @@
     { id: "walkshed-fill", label: "Walkshed", moduleId: "walkshed", styleKey: "walkshed",
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
-    { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
+    { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg", clear: null,
       layers: [{ id: "walkshed-seg", op: "line-opacity" }] },
     { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi", styleKey: "title-vi",
       layers: [{ id: "tvi-impacted-fill", op: "fill-opacity" },
@@ -100,10 +100,43 @@
       layers: [{ id: "lbar-sites-layer", op: "circle-opacity" }] },
     // Not a module of its own — census.js renders this for whichever analysis
     // last fetched geographies, so it gets no moduleId.
-    { id: "census-geos-fill", label: "Census geographies",
+    // Removing it clears Feature Area Analysis, whose map output it is; leaving
+    // that module's legend up with no map behind it would mislead.
+    { id: "census-geos-fill", label: "Census geographies", clearModuleId: "buffer-summary",
       layers: [{ id: "census-geos-fill", op: "fill-opacity" },
                { id: "census-geos-line", op: "line-opacity" }] }
   ];
+
+  // The function Remove layer runs for an entry, or null when it has none.
+  // Analysis rows default to their module's clear hook; resolved at menu time
+  // because modules register after this file loads. An explicit `clear: null`
+  // opts a row out (its own street-only clear is wired separately).
+  function entryClearFn(entry) {
+    if (typeof entry.clear === "function") return entry.clear;
+    if (entry.clear === null) return null;
+    var mid = entry.clearModuleId || entry.moduleId;
+    if (!mid || typeof App.moduleHasClear !== "function" || !App.moduleHasClear(mid)) return null;
+    return function () { App.clearModule(mid); };
+  }
+
+  // Shared Remove layer path for both bands. Order matters: the snapshot must
+  // precede the clear, modules must see the change before the save so the
+  // saved state is post-removal, and the panel re-renders last.
+  function removeEntry(entry) {
+    var fn = entryClearFn(entry);
+    if (!fn) return;
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    fn();
+    var done = typeof App.notifyProject === "function" ? App.notifyProject() : null;
+    if (typeof App.cache !== "undefined" && App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
+    render();
+    // Only claim Undo restores the layer where the module's saved state redraws it.
+    if (typeof App.setStatus === "function") {
+      App.setStatus("Removed " + entry.label + (entry.undoRestores ? " — Undo to restore" : ""));
+    }
+    return done;
+  }
 
   // Per-session band ordering (panel order = map order, top of list = top of map).
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
@@ -757,12 +790,8 @@
           if (typeof App.openModulePopup === "function") App.openModulePopup(entry.moduleId);
         } });
       }
-      if (typeof entry.clear === "function") {
-        opts.push({ label: "Remove layer", action: function () {
-          entry.clear();
-          if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
-          render();
-        } });
+      if (entryClearFn(entry)) {
+        opts.push({ label: "Remove layer", action: function () { removeEntry(entry); } });
       }
       return opts;
     }

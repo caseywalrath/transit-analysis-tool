@@ -273,6 +273,21 @@
     }
   }
 
+  // Clear one module's outputs through its own `clear` hook (the Layers panel's
+  // Remove layer). Returns false when the module is unknown or has no hook, so
+  // callers can tell "nothing to remove" from "removed".
+  App.clearModule = function (id) {
+    var m = _modules.get(id);
+    if (!m || typeof m.clear !== "function") return false;
+    m.clear();
+    return true;
+  };
+  // Lets the Layers panel offer Remove layer only for modules that can honour it.
+  App.moduleHasClear = function (id) {
+    var m = _modules.get(id);
+    return !!(m && typeof m.clear === "function");
+  };
+
   // ---- Analysis toolbar menu HTML ----
 
   function buildAnalysisButtonsHTML() {
@@ -1324,6 +1339,20 @@
 
     // Municipal Boundaries toggle
     var _muniBoundariesActive = false;
+    // Any caller that hides the boundaries (the Layers panel's Remove layer, too)
+    // must also reset this flag, or the next Add Data click toggles them "off"
+    // again and the × icon lies about what is on the map.
+    if (typeof App.toggleMuniBoundaries === "function") {
+      var _toggleMuni = App.toggleMuniBoundaries;
+      App.toggleMuniBoundaries = function (show) {
+        if (!show) {
+          _muniBoundariesActive = false;
+          var mb = document.getElementById("muni-boundaries-btn");
+          if (mb) mb.classList.remove("add-data-active");
+        }
+        return _toggleMuni.apply(this, arguments);
+      };
+    }
     document.getElementById("muni-boundaries-btn").addEventListener("click", function () {
       addDataDropdown.style.display = "none";
       _muniBoundariesActive = !_muniBoundariesActive;

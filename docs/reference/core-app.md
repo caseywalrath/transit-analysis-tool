@@ -129,7 +129,7 @@ Presentation-mode legend, north arrow and title (draggable/resizable). Registers
 
 ## app.js
 
-Startup, module registry, event wiring. Exports: `drawMode`, `registerModule(config)`, `registerProject` (alias), `notifyProject()`, `onFeatureDelete()`, `openModulePopup(id)` (used by the Layers ⋯ menu), `updateAddDataClearIcons()` (Add Data eye/× icons + Layers panel; the visibility sync bridge), `exitDrawMode()`, `finishDrawing()` (Enter; commits via `App.saveLine`/`App.saveRoute`/`App.savePolygon`), `applyFeatureOpacity(type)`, `applyLineWidth(type)`, `applyBufferLineWidth()`.
+Startup, module registry, event wiring. Exports: `drawMode`, `registerModule(config)`, `registerProject` (alias), `notifyProject()`, `clearModule(id)` (runs one module's `clear` hook; false if the module or hook is missing), `moduleHasClear(id)`, `onFeatureDelete()`, `openModulePopup(id)` (used by the Layers ⋯ menu), `updateAddDataClearIcons()` (Add Data eye/× icons + Layers panel; the visibility sync bridge), `exitDrawMode()`, `finishDrawing()` (Enter; commits via `App.saveLine`/`App.saveRoute`/`App.savePolygon`), `applyFeatureOpacity(type)`, `applyLineWidth(type)`, `applyBufferLineWidth()`.
 
 - `App.buildScrubber(cfg)` — compact numeric control; `cfg` = `{min, max, step, unit, value, onChange}` or `{values: [...], unit, value, onChange}`; returned element exposes `refresh(v)`.
 - `_openFpSlider(btn, cfg)` — mounts a scrubber in `#fp-slider-popover`; with `cfg.key` it writes `App.featureSettings[cfg.key]` and calls `App.cache.save()` before `cfg.onChange`.
