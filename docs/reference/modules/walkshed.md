@@ -12,6 +12,7 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 - `App.walkshedSignature()` → short string, one `pointIdx=settingsKey` entry per walkshed-flagged point (`-` when it has no valid cached result and falls back to a circle). Changes on a re-run with new budgets/speed/penalties, a network reload, or Clear. `App.featureGeomSignature()` (`analysis-checklist.js`) and Feature Area Analysis's `featureGeomSig()` append it as `#ws:…` **only when** `App.hasWalkshedPoints()` is true, so sessions without flagged points keep byte-identical signatures and saved runs do not turn stale on load.
 - `App.hasWalkshedPoints()` (`analysis-checklist.js`) → true when any point has `serviceAreaType === "walkshed"` and the Walkshed module is loaded.
 - `App.dropPointWalksheds(ids)` → frees cache entries for removed points (`pointIdx` values; called by Feature Merge).
+- `App.clearWalkshedStreets()` → removes only the reachable-streets layer `walkshed-seg` and source `walkshed-seg-src`, then refreshes the legend so the "Reachable streets" row hides. Leaves the polygons and `_lastEntries` alone; a re-run recreates the layer hidden. Wired as the Remove layer action of the "Walkshed — reachable streets" Layers row (`layers-panel.js`); the "Walkshed" row still uses the module's full `clear`.
 
 **Settings / units:**
 - Up to three budgets (`_settings.budgets`, min, defaults 15/30/blank, cap 60 each). `activeBudgets()` drops blanks, dedupes, sorts ascending, never returns empty (falls back to 15). Sorted storage keeps "first" == "smallest".

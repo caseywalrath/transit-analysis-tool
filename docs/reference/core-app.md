@@ -58,7 +58,7 @@ Exports: `setStatus(s)`, `parseCSV(text)`, `fillSelect(el, opts, placeholder)`, 
 
 ## census.js
 
-`renderCensusOverlay(geos)`, `clearCensusOverlay()` (empties the `census-geos` source via `setData`, keeping layers for reuse), `fetchAllTigerwebFeatures(layerUrl, params)`, `fetchTigerwebGeos(geoLevel, unionFeat)`, `parseGEOID(geoLevel, geoid)`, `fetchACSValues(geoLevel, year, varCode, geoids)`, `fetchACSCountyValues(year, varCode, counties)`, `aggregateWithinUnion(unionFeat, geos, valueMap, aggMode, options)` (optional `options.fractions` = precomputed map), `computeGeoOverlapFractions(unionFeat, geos, apportionByArea)` → `Map<GEOID, frac>` (compute once per run, reuse), `computeAcsValueOnly(varCode, year, geoLevel)`.
+`renderCensusOverlay(geos)`, `clearCensusOverlay()` (removes the `census-geos` source and both layers; `renderCensusOverlay` re-creates them), `fetchAllTigerwebFeatures(layerUrl, params)`, `fetchTigerwebGeos(geoLevel, unionFeat)`, `parseGEOID(geoLevel, geoid)`, `fetchACSValues(geoLevel, year, varCode, geoids)`, `fetchACSCountyValues(year, varCode, counties)`, `aggregateWithinUnion(unionFeat, geos, valueMap, aggMode, options)` (optional `options.fractions` = precomputed map), `computeGeoOverlapFractions(unionFeat, geos, apportionByArea)` → `Map<GEOID, frac>` (compute once per run, reuse), `computeAcsValueOnly(varCode, year, geoLevel)`.
 
 `App.fetchACSBatchCached(geoLevel, year, varCodes, geoids, opts)` → Promise<Map(geoid → Map(var → value))>; fetches only vars not yet cached per (level, year, county); `opts.force` bypasses. Shared by TPI and Title VI. `App.fetchACSMultiValues(geoLevel, year, varCodes, geoids)` → Promise<Map(geoid → summed value)>; one API call per state-county group.
 

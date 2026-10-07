@@ -134,12 +134,23 @@ async function closeMenu(page) {
     await page.locator('#fp-tab-layers button[aria-label="More actions for Walkshed"]').first()
       .waitFor({ state: "visible", timeout: 10000 });
 
-    // ---- walkshed-seg has no Remove yet (its street-only clear comes separately) ----
-    if (await page.locator('#fp-tab-layers button[aria-label="More actions for Walkshed — reachable streets"]').count()) {
-      const segItems = await rowMenu(page, "Walkshed — reachable streets");
-      check("reachable-streets row offers no Remove layer", !segItems.includes("Remove layer"), JSON.stringify(segItems));
-      await closeMenu(page);
-    }
+    // ---- walkshed-seg: Remove clears only the streets, polygons stay ----
+    const segSel = '#fp-tab-layers button[aria-label="More actions for Walkshed — reachable streets"]';
+    check("reachable-streets row is present", (await page.locator(segSel).count()) > 0);
+    const segItems = await rowMenu(page, "Walkshed — reachable streets");
+    check("reachable-streets row offers Remove layer", segItems.includes("Remove layer"), JSON.stringify(segItems));
+    await clickMenuItem(page, "Remove layer");
+    await page.waitForFunction(() => !App.map.getLayer("walkshed-seg"), { timeout: 5000 }).catch(() => {});
+    const segAfter = await page.evaluate(() => ({
+      seg: !!App.map.getLayer("walkshed-seg"),
+      segSrc: !!App.map.getSource("walkshed-seg-src"),
+      fill: !!App.map.getLayer("walkshed-fill"),
+      line: !!App.map.getLayer("walkshed-line"),
+      buffer: !!(App.buffers[0] && App.buffers[0].properties.walkshed)
+    }));
+    check("reachable-streets Remove removes the streets layer and source", !segAfter.seg && !segAfter.segSrc, JSON.stringify(segAfter));
+    check("reachable-streets Remove leaves walkshed-fill in place", segAfter.fill && segAfter.line, JSON.stringify(segAfter));
+    check("reachable-streets Remove keeps the walkshed buffer", segAfter.buffer, JSON.stringify(segAfter));
 
     // ---- Reference row: Walk network ----
     let items = await rowMenu(page, "Walk network");
@@ -183,6 +194,51 @@ async function closeMenu(page) {
     check("Walkshed row disappears from the panel", after.rowGone, JSON.stringify(after));
     check("analysis Remove saves, notifies and pushes undo",
       after.spy.save >= 1 && after.spy.notify >= 1 && after.spy.undo === 1, JSON.stringify(after.spy));
+
+    // ---- Every analysis row: dummy layers, Remove through the ⋯ menu ----
+    const table = [
+      ["Feature Area Analysis", ["bas-choropleth-fill", "bas-choropleth-line"]],
+      ["Transit Propensity", ["tpi-choropleth-fill", "tpi-choropleth-line"]],
+      ["Corridor Scoring", ["corridor-scoring-routes-layer"]],
+      ["Ridership Forecast", ["rf-choropleth-fill", "rf-choropleth-line", "rf-corridor-cdi-layer"]],
+      ["Transit Travelshed", ["ts-travelshed-fill", "ts-travelshed-line"]],
+      ["Transit Coverage", ["transit-coverage-coverage-layer", "transit-coverage-threshold-layer", "transit-coverage-area-layer"]],
+      ["Walkshed", ["walkshed-fill", "walkshed-line"]],
+      ["Walkshed — reachable streets", ["walkshed-seg"]],
+      ["Title VI service change", ["tvi-impacted-fill", "tvi-impacted-outline", "tvi-gain-fill", "tvi-gain-outline"]],
+      ["FTA land-use sites", ["lbar-sites-layer"]],
+      ["Census geographies", ["census-geos-fill", "census-geos-line"]]
+    ];
+    for (const [label, ids] of table) {
+      await page.evaluate((ids) => {
+        const map = App.map;
+        ids.forEach((id) => {
+          if (map.getLayer(id)) map.removeLayer(id);
+          if (map.getSource(id)) map.removeSource(id);
+          // census.js keeps one shared source for its fill and line layers.
+          const sid = /^census-geos/.test(id) ? "census-geos" : id;
+          if (sid !== id && map.getSource(sid)) return map.addLayer({ id, type: /fill/.test(id) ? "fill" : "line", source: sid });
+          map.addSource(sid, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+          const type = /fill/.test(id) ? "fill" : /sites/.test(id) ? "circle" : "line";
+          map.addLayer({ id, type, source: sid });
+        });
+        if (map.getSource("census-geos") && ids[0] === "census-geos-fill") {
+          map.getSource("census-geos").setData({ type: "FeatureCollection", features: [
+            { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [-105, 39.7] } }] });
+        }
+        App.refreshLayersPanel();
+      }, ids);
+      const sel = '#fp-tab-layers button[aria-label="More actions for ' + label + '"]';
+      await page.waitForSelector(sel, { state: "attached", timeout: 5000 }).catch(() => {});
+      const has = (await page.locator(sel).count()) > 0;
+      const its = has ? await rowMenu(page, label) : [];
+      check(label + ": row shows Remove layer", its.includes("Remove layer"), JSON.stringify(its));
+      if (!its.includes("Remove layer")) { await closeMenu(page); continue; }
+      await clickMenuItem(page, "Remove layer");
+      await page.waitForFunction((ids) => ids.every((id) => !App.map.getLayer(id)), ids, { timeout: 5000 }).catch(() => {});
+      const left = await page.evaluate((ids) => ids.filter((id) => App.map.getLayer(id)), ids);
+      check(label + ": Remove leaves no layer ids on the map", left.length === 0, JSON.stringify(left));
+    }
 
     // ---- Municipal boundaries: any hide resets the Add Data toggle ----
     const muni = await page.evaluate(() => {

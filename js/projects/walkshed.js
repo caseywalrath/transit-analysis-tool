@@ -381,8 +381,10 @@
     var segRow = document.getElementById("wsLegendRowSeg");
     if (segRow) {
       var map = App.map;
-      var segLayerVisible = !map || !map.getLayer(WS_SEG_LAYER) ||
-        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none";
+      // A removed layer hides the row too (clearWalkshedStreets); only a missing
+      // map keeps it shown.
+      var segLayerVisible = !map || (!!map.getLayer(WS_SEG_LAYER) &&
+        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none");
       segRow.style.display = segLayerVisible ? "" : "none";
     }
   }
@@ -544,6 +546,16 @@
     if (!map) return;
     [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
+  }
+
+  // Removes only the reachable-streets overlay, leaving the polygons and
+  // _lastEntries alone; a re-run recreates the layer hidden.
+  function clearWalkshedStreets() {
+    var map = App.map;
+    if (!map) return;
+    if (map.getLayer(WS_SEG_LAYER)) map.removeLayer(WS_SEG_LAYER);
+    if (map.getSource(WS_SEG_SRC)) map.removeSource(WS_SEG_SRC);
+    fillWalkshedLegend(activeBudgets());
   }
 
   // ---- Status / stale / empty (standardized helper) ----
@@ -1282,6 +1294,7 @@
   }
 
   App.walkshedSignature = walkshedSignature;
+  App.clearWalkshedStreets = clearWalkshedStreets;
   App.getPointWalkshed = getPointWalkshed;
   App.ensurePointWalksheds = ensurePointWalksheds;
   // Drop cached walksheds for points that no longer exist (e.g. removed by a
