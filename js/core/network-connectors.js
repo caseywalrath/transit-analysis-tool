@@ -1,12 +1,13 @@
 // js/core/network-connectors.js
 // Network Connectors: lets user-drawn Lines (networkRole "connector") join the
 // offline walk network. Owns the global App.networkSettings, the "Walk network"
-// reference layer (incl. click-to-exclude streets) and join/orphan markers.
+// reference layer (incl. opt-in click-to-exclude streets) and join/orphan markers.
 // The only App.lines -> plain-geometry translation for road-network.js.
 // Depends on: App.map, App.lines, road-network.js (getWalkNetworkSegments,
 //   roadNetworkLoaded, setNetworkConnectors, getLastConnectorOverlayReport, setExcludedWays).
 // Exports: App.networkSettings, App.refreshWalkNetworkLayer, App.refreshNetworkConnectors,
-//          App.getConnectorReport, App.getConnectorReportSummary
+//          App.getConnectorReport, App.getConnectorReportSummary,
+//          App.setWayExclusionMode, App.isWayExclusionMode
 // Detail: docs/reference/road-network.md
 
 (function () {
@@ -166,6 +167,7 @@
       _wnFC = null;
       _hoverWayId = null;
       if (_wnHoverPopup) _wnHoverPopup.remove();
+      setWayExclusionMode(false);
       return;
     }
 
@@ -238,6 +240,34 @@
   var _wnFC = null;        // last built FeatureCollection — wayId -> {name, length} lookups
   var _hoverWayId = null;
   var _wnHoverPopup = null;
+  var _wnWired = false;
+  // Street exclusion is opt-in: the walk-network hover/click handlers do nothing
+  // unless this is on (and no draw tool is active). It used to be live whenever
+  // a network was loaded, so every click on a street — placing a point, selecting
+  // a feature — also toggled that street's exclusion. Closure-private on purpose;
+  // not persisted, so a reload never starts with exclusion armed.
+  var _exclusionMode = false;
+
+  function exclusionActive() { return _exclusionMode && !App.drawMode; }
+
+  function clearWayHover() {
+    _hoverWayId = null;
+    var map = App.map;
+    if (map && map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
+    if (_wnHoverPopup) _wnHoverPopup.remove();
+  }
+
+  // Turning it off also clears any hover highlight/popup left on screen. Fires
+  // "wayexclusionmodechange" so UI (the Walkshed button) can follow without
+  // polling; a no-op call (same value) fires nothing.
+  function setWayExclusionMode(on) {
+    on = !!on;
+    if (on === _exclusionMode) return;
+    _exclusionMode = on;
+    if (!on) clearWayHover();
+    if (App.map && !App.drawMode) App.map.getCanvas().style.cursor = "grab";
+    document.dispatchEvent(new CustomEvent("wayexclusionmodechange", { detail: { on: on } }));
+  }
 
   function wnEscapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -280,7 +310,14 @@
   }
 
   function wireWalkNetworkInteraction(map) {
+    // Layer listeners outlive removeLayer(), so a clear + re-download would
+    // otherwise stack a second copy and the doubled click would toggle a street
+    // twice (a net no-op).
+    if (_wnWired) return;
+    _wnWired = true;
+
     map.on("mousemove", WN_LAYER, function (e) {
+      if (!exclusionActive()) return;
       if (!e.features || !e.features.length) return;
       var wayId = e.features[0].properties.wayId;
 
@@ -317,13 +354,13 @@
     });
 
     map.on("mouseleave", WN_LAYER, function () {
-      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
-      _hoverWayId = null;
-      if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
-      if (_wnHoverPopup) _wnHoverPopup.remove();
+      if (!exclusionActive()) return;
+      map.getCanvas().style.cursor = "grab";
+      clearWayHover();
     });
 
     map.on("click", WN_LAYER, function (e) {
+      if (!exclusionActive()) return;
       if (!e.features || !e.features.length) return;
       var wayId = e.features[0].properties.wayId;
       if (wayId == null) {
@@ -386,5 +423,7 @@
   App.refreshNetworkConnectors = refreshNetworkConnectors;
   App.getConnectorReport = getConnectorReport;
   App.getConnectorReportSummary = getConnectorReportSummary;
+  App.setWayExclusionMode = setWayExclusionMode;
+  App.isWayExclusionMode = function () { return _exclusionMode; };
 
 })();

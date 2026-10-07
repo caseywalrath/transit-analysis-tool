@@ -917,6 +917,7 @@
       if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
     }
     syncExcludedWaysLine();
+    syncEditStreetsButton();
     updateStudyAreaButtonLabel();
   }
 
@@ -929,6 +930,32 @@
     var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
     countEl.textContent = ids.length;
     if (clearBtn) clearBtn.style.display = ids.length ? "" : "none";
+  }
+
+  // Reflects App.isWayExclusionMode(); the mode itself lives in network-connectors.js
+  // and can be switched off from elsewhere (draw tool, network cleared), hence the event.
+  function syncEditStreetsButton() {
+    var btn = document.getElementById("wsEditStreets");
+    if (!btn) return;
+    var on = typeof App.isWayExclusionMode === "function" && App.isWayExclusionMode();
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = on ? "Done editing streets" : "Edit streets";
+  }
+
+  function onEditStreetsClick() {
+    if (typeof App.setWayExclusionMode !== "function") return;
+    var turningOn = !App.isWayExclusionMode();
+    if (turningOn && App.drawMode) {
+      // Not auto-exited: that would silently drop an in-progress line/route/polygon.
+      App.setStatus("Finish or deselect the active draw tool before editing streets.");
+      return;
+    }
+    if (turningOn && !(typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded())) {
+      App.setStatus("Download streets for this area first — there is no walk network to edit yet.");
+      return;
+    }
+    App.setWayExclusionMode(turningOn);
+    if (turningOn) App.setStatus("Edit streets: click a street on the Walk network layer to exclude or restore it.");
   }
 
   function clearExcludedWays() {
@@ -1011,6 +1038,10 @@
 
     var clearExcludedBtn = document.getElementById("wsClearExcludedWays");
     if (clearExcludedBtn) clearExcludedBtn.addEventListener("click", clearExcludedWays);
+
+    var editStreetsBtn = document.getElementById("wsEditStreets");
+    if (editStreetsBtn) editStreetsBtn.addEventListener("click", onEditStreetsClick);
+    document.addEventListener("wayexclusionmodechange", syncEditStreetsButton);
   }
 
   function onOpen(core) {
@@ -1034,7 +1065,10 @@
     }
   }
 
-  function onClose(core) { /* state persists in closure */ }
+  function onClose(core) {
+    // Otherwise street clicks would stay live with no visible control to turn them off.
+    if (typeof App.setWayExclusionMode === "function") App.setWayExclusionMode(false);
+  }
 
   // Calculate stays enabled with no network loaded — pressing it is how the user
   // gets offered the scoped download.

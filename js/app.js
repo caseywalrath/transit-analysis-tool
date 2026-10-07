@@ -649,6 +649,9 @@
         if (typeof App.setPolygonPreview === "function") App.setPolygonPreview(null);
         if (typeof App.setMeasurePreview === "function") App.setMeasurePreview(null);
 
+        // Street-exclusion editing and a draw tool both claim map clicks; the draw tool wins.
+        if (App.drawMode && typeof App.setWayExclusionMode === "function") App.setWayExclusionMode(false);
+
         // Clear feature selection when entering a draw mode
         // (box select keeps it — Shift/Ctrl drags add to / remove from it).
         if (App.drawMode && App.drawMode !== "box-select" && typeof App.clearSelection === "function") App.clearSelection();

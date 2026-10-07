@@ -17,7 +17,7 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 - Hull `maxEdge`: displayed in **feet** (default 984 ft), stored/persisted as **km** in `_settings.maxEdge` (0.3); `FT_PER_KM` converts at the UI boundary. A hull parameter, not a walking unit.
 - A point's `attributes.walkMinutes` / `walkSpeedMph` overrides (data model only, no UI) make it use a single budget / its own speed.
 
-**Global network settings (not module state, shared with Transit Travelshed):** Advanced inputs read/write `App.networkSettings.snapToleranceFt` (on change: `App.refreshNetworkConnectors()` + stale), `crossingMajorSec`/`crossingMinorSec` (on change: `App.cache.save()` + stale; no connector refresh, only the cost function changes), and show `App.networkSettings.excludedWayIds.length` with a Clear that calls `App.setExcludedWays([])`. The excluded count is synced on popup open because exclusions are made on the map layer, outside this popup.
+**Global network settings (not module state, shared with Transit Travelshed):** Advanced inputs read/write `App.networkSettings.snapToleranceFt` (on change: `App.refreshNetworkConnectors()` + stale), `crossingMajorSec`/`crossingMinorSec` (on change: `App.cache.save()` + stale; no connector refresh, only the cost function changes), and show `App.networkSettings.excludedWayIds.length` with a Clear that calls `App.setExcludedWays([])`. The excluded count is synced on popup open because exclusions are made on the map layer, outside this popup. Clicking streets only excludes them while **Edit streets** (`#wsEditStreets`, `aria-pressed`) is on — it calls `App.setWayExclusionMode()` (refuses with a status if no network is loaded or a draw tool is active), follows the `wayexclusionmodechange` event, and `onClose` switches it off. See `road-network.md`.
 
 **Cache key** (`settingsKeyFor`): `lng|lat|budgets(all)|speed|maxEdge|networkEpoch|crossMajor|crossMinor`. All budgets and the crossing seconds must be in the key — they change the result without bumping the network epoch, so omitting them served stale polygons.
 
@@ -36,7 +36,7 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 
 ## walkshed-popup.html
 
-Settings: three budget inputs `#wsMinutes`/`#wsMinutes2`/`#wsMinutes3` (reusing Transit Travelshed's `.ts-budget-row`/`.ts-budget-input`), walk speed, Advanced details (`maxEdge`, `#wsSnapTol`, `#wsCrossMajor`/`#wsCrossMinor` with help text that the penalty is node-uniform, not turn-aware, `#wsExcludedWaysCount`/`#wsClearExcludedWays`), point checklist `#wsPointList`, Calculate (disabled + `#wsNetWarn` with no network). Results: `#wsStatus.rf-status`, `#wsResultsTable`, study-area / Export GeoJSON buttons, `#wsEmptyState.rf-info-box`.
+Settings: three budget inputs `#wsMinutes`/`#wsMinutes2`/`#wsMinutes3` (reusing Transit Travelshed's `.ts-budget-row`/`.ts-budget-input`), walk speed, Advanced details (`maxEdge`, `#wsSnapTol`, `#wsCrossMajor`/`#wsCrossMinor` with help text that the penalty is node-uniform, not turn-aware, `#wsExcludedWaysCount`/`#wsClearExcludedWays`, `#wsEditStreets` toggle for map street-exclusion), point checklist `#wsPointList`, Calculate (disabled + `#wsNetWarn` with no network). Results: `#wsStatus.rf-status`, `#wsResultsTable`, study-area / Export GeoJSON buttons, `#wsEmptyState.rf-info-box`.
 
 ## walkshed-legend.html
 
