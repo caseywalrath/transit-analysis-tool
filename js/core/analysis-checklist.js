@@ -86,9 +86,23 @@
       }).join("|"));
     });
     parts.push("epoch:" + (App.roadNetworkEpoch ? App.roadNetworkEpoch() : 0));
+    // Walkshed study areas: a re-run (new budget/speed/penalty) or a Clear changes
+    // the buffers without touching any feature. Appended only when a point is
+    // flagged, so sessions without walksheds keep byte-identical signatures and
+    // saved runs do not all turn stale on load.
+    if (hasWalkshedPoints()) parts.push("ws:" + App.walkshedSignature());
     return parts.join("#");
   }
 
+  function hasWalkshedPoints() {
+    if (typeof App.walkshedSignature !== "function") return false;
+    return (App.points || []).some(function (f) {
+      var a = f.properties && f.properties.attributes;
+      return !!(a && a.serviceAreaType === "walkshed");
+    });
+  }
+
+  App.hasWalkshedPoints = hasWalkshedPoints;
   App.featureGeomSignature = featureGeomSignature;
   App.hiddenSignature = hiddenSignature;
   App.decorateHiddenRow = decorateHiddenRow;

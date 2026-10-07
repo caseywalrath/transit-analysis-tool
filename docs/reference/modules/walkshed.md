@@ -9,6 +9,8 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 **Public API:**
 - `App.getPointWalkshed(pointIdx)` → validated cached walkshed polygon Feature, or null when absent/stale (requires the point to exist and its `settingsKey` to match). Consumed by `points.js rebuildBuffers()`.
 - `App.ensurePointWalksheds()` → synchronously computes walkshed-flagged points missing/stale in the cache; returns `{ computed, cached, failed, warnings }`.
+- `App.walkshedSignature()` → short string, one `pointIdx=settingsKey` entry per walkshed-flagged point (`-` when it has no valid cached result and falls back to a circle). Changes on a re-run with new budgets/speed/penalties, a network reload, or Clear. `App.featureGeomSignature()` (`analysis-checklist.js`) and Feature Area Analysis's `featureGeomSig()` append it as `#ws:…` **only when** `App.hasWalkshedPoints()` is true, so sessions without flagged points keep byte-identical signatures and saved runs do not turn stale on load.
+- `App.hasWalkshedPoints()` (`analysis-checklist.js`) → true when any point has `serviceAreaType === "walkshed"` and the Walkshed module is loaded.
 - `App.dropPointWalksheds(ids)` → frees cache entries for removed points (`pointIdx` values; called by Feature Merge).
 
 **Settings / units:**

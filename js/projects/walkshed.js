@@ -774,6 +774,7 @@
 
     _running = true;
     setStatus("Calculating walksheds…", "running");
+    var sigBefore = walkshedSignature();
 
     // Yield once so the "Calculating…" pill paints before the (blocking) flood.
     setTimeout(function () {
@@ -811,6 +812,22 @@
           renderInputs(ok > 0);
           if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode(ok > 0 ? "results" : "setup");
         }
+
+        // A re-run that changed a flagged point's walkshed changes its study area:
+        // rebuild buffers and broadcast so dependents re-check their signatures.
+        // Unflagged-only runs skip this, so they cause no extra notify pass.
+        if (walkshedSignature() !== sigBefore) {
+          if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+          var doneMsg = "Calculated " + ok + " walkshed(s)" + (bad ? "; " + bad + " skipped." : ".");
+          // notifyProject awaits each module's update() in turn, so ours runs after
+          // this tick; wait for it, then undo its stale mark — our results are fresh.
+          Promise.resolve(typeof App.notifyProject === "function" ? App.notifyProject() : null)
+            .then(function () {
+              if (_running || entries !== _lastEntries) return; // superseded
+              _stale = false;
+              if (isPopupVisible()) { setExportEnabled(ok > 0); setStatus(doneMsg, "done"); }
+            });
+        }
       } finally {
         _running = false;
       }
@@ -833,8 +850,9 @@
     if (typeof App.refreshBuffers === "function") App.refreshBuffers();
     if (App.cache && App.cache.save) App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-    // Broadcast so downstream study-area consumers (Buffer-Area Summary, TPI, …) go
-    // stale against the new walkshed geometry.
+    // Broadcast so downstream study-area consumers (Feature Area Analysis, TPI, …)
+    // re-check their run signature: the new serviceAreaType flag changes it, and
+    // App.walkshedSignature() covers later re-runs and Clear.
     if (typeof App.notifyProject === "function") App.notifyProject();
     // Our own walksheds did not change — re-assert good state after the broadcast
     // (notifyProject's update() pass would otherwise false-positive us into "stale").
@@ -1245,6 +1263,25 @@
 
   // ---- Register ----
 
+  // Short string that changes whenever a walkshed-flagged point's study-area
+  // geometry would change: per flagged point, the settings key of the cached
+  // result it would use (key embeds coords, budgets, speed, max edge, network
+  // epoch and crossing penalties), or "-" when it has no valid result and falls
+  // back to a circle. Folded into App.featureGeomSignature only when some point
+  // is flagged (analysis-checklist.js).
+  function walkshedSignature() {
+    return (App.points || []).filter(function (f) {
+      var a = f.properties && f.properties.attributes;
+      return !!(a && a.serviceAreaType === "walkshed");
+    }).map(function (pf) {
+      var id = pf.properties.pointIdx;
+      var entry = _walkshedCache.get(id);
+      var valid = !!(entry && entry.polygon && entry.settingsKey === settingsKeyFor(pf));
+      return id + "=" + (valid ? entry.settingsKey : "-");
+    }).join(";");
+  }
+
+  App.walkshedSignature = walkshedSignature;
   App.getPointWalkshed = getPointWalkshed;
   App.ensurePointWalksheds = ensurePointWalksheds;
   // Drop cached walksheds for points that no longer exist (e.g. removed by a
