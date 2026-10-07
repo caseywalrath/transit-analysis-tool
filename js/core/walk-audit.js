@@ -127,19 +127,23 @@
     return { type: "FeatureCollection", features: features };
   }
 
+  // Set by Remove layer so routine refreshes (exclusions, connectors) don't
+  // bring the overlay straight back. The overlay has no Add Data toggle of its
+  // own; loading a network (download, file, restore) re-enables it.
+  var _removed = false;
+
   // Rebuilds the sidewalk-coverage layer; removed entirely when no network is
   // loaded. Hidden by default — an opt-in audit overlay with its own toggle,
   // independent of walk-network-line.
-  function refreshSidewalkCoverageLayer() {
+  //   opts.reenable : true on a fresh network load — clears a prior removal.
+  function refreshSidewalkCoverageLayer(opts) {
     var map = App && App.map;
     if (!map) return;
+    if (opts && opts.reenable) _removed = false;
+    if (_removed) { removeLayer(); return; }
 
     var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
-    if (!loaded) {
-      if (map.getLayer(SW_LAYER)) map.removeLayer(SW_LAYER);
-      if (map.getSource(SW_SRC)) map.removeSource(SW_SRC);
-      return;
-    }
+    if (!loaded) { removeLayer(); return; }
 
     var segments = typeof App.getWalkNetworkSegments === "function"
       ? App.getWalkNetworkSegments() : [];
@@ -168,7 +172,18 @@
     }
   }
 
+  function removeLayer() {
+    var map = App.map;
+    if (map.getLayer(SW_LAYER)) map.removeLayer(SW_LAYER);
+    if (map.getSource(SW_SRC)) map.removeSource(SW_SRC);
+  }
+
   App.refreshSidewalkCoverageLayer = refreshSidewalkCoverageLayer;
+  // Layers panel Remove: drops only the overlay; the street network is untouched.
+  App.removeSidewalkCoverageLayer = function () {
+    _removed = true;
+    if (App.map) removeLayer();
+  };
 
   // ---- Coverage statistics ----
 

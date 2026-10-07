@@ -15,6 +15,8 @@
 //   - clearing and re-downloading the network does not stack a second click
 //     handler (a doubled handler toggles twice = a silent no-op)
 //   - clearing the network switches the mode off
+//   - exclusions survive unload and a reload from the stored copy, and still
+//     apply to routing; Reset Session clears them
 //
 // USAGE: NODE_PATH=/opt/node-tools/node_modules node test/browser/street-exclusion.test.mjs
 // Exits 0 when every check passes, 1 otherwise.
@@ -138,6 +140,26 @@ async function downloadNetwork(page) {
     await clickStreet(page);
     check("after clear + re-download one click still excludes exactly once (no stacked handler)",
       await waitExcluded(page, 1), "count=" + (await excludedCount(page)));
+
+    // ---- exclusions survive unload + re-load; Reset clears them ----
+    const excludedId = await page.evaluate(() => App.networkSettings.excludedWayIds[0]);
+    // persistNetwork writes after a setTimeout(0); wait for it before unloading.
+    await page.waitForFunction(async () => !!(await App.networkStore.latest()), null, { timeout: 5000 });
+    await page.evaluate(() => App.unloadRoadNetwork());
+    await page.waitForFunction("!App.roadNetworkLoaded()", { timeout: 10000 });
+    check("exclusions survive unload", (await excludedCount(page)) === 1);
+    const restored = await page.evaluate(() => App.restoreCachedNetwork());
+    check("network re-loads from the stored copy", restored === true);
+    check("exclusions survive the re-load", (await excludedCount(page)) === 1 &&
+      (await page.evaluate(() => App.networkSettings.excludedWayIds[0])) === excludedId);
+    check("re-loaded network still draws the excluded street",
+      await page.evaluate((id) => {
+        const src = App.map.getSource("walk-network");
+        if (!src || !src._data) return false;
+        return src._data.features.some((f) => f.properties && f.properties.excluded && f.properties.wayId === id);
+      }, excludedId));
+    await page.click("#reset");
+    check("Reset Session clears exclusions", await waitExcluded(page, 0), "count=" + (await excludedCount(page)));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {

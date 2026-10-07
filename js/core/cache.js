@@ -510,6 +510,17 @@
   // ---- Reset: clear cache and all app state ----
 
   function reset() {
+    // 0. Street-network settings back to the defaults network-connectors.js
+    // initialises. Exclusions go through App.setExcludedWays, their only write
+    // path (it also rebuilds any loaded network without them). Runs before the
+    // localStorage wipe because setExcludedWays saves the session.
+    if (App.networkSettings) {
+      App.networkSettings.snapToleranceFt = 50;
+      App.networkSettings.crossingMajorSec = 0;
+      App.networkSettings.crossingMinorSec = 0;
+    }
+    if (typeof App.setExcludedWays === "function") App.setExcludedWays([]);
+
     // 1. Clear localStorage
     try {
       localStorage.removeItem(STORAGE_KEY);

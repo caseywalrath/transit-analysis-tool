@@ -770,7 +770,9 @@
 
   // ---- Run (compute for target set) ----
 
-  function runWalkshed() {
+  // `afterRestore` marks the re-run after a stored-network restore, so a
+  // restore that still doesn't pass the coverage check can't loop.
+  function runWalkshed(afterRestore) {
     if (_running) return;
 
     readSettingsFromInputs();
@@ -779,7 +781,28 @@
 
     // Missing or insufficient street coverage is an offer to download, not a
     // dead end — checkNetworkCoverage has already explained and armed the button.
+    // A stored network covering the area (e.g. one only removed from the map)
+    // is tried first, so no download is offered when none is needed.
     if (!checkNetworkCoverage(targets)) {
+      if (afterRestore !== true && _pendingDownloadExtent && typeof App.restoreNetworkCovering === "function") {
+        var extent = _pendingDownloadExtent;
+        _running = true;
+        setStatus("Loading stored streets\u2026", "running");
+        App.restoreNetworkCovering(extent).then(function (ok) {
+          _running = false;
+          if (ok) {
+            if (typeof App.notifyProject === "function") App.notifyProject();
+            updateComputeAvailability();
+            runWalkshed(true);
+          } else {
+            setStatus("Street network doesn't cover these points — download to continue.", "error");
+          }
+        }, function () {
+          _running = false;
+          setStatus("Street network doesn't cover these points — download to continue.", "error");
+        });
+        return;
+      }
       setStatus("Street network doesn't cover these points — download to continue.", "error");
       return;
     }

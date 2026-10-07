@@ -55,9 +55,15 @@
     { id: "walk-network-line",    label: "Walk network",         layers: [{ id: "walk-network-line", op: "line-opacity" },
       { id: "walk-network-excluded-line", op: "line-opacity" },
       { id: "network-joins-point", op: "circle-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      // Remove keeps the downloaded copy so it can come back without a new
+      // download; deleting it is a separate, confirmed action.
+      clear: callIf("unloadRoadNetwork"),
+      extraActions: [{ label: "Delete downloaded streets", status: "Deleted downloaded streets",
+        confirm: "Delete the downloaded streets from this browser? They will need to be downloaded again.",
+        run: callIf("clearRoadNetwork") }] },
+    // Only the overlay — the street network it colors stays loaded.
     { id: "sidewalk-coverage-line", label: "Sidewalk coverage",  layers: [{ id: "sidewalk-coverage-line", op: "line-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      clear: callIf("removeSidewalkCoverageLayer") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
       clear: callIf("clearGTFS"), styleKey: "gtfs-shapes" },
     { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" }],
@@ -120,23 +126,33 @@
     return function () { App.clearModule(mid); };
   }
 
-  // Shared Remove layer path for both bands. Order matters: the snapshot must
-  // precede the clear, modules must see the change before the save so the
+  // Shared path for every row action that takes something off the map (Remove
+  // layer and an entry's extraActions). Order matters: the snapshot must
+  // precede the change, modules must see the change before the save so the
   // saved state is post-removal, and the panel re-renders last.
-  function removeEntry(entry) {
-    var fn = entryClearFn(entry);
-    if (!fn) return;
+  function applyEntryAction(fn, status) {
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     fn();
     var done = typeof App.notifyProject === "function" ? App.notifyProject() : null;
     if (typeof App.cache !== "undefined" && App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
     render();
-    // Only claim Undo restores the layer where the module's saved state redraws it.
-    if (typeof App.setStatus === "function") {
-      App.setStatus("Removed " + entry.label + (entry.undoRestores ? " — Undo to restore" : ""));
-    }
+    if (typeof App.setStatus === "function") App.setStatus(status);
     return done;
+  }
+
+  function removeEntry(entry) {
+    var fn = entryClearFn(entry);
+    if (!fn) return;
+    // Only claim Undo restores the layer where the module's saved state redraws it.
+    return applyEntryAction(fn, "Removed " + entry.label + (entry.undoRestores ? " — Undo to restore" : ""));
+  }
+
+  // An entry's extra ⋯ menu action: { label, run, status?, confirm? }. A
+  // `confirm` message gates destructive actions behind window.confirm().
+  function runExtraAction(entry, action) {
+    if (action.confirm && !window.confirm(action.confirm)) return;
+    return applyEntryAction(action.run, action.status || action.label);
   }
 
   // Per-session band ordering (panel order = map order, top of list = top of map).
@@ -794,6 +810,9 @@
       if (entryClearFn(entry)) {
         opts.push({ label: "Remove layer", action: function () { removeEntry(entry); } });
       }
+      (entry.extraActions || []).forEach(function (act) {
+        opts.push({ label: act.label, action: function () { runExtraAction(entry, act); } });
+      });
       return opts;
     }
 

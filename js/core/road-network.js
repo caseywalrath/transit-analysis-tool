@@ -733,7 +733,7 @@
       rebuildNetwork();
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
 
-      updateUI();
+      updateUI(true);
       persistNetwork(extentCacheId(extentPolygon), "overpass", "");
       App.setStatus(_featureCount.toLocaleString() + " road segments loaded \u2014 local routing enabled");
       return true;
@@ -779,7 +779,7 @@
         _roadGeoJSON = geojson;
         rebuildNetwork();
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
-        updateUI();
+        updateUI(true);
         persistNetwork("file:" + file.name, "file", file.name);
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
       } catch (err) {
@@ -854,18 +854,13 @@
     return plural(Math.round(hrs / 24), "day");
   }
 
-  // Rebuild from the most recently stored network. Returns Promise<boolean>.
-  // Must use the same rebuildNetwork() -> updateUI() path as a live download:
-  // the epoch bump invalidates epoch-keyed module caches, so a restored network
-  // never silently validates geometry a previous page load computed. The stored
-  // extent is restored too (Transit Travelshed's coverage check reads it).
-  async function restoreCachedNetwork() {
-    if (_graph) return false; // something already loaded a network — don't override it
-    if (!App.networkStore || !App.networkStore.supported()) return false;
-
-    var rec = await App.networkStore.latest();
+  // Rebuild the live network from one stored record. Must use the same
+  // rebuildNetwork() -> updateUI() path as a live download: the epoch bump
+  // invalidates epoch-keyed module caches, so a restored network never silently
+  // validates geometry a previous load computed. The stored extent is restored
+  // too (the walkshed/travelshed coverage checks read it). Returns boolean.
+  function loadStoredRecord(rec) {
     if (!rec || !rec.geojson) return false;
-
     var geojson;
     try {
       geojson = JSON.parse(rec.geojson);
@@ -877,7 +872,7 @@
     _roadGeoJSON = geojson;
     rebuildNetwork();
     _downloadedBboxPolygon = rec.extent || null;
-    updateUI();
+    updateUI(true);
 
     var age = formatAge(Date.now() - (rec.savedAt || 0));
     var stale = (Date.now() - (rec.savedAt || 0)) > NET_CACHE_FRESH_MS;
@@ -887,12 +882,30 @@
     return true;
   }
 
-  function clearRoadNetwork() {
-    // Clearing is an explicit "remove this" action (Add Data × icon, Reset
-    // Session), so the stored copy goes too — otherwise the next page load would
-    // silently resurrect the network the user just dismissed.
-    if (App.networkStore) App.networkStore.clear();
+  // Startup restore: the most recently stored network, whatever its area.
+  // Returns Promise<boolean>.
+  async function restoreCachedNetwork() {
+    if (_graph) return false; // something already loaded a network — don't override it
+    if (!App.networkStore || !App.networkStore.supported()) return false;
+    return loadStoredRecord(await App.networkStore.latest());
+  }
 
+  // Area-matched restore: replace the live network with a stored one whose
+  // download extent contains `extentPolygon`. Only called when the live network
+  // is missing or doesn't cover the extent, so replacing it is the point.
+  // Returns Promise<boolean> — false means the caller should download.
+  async function restoreNetworkCovering(extentPolygon) {
+    if (!extentPolygon || !App.networkStore || !App.networkStore.supported()) return false;
+    var rec = null;
+    try { rec = await App.networkStore.findCovering(turf.bbox(extentPolygon)); } catch (e) { rec = null; }
+    return loadStoredRecord(rec);
+  }
+
+  // Remove the network from the map and from analysis, keeping the stored copy
+  // so it can come back without a download (Layers panel Remove, Add Data ×,
+  // toolbar Clear). Excluded streets and connectors are settings, not network
+  // data, so they persist and re-apply on the next load.
+  function unloadRoadNetwork() {
     _roadGeoJSON = null;
     _graph = null;
     _segmentIndex = null;
@@ -903,6 +916,13 @@
     _downloadedBboxPolygon = null;
     _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
+  }
+
+  // Unload AND delete every stored copy ("Delete downloaded streets", Reset
+  // Session) — otherwise the next page load would resurrect it.
+  function clearRoadNetwork() {
+    if (App.networkStore) App.networkStore.clear();
+    unloadRoadNetwork();
   }
 
   // ---- UI helpers ----
@@ -938,7 +958,10 @@
   }
 
   // Single choke point for map-side refresh after any rebuild/clear.
-  function updateUI() {
+  // `newNetwork` marks a fresh load (download, file, restore) as opposed to a
+  // rebuild of the same data; it brings back a Sidewalk coverage overlay the
+  // user removed, since that overlay has no other "turn on" control.
+  function updateUI(newNetwork) {
     var loaded = !!_graph;
 
     var exportBtn = document.getElementById("export-road-net");
@@ -947,7 +970,9 @@
     renderDownloadArea();
     if (typeof App.refreshWalkNetworkLayer === "function") App.refreshWalkNetworkLayer();
 
-    if (typeof App.refreshSidewalkCoverageLayer === "function") App.refreshSidewalkCoverageLayer();
+    if (typeof App.refreshSidewalkCoverageLayer === "function") {
+      App.refreshSidewalkCoverageLayer(newNetwork ? { reenable: true } : undefined);
+    }
   }
 
   // ---- Walkshed (network isochrone) ----
@@ -1236,7 +1261,12 @@
   App.fetchRoadNetwork = fetchRoadNetwork;
   App.loadRoadNetworkFromFile = loadRoadNetworkFromFile;
   App.exportRoadNetwork = exportRoadNetwork;
+  // Remove from map/analysis, keep the stored copy (see unloadRoadNetwork()).
+  App.unloadRoadNetwork = unloadRoadNetwork;
+  // Unload and delete the stored copies too.
   App.clearRoadNetwork = clearRoadNetwork;
+  // Restore a stored network covering a Feature<Polygon> extent; Promise<boolean>.
+  App.restoreNetworkCovering = restoreNetworkCovering;
   // Rebuild from the IndexedDB copy of the last loaded network (see the Offline
   // persistence section above). Async; returns Promise<boolean>. Called once at
   // startup from app.js, after the session cache has been restored.
@@ -1283,7 +1313,11 @@
   App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon>|null
 
   // Caller-supplied-extent download (e.g. Transit Travelshed); see fetchNetworkForBounds().
+  // A stored network that already covers the extent is restored instead of
+  // re-downloading — Overpass is slow and unreliable, and the user may have
+  // only removed the network from the map.
   App.fetchRoadNetworkForExtent = async function (extentPolygon) {
+    if (await restoreNetworkCovering(extentPolygon)) return true;
     var bb = turf.bbox(extentPolygon); // [w, s, e, n]
     return fetchNetworkForBounds({ s: bb[1], w: bb[0], n: bb[3], e: bb[2] }, turf.bboxPolygon(bb));
   };

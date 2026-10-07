@@ -1170,7 +1170,8 @@
       App.clearPolygons();
       if (typeof App.clearLabels    === "function") App.clearLabels();
       if (typeof App.clearTextBoxes === "function") App.clearTextBoxes();
-      if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
+      // Unload only: Clear removes map content, not the downloaded streets.
+      if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
@@ -1448,8 +1449,9 @@
         isLoaded: function () {
           return typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
         },
+        // × unloads; the stored copy stays (Layers panel "Delete downloaded streets" removes it).
         clear: function () {
-          if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
+          if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
         }
       },
       {
