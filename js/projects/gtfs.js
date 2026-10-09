@@ -19,6 +19,17 @@
   var _clickPopup   = null;  // maplibregl.Popup for click details
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
 
+  // ---- Stop selection state (docs/gtfs-stop-selection-plan.md Phase 2) ----
+  // The selection is a list of stop_id strings kept SEPARATELY from the loaded
+  // feed (D7): it survives loading another ZIP and a page reload. Everything
+  // else (highlight, counts, export) is derived from it plus the loaded feed.
+  var _selectedStops  = [];                 // ordered stop_id strings
+  var _selectedLookup = Object.create(null); // stop_id -> true
+  var _stopsFC        = null;               // drawn-stops FeatureCollection (location_type 0/blank)
+  var _feedFileName   = "";                 // ZIP name of the feed the list was last used with
+  var _feedStopIdSet  = null;               // lazy Set of every stop_id in stops.txt
+  var SEL_LAYER       = "gtfs-stops-selected";
+
   // ---- Route browser state (Phase 1 of docs/gtfs-route-browser-plan.md) ----
   var _routeIndex    = null;      // result of buildRouteIndex, or null when no shapes
   var _hiddenRoutes  = {};        // routeKey -> true
@@ -450,7 +461,9 @@
     }
 
     _pendingHidden = null; // a fresh upload never inherits a session's hidden sets
+    _feedFileName = file.name || "";
     applyGtfsData(data);
+    changed(); // feed name changed + re-apply highlight/counts; the stop list itself is kept (D8)
     App.setStatus("GTFS loaded: " + data.size + " file(s).");
   }
 
@@ -498,8 +511,12 @@
     _hiddenRoutes = {};
     _hiddenShapes = {};
     _pendingHidden = null;
+    _feedFileName = "";
+    _selectedStops = [];
+    _selectedLookup = Object.create(null);
     removeMapLayers(); // also removes popups
     updateDropdownUI();
+    changed();
     if (isPopupVisible()) {
       renderFileList();
       showSelectPrompt();
@@ -605,6 +622,7 @@
     _routeIndex = null;
     _hiddenRoutes = {};
     _hiddenShapes = {};
+    _feedStopIdSet = null;
 
     var before = firstUserLayer();
 
@@ -670,6 +688,24 @@
       }, before);
       map.setLayoutProperty("gtfs-stops-layer", "visibility",
         _showStops ? "visible" : "none");
+      _stopsFC = stopsFC;
+      // Selected-stop highlight: same source, directly above the stops layer
+      // (added with the same `before`, so it stacks just over it), filled blue
+      // with a white outline, slightly larger than the stop circle (D15).
+      map.addLayer({
+        id:     SEL_LAYER,
+        type:   "circle",
+        source: "gtfs-stops",
+        filter: selectedStopsFilter(),
+        paint: {
+          "circle-radius":       6,
+          "circle-color":        "#2b6cb0",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.5,
+          "circle-opacity":      0.85
+        }
+      }, before);
+      syncHighlightStyle();
     }
 
     wireHoverEvents();
@@ -680,6 +716,7 @@
     if (!map) return;
     removePopups();
     _shapesFC = null;
+    _stopsFC = null;
     // MapLibre does NOT auto-detach layer-bound listeners when a layer is
     // removed; explicitly map.off() everything wireHoverEvents() registered.
     for (var i = 0; i < _layerListeners.length; i++) {
@@ -687,7 +724,7 @@
       map.off(rec.event, rec.layerId, rec.handler);
     }
     _layerListeners = [];
-    [HL_LAYER, HL_CASING, "gtfs-shapes-layer", "gtfs-stops-layer"].forEach(function (id) {
+    [HL_LAYER, HL_CASING, "gtfs-shapes-layer", SEL_LAYER, "gtfs-stops-layer"].forEach(function (id) {
       if (map.getLayer(id)) map.removeLayer(id);
     });
     ["gtfs-shapes", "gtfs-stops"].forEach(function (id) {
@@ -712,6 +749,187 @@
       map.setLayoutProperty("gtfs-stops-layer", "visibility",
         visible ? "visible" : "none");
     }
+    syncHighlightStyle();
+    refreshSelectionBar();
+  }
+
+  // ---- Stop selection: highlight, mutations, API ----
+
+  function selectedStopsFilter() {
+    // Empty list -> a filter that never matches (same trick as the route highlight).
+    if (!_selectedStops.length) return ["==", ["get", "stop_id"], "\u0000none"];
+    return ["in", ["get", "stop_id"], ["literal", _selectedStops.slice()]];
+  }
+
+  // Mirror the stops layer's current visibility and circle-opacity (the Layers
+  // panel sets these directly on the map layer) onto the highlight layer.
+  function syncHighlightStyle() {
+    var map = App.map;
+    if (!map || !map.getLayer(SEL_LAYER) || !map.getLayer("gtfs-stops-layer")) return;
+    map.setLayoutProperty(SEL_LAYER, "visibility",
+      map.getLayoutProperty("gtfs-stops-layer", "visibility") === "none" ? "none" : "visible");
+    var op = map.getPaintProperty("gtfs-stops-layer", "circle-opacity");
+    if (typeof op === "number") map.setPaintProperty(SEL_LAYER, "circle-opacity", op);
+  }
+
+  function refreshSelectionBar() {
+    if (App.boxSelect && typeof App.boxSelect.refreshBar === "function") App.boxSelect.refreshBar();
+  }
+
+  // The ONE place every selection mutation ends up.
+  function changed() {
+    var map = App.map;
+    if (map && map.getLayer(SEL_LAYER)) {
+      map.setFilter(SEL_LAYER, selectedStopsFilter());
+      syncHighlightStyle();
+    }
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    refreshSelectionBar();
+  }
+
+  function cleanIds(ids) {
+    var out = [], seen = Object.create(null);
+    (ids || []).forEach(function (v) {
+      if (v === null || v === undefined) return;
+      var s = String(v).trim();
+      if (!s || seen[s]) return;
+      seen[s] = true; out.push(s);
+    });
+    return out;
+  }
+
+  function stopsRows() {
+    return (_gtfsData && _gtfsData.has("stops.txt")) ? _gtfsData.get("stops.txt").rows : [];
+  }
+
+  // Every stop_id in stops.txt (incl. stations), so "in feed" agrees with the
+  // exported CSV's in_feed column.
+  function feedStopIds() {
+    if (_feedStopIdSet) return _feedStopIdSet;
+    var s = new Set();
+    stopsRows().forEach(function (r) {
+      var id = r && r.stop_id != null ? String(r.stop_id).trim() : "";
+      if (id) s.add(id);
+    });
+    _feedStopIdSet = s;
+    return s;
+  }
+
+  function setSelection(ids) {
+    _selectedStops = cleanIds(ids);
+    _selectedLookup = Object.create(null);
+    _selectedStops.forEach(function (id) { _selectedLookup[id] = true; });
+    changed();
+  }
+
+  // Same Blob + anchor approach as cache.js's private _triggerDownload.
+  function downloadText(text, filename, type) {
+    var url = URL.createObjectURL(new Blob([text], { type: type }));
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function dateStamp() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  App.gtfsStops = {
+    ids: function () { return _selectedStops.slice(); },
+    count: function () {
+      var feed = feedStopIds(), n = 0;
+      if (_gtfsData) _selectedStops.forEach(function (id) { if (feed.has(id)) n++; });
+      return { total: _selectedStops.length, inFeed: n };
+    },
+    has: function (id) { return !!_selectedLookup[String(id)]; },
+    set: function (ids) { setSelection(ids); },
+    add: function (ids) { setSelection(_selectedStops.concat(ids || [])); },
+    remove: function (ids) {
+      var drop = Object.create(null);
+      (ids || []).forEach(function (v) { drop[String(v).trim()] = true; });
+      setSelection(_selectedStops.filter(function (id) { return !drop[id]; }));
+    },
+    clear: function () { setSelection([]); },
+    feedFileName: function () { return _feedFileName; },
+    isAvailable: function () {
+      var map = App.map;
+      if (!_gtfsData || !_stopsFC || !map || !map.getLayer("gtfs-stops-layer")) {
+        return { ok: false, reason: "Load a GTFS feed first" };
+      }
+      if (map.getLayoutProperty("gtfs-stops-layer", "visibility") === "none") {
+        return { ok: false, reason: "The GTFS stops layer is hidden" };
+      }
+      return { ok: true, reason: "" };
+    },
+    // Drawn stops only (what a box select can hit).
+    candidates: function () {
+      if (!_stopsFC) return [];
+      return _stopsFC.features.map(function (f) {
+        return { key: String(f.properties.stop_id), coord: f.geometry.coordinates };
+      });
+    },
+    zoomTo: function () {
+      var map = App.map;
+      if (!map || !_stopsFC) return;
+      var w = 180, s = 90, e = -180, n = -90, any = false;
+      _stopsFC.features.forEach(function (f) {
+        if (!_selectedLookup[String(f.properties.stop_id)]) return;
+        var c = f.geometry.coordinates; any = true;
+        if (c[0] < w) w = c[0]; if (c[0] > e) e = c[0];
+        if (c[1] < s) s = c[1]; if (c[1] > n) n = c[1];
+      });
+      if (any) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 17 });
+      else App.setStatus("No selected stops are in this feed.");
+    },
+    exportCSV: function () {
+      if (!_selectedStops.length) { App.setStatus("No GTFS stops selected"); return; }
+      var csv = App.gtfsStopList.stopListCSV(_selectedStops, stopsRows(), _feedFileName);
+      var base = (_feedFileName || "feed").replace(/\.zip$/i, "").replace(/[^\w.\-]+/g, "_");
+      downloadText(csv, "gtfs-stops-selected-" + base + "-" + dateStamp() + ".csv", "text/csv");
+      var c = App.gtfsStops.count();
+      App.setStatus("Exported " + c.total + " selected GTFS stops" +
+        (_gtfsData && c.total > c.inFeed ? " (" + (c.total - c.inFeed) + " not in this feed)" : ""));
+    },
+    importFromFile: function (file) {
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var p = App.gtfsStopList.parseStopIdList(String(reader.result || ""));
+        setSelection(p.ids);
+        var parts = ["Selected " + p.ids.length + (p.ids.length === 1 ? " stop" : " stops")];
+        if (_gtfsData) {
+          var missing = App.gtfsStops.count();
+          missing = missing.total - missing.inFeed;
+          if (missing) parts.push(missing + " not in this feed");
+        }
+        if (p.duplicates) parts.push(p.duplicates + (p.duplicates === 1 ? " duplicate" : " duplicates") + " ignored");
+        App.setStatus(parts.join(" · "));
+      };
+      reader.onerror = function () { App.setStatus("Could not read the stop list file."); };
+      reader.readAsText(file);
+    }
+  };
+
+  // Box-select target (docs/gtfs-stop-selection-plan.md Phase 3). box-select.js
+  // loads earlier, so the registry already exists here.
+  if (App.boxSelect && typeof App.boxSelect.registerTarget === "function") {
+    App.boxSelect.registerTarget({
+      id: "gtfs-stops",
+      label: "GTFS stops",
+      noun: ["stop", "stops"],
+      statusNoun: ["GTFS stop", "GTFS stops"],
+      isAvailable: App.gtfsStops.isAvailable,
+      candidates: App.gtfsStops.candidates,
+      getKeys: App.gtfsStops.ids,
+      setKeys: App.gtfsStops.set,
+      countNote: function () {
+        var c = App.gtfsStops.count();
+        return _gtfsData && c.total > c.inFeed ? (c.total - c.inFeed) + " not in this feed" : "";
+      }
+    });
   }
 
   // ---- GTFS → Feature copy helpers ----
@@ -893,6 +1111,13 @@
             options.push({
               label: multiple ? "Copy As Point: " + stopName(props) : "Copy As Point",
               action: function () { copyStopToPoint(props, lngLat); }
+            });
+            var sid = String(props.stop_id);
+            var sel = App.gtfsStops.has(sid);
+            options.push({
+              label: (sel ? "Remove from stop selection" : "Add to stop selection") +
+                     (multiple ? ": " + stopName(props) : ""),
+              action: function () { if (sel) App.gtfsStops.remove([sid]); else App.gtfsStops.add([sid]); }
             });
           });
         } else {
@@ -1500,10 +1725,28 @@
 
   if (App.cache && typeof App.cache.registerModule === "function") {
     App.cache.registerModule("gtfs-browse", {
-      collect: function () { return _routeIndex ? App.gtfsHiddenState() : {}; },
+      collect: function () {
+        // Stops + feedFile are collected whether or not a feed is loaded (D7).
+        var out = _routeIndex ? App.gtfsHiddenState() : {};
+        out.stops = _selectedStops.slice();
+        out.feedFile = _feedFileName;
+        return out;
+      },
       apply: function (data) {
         // The feed itself is restored later (restoreGTFSFromData consumes this).
         if (data && (data.routes || data.shapes)) _pendingHidden = { routes: data.routes || [], shapes: data.shapes || [] };
+        // The stop list doesn't depend on a feed being present: restore now.
+        // (Not via changed(): this runs inside cache.restore; just redraw.)
+        if (data && Array.isArray(data.stops)) {
+          _selectedStops = cleanIds(data.stops);
+          _selectedLookup = Object.create(null);
+          _selectedStops.forEach(function (id) { _selectedLookup[id] = true; });
+        }
+        if (data && typeof data.feedFile === "string") _feedFileName = data.feedFile;
+        var map = App.map;
+        if (map && map.getLayer(SEL_LAYER)) map.setFilter(SEL_LAYER, selectedStopsFilter());
+        if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+        refreshSelectionBar();
       }
     });
   }
