@@ -98,10 +98,15 @@
     if (map.getSource("lbar-sites"))      map.removeSource("lbar-sites");
   }
 
+  // Set by Clear / Reset Session. Uploaded LBAR sites are input data and survive
+  // a clear, so without this flag the next update() would redraw the layer.
+  // Cleared by the next ratings run or by the user toggling the layer checkbox.
+  var _lbarCleared = false;
+
   function refreshLbarLayerVisibility() {
     var cb = document.getElementById("ftaToggleLbarLayer");
     var on = cb && cb.checked;
-    if (!on || !LBAR_SITES || LBAR_SITES.length === 0) { removeLbarLayer(); return; }
+    if (_lbarCleared || !on || !LBAR_SITES || LBAR_SITES.length === 0) { removeLbarLayer(); return; }
     ensureLbarLayer();
   }
 
@@ -391,6 +396,8 @@
 
     var runBtn   = document.getElementById("ftaRun");
     if (runBtn) runBtn.disabled = true;
+    _lbarCleared = false;
+    refreshLbarLayerVisibility();
 
     setPill("bpPopPill",  "N/A", "na");
     setPill("bpEmpPill",  "N/A", "na");
@@ -634,7 +641,10 @@
 
     // LBAR layer toggle
     var toggleLbar = document.getElementById("ftaToggleLbarLayer");
-    if (toggleLbar) toggleLbar.addEventListener("change", refreshLbarLayerVisibility);
+    if (toggleLbar) toggleLbar.addEventListener("change", function () {
+      _lbarCleared = false;
+      refreshLbarLayerVisibility();
+    });
 
     var ratingsSettings = document.querySelector('.fta-tab-content[data-tab="ratings"] .rf-settings-col');
     if (ratingsSettings) ratingsSettings.addEventListener("change", function () { renderInputs(); });
@@ -914,6 +924,30 @@
     // State persists in closure
   }
 
+  // Removes the map output and ratings. Uploaded CRE/ESS/LBAR data is input and is kept.
+  function clearAll() {
+    removeLbarLayer();
+    _lbarCleared = true;
+    _lastRatings = null;
+    if (!isPopupVisible()) return;
+    ["bpPopPill", "bpEmpPill", "bpLbarPill", "bpCrePill", "bpEssPill"].forEach(function (id) {
+      setPill(id, "N/A", "na");
+    });
+    var setVal = function (id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; };
+    ["bpPopValue", "bpEmpValue", "bpLbarValue", "bpCreValue", "bpEssValue"].forEach(function (id) {
+      setVal(id, "\u2014");
+    });
+    setVal("bpLbarNote", "Requires LBAR inventory + counties");
+    setVal("bpCreNote",  "Requires CRE upload");
+    setVal("bpEssNote",  "Requires ESS upload + points");
+    var statusEl = document.getElementById("ftaStatus");
+    if (statusEl) statusEl.style.display = "none";
+    var exportBtn = document.getElementById("ftaExportCSV");
+    if (exportBtn) exportBtn.disabled = true;
+    renderInputs(false);
+    if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
+  }
+
   async function update(core) {
     refreshLbarLayerVisibility();
     if (isPopupVisible()) {
@@ -960,7 +994,8 @@
     init:    function (core) { init(core); },
     onOpen:  function (core) { onOpen(core); },
     onClose: function (core) { onClose(core); },
-    update:  async function (core) { await update(core); }
+    update:  async function (core) { await update(core); },
+    clear:   clearAll
   });
 
   // Register with session cache

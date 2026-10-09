@@ -148,6 +148,29 @@ function check(name, pass, detail) {
     check("flatten off: outline matches fill (nothing flattened yet)",
       unflattened.line === unflattened.fill, JSON.stringify(unflattened));
 
+    // Reachable-streets proof layer starts hidden after a run; a user's choice
+    // in the Layers panel then survives a re-run (setData keeps the layout).
+    const segVis = () => page.evaluate(() => App.map.getLayoutProperty("walkshed-seg", "visibility"));
+    check("reachable streets layer is hidden by default after a run",
+      (await segVis()) === "none", String(await segVis()));
+    check("walkshed fill/outline layers stay visible",
+      await page.evaluate(() => ["walkshed-fill", "walkshed-line"].every(
+        (id) => App.map.getLayoutProperty(id, "visibility") !== "none")));
+    await page.evaluate(() => App.map.setLayoutProperty("walkshed-seg", "visibility", "visible"));
+    // Inputs collapse after a run, so click through the DOM; count setData calls
+    // to know the re-run has rendered.
+    await page.evaluate(() => {
+      const src = App.map.getSource("walkshed-src");
+      window.__wsSetData = 0;
+      const orig = src.setData.bind(src);
+      src.setData = (d) => { window.__wsSetData++; return orig(d); };
+      document.getElementById("wsComputeBtn").click();
+    });
+    await page.waitForFunction("window.__wsSetData > 0", { timeout: 20000 });
+    check("a re-run keeps the user's choice to show reachable streets",
+      (await segVis()) === "visible", String(await segVis()));
+    await page.evaluate(() => App.map.setLayoutProperty("walkshed-seg", "visibility", "none"));
+
     const normalOutline = await page.evaluate(() => ({
       width: App.map.getPaintProperty("walkshed-line", "line-width"),
       opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
@@ -231,6 +254,48 @@ function check(name, pass, detail) {
     check("flatten off again: outline paint returns to the normal style",
       restoredOutline.width === normalOutline.width && restoredOutline.opacity === normalOutline.opacity,
       JSON.stringify(restoredOutline));
+
+    // ---- Clear results: layers go, study-area buffer falls back to a circle ----
+    await page.evaluate(() => {
+      const p = App.points[0];
+      p.properties._bufferRadius = 0.5;
+      p.properties.attributes = Object.assign({}, p.properties.attributes, { serviceAreaType: "walkshed" });
+      App.refreshBuffers();
+    });
+    const bufBefore = await page.evaluate(() => ({
+      walkshed: !!(App.buffers[0] && App.buffers[0].properties.walkshed)
+    }));
+    check("study-area point's buffer is the walkshed polygon before clearing",
+      bufBefore.walkshed, JSON.stringify(bufBefore));
+    check("Clear results button is enabled when results exist",
+      await page.evaluate(() => !document.getElementById("wsClearResults").disabled));
+    // A finished run collapses the inputs (and the buttons in them); expand to reach the button.
+    if (!(await page.locator("#wsClearResults").isVisible())) {
+      await page.locator(".module-inputs-header").first().click();
+    }
+    await page.locator("#wsClearResults").click();
+    await page.waitForFunction(
+      () => !(App.buffers[0] && App.buffers[0].properties.walkshed),
+      { timeout: 5000 }
+    );
+    const cleared = await page.evaluate(() => {
+      const ring = App.buffers[0].geometry.coordinates[0];
+      const expected = turf.circle(turf.point(App.points[0].geometry.coordinates), 0.5, { units: "miles", steps: 64 });
+      return {
+        layers: ["walkshed-fill", "walkshed-line", "walkshed-seg"].map((id) => !!App.map.getLayer(id)),
+        fillFeatures: (App.map.getSource("walkshed-src") ? App.map.getSource("walkshed-src")._data.features.length : 0),
+        verts: ring.length,
+        expectedVerts: expected.geometry.coordinates[0].length,
+        flagKept: App.points[0].properties.attributes.serviceAreaType === "walkshed",
+        btnDisabled: document.getElementById("wsClearResults").disabled
+      };
+    });
+    check("Clear results removes all three walkshed layers",
+      cleared.layers.every((x) => !x) || cleared.fillFeatures === 0, JSON.stringify(cleared));
+    check("study-area buffer falls back to a circle (turf default vertex count)",
+      cleared.verts === cleared.expectedVerts, JSON.stringify(cleared));
+    check("study-area flag is kept after clearing", cleared.flagKept, JSON.stringify(cleared));
+    check("Clear results button is disabled once results are gone", cleared.btnDisabled, JSON.stringify(cleared));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {

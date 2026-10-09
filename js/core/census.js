@@ -49,8 +49,12 @@
 
   function clearCensusOverlay() {
     var map = App.map;
-    if (!map || !map.getSource("census-geos")) return;
-    map.getSource("census-geos").setData({ type: "FeatureCollection", features: [] });
+    if (!map) return;
+    // Remove rather than empty, so the Layers panel row disappears too;
+    // the next draw re-creates the source and both layers.
+    if (map.getLayer("census-geos-fill")) map.removeLayer("census-geos-fill");
+    if (map.getLayer("census-geos-line")) map.removeLayer("census-geos-line");
+    if (map.getSource("census-geos")) map.removeSource("census-geos");
   }
 
   // --- Paginated TIGERweb query (shared by census.js and lodes.js) ---

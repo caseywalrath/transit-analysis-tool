@@ -55,9 +55,15 @@
     { id: "walk-network-line",    label: "Walk network",         layers: [{ id: "walk-network-line", op: "line-opacity" },
       { id: "walk-network-excluded-line", op: "line-opacity" },
       { id: "network-joins-point", op: "circle-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      // Remove keeps the downloaded copy so it can come back without a new
+      // download; deleting it is a separate, confirmed action.
+      clear: callIf("unloadRoadNetwork"),
+      extraActions: [{ label: "Delete downloaded streets", status: "Deleted downloaded streets",
+        confirm: "Delete the downloaded streets from this browser? They will need to be downloaded again.",
+        run: callIf("clearRoadNetwork") }] },
+    // Only the overlay — the street network it colors stays loaded.
     { id: "sidewalk-coverage-line", label: "Sidewalk coverage",  layers: [{ id: "sidewalk-coverage-line", op: "line-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      clear: callIf("removeSidewalkCoverageLayer") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
       clear: callIf("clearGTFS"), styleKey: "gtfs-shapes" },
     { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" }],
@@ -74,7 +80,7 @@
       layers: [{ id: "bas-choropleth-fill", op: "fill-opacity" }, { id: "bas-choropleth-line", op: "line-opacity" }] },
     { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity", styleKey: "tpi",
       layers: [{ id: "tpi-choropleth-fill", op: "fill-opacity" }, { id: "tpi-choropleth-line", op: "line-opacity" }] },
-    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring",
+    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring", undoRestores: true,
       layers: [{ id: "corridor-scoring-routes-layer", op: "line-opacity" }] },
     { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
@@ -90,6 +96,7 @@
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
     { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
+      clear: function () { if (typeof App.clearWalkshedStreets === "function") App.clearWalkshedStreets(); },
       layers: [{ id: "walkshed-seg", op: "line-opacity" }] },
     { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi", styleKey: "title-vi",
       layers: [{ id: "tvi-impacted-fill", op: "fill-opacity" },
@@ -100,10 +107,53 @@
       layers: [{ id: "lbar-sites-layer", op: "circle-opacity" }] },
     // Not a module of its own — census.js renders this for whichever analysis
     // last fetched geographies, so it gets no moduleId.
-    { id: "census-geos-fill", label: "Census geographies",
+    // Removing it clears Feature Area Analysis, whose map output it is; leaving
+    // that module's legend up with no map behind it would mislead.
+    { id: "census-geos-fill", label: "Census geographies", clearModuleId: "buffer-summary",
       layers: [{ id: "census-geos-fill", op: "fill-opacity" },
                { id: "census-geos-line", op: "line-opacity" }] }
   ];
+
+  // The function Remove layer runs for an entry, or null when it has none.
+  // Analysis rows default to their module's clear hook; resolved at menu time
+  // because modules register after this file loads. An explicit `clear: null`
+  // opts a row out (its own street-only clear is wired separately).
+  function entryClearFn(entry) {
+    if (typeof entry.clear === "function") return entry.clear;
+    if (entry.clear === null) return null;
+    var mid = entry.clearModuleId || entry.moduleId;
+    if (!mid || typeof App.moduleHasClear !== "function" || !App.moduleHasClear(mid)) return null;
+    return function () { App.clearModule(mid); };
+  }
+
+  // Shared path for every row action that takes something off the map (Remove
+  // layer and an entry's extraActions). Order matters: the snapshot must
+  // precede the change, modules must see the change before the save so the
+  // saved state is post-removal, and the panel re-renders last.
+  function applyEntryAction(fn, status) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    fn();
+    var done = typeof App.notifyProject === "function" ? App.notifyProject() : null;
+    if (typeof App.cache !== "undefined" && App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
+    render();
+    if (typeof App.setStatus === "function") App.setStatus(status);
+    return done;
+  }
+
+  function removeEntry(entry) {
+    var fn = entryClearFn(entry);
+    if (!fn) return;
+    // Only claim Undo restores the layer where the module's saved state redraws it.
+    return applyEntryAction(fn, "Removed " + entry.label + (entry.undoRestores ? " — Undo to restore" : ""));
+  }
+
+  // An entry's extra ⋯ menu action: { label, run, status?, confirm? }. A
+  // `confirm` message gates destructive actions behind window.confirm().
+  function runExtraAction(entry, action) {
+    if (action.confirm && !window.confirm(action.confirm)) return;
+    return applyEntryAction(action.run, action.status || action.label);
+  }
 
   // Per-session band ordering (panel order = map order, top of list = top of map).
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
@@ -145,7 +195,9 @@
     { type: "buffer", label: "Buffers", controls: [
         { label: "Fill",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
         { label: "Outline", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
-        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Dissolve overlaps", kind: "toggle", key: "bufferMerge", def: false,
+          title: "Display only. Draws overlapping buffers as one shape; analysis still uses each feature's own buffer." }
       ] }
   ];
 
@@ -757,20 +809,23 @@
           if (typeof App.openModulePopup === "function") App.openModulePopup(entry.moduleId);
         } });
       }
-      if (typeof entry.clear === "function") {
-        opts.push({ label: "Remove layer", action: function () {
-          entry.clear();
-          if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
-          render();
-        } });
+      if (entryClearFn(entry)) {
+        opts.push({ label: "Remove layer", action: function () { removeEntry(entry); } });
       }
+      (entry.extraActions || []).forEach(function (act) {
+        opts.push({ label: act.label, action: function () { runExtraAction(entry, act); } });
+      });
       return opts;
     }
 
     menu.addEventListener("click", function (e) {
       e.stopPropagation();
       if (typeof App.showContextMenu === "function") {
-        App.showContextMenu(e.clientX, e.clientY, layerMenuOptions());
+        // Keyboard activation (detail 0) has no pointer position; anchor to the button.
+        var b = menu.getBoundingClientRect();
+        var x = e.detail === 0 ? b.left : e.clientX;
+        var y = e.detail === 0 ? b.bottom : e.clientY;
+        App.showContextMenu(x, y, layerMenuOptions());
       }
     });
     row.appendChild(menu);
@@ -964,6 +1019,10 @@
       }
       opts.push({ label: "Edit attributes…", action: function () {
         if (typeof App.openAttrPopup === "function") App.openAttrPopup(it.type, it.index, it.feature);
+      } });
+      opts.push({ label: "Delete", action: function () {
+        if (typeof App.deleteFeature === "function") App.deleteFeature(it.type, it.index);
+        render();
       } });
       if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, opts);
     });
@@ -1465,6 +1524,7 @@
       }
     });
     applyTypeStyle(t.type);
+    if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
 
@@ -1563,6 +1623,22 @@
           });
           controlWrap.appendChild(clearColorBtn);
         }
+      } else if (ctl.kind === "toggle") {
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!App.featureSettings[ctl.key];
+        cb.setAttribute("aria-label", ctl.label);
+        if (ctl.title) row.title = ctl.title;
+        lab.classList.add("lp-style-toggle-label");
+        lab.addEventListener("click", function (e) { e.stopPropagation(); cb.click(); });
+        cb.addEventListener("click", function (e) { e.stopPropagation(); });
+        cb.addEventListener("change", function () {
+          App.featureSettings[ctl.key] = cb.checked;
+          if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
+          refreshPreview();
+          if (App.cache && typeof App.cache.save === "function") App.cache.save();
+        });
+        controlWrap.appendChild(cb);
       } else {
         var scrubber = App.buildScrubber({
           min: ctl.min, max: ctl.max, step: ctl.step, unit: ctl.unit,

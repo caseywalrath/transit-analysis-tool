@@ -130,6 +130,60 @@
     }
   }
 
+  // Bounding box [w, s, e, n] from a stored id ("bbox:w,s,e,n", rounded to 3
+  // decimals by road-network.js extentCacheId), shrunk by the rounding error so
+  // it is never larger than the true extent. null for file imports, which have
+  // no known extent.
+  var ID_ROUND = 0.0005;
+  function _idBbox(id) {
+    if (typeof id !== "string" || id.indexOf("bbox:") !== 0) return null;
+    var p = id.slice(5).split(",").map(Number);
+    if (p.length !== 4 || p.some(function (v) { return !isFinite(v); })) return null;
+    return [p[0] + ID_ROUND, p[1] + ID_ROUND, p[2] - ID_ROUND, p[3] - ID_ROUND];
+  }
+
+  function _bboxContains(outer, inner) {
+    return outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3];
+  }
+
+  function _extentBbox(extent) {
+    if (Array.isArray(extent)) return extent;
+    if (extent && typeof turf !== "undefined") { try { return turf.bbox(extent); } catch (e) { return null; } }
+    return null;
+  }
+
+  // The newest stored network whose download extent contains `extent` (a
+  // [w, s, e, n] bbox or a GeoJSON Feature), or null. Candidates are chosen from
+  // the keys alone so only the winner's geojson is ever deserialized; its stored
+  // extent is then checked exactly. Stored extents are axis-aligned rectangles,
+  // so bbox containment is exact containment.
+  async function findCovering(extent) {
+    var need = _extentBbox(extent);
+    if (!supported() || !need) return null;
+    try {
+      var rec = await _withStore("readonly", function (store) {
+        var found = null;
+        var keysReq = store.index("savedAt").getAllKeys(); // oldest -> newest
+        keysReq.onsuccess = function () {
+          var ids = keysReq.result || [];
+          for (var i = ids.length - 1; i >= 0; i--) {
+            var bb = _idBbox(ids[i]);
+            if (!bb || !_bboxContains(bb, need)) continue;
+            var getReq = store.get(ids[i]);
+            getReq.onsuccess = function () { found = getReq.result || null; };
+            return;
+          }
+        };
+        return function () { return found; };
+      });
+      if (!rec || !rec.extent) return null;
+      var exact = _extentBbox(rec.extent);
+      return exact && _bboxContains(exact, need) ? rec : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function clear() {
     if (!supported()) return false;
     try {
@@ -145,6 +199,7 @@
     supported: supported,
     save: save,
     latest: latest,
+    findCovering: findCovering,
     clear: clear,
     MAX_ENTRIES: MAX_ENTRIES
   };

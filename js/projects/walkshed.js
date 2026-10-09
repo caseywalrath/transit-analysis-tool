@@ -381,8 +381,10 @@
     var segRow = document.getElementById("wsLegendRowSeg");
     if (segRow) {
       var map = App.map;
-      var segLayerVisible = !map || !map.getLayer(WS_SEG_LAYER) ||
-        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none";
+      // A removed layer hides the row too (clearWalkshedStreets); only a missing
+      // map keeps it shown.
+      var segLayerVisible = !map || (!!map.getLayer(WS_SEG_LAYER) &&
+        map.getLayoutProperty(WS_SEG_LAYER, "visibility") !== "none");
       segRow.style.display = segLayerVisible ? "" : "none";
     }
   }
@@ -527,7 +529,11 @@
       map.addSource(WS_SEG_SRC, { type: "geojson", data: segFc });
       map.addLayer({
         id: WS_SEG_LAYER, type: "line", source: WS_SEG_SRC,
-        layout: { "line-cap": "round", "line-join": "round" },
+        // Hidden on creation: the proof-of-reach streets clutter the map by
+        // default. Only the creating render sets it, so a later re-run's setData()
+        // keeps whatever the user chose in the Layers panel; clearing the results
+        // removes the layer, so the next run starts hidden again.
+        layout: { "line-cap": "round", "line-join": "round", "visibility": "none" },
         paint: { "line-color": segColor(), "line-width": 1.5, "line-opacity": 0.85 }
       });
     } else {
@@ -540,6 +546,16 @@
     if (!map) return;
     [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
+  }
+
+  // Removes only the reachable-streets overlay, leaving the polygons and
+  // _lastEntries alone; a re-run recreates the layer hidden.
+  function clearWalkshedStreets() {
+    var map = App.map;
+    if (!map) return;
+    if (map.getLayer(WS_SEG_LAYER)) map.removeLayer(WS_SEG_LAYER);
+    if (map.getSource(WS_SEG_SRC)) map.removeSource(WS_SEG_SRC);
+    fillWalkshedLegend(activeBudgets());
   }
 
   // ---- Status / stale / empty (standardized helper) ----
@@ -754,7 +770,9 @@
 
   // ---- Run (compute for target set) ----
 
-  function runWalkshed() {
+  // `afterRestore` marks the re-run after a stored-network restore, so a
+  // restore that still doesn't pass the coverage check can't loop.
+  function runWalkshed(afterRestore) {
     if (_running) return;
 
     readSettingsFromInputs();
@@ -763,13 +781,35 @@
 
     // Missing or insufficient street coverage is an offer to download, not a
     // dead end — checkNetworkCoverage has already explained and armed the button.
+    // A stored network covering the area (e.g. one only removed from the map)
+    // is tried first, so no download is offered when none is needed.
     if (!checkNetworkCoverage(targets)) {
+      if (afterRestore !== true && _pendingDownloadExtent && typeof App.restoreNetworkCovering === "function") {
+        var extent = _pendingDownloadExtent;
+        _running = true;
+        setStatus("Loading stored streets\u2026", "running");
+        App.restoreNetworkCovering(extent).then(function (ok) {
+          _running = false;
+          if (ok) {
+            if (typeof App.notifyProject === "function") App.notifyProject();
+            updateComputeAvailability();
+            runWalkshed(true);
+          } else {
+            setStatus("Street network doesn't cover these points — download to continue.", "error");
+          }
+        }, function () {
+          _running = false;
+          setStatus("Street network doesn't cover these points — download to continue.", "error");
+        });
+        return;
+      }
       setStatus("Street network doesn't cover these points — download to continue.", "error");
       return;
     }
 
     _running = true;
     setStatus("Calculating walksheds…", "running");
+    var sigBefore = walkshedSignature();
 
     // Yield once so the "Calculating…" pill paints before the (blocking) flood.
     setTimeout(function () {
@@ -807,6 +847,22 @@
           renderInputs(ok > 0);
           if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode(ok > 0 ? "results" : "setup");
         }
+
+        // A re-run that changed a flagged point's walkshed changes its study area:
+        // rebuild buffers and broadcast so dependents re-check their signatures.
+        // Unflagged-only runs skip this, so they cause no extra notify pass.
+        if (walkshedSignature() !== sigBefore) {
+          if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+          var doneMsg = "Calculated " + ok + " walkshed(s)" + (bad ? "; " + bad + " skipped." : ".");
+          // notifyProject awaits each module's update() in turn, so ours runs after
+          // this tick; wait for it, then undo its stale mark — our results are fresh.
+          Promise.resolve(typeof App.notifyProject === "function" ? App.notifyProject() : null)
+            .then(function () {
+              if (_running || entries !== _lastEntries) return; // superseded
+              _stale = false;
+              if (isPopupVisible()) { setExportEnabled(ok > 0); setStatus(doneMsg, "done"); }
+            });
+        }
       } finally {
         _running = false;
       }
@@ -829,8 +885,9 @@
     if (typeof App.refreshBuffers === "function") App.refreshBuffers();
     if (App.cache && App.cache.save) App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-    // Broadcast so downstream study-area consumers (Buffer-Area Summary, TPI, …) go
-    // stale against the new walkshed geometry.
+    // Broadcast so downstream study-area consumers (Feature Area Analysis, TPI, …)
+    // re-check their run signature: the new serviceAreaType flag changes it, and
+    // App.walkshedSignature() covers later re-runs and Clear.
     if (typeof App.notifyProject === "function") App.notifyProject();
     // Our own walksheds did not change — re-assert good state after the broadcast
     // (notifyProject's update() pass would otherwise false-positive us into "stale").
@@ -864,7 +921,13 @@
     _triggerDownload(JSON.stringify(fc, null, 2), "application/geo+json", "walkshed-" + _dateStamp() + ".geojson");
   }
 
+  function updateClearResultsButton() {
+    var b = document.getElementById("wsClearResults");
+    if (b) b.disabled = !_lastEntries.length;
+  }
+
   function setExportEnabled(on) {
+    updateClearResultsButton();
     var b = document.getElementById("wsExportGeoJSON");
     if (b) b.disabled = !on;
     var u = document.getElementById("wsUseStudyArea");
@@ -917,6 +980,7 @@
       if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
     }
     syncExcludedWaysLine();
+    syncEditStreetsButton();
     updateStudyAreaButtonLabel();
   }
 
@@ -929,6 +993,32 @@
     var ids = (App.networkSettings && App.networkSettings.excludedWayIds) || [];
     countEl.textContent = ids.length;
     if (clearBtn) clearBtn.style.display = ids.length ? "" : "none";
+  }
+
+  // Reflects App.isWayExclusionMode(); the mode itself lives in network-connectors.js
+  // and can be switched off from elsewhere (draw tool, network cleared), hence the event.
+  function syncEditStreetsButton() {
+    var btn = document.getElementById("wsEditStreets");
+    if (!btn) return;
+    var on = typeof App.isWayExclusionMode === "function" && App.isWayExclusionMode();
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = on ? "Done editing streets" : "Edit streets";
+  }
+
+  function onEditStreetsClick() {
+    if (typeof App.setWayExclusionMode !== "function") return;
+    var turningOn = !App.isWayExclusionMode();
+    if (turningOn && App.drawMode) {
+      // Not auto-exited: that would silently drop an in-progress line/route/polygon.
+      App.setStatus("Finish or deselect the active draw tool before editing streets.");
+      return;
+    }
+    if (turningOn && !(typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded())) {
+      App.setStatus("Download streets for this area first — there is no walk network to edit yet.");
+      return;
+    }
+    App.setWayExclusionMode(turningOn);
+    if (turningOn) App.setStatus("Edit streets: click a street on the Walk network layer to exclude or restore it.");
   }
 
   function clearExcludedWays() {
@@ -987,6 +1077,13 @@
     var computeBtn = document.getElementById("wsComputeBtn");
     if (computeBtn) computeBtn.addEventListener("click", runWalkshed);
 
+    var clearResultsBtn = document.getElementById("wsClearResults");
+    if (clearResultsBtn) clearResultsBtn.addEventListener("click", function () {
+      if (App.undo && !App.undo.isRestoring()) App.undo.push();
+      clearAll();
+    });
+    updateClearResultsButton();
+
     var dlBtn = document.getElementById("wsDownloadBtn");
     if (dlBtn) dlBtn.addEventListener("click", downloadNetworkForPendingExtent);
 
@@ -1011,6 +1108,10 @@
 
     var clearExcludedBtn = document.getElementById("wsClearExcludedWays");
     if (clearExcludedBtn) clearExcludedBtn.addEventListener("click", clearExcludedWays);
+
+    var editStreetsBtn = document.getElementById("wsEditStreets");
+    if (editStreetsBtn) editStreetsBtn.addEventListener("click", onEditStreetsClick);
+    document.addEventListener("wayexclusionmodechange", syncEditStreetsButton);
   }
 
   function onOpen(core) {
@@ -1034,7 +1135,10 @@
     }
   }
 
-  function onClose(core) { /* state persists in closure */ }
+  function onClose(core) {
+    // Otherwise street clicks would stay live with no visible control to turn them off.
+    if (typeof App.setWayExclusionMode === "function") App.setWayExclusionMode(false);
+  }
 
   // Calculate stays enabled with no network loaded — pressing it is how the user
   // gets offered the scoped download.
@@ -1059,6 +1163,10 @@
       setExportEnabled(false);
       showEmpty();
     }
+    updateClearResultsButton();
+    // Study-area points fall back to circles; other modules must see the change.
+    if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   async function update(core) {
@@ -1067,6 +1175,7 @@
       clearWalkshedLayers();
       if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("ws-legend");
       _lastEntries = [];
+      updateClearResultsButton();
     }
     if (!isPopupVisible()) return;
     buildPointChecklist();
@@ -1189,6 +1298,26 @@
 
   // ---- Register ----
 
+  // Short string that changes whenever a walkshed-flagged point's study-area
+  // geometry would change: per flagged point, the settings key of the cached
+  // result it would use (key embeds coords, budgets, speed, max edge, network
+  // epoch and crossing penalties), or "-" when it has no valid result and falls
+  // back to a circle. Folded into App.featureGeomSignature only when some point
+  // is flagged (analysis-checklist.js).
+  function walkshedSignature() {
+    return (App.points || []).filter(function (f) {
+      var a = f.properties && f.properties.attributes;
+      return !!(a && a.serviceAreaType === "walkshed");
+    }).map(function (pf) {
+      var id = pf.properties.pointIdx;
+      var entry = _walkshedCache.get(id);
+      var valid = !!(entry && entry.polygon && entry.settingsKey === settingsKeyFor(pf));
+      return id + "=" + (valid ? entry.settingsKey : "-");
+    }).join(";");
+  }
+
+  App.walkshedSignature = walkshedSignature;
+  App.clearWalkshedStreets = clearWalkshedStreets;
   App.getPointWalkshed = getPointWalkshed;
   App.ensurePointWalksheds = ensurePointWalksheds;
   // Drop cached walksheds for points that no longer exist (e.g. removed by a

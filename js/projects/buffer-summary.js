@@ -202,6 +202,9 @@
       }).join("|"));
     });
     parts.push("epoch:" + (App.roadNetworkEpoch ? App.roadNetworkEpoch() : 0));
+    // Same walkshed fold as App.featureGeomSignature (analysis-checklist.js):
+    // only when a point is flagged, so non-walkshed signatures are unchanged.
+    if (App.hasWalkshedPoints && App.hasWalkshedPoints()) parts.push("ws:" + App.walkshedSignature());
     return parts.join("#");
   }
 

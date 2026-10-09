@@ -635,6 +635,8 @@ button { cursor: pointer; }
 .lp-style-control .fp-scrub-btn { width: 16px; height: 16px; }
 .lp-style-control .fp-scrub-input { width: 30px; }
 .lp-style-row.lp-inherited .fp-scrub-input { color: var(--muted); font-weight: var(--weight-medium); }
+.lp-style-control input[type="checkbox"] { margin: 0; cursor: pointer; }
+.lp-style-toggle-label { cursor: pointer; }
 .lp-style-clear {
   background: transparent;
   border: none;

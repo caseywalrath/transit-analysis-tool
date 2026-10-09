@@ -961,7 +961,9 @@
 
   // ---- Orchestration ----
 
-  async function runTravelshed() {
+  // `afterRestore` marks the re-run after a stored-network restore, so a
+  // restore that still doesn't pass the coverage check can't loop.
+  async function runTravelshed(afterRestore) {
     if (_running) return;
 
     readSettingsFromInputs();
@@ -992,12 +994,21 @@
     _pendingDownloadExtent = requiredExtent;
 
     var netLoaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
+    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
+    // Before offering a download, look for a stored network that covers this
+    // area (e.g. one the user only removed from the map).
+    if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
+        (!netLoaded || (downloadedExtent && !turf.booleanContains(downloadedExtent, requiredExtent)))) {
+      if (await App.restoreNetworkCovering(requiredExtent)) {
+        if (typeof App.notifyProject === "function") App.notifyProject();
+        return runTravelshed(true);
+      }
+    }
     if (!netLoaded) {
       setCoverageWarn("No street network loaded.");
       showDownloadBtn(true);
       return;
     }
-    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
     if (downloadedExtent === null) {
       // File-imported network — extent unknown. Soft warning; proceed anyway.
       setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");

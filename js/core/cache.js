@@ -152,7 +152,8 @@
       polygonLineOpacity: (App.featureSettings && App.featureSettings.polygonLineOpacity != null) ? App.featureSettings.polygonLineOpacity : 80,
       bufferFillOpacity:  (App.featureSettings && App.featureSettings.bufferFillOpacity  != null) ? App.featureSettings.bufferFillOpacity  : 8,
       bufferLineOpacity:  (App.featureSettings && App.featureSettings.bufferLineOpacity  != null) ? App.featureSettings.bufferLineOpacity  : 40,
-      featureSortMode:   _fss ? _fss.mode       : "name",
+      bufferMerge:        !!(App.featureSettings && App.featureSettings.bufferMerge),
+      featureSortMode:  _fss ? _fss.mode       : "name",
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
       featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
@@ -306,6 +307,9 @@
         fs.bufferFillOpacity = 8;
         fs.bufferLineOpacity = 40;
       }
+
+      // Absent on sessions saved before the option existed → off.
+      fs.bufferMerge = !!state.bufferMerge;
     }
     if (typeof App.syncBufferInputs === "function") App.syncBufferInputs();
 
@@ -510,6 +514,17 @@
   // ---- Reset: clear cache and all app state ----
 
   function reset() {
+    // 0. Street-network settings back to the defaults network-connectors.js
+    // initialises. Exclusions go through App.setExcludedWays, their only write
+    // path (it also rebuilds any loaded network without them). Runs before the
+    // localStorage wipe because setExcludedWays saves the session.
+    if (App.networkSettings) {
+      App.networkSettings.snapToleranceFt = 50;
+      App.networkSettings.crossingMajorSec = 0;
+      App.networkSettings.crossingMinorSec = 0;
+    }
+    if (typeof App.setExcludedWays === "function") App.setExcludedWays([]);
+
     // 1. Clear localStorage
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -549,6 +564,7 @@
       App.featureSettings.polygonLineOpacity = 80;
       App.featureSettings.bufferFillOpacity  = 8;
       App.featureSettings.bufferLineOpacity  = 40;
+      App.featureSettings.bufferMerge        = false;
     }
     if (typeof App.applyLineWidth       === "function") App.applyLineWidth("all");
     if (typeof App.applyBufferLineWidth === "function") App.applyBufferLineWidth();

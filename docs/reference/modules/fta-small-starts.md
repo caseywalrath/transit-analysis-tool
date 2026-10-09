@@ -11,3 +11,4 @@ Breakpoint classification for the five FTA Small Starts ratings (Cost Effectiven
 - Rating pills: `.pill.high` / `.mh` / `.med` / `.ml` / `.low` in `css/style.css`.
 - `_bpRunning`/`_bpQueued` are a concurrency guard around the async `_doUpdateBreakpointRatings()`.
 - Persistence: `App.cache.registerModule("fta", ...)` persists computed ratings only, never the raw uploaded files (`CRE_MAP`, `ESS_POINTS`, `LBAR_SITES`).
+- Clear and Reset Session call `clearAll()`, which removes the LBAR sites map layer and the ratings but keeps uploaded data. `_lbarCleared` stops `update()` from redrawing the layer from that kept data; the next ratings run or the layer checkbox clears it.
