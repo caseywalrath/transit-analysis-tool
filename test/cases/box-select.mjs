@@ -67,5 +67,16 @@ export default {
     { id: "poly/degenerate-box-outside-touch", call: "App.boxSelectGeom.polygonHits", args: [[SQUARE], { minX: 50, minY: 50, maxX: 50, maxY: 50 }, "touch"] },
     { id: "poly/unclosed-ring-closing-edge-misses-box", call: "App.boxSelectGeom.polygonHits", args: [[[[0, 0], [40, 0], [40, 14]]], R, "touch"] },
     { id: "poly/unclosed-ring-closing-edge-hits-box", call: "App.boxSelectGeom.polygonHits", args: [[[[40, 40], [40, 0], [0, 0]]], R, "touch"] },
+
+    // ---- combineKeys (stop-selection plan Phase 1) ----
+    { id: "keys/replace", call: "App.boxSelectGeom.combineKeys", args: [["a", "b"], ["c", "a"], "replace"] },
+    { id: "keys/add-order-and-dedupe", call: "App.boxSelectGeom.combineKeys", args: [["a", "b"], ["c", "a", "d"], "add"] },
+    { id: "keys/remove", call: "App.boxSelectGeom.combineKeys", args: [["a", "b", "c"], ["b", "z"], "remove"] },
+    { id: "keys/dupes-in-inputs-replace", call: "App.boxSelectGeom.combineKeys", args: [["x"], ["h", "h", "i"], "replace"] },
+    { id: "keys/dupes-in-current-add", call: "App.boxSelectGeom.combineKeys", args: [["a", "a", "b"], [], "add"] },
+    { id: "keys/dupes-in-current-remove", call: "App.boxSelectGeom.combineKeys", args: [["a", "a", "b"], ["b"], "remove"] },
+    { id: "keys/empty-current-add", call: "App.boxSelectGeom.combineKeys", args: [[], ["p", "q"], "add"] },
+    { id: "keys/replace-with-nothing", call: "App.boxSelectGeom.combineKeys", args: [["a"], [], "replace"] },
+    { id: "keys/proto-like-key", call: "App.boxSelectGeom.combineKeys", args: [["constructor"], ["constructor", "toString"], "add"] },
   ]
 };

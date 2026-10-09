@@ -111,7 +111,32 @@
     return true;
   }
 
+  // Combine a current key selection with the keys hit by a drag
+  // (docs/gtfs-stop-selection-plan.md Phase 1). op: "replace" | "add" |
+  // "remove". Keys are strings; order is kept and duplicates dropped; the
+  // inputs are never mutated.
+  function combineKeys(currentKeys, hitKeys, op) {
+    var cur = currentKeys || [], hit = hitKeys || [];
+    var src, drop = null, seen = {}, out = [], i;
+    if (op === "replace") src = hit;
+    else if (op === "add") src = cur.concat(hit);
+    else if (op === "remove") {
+      src = cur;
+      drop = {};
+      for (i = 0; i < hit.length; i++) drop[hit[i]] = true;
+    } else src = cur;
+    for (i = 0; i < src.length; i++) {
+      var k = src[i];
+      if (seen.hasOwnProperty(k)) continue;
+      if (drop && drop.hasOwnProperty(k)) continue;
+      seen[k] = true;
+      out.push(k);
+    }
+    return out;
+  }
+
   App.boxSelectGeom = {
+    combineKeys: combineKeys,
     normRect: normRect,
     pointInRect: pointInRect,
     segmentIntersectsRect: segmentIntersectsRect,

@@ -377,5 +377,101 @@
     "e": ""
   },
   "serviceid/free": "Red",
-  "serviceid/taken": "Red (3)"
+  "serviceid/taken": "Red (3)",
+  "stoplist/parse-header": {
+    "ids": [
+      "100",
+      "200"
+    ],
+    "headerFound": true,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-header-mixed-case-column-2": {
+    "ids": [
+      "100",
+      "200"
+    ],
+    "headerFound": true,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-bom": {
+    "ids": [
+      "7",
+      "8"
+    ],
+    "headerFound": true,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-quoted": {
+    "ids": [
+      "A,1",
+      "B\"2"
+    ],
+    "headerFound": true,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-blanks-dupes": {
+    "ids": [
+      "1",
+      "2"
+    ],
+    "headerFound": true,
+    "blanks": 2,
+    "duplicates": 2
+  },
+  "stoplist/parse-headerless": {
+    "ids": [
+      "100",
+      "200",
+      "300"
+    ],
+    "headerFound": false,
+    "blanks": 1,
+    "duplicates": 1
+  },
+  "stoplist/parse-headerless-comma-first-field": {
+    "ids": [
+      "100",
+      "200"
+    ],
+    "headerFound": false,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-empty": {
+    "ids": [],
+    "headerFound": false,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/parse-null": {
+    "ids": [],
+    "headerFound": false,
+    "blanks": 0,
+    "duplicates": 0
+  },
+  "stoplist/reconcile-array": {
+    "present": [
+      "3",
+      "1",
+      "2"
+    ],
+    "missing": [
+      "9"
+    ]
+  },
+  "stoplist/reconcile-none-in-feed": {
+    "present": [],
+    "missing": [
+      "a",
+      "b"
+    ]
+  },
+  "stoplist/csv-present-and-missing": "stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station,in_feed,feed_file\n1,C1,\"Main, \"\"Old\"\" & 1st\",38.8,-104.8,0,,1,rtd_a.zip\n2,,Oak,38.9,-104.9,,,1,rtd_a.zip\n9,,,,,,,0,rtd_a.zip\n8,,,,,,,0,rtd_a.zip",
+  "stoplist/csv-all-missing-no-feed-file": "stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station,in_feed,feed_file\nx,,,,,,,0,\n\"y,z\",,,,,,,0,",
+  "stoplist/csv-empty-selection": "stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station,in_feed,feed_file"
 }

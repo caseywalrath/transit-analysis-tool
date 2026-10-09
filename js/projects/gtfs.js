@@ -219,6 +219,115 @@
     }
   }
 
+  // ---- Stop-list helpers (docs/gtfs-stop-selection-plan.md Phase 1) ----
+  // Pure: no DOM/map/turf. Import/export of a stop_id selection.
+
+  // Small RFC 4180 reader: rows of fields. Handles quoted fields, "" escapes,
+  // commas/newlines inside quotes, CRLF/LF/CR. A trailing newline at EOF does
+  // not create an extra empty record. (App.parseCSV needs Papa + a header row,
+  // so it is not used here.)
+  function readCSVRecords(text) {
+    var recs = [], rec = [], f = "", q = false, i = 0, n = text.length, c;
+    while (i < n) {
+      c = text.charAt(i);
+      if (q) {
+        if (c === '"') {
+          if (text.charAt(i + 1) === '"') { f += '"'; i += 2; continue; }
+          q = false; i++; continue;
+        }
+        f += c; i++; continue;
+      }
+      if (c === '"') { q = true; i++; }
+      else if (c === ",") { rec.push(f); f = ""; i++; }
+      else if (c === "\r" || c === "\n") {
+        if (c === "\r" && text.charAt(i + 1) === "\n") i++;
+        rec.push(f); recs.push(rec); rec = []; f = ""; i++;
+      } else { f += c; i++; }
+    }
+    if (f !== "" || rec.length) { rec.push(f); recs.push(rec); }
+    return recs;
+  }
+
+  function csvField(v) {
+    var s = v === null || v === undefined ? "" : String(v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function parseStopIdList(text) {
+    var out = { ids: [], headerFound: false, blanks: 0, duplicates: 0 };
+    text = String(text === null || text === undefined ? "" : text).replace(/^\uFEFF/, "");
+    var recs = readCSVRecords(text), col = 0, start = 0, i, seen = {};
+    // First non-empty record decides header vs headerless.
+    var first = -1;
+    for (i = 0; i < recs.length; i++) {
+      if (recs[i].join("").trim() !== "") { first = i; break; }
+    }
+    if (first >= 0) {
+      for (var j = 0; j < recs[first].length; j++) {
+        if (recs[first][j].trim().toLowerCase() === "stop_id") {
+          out.headerFound = true; col = j; start = first + 1; break;
+        }
+      }
+    }
+    for (i = start; i < recs.length; i++) {
+      var id = (recs[i][col] || "").trim();
+      if (!id) { out.blanks++; continue; }
+      if (seen.hasOwnProperty(id)) { out.duplicates++; continue; }
+      seen[id] = true;
+      out.ids.push(id);
+    }
+    return out;
+  }
+
+  function reconcile(ids, feedStopIds) {
+    var lookup = {}, i, list = feedStopIds || [];
+    if (typeof Set !== "undefined" && list instanceof Set) list.forEach(function (v) { lookup[v] = true; });
+    else for (i = 0; i < list.length; i++) lookup[list[i]] = true;
+    var res = { present: [], missing: [] };
+    ids = ids || [];
+    for (i = 0; i < ids.length; i++) {
+      (lookup.hasOwnProperty(ids[i]) ? res.present : res.missing).push(ids[i]);
+    }
+    return res;
+  }
+
+  var STOP_LIST_COLS = ["stop_id", "stop_code", "stop_name", "stop_lat", "stop_lon", "location_type", "parent_station"];
+
+  function stopListCSV(ids, stopsRows, feedFile) {
+    var want = {}, i, seenRow = {}, k;
+    ids = ids || [];
+    for (i = 0; i < ids.length; i++) want[ids[i]] = true;
+    var lines = [STOP_LIST_COLS.concat(["in_feed", "feed_file"]).join(",")];
+    var ff = feedFile || "";
+    var found = {};
+    stopsRows = stopsRows || [];
+    for (i = 0; i < stopsRows.length; i++) {
+      var r = stopsRows[i], sid = r && r.stop_id !== undefined && r.stop_id !== null ? String(r.stop_id).trim() : "";
+      if (!sid || !want.hasOwnProperty(sid) || seenRow.hasOwnProperty(sid)) continue;
+      seenRow[sid] = true; found[sid] = true;
+      var cells = [];
+      for (k = 0; k < STOP_LIST_COLS.length; k++) cells.push(csvField(r[STOP_LIST_COLS[k]]));
+      cells.push("1", csvField(ff));
+      lines.push(cells.join(","));
+    }
+    var emitted = {};
+    for (i = 0; i < ids.length; i++) {
+      if (found.hasOwnProperty(ids[i]) || emitted.hasOwnProperty(ids[i])) continue;
+      emitted[ids[i]] = true;
+      var m = [csvField(ids[i])];
+      for (k = 1; k < STOP_LIST_COLS.length; k++) m.push("");
+      m.push("0", csvField(ff));
+      lines.push(m.join(","));
+    }
+    return lines.join("\n");
+  }
+
+  App.gtfsStopList = {
+    parseStopIdList: parseStopIdList,
+    reconcile: reconcile,
+    stopListCSV: stopListCSV
+  };
+
   App.gtfsBrowse = {
     shapeDirections: shapeDirections,
     uniqueServiceId: uniqueServiceId,

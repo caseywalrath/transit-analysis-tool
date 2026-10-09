@@ -75,6 +75,25 @@ export default {
       { route_id: "blue", shape_id: "a", direction_id: "1" }
     ], "red"] },
     { id: "serviceid/free", call: "App.gtfsBrowse.uniqueServiceId", args: ["Red", ["Blue"]] },
-    { id: "serviceid/taken", call: "App.gtfsBrowse.uniqueServiceId", args: ["Red", ["Red", "Red (2)", " Blue "]] }
+    { id: "serviceid/taken", call: "App.gtfsBrowse.uniqueServiceId", args: ["Red", ["Red", "Red (2)", " Blue "]] },
+    // --- stop-selection plan Phase 1: App.gtfsStopList ---
+    { id: "stoplist/parse-header", call: "App.gtfsStopList.parseStopIdList", args: ["stop_id,stop_name\n100,Main\n200,Oak\n"] },
+    { id: "stoplist/parse-header-mixed-case-column-2", call: "App.gtfsStopList.parseStopIdList", args: ["name,Stop_ID\r\nMain,100\r\nOak,200"] },
+    { id: "stoplist/parse-bom", call: "App.gtfsStopList.parseStopIdList", args: ["\uFEFFstop_id\n7\n8"] },
+    { id: "stoplist/parse-quoted", call: "App.gtfsStopList.parseStopIdList", args: ["stop_name,stop_id\n\"Main, & 1st\",\"A,1\"\n\"Say \"\"hi\"\"\",\"B\"\"2\"\n"] },
+    { id: "stoplist/parse-blanks-dupes", call: "App.gtfsStopList.parseStopIdList", args: ["stop_id\n1\n\n 2 \n1\n,x\n2\n"] },
+    { id: "stoplist/parse-headerless", call: "App.gtfsStopList.parseStopIdList", args: ["100\n 200 \n\n100\r\n300"] },
+    { id: "stoplist/parse-headerless-comma-first-field", call: "App.gtfsStopList.parseStopIdList", args: ["100,Main\n200,Oak"] },
+    { id: "stoplist/parse-empty", call: "App.gtfsStopList.parseStopIdList", args: [""] },
+    { id: "stoplist/parse-null", call: "App.gtfsStopList.parseStopIdList", args: [null] },
+    { id: "stoplist/reconcile-array", call: "App.gtfsStopList.reconcile", args: [["3", "1", "9", "2"], ["1", "2", "3"]] },
+    { id: "stoplist/reconcile-none-in-feed", call: "App.gtfsStopList.reconcile", args: [["a", "b"], []] },
+    { id: "stoplist/csv-present-and-missing", call: "App.gtfsStopList.stopListCSV", args: [["9", "2", "1", "8"], [
+      { stop_id: "1", stop_code: "C1", stop_name: "Main, \"Old\" & 1st", stop_lat: "38.8", stop_lon: "-104.8", location_type: "0", parent_station: "" },
+      { stop_id: "5", stop_name: "Unselected", stop_lat: "1", stop_lon: "2" },
+      { stop_id: "2", stop_name: "Oak", stop_lat: "38.9", stop_lon: "-104.9" }
+    ], "rtd_a.zip"] },
+    { id: "stoplist/csv-all-missing-no-feed-file", call: "App.gtfsStopList.stopListCSV", args: [["x", "y,z"], [], ""] },
+    { id: "stoplist/csv-empty-selection", call: "App.gtfsStopList.stopListCSV", args: [[], [{ stop_id: "1" }], "f.zip"] }
   ]
 };
