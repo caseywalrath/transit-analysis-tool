@@ -831,6 +831,10 @@
         }
         // Delete on a feature selection → confirm dialog (one undo step).
         if (tag === "SELECT" || (App.drawMode && App.drawMode !== "box-select")) return;
+        // Box select targeting GTFS stops (or any non-feature target): Delete
+        // must never remove drawn features the user isn't looking at.
+        if (App.drawMode === "box-select" && App.boxSelect && App.boxSelect.currentTarget &&
+            App.boxSelect.currentTarget() !== "features") return;
         // Analysis panels are non-modal: only a key pressed inside one is ignored.
         if (e.target && e.target.closest && e.target.closest("#module-popup, #fp-attr-popup, #fp-mini-popup")) return;
         if (App.merge && App.merge.isDialogOpen && App.merge.isDialogOpen()) return;

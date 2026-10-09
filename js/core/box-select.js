@@ -157,7 +157,62 @@
 
   var MODE = "box-select";
   var CLICK_PX = 4;
-  var _drag = null; // { x0, y0, x1, y1, rectEl, badgeEl, cache, raf }
+  var _drag = null; // { x0, y0, x1, y1, rectEl, badgeEl, cache, raf, target }
+
+  // ---- Targets (docs/gtfs-stop-selection-plan.md Phase 3) ----
+  // What a drag selects. "features" (drawn features) is built in and runs the
+  // original code path untouched. Other targets are point-only and register
+  // through App.boxSelect.registerTarget(spec):
+  //   spec = { id, label, noun: ["stop","stops"], isAvailable() -> {ok, reason},
+  //            candidates() -> [{key, coord:[lng,lat]}], getKeys(), setKeys(keys),
+  //            statusNoun? (e.g. "GTFS stops") }
+  // The current target is not persisted: every page load starts on Features.
+  var _targets = {}, _targetOrder = [], _targetId = "features";
+
+  function registerTarget(spec) {
+    if (!spec || !spec.id || spec.id === "features") return;
+    if (!_targets[spec.id]) _targetOrder.push(spec.id);
+    _targets[spec.id] = spec;
+    refreshBar();
+  }
+
+  function targetAvailable(id) {
+    if (id === "features") return { ok: true, reason: "" };
+    var t = _targets[id];
+    if (!t) return { ok: false, reason: "Unknown target" };
+    var a = typeof t.isAvailable === "function" ? t.isAvailable() : { ok: true };
+    return { ok: !!(a && a.ok), reason: (a && a.reason) || "" };
+  }
+
+  function setTarget(id) {
+    if (id !== "features" && !_targets[id]) return;
+    _targetId = id;
+    refreshBar();
+  }
+
+  // Project a point target's candidates once per drag. Only stops inside the
+  // current view (a cheap lng/lat check before map.project) are kept, so a
+  // feed with thousands of stops stays instant.
+  function buildPointCache(t) {
+    var map = App.map, b = map.getBounds(), out = [];
+    var w = b.getWest(), e = b.getEast(), so = b.getSouth(), n = b.getNorth();
+    (t.candidates() || []).forEach(function (c) {
+      var x = c.coord && c.coord[0], y = c.coord && c.coord[1];
+      if (!(y >= so && y <= n)) return;
+      if (w <= e ? !(x >= w && x <= e) : !(x >= w || x <= e)) return;
+      var p = map.project(c.coord);
+      out.push({ key: String(c.key), p: [p.x, p.y] });
+    });
+    return out;
+  }
+
+  function pointHitKeys(cache, r) {
+    return cache.filter(function (c) { return pointInRect(c.p, r); }).map(function (c) { return c.key; });
+  }
+
+  function nounFor(t, n) {
+    return t.noun ? t.noun[n === 1 ? 0 : 1] : (n === 1 ? "item" : "items");
+  }
 
   function isActive() { return App.drawMode === MODE; }
 
@@ -246,6 +301,7 @@
   function drawFeedback(altKey) {
     _drag.raf = 0;
     if (!_drag) return;
+    if (_drag.target) return drawPointFeedback();
     var r = currentRect(), small = isClick();
     var s = _drag.rectEl.style;
     s.display = small ? "none" : "block";
@@ -256,6 +312,21 @@
     if (small) { b.style.display = "none"; return; }
     var n = hitTest(_drag.cache, r, altKey ? "within" : "touch").length;
     b.textContent = n + (n === 1 ? " feature" : " features") + (altKey ? " (fully inside)" : "");
+    b.style.display = "block";
+    b.style.left = (_drag.x1 + 14) + "px";
+    b.style.top = (_drag.y1 + 14) + "px";
+  }
+
+  function drawPointFeedback() {
+    var r = currentRect(), small = isClick(), t = _drag.target;
+    var s = _drag.rectEl.style;
+    s.display = small ? "none" : "block";
+    s.left = r.minX + "px"; s.top = r.minY + "px";
+    s.width = (r.maxX - r.minX) + "px"; s.height = (r.maxY - r.minY) + "px";
+    var b = _drag.badgeEl;
+    if (small) { b.style.display = "none"; return; }
+    var n = _drag.cache ? pointHitKeys(_drag.cache, r).length : 0;
+    b.textContent = _drag.cache ? n + " " + nounFor(t, n) : (_drag.reason || "Unavailable");
     b.style.display = "block";
     b.style.left = (_drag.x1 + 14) + "px";
     b.style.top = (_drag.y1 + 14) + "px";
@@ -299,6 +370,16 @@
     badgeEl.style.display = "none";
     container.appendChild(rectEl);
     container.appendChild(badgeEl);
+    var t = _targetId !== "features" ? _targets[_targetId] : null;
+    if (t) {
+      // An unavailable target (no feed, layer hidden) still draws the box but
+      // selects nothing; the badge and the bar say why.
+      var av = targetAvailable(_targetId);
+      _drag = { x0: p[0], y0: p[1], x1: p[0], y1: p[1], rectEl: rectEl, badgeEl: badgeEl,
+                cache: av.ok ? buildPointCache(t) : null, reason: av.reason,
+                raf: 0, viaShift: viaShift, target: t };
+      return;
+    }
     _drag = { x0: p[0], y0: p[1], x1: p[0], y1: p[1], rectEl: rectEl, badgeEl: badgeEl,
               cache: buildCache(), raf: 0, viaShift: viaShift };
   }
@@ -323,6 +404,11 @@
     if (_drag.viaShift) _swallowNextClick = true;
     var mode = e.altKey ? "within" : "touch";
     var r;
+    if (_drag.target) {
+      applyPoint(_drag, op);
+      endDrag();
+      return;
+    }
     if (isClick()) {
       // A click: whatever touches a small box around the cursor. Points win
       // over lines/polygons beneath them, matching a normal map click.
@@ -345,6 +431,119 @@
     App.setStatus(wasClick && !hits.length && op === "replace"
       ? "Selection cleared"
       : (n ? "Selected " + n + (n === 1 ? " feature" : " features") : "Nothing selected"));
+  }
+
+  // Point-target release: a click takes the topmost candidate within the 3 px
+  // pad (later candidates draw on top); a plain click on empty map clears.
+  function applyPoint(d, op) {
+    var t = d.target;
+    if (!d.cache) { App.setStatus(d.reason || "Nothing selected"); return; }
+    var hits, wasClick = isClick();
+    if (wasClick) {
+      var pad = 3;
+      hits = pointHitKeys(d.cache, normRect(d.x1 - pad, d.y1 - pad, d.x1 + pad, d.y1 + pad)).slice(-1);
+    } else {
+      hits = pointHitKeys(d.cache, currentRect());
+    }
+    var next = combineKeys(t.getKeys() || [], hits, op);
+    t.setKeys(next);
+    var n = next.length, noun = t.statusNoun ? t.statusNoun[n === 1 ? 0 : 1] : nounFor(t, n);
+    App.setStatus(wasClick && !hits.length && op === "replace"
+      ? (t.label || "Selection") + " selection cleared"
+      : (n ? "Selected " + n + " " + noun : "Nothing selected"));
+    refreshBar();
+  }
+
+  // ---- On-map target bar ----
+  // Lives in the map container but OUTSIDE the canvas container, so the
+  // capture-phase mousedown handler (inMap) never starts a drag from it.
+  var _bar = null;
+
+  function buildBar() {
+    if (_bar || !App.map || typeof document === "undefined") return _bar;
+    var host = App.map.getContainer();
+    var bar = document.createElement("div");
+    bar.className = "box-select-bar";
+    bar.hidden = true;
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Box select target");
+    var lab = document.createElement("label");
+    lab.textContent = "Select:";
+    var sel = document.createElement("select");
+    sel.className = "box-select-bar-target";
+    sel.setAttribute("aria-label", "What box select selects");
+    lab.appendChild(document.createTextNode(" "));
+    lab.appendChild(sel);
+    var count = document.createElement("span");
+    count.className = "box-select-bar-count";
+    count.setAttribute("aria-live", "polite");
+    var clr = document.createElement("button");
+    clr.type = "button";
+    clr.className = "box-select-bar-clear";
+    clr.textContent = "Clear";
+    bar.appendChild(lab); bar.appendChild(count); bar.appendChild(clr);
+    // Keep keys typed in the bar away from the global shortcuts (A, Delete…).
+    bar.addEventListener("keydown", function (e) { if (e.key !== "Escape") e.stopPropagation(); });
+    sel.addEventListener("change", function () { setTarget(sel.value); sel.blur(); });
+    clr.addEventListener("click", function () {
+      if (_targetId === "features") {
+        if (typeof App.clearSelection === "function") App.clearSelection();
+        App.setStatus("Selection cleared");
+      } else {
+        var t = _targets[_targetId];
+        if (t) { t.setKeys([]); App.setStatus((t.label || "Selection") + " selection cleared"); }
+      }
+      refreshBar();
+    });
+    host.appendChild(bar);
+    _bar = { el: bar, sel: sel, count: count, clear: clr };
+    return _bar;
+  }
+
+  function refreshBar() {
+    if (!App.map || typeof document === "undefined") return;
+    var b = _bar || (isActive() ? buildBar() : null);
+    if (!b) return;
+    b.el.hidden = !isActive();
+    if (b.el.hidden) return;
+    // Rebuild the options (availability can change at any time).
+    var ids = ["features"].concat(_targetOrder);
+    b.sel.innerHTML = "";
+    ids.forEach(function (id) {
+      var o = document.createElement("option"), av = targetAvailable(id);
+      o.value = id;
+      o.textContent = id === "features" ? "Features" : (_targets[id].label || id);
+      // The current target stays selectable even when unavailable, so the
+      // bar can show why drags select nothing.
+      if (!av.ok && id !== _targetId) { o.disabled = true; o.title = av.reason; }
+      b.sel.appendChild(o);
+    });
+    b.sel.value = _targetId;
+    var n, text, warn = false;
+    if (_targetId === "features") {
+      n = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures().length : 0;
+      text = n + (n === 1 ? " feature" : " features") + " selected";
+    } else {
+      var t = _targets[_targetId], av2 = targetAvailable(_targetId);
+      n = (t.getKeys() || []).length;
+      text = n + " " + nounFor(t, n) + " selected";
+      if (!av2.ok) { text += " \u00b7 " + av2.reason; warn = true; }
+      else if (typeof t.countNote === "function") { var note = t.countNote(); if (note) text += " \u00b7 " + note; }
+      b.sel.title = av2.ok ? "" : av2.reason;
+    }
+    b.count.textContent = text;
+    b.count.classList.toggle("box-select-bar-warn", warn);
+    b.clear.disabled = !n;
+  }
+
+  // Show/hide the bar as the tool turns on and off. drawMode is set from many
+  // places (toolbar, shortcut keys, exitDrawMode), but every path toggles the
+  // tool button's "active" class, so watch that.
+  function watchToolButton() {
+    if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+    var btn = document.querySelector('.tool-btn[data-mode="' + MODE + '"]');
+    if (!btn) return;
+    new MutationObserver(function () { refreshBar(); }).observe(btn, { attributes: true, attributeFilter: ["class"] });
   }
 
   // While the tool is on, the map gets no click/dblclick either (dblclick
@@ -380,6 +579,8 @@
   window.addEventListener("keydown", onKeyDown, true);
   // If the tool is switched off mid-drag (shortcut key, another tool), drop the box.
   window.addEventListener("blur", endDrag);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchToolButton);
+  else watchToolButton();
   }
 
   // ---- Group actions on a multi-selection (Phase 3): App.bulkFeatures ----
@@ -536,6 +737,10 @@
   };
 
   App.boxSelect = {
+    registerTarget: registerTarget,
+    setTarget: setTarget,
+    currentTarget: function () { return _targetId; },
+    refreshBar: refreshBar,
     isActive: isActive,
     isDragging: function () { return !!_drag; },
     cancel: endDrag,
