@@ -6552,6 +6552,48 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .box-select-rect.box-select-within { border-style: solid; }
+/* Target bar: top centre of the map container, outside the canvas container so
+   clicks on it never start a drag. Shown only while the tool is on. */
+.box-select-bar {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.box-select-bar[hidden] { display: none; }
+.box-select-bar select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+}
+.box-select-bar-count { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }
+.box-select-bar-count.box-select-bar-warn { color: var(--warn-text); }
+.box-select-bar button {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 var(--space-1);
+  cursor: pointer;
+}
+.box-select-bar button:disabled { color: var(--text-disabled); cursor: default; }
+body.present-mode .box-select-bar { display: none; }
 .box-select-badge {
   position: absolute;
   pointer-events: none;
