@@ -732,7 +732,7 @@
   function exportToFile(scope) {
     try {
       var state = collectState("full");
-      if (scope === "visible") {
+      if (scope === "visible" || scope === "selected") {
         // Filter this call's own copy of the collected state — collectState()
         // itself is untouched, so the localStorage autosave path (and
         // exportFullState/Save State) keep including hidden features as always.
@@ -1132,7 +1132,15 @@
   // exporting All then Visible-only back to back doesn't overwrite one file
   // with the other.
   function _scopeSuffix(scope) {
-    return scope === "visible" ? "-visible" : "";
+    return scope === "visible" ? "-visible" : scope === "selected" ? "-selected" : "";
+  }
+
+  // Status text when an export has nothing to write.
+  function _emptyExportMsg(hadSource, scope) {
+    if (scope === "selected") return "Nothing to export — no features selected.";
+    return hadSource && scope === "visible"
+      ? "Nothing to export — all features are hidden."
+      : "Nothing to export — no features drawn.";
   }
 
   // ---- Export scope: All vs Visible only ----
@@ -1143,6 +1151,24 @@
   // operate on the full, true data set.
   function getExportArrays(scope) {
     var visible = scope === "visible";
+    if (scope === "selected") {
+      // Selected drawn features only, matched by (type, current array index)
+      // at export time. Labels and text boxes are left out.
+      var sel = (App.getSelectedFeatures && App.getSelectedFeatures()) || [];
+      var want = {};
+      sel.forEach(function (s) { want[s.type + ":" + s.index] = true; });
+      var pick = function (type, arr) {
+        return arr.filter(function (f, i) { return want[type + ":" + i]; });
+      };
+      return {
+        points:    pick("point", App.points),
+        lines:     pick("line", App.lines),
+        routes:    pick("route", App.routes),
+        polygons:  pick("polygon", App.polygons),
+        labels:    [],
+        textBoxes: []
+      };
+    }
     function filt(arr) {
       return visible ? arr.filter(function (f) { return !f.properties.hidden; }) : arr.slice();
     }
@@ -1249,9 +1275,7 @@
       for (var pi = 0; pi < arrs.polygons.length; pi++) rows.push(_featureToCSVRow(arrs.polygons[pi], "polygon"));
       for (var lb = 0; lb < arrs.labels.length; lb++) rows.push(_featureToCSVRow(arrs.labels[lb], "label"));
       if (rows.length === 0) {
-        App.setStatus(hadSource && scope === "visible"
-          ? "Nothing to export — all features are hidden."
-          : "Nothing to export — no features drawn.");
+        App.setStatus(_emptyExportMsg(hadSource, scope));
         return;
       }
       var csv = Papa.unparse(rows);
@@ -1368,9 +1392,7 @@
       kml += "</Document>\n</kml>";
 
       if (totalCount === 0) {
-        App.setStatus(hadSource && scope === "visible"
-          ? "Nothing to export — all features are hidden."
-          : "Nothing to export — no features drawn.");
+        App.setStatus(_emptyExportMsg(hadSource, scope));
         return;
       }
 
@@ -1685,9 +1707,7 @@
       }
 
       if (points.length + polylines.length + polys.length === 0) {
-        App.setStatus(hadSource && scope === "visible"
-          ? "Nothing to export — all features are hidden."
-          : "Nothing to export — no features drawn.");
+        App.setStatus(_emptyExportMsg(hadSource, scope));
         return;
       }
 
