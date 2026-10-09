@@ -1585,6 +1585,20 @@
       if (saveStateDropdown) saveStateDropdown.style.display = "none";
       var isOpen = exportDropdown.style.display !== "none";
       exportDropdown.style.display = isOpen ? "none" : "block";
+      // Selected GTFS stops (CSV): only while a feed is loaded and stops are selected.
+      var stopBtn = document.getElementById("export-gtfs-stops");
+      if (stopBtn) {
+        var stopCount = 0, feedOn = false;
+        if (App.gtfsStops && typeof App.gtfsStops.count === "function") {
+          stopCount = App.gtfsStops.count().total;
+          feedOn = typeof App.gtfsRouteIndex === "function" && !!App.gtfsRouteIndex() ||
+            (typeof App.gtfsStops.isAvailable === "function" &&
+             App.gtfsStops.isAvailable().reason !== "Load a GTFS feed first");
+        }
+        var showStops = feedOn && stopCount > 0;
+        stopBtn.style.display = showStops ? "" : "none";
+        if (showStops) stopBtn.textContent = "Selected GTFS stops (CSV) · " + stopCount;
+      }
     });
 
     // Export dropdown item click
@@ -1595,6 +1609,10 @@
       var fmt = btn.getAttribute("data-format");
       if (fmt === "road-network") {
         if (typeof App.exportRoadNetwork === "function") App.exportRoadNetwork();
+        return;
+      }
+      if (fmt === "gtfs-stops") {
+        if (App.gtfsStops && typeof App.gtfsStops.exportCSV === "function") App.gtfsStops.exportCSV();
         return;
       }
       if (typeof App.cache === "undefined") return;

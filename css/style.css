@@ -490,6 +490,10 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
 }
 .lp-row-label-indent { color: var(--muted); font-size: var(--text-xs); }
+/* Optional manifest badge (e.g. "163 selected"): yields to the hover chips that overlay the row's right edge. */
+.lp-row-badge { flex-shrink: 0; white-space: nowrap; pointer-events: none; }
+.lp-row:hover > .lp-row-badge,
+.lp-row:focus-within > .lp-row-badge { visibility: hidden; }
 /* Row-level hover-reveal chips (eye/clear/menu/opacity), one class per screen
    position — a feature row's eye sits where a group header's or layer row's
    eye does not, so each role gets its own offset instead of one shared class. */
