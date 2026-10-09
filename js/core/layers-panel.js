@@ -195,7 +195,9 @@
     { type: "buffer", label: "Buffers", controls: [
         { label: "Fill",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
         { label: "Outline", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
-        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Dissolve overlaps", kind: "toggle", key: "bufferMerge", def: false,
+          title: "Display only. Draws overlapping buffers as one shape; analysis still uses each feature's own buffer." }
       ] }
   ];
 
@@ -1522,6 +1524,7 @@
       }
     });
     applyTypeStyle(t.type);
+    if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
 
@@ -1620,6 +1623,22 @@
           });
           controlWrap.appendChild(clearColorBtn);
         }
+      } else if (ctl.kind === "toggle") {
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!App.featureSettings[ctl.key];
+        cb.setAttribute("aria-label", ctl.label);
+        if (ctl.title) row.title = ctl.title;
+        lab.classList.add("lp-style-toggle-label");
+        lab.addEventListener("click", function (e) { e.stopPropagation(); cb.click(); });
+        cb.addEventListener("click", function (e) { e.stopPropagation(); });
+        cb.addEventListener("change", function () {
+          App.featureSettings[ctl.key] = cb.checked;
+          if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
+          refreshPreview();
+          if (App.cache && typeof App.cache.save === "function") App.cache.save();
+        });
+        controlWrap.appendChild(cb);
       } else {
         var scrubber = App.buildScrubber({
           min: ctl.min, max: ctl.max, step: ctl.step, unit: ctl.unit,

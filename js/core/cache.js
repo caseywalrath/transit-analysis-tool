@@ -152,7 +152,8 @@
       polygonLineOpacity: (App.featureSettings && App.featureSettings.polygonLineOpacity != null) ? App.featureSettings.polygonLineOpacity : 80,
       bufferFillOpacity:  (App.featureSettings && App.featureSettings.bufferFillOpacity  != null) ? App.featureSettings.bufferFillOpacity  : 8,
       bufferLineOpacity:  (App.featureSettings && App.featureSettings.bufferLineOpacity  != null) ? App.featureSettings.bufferLineOpacity  : 40,
-      featureSortMode:   _fss ? _fss.mode       : "name",
+      bufferMerge:        !!(App.featureSettings && App.featureSettings.bufferMerge),
+      featureSortMode:  _fss ? _fss.mode       : "name",
       featureSortAsc:    _fss ? _fss.asc        : true,
       featureShowGroups: _fss ? _fss.showGroups : true,
       featureSortHiddenLast: _fss ? _fss.hiddenLast : false,
@@ -306,6 +307,9 @@
         fs.bufferFillOpacity = 8;
         fs.bufferLineOpacity = 40;
       }
+
+      // Absent on sessions saved before the option existed → off.
+      fs.bufferMerge = !!state.bufferMerge;
     }
     if (typeof App.syncBufferInputs === "function") App.syncBufferInputs();
 
@@ -560,6 +564,7 @@
       App.featureSettings.polygonLineOpacity = 80;
       App.featureSettings.bufferFillOpacity  = 8;
       App.featureSettings.bufferLineOpacity  = 40;
+      App.featureSettings.bufferMerge        = false;
     }
     if (typeof App.applyLineWidth       === "function") App.applyLineWidth("all");
     if (typeof App.applyBufferLineWidth === "function") App.applyBufferLineWidth();

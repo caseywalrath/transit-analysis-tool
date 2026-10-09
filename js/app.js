@@ -482,8 +482,13 @@
     lineLineWidth:      1,
     routeLineWidth:     1,
     polygonLineWidth:   1,
-    bufferLineWidth:    1
+    bufferLineWidth:    1,
+    bufferMerge:        false   // display only: draw overlapping buffers as one shape
   };
+
+  var MERGED_BUF_SRC  = "buffers-merged";
+  var MERGED_BUF_FILL = "buffers-merged-fill";
+  var MERGED_BUF_LINE = "buffers-merged-line";
 
   function _safeSetPaint(layerId, prop, val) {
     if (App.map && App.map.getLayer(layerId)) {
@@ -537,12 +542,24 @@
     if (type === "buffer" || type === "all") {
       var fillOp = fs.bufferFillOpacity / 100;
       var lineOp = fs.bufferLineOpacity / 100;
-      _safeSetPaint("buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("buffers-line", "line-opacity", lineOp);
-      _safeSetPaint("line-buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("line-buffers-line", "line-opacity", lineOp);
-      _safeSetPaint("route-buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("route-buffers-line", "line-opacity", lineOp);
+      // Dissolved display: the per-feature layers stay in the style (hover and
+      // click hit-testing and the choropleth anchor read "buffers-fill") but
+      // draw nothing; the merged layers draw instead.
+      var merged = !!fs.bufferMerge;
+      var featFill = merged ? 0 : fillOp;
+      var featLine = merged ? 0 : lineOp;
+      _safeSetPaint("buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("buffers-line", "line-opacity", featLine);
+      _safeSetPaint("line-buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("line-buffers-line", "line-opacity", featLine);
+      _safeSetPaint("route-buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("route-buffers-line", "line-opacity", featLine);
+      _safeSetPaint(MERGED_BUF_FILL, "fill-opacity", fillOp);
+      _safeSetPaint(MERGED_BUF_LINE, "line-opacity", lineOp);
+      if (App.map && App.map.getLayer(MERGED_BUF_FILL)) {
+        App.map.setLayoutProperty(MERGED_BUF_FILL, "visibility", merged ? "visible" : "none");
+        App.map.setLayoutProperty(MERGED_BUF_LINE, "visibility", merged ? "visible" : "none");
+      }
     }
   };
 
@@ -573,7 +590,109 @@
     _safeSetPaint("buffers-line", "line-width", 2 * w);
     _safeSetPaint("line-buffers-line", "line-width", 2 * w);
     _safeSetPaint("route-buffers-line", "line-width", 2 * w);
+    _safeSetPaint(MERGED_BUF_LINE, "line-width", 2 * w);
   };
+
+  // ---- Dissolved buffer display ("Dissolve overlaps" in the Layers panel) ----
+  // Display only: App.buffers / lineBuffers / routeBuffers stay one polygon per
+  // feature, so every analysis and per-feature hit-test is unchanged. The
+  // merged layers draw the union of those polygons, so overlapping
+  // translucent fills no longer stack and inner outlines disappear.
+  // Same-colored buffers fuse; different colors still overlap where they cross.
+  var _mergedInputs = null;   // last [buffer, color] list, to skip identical recomputes
+  var _mergePending = false;
+
+  function _ensureMergedBufferLayers() {
+    var map = App.map;
+    if (map.getSource(MERGED_BUF_SRC)) return;
+    map.addSource(MERGED_BUF_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    // Above the point/line/route buffer layers, below the drawn features.
+    // Never below "buffers-fill": analysis overlays anchor there and must stay under buffers.
+    var before = map.getLayer("points-layer") ? "points-layer" : undefined;
+    map.addLayer({ id: MERGED_BUF_FILL, type: "fill", source: MERGED_BUF_SRC,
+      layout: { visibility: "none" },
+      paint: { "fill-color": ["get", "color"], "fill-opacity": 0.08 } }, before);
+    map.addLayer({ id: MERGED_BUF_LINE, type: "line", source: MERGED_BUF_SRC,
+      layout: { visibility: "none" },
+      paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.4 } }, before);
+  }
+
+  // [{buffer, color}] in draw order. Point buffers share the point section
+  // color (renderPointLayers); line/route buffers carry their own.
+  function _displayBufferInputs() {
+    var pointColor = (App.sectionColors && App.sectionColors.point) || "#2b6cb0";
+    var out = [];
+    (App.buffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: pointColor }); });
+    (App.lineBuffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: b.properties.resolvedColor }); });
+    (App.routeBuffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: b.properties.resolvedColor }); });
+    return out;
+  }
+
+  function _sameInputs(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].buffer !== b[i].buffer || a[i].color !== b[i].color) return false;
+    }
+    return true;
+  }
+
+  function _dissolveByColor(inputs) {
+    var groups = {}, order = [];
+    inputs.forEach(function (it) {
+      if (!groups[it.color]) { groups[it.color] = []; order.push(it.color); }
+      groups[it.color].push(it.buffer);
+    });
+    var features = [];
+    order.forEach(function (color) {
+      var acc = null, loose = [];
+      groups[color].forEach(function (b) {
+        if (!acc) { acc = b; return; }
+        // A buffer turf.union rejects (invalid geometry) is drawn as-is
+        // rather than dropped, so it never silently vanishes from the map.
+        try {
+          var u = turf.union(acc, b);
+          if (u) acc = u; else loose.push(b);
+        } catch (e) { loose.push(b); }
+      });
+      [acc].concat(loose).forEach(function (f) {
+        if (f) features.push({ type: "Feature", properties: { color: color }, geometry: f.geometry });
+      });
+    });
+    return { type: "FeatureCollection", features: features };
+  }
+
+  App.refreshMergedBuffers = function () {
+    var map = App.map;
+    if (!map || !map.getSource) return;
+    if (App.featureSettings.bufferMerge) {
+      _ensureMergedBufferLayers();
+      var inputs = _displayBufferInputs();
+      if (!_sameInputs(inputs, _mergedInputs)) {
+        _mergedInputs = inputs;
+        map.getSource(MERGED_BUF_SRC).setData(_dissolveByColor(inputs));
+      }
+    }
+    App.applyFeatureOpacity("buffer");
+    App.applyBufferLineWidth();
+  };
+
+  // Rebuilds fire in bursts (session restore runs all three), so recompute once per tick.
+  function _scheduleMergedBuffers() {
+    if (_mergePending || !(App.featureSettings && App.featureSettings.bufferMerge)) return;
+    _mergePending = true;
+    Promise.resolve().then(function () {
+      _mergePending = false;
+      App.refreshMergedBuffers();
+    });
+  }
+
+  // Follow the buffer sources themselves. points/lines/routes.js re-render
+  // through their own closure-local functions (addPoint, movePoint, drags, …),
+  // which bypass any App.* wrapper, but every one ends in setData on these sources.
+  var _BUF_SOURCES = { "buffers": 1, "line-buffers": 1, "route-buffers": 1 };
+  App.map.on("sourcedata", function (e) {
+    if (e.sourceId && _BUF_SOURCES[e.sourceId]) _scheduleMergedBuffers();
+  });
 
   // ---- Map load: wire everything ----
 
