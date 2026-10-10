@@ -1,6 +1,6 @@
 # GTFS
 
-Read the code when this and the code disagree. See `docs/archive/gtfs-route-browser-plan.md`.
+Read the code when this and the code disagree. See `docs/archive/gtfs-route-browser-plan.md` and `docs/archive/gtfs-stop-selection-plan.md`.
 
 ## gtfs.js (module `"gtfs"`)
 
@@ -12,7 +12,7 @@ GTFS ZIP viewer (JSZip + PapaParse) plus the route-browser engine. Wires its own
 
 **Popup:** file list with REQ/OPT badges | CSV table capped at 500 rendered rows (`stop_times.txt` can be millions).
 
-**Persistence:** the feed itself rides only the full session file (`App.serializeGTFSData` / `App.restoreGTFSFromData`, called from `cache.js`), never localStorage. Hidden route/shape sets persist as `moduleState["gtfs-browse"]` and are re-applied only when a feed is restored from a session file.
+**Persistence:** the feed survives a page refresh through `App.gtfsStore` (below) and also rides the full session file (`App.serializeGTFSData` / `App.restoreGTFSFromData`, called from `cache.js`), never localStorage. Hidden route/shape sets persist as `moduleState["gtfs-browse"]` and are re-applied when a feed is restored from the cache or a session file, never on a fresh upload.
 
 ### Route browser engine
 
@@ -31,6 +31,31 @@ The Layers-tab browser UI (over this `App.gtfs*` API) lives in `js/core/layers-p
 **Map right-click on shapes:** entries grouped by route (route heading only when 2+ routes under the cursor), labels like `Copy as line: Red · 177198 · 42 trips`; each item's `onHover` previews `App.gtfsHighlight({shapeId})`, and leaving/closing calls `App.gtfsRestoreHighlight()` (re-applies the pinned Layers highlight or clears).
 
 Tests: `test/gtfs-browser-smoke.mjs` (Playwright, synthetic feed; drives the Layers-tab UI and right-click menu); `test/ui-screens/capture.mjs` → `<theme>_gtfs-route-browser.png`.
+
+### Feed persistence across refresh — `App.gtfsStore` (`js/core/gtfs-store.js`)
+
+Sibling of `network-store.js` (same `_withStore` transaction rule: issue requests synchronously or from another request's `onsuccess`, never after an `await`; same swallow-every-failure stance). Keeps the ORIGINAL ZIP bytes — several times smaller than the parsed tables, and re-parsing goes through the same `loadGTFSFile()` path as an upload, so a restored feed can never differ from an uploaded one. DB `mat-gtfs-cache`, store `feeds`, keyed by file name (`savedAt` index); record `{name, savedAt, size, bytes}`. API: `supported()`, `save(name, arrayBuffer)`, `latest()`, `clear()`, `MAX_ENTRIES` (2 — the last two feeds, e.g. Build and No-Build; only the most recent is restored). Re-loading a stored file name replaces its copy; a failed write retries once after dropping the other feed.
+
+- `loadGTFSFile(file, opts)` resolves `true` when the feed is on the map. After a successful non-restored load, `persistFeed()` writes the ZIP (deferred one tick). `App.restoreCachedGTFS()` (called once from `app.js` after `cache.restore()`, so the stop list and queued hidden sets are already in place) re-parses the latest stored ZIP with `{restored: true}`: a restored load keeps `_pendingHidden`, is not written back, and reports "GTFS feed restored from last session: <name>".
+- `_loadSeq` is bumped by every load and every clear, so a slower, older load notices it was superseded: a ZIP picked while the restore is still reading wins, and a feed cleared right after loading is never written back.
+- **Build vs No-Build:** only one feed is active; loading a second ZIP replaces it and keeps the stop selection (the list is the bridge between scenarios). Hidden routes reset on a swap.
+- `clearGTFS()` (Remove layer, Clear all features, Reset Session) empties the store so a dismissed feed does not resurrect; an unreadable stored copy is dropped after one failed restore. A feed that arrives via a session JSON is not written to the store (no ZIP), so it survives a refresh only if that file is loaded again.
+- Tests: `test/browser/gtfs-cache.test.mjs`. The session autosave is debounced 500 ms, so wait ~900 ms before reloading.
+
+### Stop selection
+
+A persisted list of `stop_id` strings kept SEPARATELY from the loaded feed, so one list can be checked against several scenario feeds. Highlight layer `gtfs-stops-selected` (blue fill, white outline, radius 6, same source/`before` as the stops layer; visibility and opacity mirrored by `syncHighlightStyle()`).
+
+Pure helpers on `App.gtfsStopList` (golden: `test/cases/gtfs-browse.mjs`): `parseStopIdList(text)` → `{ids, headerFound, blanks, duplicates}` (header row with a `stop_id` column if the first non-empty record has one, else first column; BOM stripped; trimmed, de-duplicated), `reconcile(ids, feedStopIds)` → `{present, missing}`, `stopListCSV(ids, stopsRows, feedFile)` (columns `stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station,in_feed,feed_file`; feed rows in `stops.txt` order with `in_feed` 1, then ids absent from the feed with `in_feed` 0; RFC 4180 quoting).
+
+Runtime API `App.gtfsStops`: `ids()`, `count()` → `{total, inFeed}` (`inFeed` counts every `stop_id` in `stops.txt`, stations included, to agree with the CSV), `has(id)`, `set/add/remove/clear`, `feedFileName()`, `isAvailable()` → `{ok, reason}` (needs a loaded feed with a visible stops layer), `candidates()` (drawn stops only: `location_type` 0/blank), `zoomTo()`, `exportCSV()` (download `gtfs-stops-selected-<zip name>-<YYYY-MM-DD>.csv`; the download helper is duplicated locally because `cache.js`'s is private), `importFromFile(file)` (replaces the selection; status reports not-in-feed and duplicate counts).
+
+- **Lifecycle:** every mutation ends in the private `changed()` (highlight filter, `App.cache.save()`, Layers panel, box-select bar), so nothing may write `_selectedStops` directly. Loading another ZIP keeps the selection; `App.clearGTFS()` clears it; an id missing from the feed stays selected and shows as "not in this feed". `_feedFileName` is the name of the feed currently loaded, not the feed the list was made against.
+- Ways to build it: box select (target `"gtfs-stops"`, registered with `App.boxSelect.registerTarget`), the stop right-click menu (**Add to / Remove from stop selection**), and list import.
+- **Persistence:** `moduleState["gtfs-browse"]` gains additive `stops` (ordered ids) and `feedFile`, collected whether or not a feed is loaded and restored without needing one.
+- **Export button:** `#export-gtfs-stops` (hidden by default) in the Export menu is shown with the label `Selected GTFS stops (CSV) · N` only while a feed is loaded and the selection is non-empty; its format handler in `app.js` calls `App.gtfsStops.exportCSV()` before any `App.cache` format.
+- **Layers row:** the stops entry carries `badge()` (`"N sel."`, or `"N* sel."` when some ids are missing from the feed) and `menuItems()` (Select stops by box, Select stops from list…, and while stops are selected: Zoom to / Export / Clear); see `layers-and-styling.md`.
+- Tests: `test/gtfs-stop-select-smoke.mjs`.
 
 `App.setGtfsLayersVisible(visible)` → shows/hides both the GTFS route and stop map layers.
 

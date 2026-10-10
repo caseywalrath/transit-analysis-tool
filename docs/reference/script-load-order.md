@@ -14,6 +14,7 @@ search.js            needs App.map
 walk-cost.js         pure, no deps; window.WalkCost (before road-network.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
+gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
 road-network.js      needs App.map, turf, window.WalkCost, App.networkStore (optional, guarded)
 network-connectors.js needs road-network.js; App.refreshWalkNetworkLayer etc.
 walk-audit.js        pure window.WalkAudit + App block (call time); after road-network/network-connectors

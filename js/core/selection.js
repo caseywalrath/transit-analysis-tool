@@ -49,6 +49,8 @@
 
   function syncSelectedCompat() {
     App._selected = _multiSelected.length === 1 ? _multiSelected[0] : null;
+    // Box-select bar shows the feature-selection count while the tool is on.
+    if (App.boxSelect && typeof App.boxSelect.refreshBar === "function") App.boxSelect.refreshBar();
   }
 
   function syncVertexEditing() {

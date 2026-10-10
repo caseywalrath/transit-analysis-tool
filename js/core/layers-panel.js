@@ -66,8 +66,19 @@
       clear: callIf("removeSidewalkCoverageLayer") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
       clear: callIf("clearGTFS"), styleKey: "gtfs-shapes" },
-    { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" }],
-      clear: callIf("clearGTFS"), styleKey: "gtfs-stops" },
+    { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" },
+      { id: "gtfs-stops-selected", op: "circle-opacity" }],
+      clear: callIf("clearGTFS"), styleKey: "gtfs-stops",
+      badge: function () {
+        if (!App.gtfsStops) return "";
+        var c = App.gtfsStops.count();
+        if (!c.total) return "";
+        var missing = c.total - c.inFeed;
+        // Short on the row (the panel is narrow); full text in the tooltip.
+        return { text: c.total + (missing > 0 ? "*" : "") + " sel.",
+                 title: c.total + " selected" + (missing > 0 ? " · " + missing + " not in this feed" : "") };
+      },
+      menuItems: function () { return gtfsStopMenuItems(); } },
     { id: "osm-points-layer",     label: "OSM points",           layers: [{ id: "osm-points-layer", op: "circle-opacity" }],
       clear: function () { if (typeof App.osmToggleCategory === "function") App.osmToggleCategory("bus_stops"); } },
     { id: "osm-lines-layer",      label: "OSM lines",            layers: [{ id: "osm-lines-layer", op: "line-opacity" }],
@@ -700,6 +711,43 @@
     return body;
   }
 
+  // ---- GTFS stop-selection menu items (docs/archive/gtfs-stop-selection-plan.md Phase 4c) ----
+  var _stopListInput = null;
+  function pickStopListFile() {
+    if (!_stopListInput) {
+      _stopListInput = document.createElement("input");
+      _stopListInput.type = "file";
+      _stopListInput.accept = ".csv,.txt";
+      _stopListInput.style.display = "none";
+      _stopListInput.addEventListener("change", function () {
+        var f = _stopListInput.files && _stopListInput.files[0];
+        if (f && App.gtfsStops) App.gtfsStops.importFromFile(f);
+        _stopListInput.value = "";
+      });
+      document.body.appendChild(_stopListInput);
+    }
+    _stopListInput.click();
+  }
+  function gtfsStopMenuItems() {
+    if (!App.gtfsStops) return [];
+    var items = [
+      { label: "Select stops by box", action: function () {
+        if (App.boxSelect && typeof App.boxSelect.setTarget === "function") App.boxSelect.setTarget("gtfs-stops");
+        if (App.drawMode !== "box-select") {
+          var b = document.querySelector('.tool-btn[data-mode="box-select"]');
+          if (b) b.click();
+        }
+      } },
+      { label: "Select stops from list…", action: pickStopListFile }
+    ];
+    if (App.gtfsStops.count().total > 0) {
+      items.push({ label: "Zoom to selected stops", action: function () { App.gtfsStops.zoomTo(); } });
+      items.push({ label: "Export selected stops (CSV)", action: function () { App.gtfsStops.exportCSV(); } });
+      items.push({ label: "Clear stop selection", action: function () { App.gtfsStops.clear(); render(); } });
+    }
+    return items;
+  }
+
   // ---- Generic row builder (reference / analysis) ----
   function buildLayerRow(entry, bandKey, order, getPresent) {
     var spec = (entry.styleKey && typeof window.LayerPalette !== "undefined" &&
@@ -757,6 +805,9 @@
     eye.addEventListener("click", function (e) {
       e.stopPropagation();
       setEntryVisible(entry, !entryVisible(entry));
+      if (entry.id === "gtfs-stops-layer" && App.boxSelect && typeof App.boxSelect.refreshBar === "function") {
+        App.boxSelect.refreshBar();
+      }
       // A styled layer's owning module may want to react to a visibility
       // toggle (e.g. Walkshed hides its "Reachable streets" legend row when
       // the walkshed-seg layer is hidden) — its repainter is a no-op paint
@@ -774,6 +825,18 @@
     name.className = "lp-row-label";
     name.textContent = entry.label;
     row.appendChild(name);
+
+    if (typeof entry.badge === "function") {
+      var badgeText = "";
+      try { badgeText = entry.badge() || ""; } catch (err) { badgeText = ""; }
+      if (badgeText) {
+        var badge = document.createElement("span");
+        badge.className = "lp-row-label-indent lp-row-badge";
+        badge.textContent = typeof badgeText === "string" ? badgeText : badgeText.text;
+        if (badgeText.title) { badge.title = badgeText.title; row.title = badgeText.title; }
+        row.appendChild(badge);
+      }
+    }
 
     // Chips appended after the name, farthest offset first (eye 48 -> op 24 -> menu 0),
     // matching the Features tab's documented DOM-order convention.
@@ -808,6 +871,9 @@
         opts.push({ label: "Open module", action: function () {
           if (typeof App.openModulePopup === "function") App.openModulePopup(entry.moduleId);
         } });
+      }
+      if (typeof entry.menuItems === "function") {
+        try { opts = opts.concat(entry.menuItems() || []); } catch (err) { /* ignore */ }
       }
       if (entryClearFn(entry)) {
         opts.push({ label: "Remove layer", action: function () { removeEntry(entry); } });

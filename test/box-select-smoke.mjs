@@ -286,6 +286,43 @@ async function main() {
     await page.waitForTimeout(200);
     check("plain drag still pans", JSON.stringify(await page.evaluate(() => App.map.getCenter().toArray())) !== JSON.stringify(before4));
 
+    console.log("\n# Middle-button pan");
+    const mpan = async () => {
+      const c0 = await page.evaluate(() => App.map.getCenter().toArray());
+      await page.mouse.move(700, 450);
+      await page.mouse.down({ button: "middle" });
+      await page.mouse.move(790, 500, { steps: 6 });
+      const cursorDuring = await page.evaluate(() => App.map.getCanvas().style.cursor);
+      await page.mouse.up({ button: "middle" });
+      await page.waitForTimeout(100);
+      const c1 = await page.evaluate(() => App.map.getCenter().toArray());
+      return { moved: JSON.stringify(c0) !== JSON.stringify(c1), cursorDuring, c0, c1 };
+    };
+    let mp = await mpan();
+    check("middle drag pans with no tool", mp.moved, mp);
+    check("middle drag shows the four-way move cursor", mp.cursorDuring === "move", mp.cursorDuring);
+    // Drag direction: grabbing the map and moving right/down moves the view left/up.
+    check("map follows the drag (center moves west and north)", mp.c1[0] < mp.c0[0] && mp.c1[1] > mp.c0[1], mp);
+    check("cursor restored after release", await page.evaluate(() => App.map.getCanvas().style.cursor === "default"));
+
+    await page.evaluate(() => App.setSelection([{ type: "point", index: 0 }]));
+    await page.click('.tool-btn[data-mode="box-select"]');
+    mp = await mpan();
+    check("middle drag pans while box select is on", mp.moved, mp);
+    check("middle drag leaves the selection and the tool alone", (await sel(page)) === "point:0" && (await page.evaluate(() => App.drawMode === "box-select" && !App.boxSelect.isDragging())), await sel(page));
+    // Left drag with the tool on still selects (middle pan did not disturb it).
+    await drag(page, [-104.782, 38.812], [-104.778, 38.808]);
+    check("left box drag still works afterwards", (await sel(page)) !== "point:0", await sel(page));
+    await page.keyboard.press("Escape");
+
+    await page.click('.tool-btn[data-mode="line"]');
+    const nLines = await page.evaluate(() => App.lines.length);
+    mp = await mpan();
+    check("middle drag pans while a draw tool is on", mp.moved, mp);
+    check("middle drag adds no line vertex", await page.evaluate((n) => App.lines.length === n && App.drawMode === "line", nLines));
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => { App.cancelLineDrawing && App.cancelLineDrawing(); App.exitDrawMode && App.exitDrawMode(); });
+
   } finally {
     if (browser) await browser.close();
     server.kill();

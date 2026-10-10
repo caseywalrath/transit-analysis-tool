@@ -48,7 +48,7 @@ Run only the tier that matches the change. Record each result in the commit mess
 - New or changed pure function → extend `test/cases/<module>.mjs` and seed with `--update`. Closure-private functions need a `__MAT_TEST__`-guarded `App._xxTest` hook (examples in `route-costing.js`, `trip-builder.js`, `corridor-scoring.js`). Details: `test/README.md`.
 - Pins only pure math (no map, DOM, network APIs, turf geometry). Title VI is deliberately not covered (see `features.md`).
 
-**Browser behavior — after changing persistence, startup order, map-layer create/update/remove, or hide/show paths.** `bash test/browser/run-browser.sh`, or one file with `NODE_PATH=/opt/node-tools/node_modules node test/browser/<file>.test.mjs` (clean run ends `PASS — n/n checks passed`). Drives the real app in headless Chromium to catch what golden tests and screenshots cannot (the motivating bug: a `TransactionInactiveError` only on the real startup path, `docs/archive/browser-test-harness-plan.md`). `hidden-features.test.mjs` covers every module using `analysis-checklist.js`; run it after touching `module-buffers.js`, `analysis-checklist.js`, a hide/show path or those modules' checklists. New tests reuse `test/browser/harness.mjs` and poll observable state rather than fixed waits (`test/browser/README.md`).
+**Browser behavior — after changing persistence, startup order, map-layer create/update/remove, or hide/show paths.** `bash test/browser/run-browser.sh`, or one file with `NODE_PATH=/opt/node-tools/node_modules node test/browser/<file>.test.mjs` (clean run ends `PASS — n/n checks passed`). Drives the real app in headless Chromium to catch what golden tests and screenshots cannot (`network-cache` and `gtfs-cache` check the road network and GTFS feed really survive a refresh; the motivating bug: a `TransactionInactiveError` only on the real startup path, `docs/archive/browser-test-harness-plan.md`). `hidden-features.test.mjs` covers every module using `analysis-checklist.js`; run it after touching `module-buffers.js`, `analysis-checklist.js`, a hide/show path or those modules' checklists. New tests reuse `test/browser/harness.mjs` and poll observable state rather than fixed waits (`test/browser/README.md`).
 
 **Screenshots — after app-shell, shared-CSS, popup or module-markup changes.** `test/ui-screens/capture.mjs`; inspect the images, not only the pass count (see Conventions).
 
@@ -76,6 +76,7 @@ js/core/
   walk-cost.js              window.WalkCost — crossing-penalty math (pure)   [road-network]
   layer-palettes.js         window.LayerPalette + App layer-color cascade   [layers-and-styling]
   network-store.js          IndexedDB cache of the road network   [road-network]
+  gtfs-store.js             IndexedDB cache of the loaded GTFS feed's ZIP   [gtfs]
   road-network.js           Overpass download → graph → Dijkstra; walksheds, cost maps, connectors overlay   [road-network]
   network-connectors.js     Walk-network layer, connector Lines, join markers, street exclusion   [road-network]
   walk-audit.js             window.WalkAudit — sidewalk coverage classification + layer   [road-network]
@@ -115,7 +116,7 @@ js/projects/                Analysis modules, one reference doc each under docs/
   route-costing.js          Route Costing   [route-costing]
   trip-builder.js           Trip Builder   [trip-builder]
   title-vi-engine.js + title-vi.js   window.TitleVI engine + Title VI module   [title-vi]
-  gtfs.js                   GTFS Feed Viewer + route browser engine   [gtfs]
+  gtfs.js                   GTFS Feed Viewer + route browser engine + stop selection   [gtfs]
   attribute-summary.js      Attribute Summary (system module)   [drawing-and-features]
   mitigation-needs*.js      Dormant illustration module (script tags commented out)
 projects/*.html             Popup bodies and legend fragments, documented with their module
@@ -130,7 +131,7 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `travelshed`, `connector-graph`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
-config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → road-network
+config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → road-network
 → network-connectors → walk-audit → travelshed → connector-graph → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
 → feature-appearance → feature-attributes → merge → split → layers-panel → census → lodes → projections

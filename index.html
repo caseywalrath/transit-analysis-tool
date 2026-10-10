@@ -132,6 +132,7 @@
               <div class="export-scope-row" id="export-scope-row">
                 <label><input type="radio" name="export-scope" value="all" checked> All</label>
                 <label><input type="radio" name="export-scope" value="visible"> Visible only</label>
+                <label><input type="radio" name="export-scope" value="selected"> Selected</label>
               </div>
               <div class="export-dropdown-divider"></div>
               <button data-format="json-features">JSON (Features only)</button>
@@ -141,6 +142,7 @@
               <button data-format="shp">Shapefile (SHP)</button>
               <button data-format="share-link">Share Link</button>
               <button data-format="road-network" style="display:none;" id="export-road-net">Local Map Data</button>
+              <button data-format="gtfs-stops" style="display:none;" id="export-gtfs-stops">Selected GTFS stops (CSV)</button>
             </div>
           </div>
           <div class="analysis-wrapper">
@@ -385,6 +387,7 @@
     <script src="js/core/walk-cost.js"></script>
     <script src="js/core/layer-palettes.js"></script>
     <script src="js/core/network-store.js"></script>
+    <script src="js/core/gtfs-store.js"></script>
     <script src="js/core/road-network.js"></script>
     <script src="js/core/network-connectors.js"></script>
     <script src="js/core/walk-audit.js"></script>

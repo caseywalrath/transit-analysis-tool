@@ -244,7 +244,7 @@ async function main() {
     console.log("\n# Session round trip + clear");
     await page.evaluate(() => { App.gtfsSetRouteHidden("ten", true); App.gtfsSetShapeHidden("B1", true); });
     const state = await page.evaluate(() => { const s = App.cache.collectState("full"); s.gtfsData = App.serializeGTFSData(); return JSON.parse(JSON.stringify(s)); });
-    check("hidden sets collected into moduleState", eq(state.moduleState["gtfs-browse"], { routes: ["ten"], shapes: ["B1"] }), state.moduleState["gtfs-browse"]);
+    check("hidden sets collected into moduleState", eq(state.moduleState["gtfs-browse"], { routes: ["ten"], shapes: ["B1"], stops: [], feedFile: state.moduleState["gtfs-browse"].feedFile }), state.moduleState["gtfs-browse"]);
     await page.evaluate(() => App.clearGTFS());
     check("clear: index null, layers + highlight layers gone", await page.evaluate(() => App.gtfsRouteIndex() === null &&
       !["gtfs-shapes-layer", "gtfs-shapes-hl", "gtfs-shapes-hl-casing", "gtfs-stops-layer"].some((id) => App.map.getLayer(id))));

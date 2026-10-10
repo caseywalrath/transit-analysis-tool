@@ -676,7 +676,7 @@
 
   function disarmOriginPicker() {
     App.drawMode = null;
-    if (App.map) App.map.getCanvas().style.cursor = "grab";
+    if (App.map) App.map.getCanvas().style.cursor = "default";
   }
 
   // Drop/update the single origin marker (measure.js's createLabel/createVertexDot

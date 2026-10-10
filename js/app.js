@@ -794,7 +794,7 @@
         if (App.drawMode) {
           App.map.getCanvas().style.cursor = "crosshair";
         } else {
-          App.map.getCanvas().style.cursor = "grab";
+          App.map.getCanvas().style.cursor = "default";
         }
 
         App.setStatus(App.drawMode === "box-select"
@@ -811,7 +811,7 @@
       document.querySelectorAll(".tool-btn").forEach(function (b) {
         b.classList.remove("active");
       });
-      App.map.getCanvas().style.cursor = "grab";
+      App.map.getCanvas().style.cursor = "default";
     };
 
     // Finish (commit) the in-progress line/route/polygon — the same commit path as
@@ -922,6 +922,10 @@
         }
         // Delete on a feature selection → confirm dialog (one undo step).
         if (tag === "SELECT" || (App.drawMode && App.drawMode !== "box-select")) return;
+        // Box select targeting GTFS stops (or any non-feature target): Delete
+        // must never remove drawn features the user isn't looking at.
+        if (App.drawMode === "box-select" && App.boxSelect && App.boxSelect.currentTarget &&
+            App.boxSelect.currentTarget() !== "features") return;
         // Analysis panels are non-modal: only a key pressed inside one is ignored.
         if (e.target && e.target.closest && e.target.closest("#module-popup, #fp-attr-popup, #fp-mini-popup")) return;
         if (App.merge && App.merge.isDialogOpen && App.merge.isDialogOpen()) return;
@@ -1684,6 +1688,20 @@
       if (saveStateDropdown) saveStateDropdown.style.display = "none";
       var isOpen = exportDropdown.style.display !== "none";
       exportDropdown.style.display = isOpen ? "none" : "block";
+      // Selected GTFS stops (CSV): only while a feed is loaded and stops are selected.
+      var stopBtn = document.getElementById("export-gtfs-stops");
+      if (stopBtn) {
+        var stopCount = 0, feedOn = false;
+        if (App.gtfsStops && typeof App.gtfsStops.count === "function") {
+          stopCount = App.gtfsStops.count().total;
+          feedOn = typeof App.gtfsRouteIndex === "function" && !!App.gtfsRouteIndex() ||
+            (typeof App.gtfsStops.isAvailable === "function" &&
+             App.gtfsStops.isAvailable().reason !== "Load a GTFS feed first");
+        }
+        var showStops = feedOn && stopCount > 0;
+        stopBtn.style.display = showStops ? "" : "none";
+        if (showStops) stopBtn.textContent = "Selected GTFS stops (CSV) · " + stopCount;
+      }
     });
 
     // Export dropdown item click
@@ -1694,6 +1712,10 @@
       var fmt = btn.getAttribute("data-format");
       if (fmt === "road-network") {
         if (typeof App.exportRoadNetwork === "function") App.exportRoadNetwork();
+        return;
+      }
+      if (fmt === "gtfs-stops") {
+        if (App.gtfsStops && typeof App.gtfsStops.exportCSV === "function") App.gtfsStops.exportCSV();
         return;
       }
       if (typeof App.cache === "undefined") return;
@@ -1953,6 +1975,19 @@
         if (restored) notifyProject();
       }).catch(function (e) {
         console.warn("Road network cache restore failed:", e);
+      });
+    }
+
+    // Same idea for the GTFS feed: the session autosave holds only the stop
+    // selection and hidden routes, so the feed's ZIP is kept in IndexedDB and
+    // re-parsed here — see App.restoreCachedGTFS() in js/projects/gtfs.js. Also
+    // after the session restore above, so the stop list and hidden sets are in
+    // place before the feed arrives.
+    if (typeof App.restoreCachedGTFS === "function") {
+      App.restoreCachedGTFS().then(function (restored) {
+        if (restored) notifyProject();
+      }).catch(function (e) {
+        console.warn("GTFS cache restore failed:", e);
       });
     }
 

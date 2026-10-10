@@ -243,14 +243,14 @@
       _instances[id] = inst;
 
       var onMove = function (e) {
-        map.getCanvas().style.cursor = "pointer";
+        map.getCanvas().style.cursor = "default";
         if (!inst.hoverHTML || !e.features || !e.features.length) { hoverPopup.remove(); return; }
         var html = inst.hoverHTML(e.features[0].properties);
         if (html) hoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(map);
         else hoverPopup.remove();
       };
       var onLeave = function () {
-        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
         hoverPopup.remove();
       };
       map.on("mousemove", fillLayerId, onMove);

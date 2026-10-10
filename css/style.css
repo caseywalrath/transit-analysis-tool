@@ -488,11 +488,16 @@ button { cursor: pointer; }
 .lp-row-sub { padding-left: var(--space-4); }
 .lp-row-label {
   flex: 1;
+  min-width: 4em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .lp-row-label-indent { color: var(--muted); font-size: var(--text-xs); }
+/* Optional manifest badge (e.g. "163 selected"): yields to the hover chips that overlay the row's right edge. */
+.lp-row-badge { flex-shrink: 0; white-space: nowrap; pointer-events: none; }
+.lp-row:hover > .lp-row-badge,
+.lp-row:focus-within > .lp-row-badge { visibility: hidden; }
 /* Row-level hover-reveal chips (eye/clear/menu/opacity), one class per screen
    position — a feature row's eye sits where a group header's or layer row's
    eye does not, so each role gets its own offset instead of one shared class. */
@@ -788,7 +793,7 @@ button { cursor: pointer; }
   font-family: var(--font-sans);
   padding: 2px 6px;
   border-radius: 4px;
-  cursor: grab;
+  cursor: move;
   user-select: none;
   line-height: var(--leading-snug);
   font-weight: var(--weight-semibold);
@@ -797,7 +802,7 @@ button { cursor: pointer; }
   overflow-wrap: break-word;
   white-space: pre-wrap;
 }
-.map-label:active { cursor: grabbing; }
+.map-label:active { cursor: move; }
 
 /* ---- Text Box map overlay ---- */
 .map-textbox {
@@ -825,11 +830,11 @@ button { cursor: pointer; }
 .map-textbox-handle {
   height: 12px;
   background: #e2e8f0;
-  cursor: grab;
+  cursor: move;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-strong);
 }
-.map-textbox-handle:active { cursor: grabbing; }
+.map-textbox-handle:active { cursor: move; }
 .map-textbox-content {
   flex: 1;
   border: none;
@@ -1197,7 +1202,7 @@ body.dark-mode .pm-picker-clear-btn:hover { background: rgba(252,129,74,0.12); b
 #pm-north {
   width: 80px;
   height: 100px;
-  cursor: grab;
+  cursor: move;
   padding: 8px;
   overflow: hidden;
   display: flex;
@@ -1208,7 +1213,7 @@ body.dark-mode .pm-picker-clear-btn:hover { background: rgba(252,129,74,0.12); b
   border-color: transparent;
   box-shadow: none;
 }
-#pm-north:active { cursor: grabbing; }
+#pm-north:active { cursor: move; }
 .pm-north-svg { width: 100%; height: 100%; display: block; }
 .pm-north-left  { fill: currentColor; }
 .pm-north-right { fill: white; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
@@ -1218,7 +1223,7 @@ body.dark-mode .pm-north-right { fill: transparent; }
 /* Title */
 #pm-title {
   box-sizing: border-box;
-  cursor: grab;
+  cursor: move;
   padding: 10px 18px;
   width: max-content;
   min-width: 96px;
@@ -1229,7 +1234,7 @@ body.dark-mode .pm-north-right { fill: transparent; }
   justify-content: center;
   resize: both;
 }
-#pm-title:active { cursor: grabbing; }
+#pm-title:active { cursor: move; }
 .pm-title-text {
   font-size: var(--text-2xl, 22px);
   font-weight: var(--weight-bold);
@@ -6700,6 +6705,48 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .box-select-rect.box-select-within { border-style: solid; }
+/* Target bar: top centre of the map container, outside the canvas container so
+   clicks on it never start a drag. Shown only while the tool is on. */
+.box-select-bar {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.box-select-bar[hidden] { display: none; }
+.box-select-bar select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+}
+.box-select-bar-count { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }
+.box-select-bar-count.box-select-bar-warn { color: var(--warn-text); }
+.box-select-bar button {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 var(--space-1);
+  cursor: pointer;
+}
+.box-select-bar button:disabled { color: var(--text-disabled); cursor: default; }
+body.present-mode .box-select-bar { display: none; }
 .box-select-badge {
   position: absolute;
   pointer-events: none;
@@ -6713,6 +6760,12 @@ body.dark-mode .as-copy-attr-list { border-color: #2d2d3d; }
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
+
+/* Map canvas cursor: plain arrow, four-way arrow while dragging (replaces MapLibre's
+   grab/grabbing hand; inline cursors set by the app still win while a tool is active). */
+.maplibregl-canvas-container.maplibregl-interactive,
+.maplibregl-canvas-container.maplibregl-interactive:active { cursor: default; }
+.maplibregl-canvas-container.maplibregl-interactive.maplibregl-track-pointer { cursor: default; }
 
 /* Analysis checklists: hidden-feature rows (js/core/analysis-checklist.js) */
 .ac-hidden { color: var(--text-disabled); cursor: not-allowed; }

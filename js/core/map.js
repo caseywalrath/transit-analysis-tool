@@ -183,22 +183,81 @@
     boxZoom: false // Shift+drag is box select (js/core/box-select.js)
   });
   map.scrollZoom.setWheelZoomRate(1 / 900); // half the default (1/450) for finer zoom granularity
-  // ---- Default cursor: grab hand ----
+  // ---- Default cursor: plain arrow; four-way "move" arrow while panning ----
+  // (Google Maps style — no grab/pointer hand on the map canvas.)
   map.on("load", function () {
-    map.getCanvas().style.cursor = "grab";
+    map.getCanvas().style.cursor = "default";
   });
   map.on("dragstart", function () {
     if (!App.drawMode && !App._editing) {
-      map.getCanvas().style.cursor = "grabbing";
+      map.getCanvas().style.cursor = "move";
     }
   });
   map.on("dragend", function () {
     if (App.drawMode) {
       map.getCanvas().style.cursor = "crosshair";
     } else if (!App._editing) {
-      map.getCanvas().style.cursor = "grab";
+      map.getCanvas().style.cursor = "default";
     }
   });
+
+  // ---- Middle-button pan ----
+  // Holding the middle button (wheel click) and dragging pans the map in every
+  // mode, including while the box-select tool or a draw tool has taken over the
+  // left button. MapLibre ignores the middle button, so this only adds a way to
+  // pan; the left-button drag behaves exactly as before. Listeners sit on window
+  // in the capture phase so a middle press never reaches editing.js (vertex
+  // drag), textboxes.js or anything else on the canvas. A middle press makes no
+  // "click" event, so draw tools never see a stray point.
+  (function wireMiddlePan() {
+    if (typeof window.addEventListener !== "function") return;
+    var pan = null; // { x, y, cursor }
+
+    function inCanvas(e) {
+      var c = map.getCanvasContainer();
+      return !!(c && e.target && c.contains(e.target));
+    }
+
+    function end() {
+      if (!pan) return;
+      map.getCanvas().style.cursor = pan.cursor;
+      pan = null;
+    }
+
+    window.addEventListener("mousedown", function (e) {
+      if (e.button !== 1 || !inCanvas(e)) return;
+      // Left or right already held (a box drag or vertex drag in progress): leave it alone.
+      if (e.buttons & ~4) return;
+      e.preventDefault(); // stops the browser's middle-click autoscroll
+      e.stopPropagation();
+      end();
+      var canvas = map.getCanvas();
+      pan = { x: e.clientX, y: e.clientY, cursor: canvas.style.cursor };
+      canvas.style.cursor = "move"; // four-way arrow, not the hand
+    }, true);
+
+    window.addEventListener("mousemove", function (e) {
+      if (!pan) return;
+      if (!(e.buttons & 4)) { end(); return; } // released outside the window
+      var dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+      pan.x = e.clientX; pan.y = e.clientY;
+      if (dx || dy) map.panBy([-dx, -dy], { animate: false });
+      e.stopPropagation();
+    }, true);
+
+    window.addEventListener("mouseup", function (e) {
+      if (!pan || e.button !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      end();
+    }, true);
+
+    window.addEventListener("blur", end);
+    // Some browsers fire auxclick for the middle button; nothing should act on it.
+    window.addEventListener("auxclick", function (e) {
+      if (e.button === 1 && inCanvas(e)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+  })();
 
   // ---- Basemap switching ----
 

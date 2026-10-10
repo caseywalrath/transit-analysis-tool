@@ -67,5 +67,39 @@
   "poly/degenerate-box-inside-touch": true,
   "poly/degenerate-box-outside-touch": false,
   "poly/unclosed-ring-closing-edge-misses-box": false,
-  "poly/unclosed-ring-closing-edge-hits-box": true
+  "poly/unclosed-ring-closing-edge-hits-box": true,
+  "keys/replace": [
+    "c",
+    "a"
+  ],
+  "keys/add-order-and-dedupe": [
+    "a",
+    "b",
+    "c",
+    "d"
+  ],
+  "keys/remove": [
+    "a",
+    "c"
+  ],
+  "keys/dupes-in-inputs-replace": [
+    "h",
+    "i"
+  ],
+  "keys/dupes-in-current-add": [
+    "a",
+    "b"
+  ],
+  "keys/dupes-in-current-remove": [
+    "a"
+  ],
+  "keys/empty-current-add": [
+    "p",
+    "q"
+  ],
+  "keys/replace-with-nothing": [],
+  "keys/proto-like-key": [
+    "constructor",
+    "toString"
+  ]
 }

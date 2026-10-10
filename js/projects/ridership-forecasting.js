@@ -881,7 +881,7 @@
     // Hover popup showing Feature Name + CDI
     _corridorPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
     map.on("mousemove", RF_CORRIDOR_LAYER, function (e) {
-      map.getCanvas().style.cursor = "pointer";
+      map.getCanvas().style.cursor = "default";
       if (e.features && e.features.length > 0) {
         var props = e.features[0].properties;
         var cdiVal = Number.isFinite(props.cdiScore) ? Number(props.cdiScore).toFixed(2) : "N/A";
@@ -891,7 +891,7 @@
       }
     });
     map.on("mouseleave", RF_CORRIDOR_LAYER, function () {
-      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
       if (_corridorPopup) _corridorPopup.remove();
     });
   }
