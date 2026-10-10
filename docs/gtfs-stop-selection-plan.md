@@ -443,3 +443,21 @@ Deviations from the plan:
   "GTFS stops" label to nothing. The row now shows `4* sel.` (the `*` means
   some IDs are not in the loaded feed), the full text is the row's tooltip, and
   the label keeps a minimum width.
+
+## Phase 6 results (automated run with the two RTD feeds)
+
+Run in headless Chromium with the real Build and No-Build ZIPs (kept out of the
+repo):
+- The Build feed loads in about 6.5 s and draws 7,464 stops.
+- A box over the whole metro at zoom 9 selects 7,285 stops; the release takes
+  about 20 ms.
+- A narrow box along Federal Blvd (lng −105.0275 to −105.0225, lat 39.62 to
+  39.90) selects 352 stops.
+- After loading the No-Build ZIP the selection is kept. The bar reads "352 stops
+  selected · 124 not in this feed", and the 124 are exactly the selected stops
+  that exist only in the Build feed (checked against both `stops.txt` files).
+- The two exported CSVs list the same 352 IDs. The No-Build file has 124 rows
+  with `in_feed` = 0. File names carry each ZIP's name.
+
+Still for the user: the manual corridor pick (removing cross-street stops with
+Ctrl+click) and opening the CSVs in a spreadsheet.
