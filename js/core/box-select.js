@@ -152,7 +152,7 @@
   // the generic tool-button handler in app.js). Mouse events are intercepted on
   // window in the CAPTURE phase, so MapLibre never sees the mousedown: the map
   // does not pan, and there is no dragPan state to restore on exit. Wheel zoom
-  // still works. Modifiers are read at release: Shift = add, Ctrl/Cmd = remove,
+  // still works, and middle-button drag still pans (wireMiddlePan in map.js). Modifiers are read at release: Shift = add, Ctrl/Cmd = remove,
   // Alt = fully inside (default: touches). A drag under 4 px acts as a click.
 
   var MODE = "box-select";
