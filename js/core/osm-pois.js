@@ -230,17 +230,17 @@
   function wireEvents() {
     var map = App.map;
     map.on("mouseenter", POI_LAYER, function () {
-      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (!App.drawMode) map.getCanvas().style.cursor = "default";
     });
     map.on("mousemove", POI_LAYER, function (e) {
-      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (!App.drawMode) map.getCanvas().style.cursor = "default";
       if (e.features && e.features.length > 0) {
         ensurePopups();
         _hoverPopup.setLngLat(e.lngLat).setHTML(buildHoverHTML(e.features[0].properties)).addTo(map);
       }
     });
     map.on("mouseleave", POI_LAYER, function () {
-      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
       if (_hoverPopup) _hoverPopup.remove();
     });
     map.on("click", POI_LAYER, function (e) {

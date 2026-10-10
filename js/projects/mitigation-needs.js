@@ -443,7 +443,7 @@
       if (!_hoverWired) {
         var hover = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
         map.on("mousemove", MN_FILL_LAYER, function (e) {
-          map.getCanvas().style.cursor = "pointer";
+          map.getCanvas().style.cursor = "default";
           if (!e.features || !e.features.length) return;
           var p = e.features[0].properties;
           var d = p.demandIndex != null ? Number(p.demandIndex).toFixed(2) : "N/A";
@@ -455,7 +455,7 @@
           hover.setLngLat(e.lngLat).setHTML(html).addTo(map);
         });
         map.on("mouseleave", MN_FILL_LAYER, function () {
-          map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+          map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
           hover.remove();
         });
         _hoverWired = true;

@@ -1066,13 +1066,13 @@
       var isStop  = layer.isStop;
 
       addListener("mouseenter", layerId, function () {
-        if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+        if (!App.drawMode) map.getCanvas().style.cursor = "default";
       });
 
       addListener("mousemove", layerId, function (e) {
         var feats = featuresNear(e, layerId, function (p) { return keyFor(p, isStop); });
         if (!feats.length) return;
-        if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+        if (!App.drawMode) map.getCanvas().style.cursor = "default";
         ensurePopups();
         _hoverPopup
           .setLngLat(e.lngLat)
@@ -1081,7 +1081,7 @@
       });
 
       addListener("mouseleave", layerId, function () {
-        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+        map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
         if (_hoverPopup) _hoverPopup.remove();
       });
 

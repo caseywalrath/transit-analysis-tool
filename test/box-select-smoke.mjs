@@ -300,10 +300,10 @@ async function main() {
     };
     let mp = await mpan();
     check("middle drag pans with no tool", mp.moved, mp);
-    check("middle drag shows the grabbing cursor", mp.cursorDuring === "grabbing", mp.cursorDuring);
+    check("middle drag shows the four-way move cursor", mp.cursorDuring === "move", mp.cursorDuring);
     // Drag direction: grabbing the map and moving right/down moves the view left/up.
     check("map follows the drag (center moves west and north)", mp.c1[0] < mp.c0[0] && mp.c1[1] > mp.c0[1], mp);
-    check("cursor restored after release", await page.evaluate(() => App.map.getCanvas().style.cursor !== "grabbing"));
+    check("cursor restored after release", await page.evaluate(() => App.map.getCanvas().style.cursor === "default"));
 
     await page.evaluate(() => App.setSelection([{ type: "point", index: 0 }]));
     await page.click('.tool-btn[data-mode="box-select"]');

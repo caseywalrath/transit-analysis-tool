@@ -342,14 +342,14 @@
       // none, so hovering it shows no highlight/tooltip rather than a
       // half-working preview for a street that can't be excluded anyway.
       if (wayId == null) {
-        if (!App.drawMode) map.getCanvas().style.cursor = "grab";
+        if (!App.drawMode) map.getCanvas().style.cursor = "default";
         if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
         if (_wnHoverPopup) _wnHoverPopup.remove();
         _hoverWayId = null;
         return;
       }
 
-      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (!App.drawMode) map.getCanvas().style.cursor = "default";
       if (wayId !== _hoverWayId) {
         _hoverWayId = wayId;
         map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], wayId]);
@@ -372,7 +372,7 @@
     });
 
     map.on("mouseleave", WN_LAYER, function () {
-      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
       _hoverWayId = null;
       if (map.getLayer(WN_HOVER_LAYER)) map.setFilter(WN_HOVER_LAYER, ["==", ["get", "wayId"], "__wn_none__"]);
       if (_wnHoverPopup) _wnHoverPopup.remove();

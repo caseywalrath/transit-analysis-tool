@@ -1066,7 +1066,7 @@
     removePreviewLayers();
     if (App.drawMode === PICK_MODE) {
       App.drawMode = null;
-      if (App.map) App.map.getCanvas().style.cursor = "grab";
+      if (App.map) App.map.getCanvas().style.cursor = "default";
     }
     if (!silent && typeof App.setStatus === "function") App.setStatus("Ready");
     return true;

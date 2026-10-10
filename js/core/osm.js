@@ -308,11 +308,11 @@
     var map = App.map;
 
     map.on("mouseenter", layerId, function () {
-      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (!App.drawMode) map.getCanvas().style.cursor = "default";
     });
 
     map.on("mousemove", layerId, function (e) {
-      if (!App.drawMode) map.getCanvas().style.cursor = "pointer";
+      if (!App.drawMode) map.getCanvas().style.cursor = "default";
       var feats = featuresNear(e, layerId);
       if (feats.length > 0) {
         ensurePopups();
@@ -321,7 +321,7 @@
     });
 
     map.on("mouseleave", layerId, function () {
-      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "grab";
+      map.getCanvas().style.cursor = App.drawMode ? "crosshair" : "default";
       if (_hoverPopup) _hoverPopup.remove();
     });
 

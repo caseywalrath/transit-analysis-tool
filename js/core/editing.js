@@ -190,7 +190,7 @@
     editState = { type: "vertex-edit", featureType: type, featureIndex: index };
     App._editing = editState;
     showEditVertices(type, index);
-    App.map.getCanvas().style.cursor = "pointer";
+    App.map.getCanvas().style.cursor = "default";
     // Does NOT call selectFeature — caller is responsible
   };
 
@@ -200,7 +200,7 @@
     editState = null;
     App._editing = null;
     hideEditVertices();
-    if (!App.drawMode) App.map.getCanvas().style.cursor = "grab";
+    if (!App.drawMode) App.map.getCanvas().style.cursor = "default";
     // Does NOT call clearSelection — caller is responsible
   };
 
@@ -435,7 +435,7 @@
       if (pointHits.length > 0) {
         var sIdx = findPointIndex(pointHits[0]);
         var isSelPoint = App._selected && App._selected.type === "point" && App._selected.index === sIdx;
-        map.getCanvas().style.cursor = isSelPoint ? "move" : "pointer";
+        map.getCanvas().style.cursor = isSelPoint ? "move" : "default";
         if (sIdx >= 0 && typeof App.setHoveredFeature === "function") App.setHoveredFeature("point", sIdx, e.lngLat);
         return;
       }
@@ -443,7 +443,7 @@
       // Check lines, routes, and polygons
       var featureHits = safeQuery(e.point, ["lines-layer", "routes-layer", "polygons-fill"]);
       if (featureHits.length > 0) {
-        map.getCanvas().style.cursor = "pointer";
+        map.getCanvas().style.cursor = "default";
         var hit = featureHits[0];
         var lid = hit.layer.id;
         if (lid === "lines-layer") {
@@ -462,7 +462,7 @@
       // Check buffer areas (point / line / route buffers)
       var bufferHits = safeQuery(e.point, ["buffers-fill", "line-buffers-fill", "route-buffers-fill"]);
       if (bufferHits.length > 0) {
-        map.getCanvas().style.cursor = "pointer";
+        map.getCanvas().style.cursor = "default";
         var bHit = bufferHits[0];
         var bLid = bHit.layer.id;
         var bProps = bHit.properties || {};
@@ -481,7 +481,7 @@
 
       // No feature under cursor — clear hover
       if (typeof App.clearHover === "function") App.clearHover();
-      map.getCanvas().style.cursor = "grab";
+      map.getCanvas().style.cursor = "default";
     });
 
     // ---- Mousedown: start point drag or vertex drag ----
@@ -503,7 +503,7 @@
           };
           App._editing = editState;
           map.dragPan.disable();
-          map.getCanvas().style.cursor = "grabbing";
+          map.getCanvas().style.cursor = "move";
           return;
         }
       }
@@ -518,7 +518,7 @@
           editState = { type: "point-drag", index: ptIdx };
           App._editing = editState;
           map.dragPan.disable();
-          map.getCanvas().style.cursor = "grabbing";
+          map.getCanvas().style.cursor = "move";
         }
       }
     });

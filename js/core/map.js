@@ -185,20 +185,21 @@
     boxZoom: false // Shift+drag is box select (js/core/box-select.js)
   });
   map.scrollZoom.setWheelZoomRate(1 / 900); // half the default (1/450) for finer zoom granularity
-  // ---- Default cursor: grab hand ----
+  // ---- Default cursor: plain arrow; four-way "move" arrow while panning ----
+  // (Google Maps style — no grab/pointer hand on the map canvas.)
   map.on("load", function () {
-    map.getCanvas().style.cursor = "grab";
+    map.getCanvas().style.cursor = "default";
   });
   map.on("dragstart", function () {
     if (!App.drawMode && !App._editing) {
-      map.getCanvas().style.cursor = "grabbing";
+      map.getCanvas().style.cursor = "move";
     }
   });
   map.on("dragend", function () {
     if (App.drawMode) {
       map.getCanvas().style.cursor = "crosshair";
     } else if (!App._editing) {
-      map.getCanvas().style.cursor = "grab";
+      map.getCanvas().style.cursor = "default";
     }
   });
 
@@ -234,7 +235,7 @@
       end();
       var canvas = map.getCanvas();
       pan = { x: e.clientX, y: e.clientY, cursor: canvas.style.cursor };
-      canvas.style.cursor = "grabbing";
+      canvas.style.cursor = "move"; // four-way arrow, not the hand
     }, true);
 
     window.addEventListener("mousemove", function (e) {

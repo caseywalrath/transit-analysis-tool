@@ -701,7 +701,7 @@
         if (App.drawMode) {
           App.map.getCanvas().style.cursor = "crosshair";
         } else {
-          App.map.getCanvas().style.cursor = "grab";
+          App.map.getCanvas().style.cursor = "default";
         }
 
         App.setStatus(App.drawMode === "box-select"
@@ -718,7 +718,7 @@
       document.querySelectorAll(".tool-btn").forEach(function (b) {
         b.classList.remove("active");
       });
-      App.map.getCanvas().style.cursor = "grab";
+      App.map.getCanvas().style.cursor = "default";
     };
 
     // Finish (commit) the in-progress line/route/polygon — the same commit path as
