@@ -67,7 +67,9 @@
         var c = App.gtfsStops.count();
         if (!c.total) return "";
         var missing = c.total - c.inFeed;
-        return c.total + " selected" + (missing > 0 ? " · " + missing + " not in feed" : "");
+        // Short on the row (the panel is narrow); full text in the tooltip.
+        return { text: c.total + (missing > 0 ? "*" : "") + " sel.",
+                 title: c.total + " selected" + (missing > 0 ? " · " + missing + " not in this feed" : "") };
       },
       menuItems: function () { return gtfsStopMenuItems(); } },
     { id: "osm-points-layer",     label: "OSM points",           layers: [{ id: "osm-points-layer", op: "circle-opacity" }],
@@ -940,7 +942,8 @@
       if (badgeText) {
         var badge = document.createElement("span");
         badge.className = "lp-row-label-indent lp-row-badge";
-        badge.textContent = badgeText;
+        badge.textContent = typeof badgeText === "string" ? badgeText : badgeText.text;
+        if (badgeText.title) { badge.title = badgeText.title; row.title = badgeText.title; }
         row.appendChild(badge);
       }
     }

@@ -485,6 +485,7 @@ button { cursor: pointer; }
 .lp-row-sub { padding-left: var(--space-4); }
 .lp-row-label {
   flex: 1;
+  min-width: 4em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

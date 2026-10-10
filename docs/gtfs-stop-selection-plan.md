@@ -1,6 +1,6 @@
 # GTFS stop selection and export — plan
 
-Status: **proposed**. Nothing is implemented yet.
+Status: **implemented** (Phases 1-5; see "Implementation notes" at the end).
 
 ## What the user asked for
 
@@ -411,3 +411,35 @@ can start alongside Phase 2; only the stops target needs Phase 2's API.
   blocks, and summing service). A prototype exists from the planning
   conversation; it would live outside this app.
 - Two GTFS feeds loaded at once.
+
+## Implementation notes
+
+Built as planned: `App.gtfsStopList` / `App.gtfsStops` and the stop highlight in
+`js/projects/gtfs.js`; the target registry, `combineKeys` and the on-map bar in
+`js/core/box-select.js`; the "Selected" export scope in `js/core/cache.js`; the
+Export-menu button in `js/app.js` and `index.html`; the `badge()`/`menuItems()`
+manifest hooks in `js/core/layers-panel.js`. Checks: golden cases in
+`test/cases/box-select.mjs` and `test/cases/gtfs-browse.mjs`,
+`test/gtfs-stop-select-smoke.mjs`, and three screenshot pairs in
+`test/ui-screens/capture.mjs` (bar, Export menu, Layers menu; baselines added).
+CLAUDE.md documents each piece in its File Structure / API entry.
+
+Deviations from the plan:
+
+- **Download helper duplicated.** `gtfs.js` has its own small Blob-and-anchor
+  `downloadText()`, because `cache.js`'s `_triggerDownload` is private.
+- **`count().inFeed` counts every `stop_id` in stops.txt**, stations included
+  (not only the drawn location_type 0 stops), so the number agrees with the
+  export's `in_feed` column. `candidates()` (what a box can hit) still lists
+  drawn stops only.
+- **Layers menu omits selection items when nothing is selected** (Zoom to
+  selected stops, Export selected stops, Clear stop selection) instead of
+  disabling them, because `showContextMenu` has no disabled-item support.
+- **The badge hides while its row is hovered or focused**, so it does not cover
+  the row's hover chips (eye, opacity, menu).
+
+- **The badge is short.** The Phase 5 screenshots showed that in the 208 px
+  Layers panel the full text ("4 selected · 1 not in feed") squeezed the
+  "GTFS stops" label to nothing. The row now shows `4* sel.` (the `*` means
+  some IDs are not in the loaded feed), the full text is the row's tooltip, and
+  the label keeps a minimum width.

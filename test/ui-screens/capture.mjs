@@ -432,6 +432,80 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_gtfs-route-browser", "fail", e.message);
   }
 
+  // ---- GTFS stop selection (docs/gtfs-stop-selection-plan.md Phase 5) ----
+  // Small synthetic feed (6 stops, one shape), 3 selected + 1 id not in the
+  // feed so the badge shows the "not in feed" suffix. Captures the box-select
+  // bar on the GTFS stops target, the Export menu with the stop button, and
+  // the Layers-tab GTFS stops row with its badge and open ⋯ menu.
+  let savedView = null;
+  try {
+    savedView = await page.evaluate(() => ({ c: window.App.map.getCenter().toArray(), z: window.App.map.getZoom(), b: window.App.map.getBearing(), p: window.App.map.getPitch() }));
+    await page.evaluate(async () => {
+      const stops = ["s1", "s2", "s3", "s4", "s5", "s6"].map((id, i) =>
+        [id, "C" + id, "Stop " + id, 38.81 - (i % 2) * 0.004, -104.806 + Math.floor(i / 2) * 0.004, 0, ""].join(",")).join("\n");
+      const zip = new window.JSZip();
+      zip.file("stops.txt", "stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station\n" + stops + "\n");
+      zip.file("shapes.txt", "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nS1,38.80,-104.81,1\nS1,38.80,-104.79,2\n");
+      zip.file("trips.txt", "route_id,service_id,trip_id,trip_headsign,shape_id\nr1,svc,t1,Down,S1\n");
+      zip.file("routes.txt", "route_id,route_short_name,route_long_name,route_type\nr1,One,One Line,3\n");
+      await window.App.loadGTFSFile(new File([await zip.generateAsync({ type: "blob" })], "build.zip", { type: "application/zip" }));
+    });
+    await page.waitForFunction("window.App.gtfsStops.isAvailable().ok && window.App.map.getLayer('gtfs-stops-selected')", { timeout: 15000 });
+    await page.evaluate(() => {
+      window.App.map.jumpTo({ center: [-104.8, 38.808], zoom: 15 });
+      window.App.gtfsStops.set(["s1", "s2", "s4", "zz-not-in-feed"]);
+      window.App.setSelection([]);
+    });
+
+    // 1. Box-select bar, GTFS stops target.
+    await page.click('.tool-btn[data-mode="box-select"]');
+    await page.selectOption(".box-select-bar-target", "gtfs-stops");
+    await sleep(TAB_SETTLE_MS);
+    await page.mouse.move(5, 5); // keep hover state out of the shot
+    await shootLocator(page, ".box-select-bar", join(OUT_DIR, theme + "_box-select-bar-stops.png"), theme + "_box-select-bar-stops");
+    await page.click('.tool-btn[data-mode="box-select"]');
+
+    // 2. Export menu with the stop button visible.
+    await page.click("#export-btn");
+    await page.locator("#export-gtfs-stops").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#export-dropdown", join(OUT_DIR, theme + "_export-menu-gtfs-stops.png"), theme + "_export-menu-gtfs-stops");
+    await page.click("#export-btn");
+
+    // 3. Layers tab: GTFS stops row (badge) and its open ⋯ menu.
+    await page.locator('.fp-tab-btn[data-fptab="layers"]').click();
+    const stopsRow = page.locator("#fp-tab-layers .lp-row", { hasText: "GTFS stops" }).first();
+    await stopsRow.waitFor({ state: "visible", timeout: 5000 });
+    // Row alone (menu closed, not hovered: the badge hides on hover) so the badge is readable.
+    await page.mouse.move(5, 5);
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, '#fp-tab-layers .lp-row:has-text("GTFS stops")', join(OUT_DIR, theme + "_layers-gtfs-stops-badge.png"), theme + "_layers-gtfs-stops-badge");
+    await stopsRow.hover();
+    await stopsRow.locator(".lp-row-menu").click();
+    await page.locator("#fp-context-menu").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    const clip = await page.evaluate(() => {
+      const a = document.querySelector("#feature-panel").getBoundingClientRect();
+      const m = document.querySelector("#fp-context-menu").getBoundingClientRect();
+      const x = Math.max(0, Math.min(a.left, m.left)), y = Math.max(0, Math.min(a.top, m.top));
+      const r = Math.min(window.innerWidth, Math.max(a.right, m.right)), b = Math.min(window.innerHeight, Math.max(a.bottom, m.bottom));
+      return { x, y, width: r - x, height: b - y };
+    });
+    await page.screenshot({ path: join(OUT_DIR, theme + "_layers-gtfs-stops-menu.png"), clip });
+    record(theme + "_layers-gtfs-stops-menu", "ok", null, { width: Math.round(clip.width), height: Math.round(clip.height) });
+    await page.keyboard.press("Escape");
+    await page.mouse.click(5, 5);
+    await page.locator('.fp-tab-btn[data-fptab="features"]').click();
+    await page.evaluate(() => window.App.clearGTFS());
+  } catch (e) {
+    record(theme + "_gtfs-stop-selection", "fail", e.message);
+  }
+  // Put the map back exactly where it was so later full-page shots are unaffected.
+  if (savedView) {
+    await page.evaluate((v) => window.App.map.jumpTo({ center: v.c, zoom: v.z, bearing: v.b, pitch: v.p }), savedView);
+    await sleep(TAB_SETTLE_MS);
+  }
+
   // ---- Per-feature attribute popup ----
   try {
     await page.evaluate(() => {
