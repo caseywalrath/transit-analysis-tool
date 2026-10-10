@@ -1,10 +1,8 @@
 // js/projects/transit-travelshed.js
-// Transit Travelshed: registers as an analysis module, opens in a 2-column
-// popup, and computes walk -> wait -> ride drawn transit routes/lines -> walk
-// isochrones from a clicked map origin, with at most one transfer, rendered as
-// 1-3 banded rings. Extends the offline road-network engine
-// (js/core/road-network.js: computeWalkCostMap/polygonizeNodeSet/etc.) with
-// the pure Travelshed calc engine (js/core/travelshed.js: window.Travelshed).
+// Transit Travelshed module: walk -> wait -> ride (drawn routes/lines) -> walk
+// isochrones from a clicked origin, at most one transfer, rendered as 1-3 banded
+// rings. Graph work via road-network.js; math via window.Travelshed.
+// Detail: docs/reference/modules/transit-travelshed.md
 // Depends on: App.registerModule, App.popup, App.map, App.cache,
 //   App.getEffectiveServiceBands (service-assembly.js), App.foldAnalysisUnion
 //   (module-buffers.js), road-network.js exports, turf (CDN), maplibregl (CDN),
@@ -26,16 +24,14 @@
     boardPenaltyMin: 1,
     stopSpacingMi: 0.25,
     maxEdgeKm: 0.3,
-    shedMode: "transit",      // "transit" (walk legs capped) | "door" (today's uncapped behavior)
+    shedMode: "transit",      // "transit" (walk legs capped) | "door" (walk legs uncapped)
     maxAccessWalkMi: 0.5,
     maxEgressWalkMi: 0.25,
     maxTransferWalkMi: 0.25
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
-  var FT_PER_KM = 3280.84; // Phase 7 (docs/network-connectors-plan.md): hull-detail maxEdgeKm is
-                            // displayed in feet but stored/persisted in km, same UI-boundary pattern
-                            // as walkSpeedMph above and the connector snap-tolerance input.
+  var FT_PER_KM = 3280.84; // hull-detail maxEdgeKm is displayed in feet but stored/persisted in km
 
   var _settings     = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   var _origin        = null;   // [lng, lat] | null — probe pattern, not an App.points feature
@@ -228,7 +224,7 @@
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
 
-  // ---- 6a. Stop resolution (turf-dependent, module-local) ----
+  // ---- Stop resolution (turf-dependent, module-local) ----
 
   // Resolves each selected route/line into an engine-ready record. Bands select
   // the active headway at (dayType, analysisMin); a route with no active band is
@@ -348,7 +344,7 @@
     return out;
   }
 
-  // ---- 6b. Snap + flood caches (chunked async) ----
+  // ---- Snap + flood caches (chunked async) ----
 
   function floodCacheKey(stopKey, epoch, budgetKm) {
     return stopKey + "|" + epoch + "|" + budgetKm.toFixed(3);
@@ -364,14 +360,10 @@
   // setTimeout is throttled), so the visible counter stays accurate the next
   // time the UI actually gets to repaint.
   //
-  // Flood budget decision: the caller sizes budgetKm — an upper bound on any
-  // remaining budget after a boarding — so one flood per stop serves every
-  // boarding time, every band, and every re-run with unchanged budget/speed/
-  // caps. The pure engine thresholds a single flood into bands; we never
-  // re-flood per remaining budget. Pre-v2 this was always the full max-budget
-  // radius; as of the v2 walk-caps plan, "transit" mode passes the smaller
-  // (egress/transfer-capped) radius instead — see the "§2.3 flood budgets"
-  // comment in runTravelshed() — while "door" mode keeps the full radius.
+  // Flood budget: the caller sizes budgetKm as an upper bound on any walk after
+  // a boarding, so one flood per stop serves every boarding time, band and
+  // re-run with unchanged budget/speed/caps — never re-flood per remaining
+  // budget. Radius choice: see the flood-budget comment in runTravelshed().
   async function ensureFloods(stopsByKey, budgetKm, onProgress) {
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
     var keys = Object.keys(stopsByKey);
@@ -407,9 +399,7 @@
     return { cached: cached, fresh: fresh, snapMs: snapMs, floodMs: floodMs };
   }
 
-  // ---- Status / stale / empty (standardized helper) ----
-
-  // ---- Collapsible inputs (shared helper) ----
+  // ---- Collapsible inputs + status / stale / empty (shared helpers) ----
   var DAY_LABEL_TS = { weekday: "Weekday", saturday: "Saturday", sunday: "Sunday" };
 
   function inputsSummary() {
@@ -479,9 +469,9 @@
   }
 
   // ---- Network availability ----
-  // As of Phase 7, no-network no longer hard-disables Calculate — it routes
-  // into the scoped prompt-to-download offer instead (see computeRequiredExtent
-  // and the coverage check in runTravelshed). #tsNetWarn is purely informational.
+  // No network never disables Calculate — it routes into the scoped
+  // prompt-to-download offer (computeRequiredExtent + the coverage check in
+  // runTravelshed). #tsNetWarn is purely informational.
 
   function refreshNetWarn() {
     var loaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
@@ -492,15 +482,14 @@
     }
   }
 
-  // ---- 7. Prompt-to-download extent ----
+  // ---- Prompt-to-download extent ----
 
   var _pendingDownloadExtent = null; // Feature<Polygon> | null — set by the last coverage check, consumed by #tsDownloadBtn
 
   // Rectangle covering everything the analysis could touch: the origin's walk
   // circle, unioned with a walk buffer around each selected route/line. In
-  // "door" mode both radii are the full time-budget walk distance (today's
-  // behavior — egress walk is bounded only by the total remaining budget at
-  // walk speed). In "transit" mode the origin only needs to cover the access
+  // "door" mode both radii are the full time-budget walk distance (egress walk
+  // is bounded only by the remaining budget). In "transit" mode the origin only needs to cover the access
   // cap, and features only need to cover the larger of the egress/transfer
   // caps — smaller downloads, consistent with the capped floods in
   // runTravelshed(). Coarse (ignores wait/ride time already spent) but safe:
@@ -599,8 +588,7 @@
   }
 
   // Snap tolerance is global state, not a module setting — write straight to
-  // App.networkSettings and re-run the connector overlay, per
-  // docs/network-connectors-plan.md §2 "Known conflict". Shared with Walkshed.
+  // App.networkSettings and re-run the connector overlay. Shared with Walkshed.
   function onSnapTolChange() {
     var el = document.getElementById("tsSnapTol");
     if (!el || !(+el.value > 0)) return;
@@ -730,18 +718,15 @@
     });
   }
 
-  // ---- 6d. Rendering ----
+  // ---- Rendering ----
 
   var TS_SOURCE     = "ts-travelshed";
   var TS_FILL_LAYER = "ts-travelshed-fill";
   var TS_LINE_LAYER = "ts-travelshed-line";
 
-  // 3-class Blues, innermost (band 0 = shortest budget) darkest — the repo's
-  // only other `step`/classed color expression precedent is corridor-scoring.js.
-  // Resolved through the layer color cascade
-  // (docs/layer-color-customization-plan.md); guarded so a missing
-  // layer-palettes.js script tag degrades to the original hardcoded colors
-  // rather than throwing.
+  // 3-class Blues, innermost (band 0 = shortest budget) darkest. Resolved through
+  // the layer color cascade; a missing layer-palettes.js degrades to the
+  // hardcoded colors rather than throwing.
   function tsColorExpr() {
     if (typeof window.LayerPalette === "undefined") {
       return ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
@@ -834,7 +819,7 @@
     }
   }
 
-  // ---- 6e. Results + route detail + export ----
+  // ---- Results + route detail + export ----
 
   function renderResults(result) {
     var container   = document.getElementById("tsResultsTable");
@@ -871,10 +856,9 @@
       coverageReportHTML();
   }
 
-  // Connection-report footer line (docs/network-connectors-plan.md Phase 6):
-  // only rendered when at least one walk connector exists. Styled with the
-  // module's existing warning color (#b45309) when a connector end isn't
-  // joined to the network. Shared logic with Walkshed's identical footer line.
+  // Connection-report footer: only when at least one walk connector exists;
+  // warning color (#b45309) when a connector end isn't joined to the network.
+  // Same as Walkshed's footer line.
   function connectionReportHTML() {
     var summary = typeof App.getConnectorReportSummary === "function"
       ? App.getConnectorReportSummary() : null;
@@ -886,9 +870,8 @@
       "</p>";
   }
 
-  // Sidewalk coverage footer line (docs/sidewalk-data-plan.md Phase 3):
-  // only rendered when a network is loaded — absent, not "0%", when there
-  // isn't one. Shared logic with Walkshed's identical footer line.
+  // Sidewalk coverage footer: only when a network is loaded — absent, not "0%",
+  // when there isn't one. Same as Walkshed's footer line.
   function coverageReportHTML() {
     var summary = typeof App.getSidewalkCoverageSummary === "function"
       ? App.getSidewalkCoverageSummary() : null;
@@ -976,9 +959,11 @@
     _triggerDownload(JSON.stringify(fc, null, 2), "application/geo+json", "transit-travelshed-" + _dateStamp() + ".geojson");
   }
 
-  // ---- 6c. Orchestration ----
+  // ---- Orchestration ----
 
-  async function runTravelshed() {
+  // `afterRestore` marks the re-run after a stored-network restore, so a
+  // restore that still doesn't pass the coverage check can't loop.
+  async function runTravelshed(afterRestore) {
     if (_running) return;
 
     readSettingsFromInputs();
@@ -997,7 +982,7 @@
 
     var maxBudgetMin = budgets[budgets.length - 1];
 
-    // 2. Prompt-to-download extent check. Computed against the RAW selected
+    // Prompt-to-download extent check. Computed against the RAW selected
     // geometries (not resolveRoutes' band-filtered output) since it only needs
     // shapes, not schedules.
     var selectedFeatures = [];
@@ -1009,12 +994,21 @@
     _pendingDownloadExtent = requiredExtent;
 
     var netLoaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
+    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
+    // Before offering a download, look for a stored network that covers this
+    // area (e.g. one the user only removed from the map).
+    if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
+        (!netLoaded || (downloadedExtent && !turf.booleanContains(downloadedExtent, requiredExtent)))) {
+      if (await App.restoreNetworkCovering(requiredExtent)) {
+        if (typeof App.notifyProject === "function") App.notifyProject();
+        return runTravelshed(true);
+      }
+    }
     if (!netLoaded) {
       setCoverageWarn("No street network loaded.");
       showDownloadBtn(true);
       return;
     }
-    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
     if (downloadedExtent === null) {
       // File-imported network — extent unknown. Soft warning; proceed anyway.
       setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
@@ -1031,9 +1025,9 @@
     var walkSpeedKmh = _settings.walkSpeedMph * KM_PER_MILE;
     var budgetKm = walkSpeedKmh * (maxBudgetMin / 60);
 
-    // §2.3 flood budgets: "transit" mode floods only as far as the relevant
-    // walk cap (never past the full budget either); "door" mode floods at the
-    // full max-budget radius, unchanged from v1. One stop flood must serve
+    // Flood budgets: "transit" mode floods only as far as the relevant walk
+    // cap (never past the full budget either); "door" mode floods at the full
+    // max-budget radius. One stop flood must serve
     // both egress merging and transfer walks, so it uses the LARGER of the
     // two caps.
     var isTransitMode = _settings.shedMode !== "door";
@@ -1090,13 +1084,10 @@
       // the per-stop ones.
       floodStats.snapMs += originFlood.snapMs || 0;
       floodStats.floodMs += originFlood.floodMs || 0;
-      // Snap vs. flood diagnostic (docs/transit-travelshed-v2-walk-caps-plan.md
-      // follow-up): snapping used to scan every segment in the network per
-      // call (turf allocations + turf.nearestPointOnLine per segment) and
-      // dominated "Walking from stop x/y" on city-scale downloads; the fix is
-      // the grid-accelerated snapToNetwork() in road-network.js. Logged (not
-      // just shown in the results footer) so it's easy to compare before/after
-      // on a real network without re-running with dev tools already open.
+      // Snap vs. flood timing, logged (not just shown in the footer) so a slow
+      // run can be diagnosed on a real network without re-running with dev
+      // tools open. Snapping once dominated on city-scale networks; see the
+      // grid-accelerated snapToNetwork() in road-network.js.
       console.log("[transit-travelshed] snap " + floodStats.snapMs + " ms, flood " + floodStats.floodMs +
         " ms, across " + floodStats.fresh + " fresh + " + floodStats.cached + " cached flood(s)");
 
@@ -1139,19 +1130,18 @@
         stopCosts: stopCosts
       });
 
-      // bandNodeSets still drives the per-band NODE COUNTS shown in the
-      // results table — it no longer drives geometry (see below).
+      // bandNodeSets drives only the per-band node counts in the results
+      // table, not geometry (see below).
       var bandSets = Travelshed.bandNodeSets(engineResult.nodeTimes, budgets);
 
       setStatus("Building isochrones…", "running");
       await new Promise(function (r) { setTimeout(r, 0); });
 
-      // §2.4 cluster-union polygonization: one polygon per reachable CLUSTER
-      // (the origin/access walk blob, plus one per alighting stop's egress
-      // walk), unioned per band — rather than one hull over every reachable
-      // node. A single hull across disjoint clusters shrink-wraps the gap
-      // between them (the "bridges unreachable space" bug this plan fixes);
-      // per-cluster polygons + union can't bridge anything that isn't
+      // Cluster-union polygonization: one polygon per reachable CLUSTER (the
+      // origin/access walk blob, plus one per alighting stop's egress walk),
+      // unioned per band — rather than one hull over every reachable node. A
+      // single hull across disjoint clusters shrink-wraps the gap between them
+      // (bridging unreachable space); per-cluster polygons + union can't bridge anything that isn't
       // actually reachable. Used in BOTH modes — in "door" mode the clusters
       // are large and overlap heavily, but the union is still correct.
       var walkMinPerKm = 60 / walkSpeedKmh;
@@ -1340,7 +1330,7 @@
 
   function onClose(core) { /* state persists in closure */ }
 
-  // Completeness audit (Phase 8): layers before sources (clearTravelshedLayers
+  // Clears everything: layers before sources (clearTravelshedLayers
   // already orders line->fill->source), the legend widget, the origin marker,
   // disarming the picker if it was left armed, and any pending download-offer
   // state — nothing from an in-progress or completed run should survive Clear.
@@ -1375,8 +1365,8 @@
     if (_lastResult) markStale();
   }
 
-  // ---- 8. Session persistence (settings only — polygons recompute cheaply and ----
-  // ---- the road network isn't persisted anyway; walkshed precedent) ----
+  // ---- Session persistence (settings only — polygons recompute cheaply and ----
+  // ---- the road network isn't persisted anyway) ----
 
   function collect() {
     var budgets = _settings.budgets || [];
@@ -1399,13 +1389,10 @@
     };
   }
 
-  // Restores inputs and re-places the origin marker. Results stay empty until
-  // Re-run (transit-coverage precedent: geometry is not persisted, so export
-  // stays disabled until a fresh run regenerates it). v1 payloads (pre-dating
-  // the v2 walk-caps plan) have no shedMode/cap fields — the DEFAULT_SETTINGS
-  // values already seeded in _settings cover them, no migration warning
-  // needed (geometry is never persisted either way, so a v1 session is
-  // stale-until-rerun regardless).
+  // Restores inputs and re-places the origin marker. Results stay empty (and
+  // export disabled) until a fresh run, since geometry is not persisted. v1
+  // payloads lack shedMode/cap fields; the DEFAULT_SETTINGS values already in
+  // _settings cover them, so no migration is needed.
   function apply(data) {
     if (!data) return;
 
@@ -1441,10 +1428,8 @@
     name:       "Transit Travelshed",
     enabled:    true,
     popupWidth: 940,
-    // One width for both modes, under the 620px @container breakpoint — narrow,
-    // stacked task panel in every state, never resizes on run (see the fuller
-    // note in buffer-summary.js). The old results width of 640 cleared that
-    // breakpoint by 20px, which un-stacked the panel after a run.
+    // One width for both modes, under the 620px @container breakpoint, so the
+    // panel stays stacked and never resizes on run (see buffer-summary.js).
     panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/transit-travelshed-popup.html",
 

@@ -18,9 +18,8 @@ node test/run-golden.mjs ridership  # only case files matching "ridership"
 node test/run-golden.mjs --update   # re-record golden values from current code
 ```
 
-The final line is a one-glance tally, e.g. `PASS — 73/73 cases passed across 5 module(s)`.
-Currently covered: Ridership Forecasting, TPI scoring, Route Costing, Trip Builder,
-Corridor Scoring. (Title VI is deliberately deferred until its engine stabilizes —
+The final line is a one-glance tally, e.g. `PASS — 521/521 cases passed across 19 module(s)`.
+Covered modules: one per file in `test/cases/`. (Title VI is deliberately deferred until its engine stabilizes —
 see the note in `features.md`.)
 
 `--update` is the only command that writes anything. Use it **only** when you have
@@ -112,3 +111,15 @@ READMEs for one-time setup):
   startup sequencing, map-layer lifecycle. Run after a change to session
   persistence, IndexedDB/localStorage state, or anything else that only
   misbehaves with a real event loop.
+
+## Comment guard
+
+`test/comment-guard.mjs` proves an edit changed only comments and whitespace (`docs/comment-cleanup-plan.md` Phase 0). It compares each changed `.js`/`.mjs`/`.css`/`.html` file against a git revision: JS by token stream with comments dropped (acorn), CSS and HTML with comments stripped and whitespace collapsed. An added or deleted code file also fails.
+
+```
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs           # uncommitted work vs HEAD
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs HEAD~1    # the last commit
+NODE_PATH=/opt/node-tools/node_modules node test/comment-guard.mjs --self-test
+```
+
+The self-test confirms that a comment-only edit passes and that a one-character code change, a changed string containing `//`, a changed regex literal, a changed template literal, a CSS value change, a `/*` inside a CSS string and an HTML text change all fail.

@@ -1,26 +1,25 @@
 // js/core/features.js
-// Right-side feature panel: lists all points, lines, routes, polygons
-// with editable names, per-item color swatches, and per-item delete buttons.
-// Depends on: App.points (points.js), App.lines (lines.js),
-//             App.polygons (polygons.js).
-// Exports: refreshFeaturePanel, openColorPicker, updateFeatureColor
+// Right-side Features panel: drawn features and labels, sorting, grouping,
+// color picker, context menus.
+// Public API (App.refreshFeaturePanel, openColorPicker, updateFeatureColor,
+// setFeatureLineStyle, setTypeColor, showContextMenu, ...) is assigned in
+// the export block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
 
-  // Tracks which route groups the user has manually collapsed.
-  // Persists across refreshFeaturePanel() calls (survives DOM rebuilds).
+  // Route groups the user collapsed; survives refreshFeaturePanel() rebuilds.
   var _expandedGroups = {};
 
-  // Tracks which feature-type sections the user has collapsed this session.
-  // Default is expanded; only collapsed sections are stored.
+  // Feature-type sections collapsed this session (default expanded; only collapsed stored).
   var _collapsedSections = {};
 
   // Universal group key for cross-type grouping (labels keep their own key)
   var UNIVERSAL_GROUP_KEY = "group";
   var LABEL_GROUP_KEY = "labelGroup";
 
-  // ---- Features list sort state (Tier 1: Name / Type / Date added / Group) ----
+  // ---- Features list sort state (Name / Type / Date added / Group) ----
   // Display-only — never reorders App.points/lines/routes/polygons. Applies to
   // the main unified Features list only; the Labels and Text section (built by
   // populateLabelGroupedList) is out of scope and always sorts by name.
@@ -98,39 +97,135 @@
 
   /* ---- Color picker (singleton popover) ---- */
 
+  // 10 hue columns x 4 shades (light, medium-light, medium, dark) + a neutral
+  // row. Shades are listed row by row; columns are red, orange, yellow, green,
+  // teal, cyan, blue, indigo, purple, pink. The neutral row is white -> black
+  // with a warm tan and brown at the end so a brown is reachable.
   var PICKER_COLORS = [
-    "#feb2b2","#fbd38d","#faf089","#9ae6b4","#bee3f8","#e9d8fd",
-    "#fc8181","#f6ad55","#f6e05e","#68d391","#63b3ed","#b794f4",
-    "#e53e3e","#dd6b20","#d69e2e","#319795","#3182ce","#805ad5",
-    "#c53030","#c05621","#b7791f","#276749","#2b6cb0","#553c9a",
-    "#ffffff","#e2e8f0","#a0aec0","#718096","#4a5568","#000000"
+    "#feb2b2","#f9d4b8","#f9eab8","#b8f9d0","#b2f5ea","#c4f1f9","#b8d7f9","#b8baf9","#d7b8f9","#f9b8d7",
+    "#ea7b7b","#eaab7b","#ead07b","#7beaa4","#7beadf","#7bd7ea","#7bafea","#7b7fea","#af7bea","#ea7baf",
+    "#cf3f3f","#dd6b20","#d69e2e","#3fcf74","#3fcfc1","#3fb7cf","#3182ce","#3f44cf","#823fcf","#d53f8c",
+    "#8d2525","#8d5225","#8d7525","#258d4b","#258d83","#257c8d","#25568d","#25298d","#56258d","#8d2556",
+    "#ffffff","#e2e8f0","#cbd5e0","#a0aec0","#718096","#4a5568","#2d3748","#000000","#a1887f","#6d4c41"
   ];
+
+  /* ---- Recent colors (per-browser convenience, not session state) ---- */
+  var RECENT_KEY = "mat-recent-colors";
+  var RECENT_MAX = 10;
+  var HEX_RE = /^#[0-9a-f]{6}$/;
+  var _recentSubs = [];
+
+  function readRecentStored() {
+    try {
+      var raw = localStorage.getItem(RECENT_KEY);
+      if (raw === null) return null;
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (c) { return typeof c === "string" && HEX_RE.test(c); }).slice(0, RECENT_MAX);
+    } catch (e) { return null; }
+  }
+  function writeRecent(list) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+  }
+  // Colors already in use on the map, unique, in feature order.
+  function seedRecentFromMap() {
+    var out = [];
+    try {
+      (App.collectDrawnFeatures ? App.collectDrawnFeatures() : []).forEach(function (it) {
+        var c = App.resolveFeatureColor(it.type, it.feature);
+        c = typeof c === "string" ? c.toLowerCase() : "";
+        if (HEX_RE.test(c) && out.indexOf(c) < 0) out.push(c);
+      });
+    } catch (e) { /* ignore */ }
+    return out.slice(0, RECENT_MAX);
+  }
+  function getRecent() {
+    var list = readRecentStored();
+    if (list && list.length) return list;
+    var seeded = seedRecentFromMap();
+    if (seeded.length) writeRecent(seeded);
+    return seeded;
+  }
+  function pushRecent(hex) {
+    hex = (hex || "").toLowerCase();
+    if (!HEX_RE.test(hex)) return;
+    var list = (getRecent() || []).filter(function (c) { return c !== hex; });
+    list.unshift(hex);
+    writeRecent(list.slice(0, RECENT_MAX));
+    // Refresh live bodies; drop ones that left the DOM (the Appearance popover
+    // rebuilds its body on every render).
+    _recentSubs = _recentSubs.filter(function (fn) { return !fn.__body || fn.__body.isConnected; });
+    _recentSubs.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
+  }
 
   var _picker = null;
   var _pickerCallback = null;
   var _pickerAnchor = null;
 
-  function buildPicker() {
-    if (_picker) return;
-    var el = document.createElement("div");
-    el.id = "fp-color-picker";
-    el.style.display = "none";
+  // The swatch grid + hex entry, as a standalone element. `onPick(hex)` fires
+  // when a swatch is clicked or a valid hex is applied. Shared by the floating
+  // picker below and the inline color row of the Appearance popover
+  // (js/core/feature-appearance.js). `body.setColor(c)` seeds the hex field.
+  function buildColorPickerBody(currentColor, onPick) {
+    var body = document.createElement("div");
+    body.className = "fp-cp-body";
 
+    // Every pick path (grid, hex, custom) funnels through here so the Recent
+    // list sees it, whichever picker body it came from.
+    function pick(c) {
+      c = String(c).toLowerCase();
+      pushRecent(c);
+      onPick(c);
+    }
+
+    var cells = [];
     var grid = document.createElement("div");
     grid.className = "fp-cp-grid";
     PICKER_COLORS.forEach(function (c) {
       var cell = document.createElement("button");
+      cell.type = "button";
       cell.className = "fp-cp-cell";
       cell.style.background = c;
       cell.title = c;
       cell.setAttribute("aria-label", "Select color " + c);
       cell.addEventListener("click", function (e) {
         e.stopPropagation();
-        selectPickerColor(c);
+        pick(c);
       });
+      cells.push(cell);
       grid.appendChild(cell);
     });
-    el.appendChild(grid);
+    body.appendChild(grid);
+
+    // Recent row (hidden while empty)
+    var recentWrap = document.createElement("div");
+    recentWrap.className = "fp-cp-recent";
+    var recentLabel = document.createElement("div");
+    recentLabel.className = "fp-cp-recent-label";
+    recentLabel.textContent = "Recent";
+    var recentGrid = document.createElement("div");
+    recentGrid.className = "fp-cp-recent-grid";
+    recentWrap.appendChild(recentLabel);
+    recentWrap.appendChild(recentGrid);
+    function renderRecent() {
+      recentGrid.textContent = "";
+      var list = getRecent();
+      recentWrap.style.display = list.length ? "" : "none";
+      list.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "fp-cp-recent-cell";
+        b.style.background = c;
+        b.title = c;
+        b.setAttribute("aria-label", "Select recent color " + c);
+        b.addEventListener("click", function (e) { e.stopPropagation(); pick(c); });
+        recentGrid.appendChild(b);
+      });
+    }
+    body.appendChild(recentWrap);
+    renderRecent();
+    _recentSubs.push(renderRecent);
+    renderRecent.__body = body;
 
     var hexRow = document.createElement("div");
     hexRow.className = "fp-cp-hex-row";
@@ -139,6 +234,7 @@
     hexInput.className = "fp-cp-hex-input";
     hexInput.placeholder = "#rrggbb";
     hexInput.maxLength = 7;
+    hexInput.value = currentColor || "";
     var applyBtn = document.createElement("button");
     applyBtn.textContent = "Apply";
     applyBtn.className = "fp-cp-apply";
@@ -147,7 +243,7 @@
       var val = hexInput.value.trim();
       if (val.charAt(0) !== "#") val = "#" + val;
       if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-        selectPickerColor(val.toLowerCase());
+        pick(val.toLowerCase());
       } else {
         hexInput.style.outline = "2px solid red";
         setTimeout(function () { hexInput.style.outline = ""; }, 1200);
@@ -159,9 +255,59 @@
     hexInput.addEventListener("input", function () {
       hexInput.style.outline = "";
     });
+
+    // Custom: native full-spectrum dialog. Only `change` (dialog confirmed)
+    // commits; `input` fires continuously while dragging and is ignored so one
+    // choice is one onPick (one undo step).
+    var customBtn = document.createElement("button");
+    customBtn.type = "button";
+    customBtn.className = "fp-cp-custom";
+    customBtn.textContent = "Custom\u2026";
+    customBtn.title = "Pick any color";
+    var customInput = document.createElement("input");
+    customInput.type = "color";
+    customInput.className = "fp-cp-custom-input";
+    customInput.tabIndex = -1;
+    customInput.setAttribute("aria-hidden", "true");
+    customInput.value = "#000000";
+    customBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      customInput.click();
+    });
+    customInput.addEventListener("click", function (e) { e.stopPropagation(); });
+    customInput.addEventListener("change", function () {
+      var v = (customInput.value || "").toLowerCase();
+      if (HEX_RE.test(v)) pick(v);
+    });
+
     hexRow.appendChild(hexInput);
     hexRow.appendChild(applyBtn);
-    el.appendChild(hexRow);
+    hexRow.appendChild(customBtn);
+    hexRow.appendChild(customInput);
+    body.appendChild(hexRow);
+
+    body.setColor = function (c) {
+      hexInput.value = c || "";
+      hexInput.style.outline = "";
+      var lc = (c || "").toLowerCase();
+      if (HEX_RE.test(lc)) customInput.value = lc;
+      cells.forEach(function (cell) {
+        cell.classList.toggle("fp-cp-cell-selected", cell.title === lc);
+      });
+    };
+    body.refreshRecent = renderRecent;
+    body.setColor(currentColor);
+    return body;
+  }
+  App.buildColorPickerBody = buildColorPickerBody;
+
+  function buildPicker() {
+    if (_picker) return;
+    var el = document.createElement("div");
+    el.id = "fp-color-picker";
+    el.style.display = "none";
+
+    el.appendChild(buildColorPickerBody("", function (c) { selectPickerColor(c); }));
 
     document.body.appendChild(el);
     _picker = el;
@@ -180,14 +326,14 @@
     _pickerCallback = callback;
     _pickerAnchor = anchorEl;
 
-    var hexInput = _picker.querySelector(".fp-cp-hex-input");
-    hexInput.value = currentColor || "";
-    hexInput.style.outline = "";
+    var pbody = _picker.querySelector(".fp-cp-body");
+    pbody.setColor(currentColor);
+    pbody.refreshRecent();
 
     _picker.style.display = "block";
 
     var rect = anchorEl.getBoundingClientRect();
-    var pw = _picker.offsetWidth || 192;
+    var pw = _picker.offsetWidth || 188;
     var ph = _picker.offsetHeight || 240;
     var top = rect.bottom + 4;
     var left = rect.left;
@@ -244,6 +390,27 @@
     }
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+  };
+
+  // Per-feature line style for a line/route.
+  // style: "dashed" | "dotted"; "solid"/""/null clears the override.
+  // One undo step, re-render, save, panel refresh. Returns false if invalid.
+  App.setFeatureLineStyle = function (featureType, featureIndex, style) {
+    if (featureType !== "line" && featureType !== "route") return false;
+    var arr = featureType === "line" ? App.lines : App.routes;
+    var f = arr && arr[featureIndex];
+    if (!f) return false;
+    var next = App.normalizeLineStyle(style);
+    var cur = App.normalizeLineStyle(f.properties._lineStyle);
+    if (next === cur && (next !== "solid" || f.properties._lineStyle === undefined)) return true;
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    if (next === "solid") delete f.properties._lineStyle;
+    else f.properties._lineStyle = next;
+    rerenderForType(featureType);
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    refreshFeaturePanel();
+    if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    return true;
   };
 
   // Type-wide color from the Layers tab (nc = a hex color, or null/"" for
@@ -328,11 +495,9 @@
 
   var _ctxMenu = null;
 
-  // Optional per-item hook: `onHover(isEntering)` is called with true on
-  // mouseenter/focus and false on mouseleave/blur. It is also called with
-  // false if the menu closes (item click, outside click, or being replaced by
-  // another menu) while an item is still hovered, so callers can always undo a
-  // hover preview. Items without it behave exactly as before.
+  // Optional per-item hook: `onHover(isEntering)` fires true on mouseenter/focus,
+  // false on mouseleave/blur, and false if the menu closes while an item is
+  // still hovered, so callers can always undo a hover preview.
   function closeContextMenu(menu) {
     if (!menu) return;
     if (typeof menu._endHover === "function") menu._endHover();
@@ -360,10 +525,8 @@
         return;
       }
       var btn = document.createElement("button");
-      // "checked" is a tri-state concept: only options that explicitly pass
-      // a boolean get the checkmark gutter, so plain {label, action} callers
-      // (the per-feature context menu, the Layers panel's ⋯ menu) render
-      // exactly as before.
+      // "checked" is tri-state: only options that pass a boolean get the
+      // checkmark gutter, so plain {label, action} items render without one.
       if (typeof opt.checked === "boolean") {
         btn.classList.add("fp-ctx-checkable");
         if (opt.checked) btn.classList.add("fp-ctx-checked");
@@ -611,6 +774,7 @@
         feat.properties.hidden = !feat.properties.hidden;
         if (App.cache && typeof App.cache.save === "function") App.cache.save();
         rerenderForType(ft);
+        if (typeof App.notifyProject === "function") App.notifyProject();
       });
     })(eyeBtn, feature, featureType);
 
@@ -619,22 +783,23 @@
     typeIcon.type = "button";
     typeIcon.className = "fp-type-icon";
     typeIcon.innerHTML = TYPE_ICON_SVGS[featureType] || "";
-    typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[featureType] || featureType) + " color";
-    typeIcon.setAttribute("aria-label", typeIcon.title);
+    typeIcon.title = "Appearance";
+    typeIcon.setAttribute("aria-label", "Appearance — " + (TYPE_LABELS_LOCAL[featureType] || featureType));
     var _currentColor = App.resolveFeatureColor(featureType, feature);
     typeIcon.style.color = _currentColor;
     (function (btn, ft, fi, feat) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        if (typeof App.openColorPicker !== "function") return;
-        var curColor = App.resolveFeatureColor(ft, feat);
-        App.openColorPicker(btn, curColor, function (newColor) {
-          if (typeof App.updateFeatureColor === "function") {
-            App.updateFeatureColor(ft, fi, newColor);
-          }
-          btn.style.color = newColor;
-          if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-          if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+        if (!App.FEATURE_ID_PROP[ft] || typeof App.openAppearancePopup !== "function") {
+          // Types with no appearance cascade (labels/text boxes) keep the plain picker.
+          App.openColorPicker(btn, App.resolveFeatureColor(ft, feat), function (nc) {
+            App.updateFeatureColor(ft, fi, nc);
+            btn.style.color = nc;
+          });
+          return;
+        }
+        App.openAppearancePopup(btn, ft, fi, {
+          onChange: function () { btn.style.color = App.resolveFeatureColor(ft, feat); }
         });
       });
     })(typeIcon, featureType, featureIndex, feature);
@@ -645,7 +810,7 @@
 
     // Small differentiator chip: a Line marked as a walk network connector
     // (attributes.networkRole === "connector") is otherwise indistinguishable
-    // from a transit Line at a glance. See docs/network-connectors-plan.md §2.
+    // from a transit Line at a glance.
     var netChip = null;
     if (featureType === "line" && feature.properties.attributes &&
         feature.properties.attributes.networkRole === "connector") {
@@ -743,6 +908,7 @@
             if (App.cache && typeof App.cache.save === "function") App.cache.save();
             if (typeof App.rerenderForType === "function") App.rerenderForType(ft);
             if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+            if (typeof App.notifyProject === "function") App.notifyProject();
           }});
           options.push({ label: "Delete", action: function () { onDelete(); } });
         })(featureType, featureIndex, feature);
@@ -913,6 +1079,7 @@
       });
       if (App.cache && typeof App.cache.save === "function") App.cache.save();
       Object.keys(typesChanged).forEach(function (t) { rerenderForType(t); });
+      if (typeof App.notifyProject === "function") App.notifyProject();
     });
 
     // Color swatch — applies color to all features in the group
@@ -1048,10 +1215,9 @@
   /* ---- Collect all non-label features into unified list ---- */
 
   // Monotonic cross-type creation counter backing the "Date added" sort key.
-  // Stamped lazily here (not at each of the four creation sites) so every
-  // add path \u2014 which already calls refreshFeaturePanel() \u2014 picks it up for
-  // free, and a session restored from before this field existed gets a
-  // sensible legacy fallback (collect order) instead of an error.
+  // Stamped lazily here (not at each creation site) so every add path, which
+  // already calls refreshFeaturePanel(), picks it up; sessions restored without
+  // the field fall back to collect order.
   var _featureSeq = 0;
 
   function collectAllFeatures() {
@@ -1083,9 +1249,7 @@
     return name ? name : "\uffff" + item.type + item.index;
   }
 
-  // Name-only sort, unchanged from before the sort feature existed. Used by
-  // the Labels and Text section (out of scope for user-selectable sorting)
-  // and as the internal tiebreaker below.
+  // Name-only sort. Used by the Labels and Text section and as the tiebreaker below.
   function sortItems(arr) {
     arr.sort(function (a, b) {
       return naturalSort(featureSortKey(a), featureSortKey(b));
@@ -1138,11 +1302,24 @@
     return naturalSort(featureSortKey(a), featureSortKey(b));
   }
 
-  // Sorts `arr` in place by the current user-selected sort mode. Only used
-  // by the main unified Features list \u2014 labels always use sortItems().
+  // Sorts `arr` in place by the current sort mode. Main Features list only;
+  // labels always use sortItems().
   function sortFeatureItems(arr) {
     arr.sort(compareFeatureItems);
   }
+
+  // Single-feature delete shared by the Features list and the Layers panel so
+  // both close a matching attributes popup, push undo (inside the remove fn)
+  // and run the post-delete refresh the same way.
+  App.deleteFeature = function (ft, idx) {
+    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
+      var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
+      if (pf && pf.featureType === ft && pf.featureIndex === idx) App.closeAttrPopup();
+    }
+    var fn = getRemoveFnForType(ft);
+    if (fn) fn(idx);
+    if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
+  };
 
   /* ---- Build item wrapper with delete wiring ---- */
 
@@ -1150,15 +1327,7 @@
     var wrapper = document.createElement("div");
     wrapper.className = "fp-item-wrapper" + (inGroup ? " fp-pattern" : "");
     var onDelete = (function (ft, idx) {
-      return function () {
-        if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-          var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
-          if (pf && pf.featureType === ft && pf.featureIndex === idx) App.closeAttrPopup();
-        }
-        var fn = getRemoveFnForType(ft);
-        if (fn) fn(idx);
-        if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
-      };
+      return function () { App.deleteFeature(ft, idx); };
     })(item.type, item.index);
     wrapper.appendChild(buildItem(item.feature, item.type, item.index, onDelete));
     return wrapper;
@@ -1487,12 +1656,10 @@
   App.closeContextMenu = function () { closeContextMenu(_ctxMenu); };
   App.showContextMenu     = showContextMenu;
   App.rerenderForType     = rerenderForType;
-  // Shared with the Layers panel so it can list/group drawn features
-  // without duplicating the collection + grouping logic.
+  // Shared with the Layers panel (feature listing/grouping).
   App.collectDrawnFeatures = collectAllFeatures;
   App.UNIVERSAL_GROUP_KEY  = UNIVERSAL_GROUP_KEY;
-  // Shared with the Layers panel so its feature rows can show the same
-  // type-shaped, color-tinted glyph Features uses instead of a plain swatch.
+  // Shared with the Layers panel (same type-shaped glyph on its feature rows).
   App.TYPE_ICON_SVGS = TYPE_ICON_SVGS;
 
   // Session-cache read/write hooks for the Features list sort state
@@ -1525,8 +1692,10 @@
       var lEl = document.getElementById("fp-tab-layers");
       if (fEl) fEl.style.display = tab === "features" ? "" : "none";
       if (lEl) lEl.style.display = tab === "layers" ? "" : "none";
-      // Sorting only applies to the Features list, not the Layers tab.
-      if (sortBtn) sortBtn.style.display = tab === "features" ? "" : "none";
+      // Sorting only applies to the Features list, not the Layers tab. Hide it
+      // with visibility (not display) so it keeps its space and the tab labels
+      // don't change size or position when switching tabs.
+      if (sortBtn) sortBtn.style.visibility = tab === "features" ? "" : "hidden";
       if (tab === "layers" && typeof App.refreshLayersPanel === "function") {
         App.refreshLayersPanel();
       }
@@ -1553,6 +1722,8 @@
       header.addEventListener("contextmenu", function (e) {
         e.preventDefault();
         e.stopPropagation();
+        // Sorting only applies to the Features tab (the button is hidden on Layers).
+        if (btn && btn.style.visibility === "hidden") return;
         showContextMenu(e.clientX, e.clientY, buildSortMenuOptions());
       });
     }

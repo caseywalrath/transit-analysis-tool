@@ -8,5 +8,197 @@
   "readBuffer/null-element": 0.5,
   "readBuffer/explicit-fallback-honored": 0.75,
   "readBuffer/at-min-boundary": 0.05,
-  "readBuffer/at-max-boundary": 5
+  "readBuffer/at-max-boundary": 5,
+  "analysis/hidden-skipped-default": {
+    "count": 4,
+    "hiddenCount": {
+      "included": 0,
+      "skipped": 5
+    },
+    "built": {
+      "route": [
+        "0:buffer@0.5"
+      ],
+      "line": [
+        "0:buffer@0.5"
+      ],
+      "point": [
+        "0:circle@0.5"
+      ],
+      "polygon": [
+        "0:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "analysis/hidden-skipped-flag-false": {
+    "count": 4,
+    "hiddenCount": {
+      "included": 0,
+      "skipped": 5
+    },
+    "built": {
+      "route": [
+        "0:buffer@0.5"
+      ],
+      "line": [
+        "0:buffer@0.5"
+      ],
+      "point": [
+        "0:circle@0.5"
+      ],
+      "polygon": [
+        "0:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "analysis/hidden-included": {
+    "count": 9,
+    "hiddenCount": {
+      "included": 5,
+      "skipped": 0
+    },
+    "built": {
+      "route": [
+        "0:buffer@0.5",
+        "1:buffer@0.5"
+      ],
+      "line": [
+        "0:buffer@0.5",
+        "1:buffer@0.5"
+      ],
+      "point": [
+        "0:circle@0.5",
+        "1:circle@0.5",
+        "2:circle@0.5"
+      ],
+      "polygon": [
+        "0:poly",
+        "1:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "analysis/hidden-only-skipped": {
+    "count": 0,
+    "hiddenCount": {
+      "included": 0,
+      "skipped": 4
+    },
+    "built": {
+      "route": [],
+      "line": [],
+      "point": [],
+      "polygon": []
+    },
+    "sharedDisplayUntouched": true
+  },
+  "analysis/hidden-only-included": {
+    "count": 4,
+    "hiddenCount": {
+      "included": 4,
+      "skipped": 0
+    },
+    "built": {
+      "route": [
+        "1:buffer@0.5"
+      ],
+      "line": [
+        "1:buffer@0.5"
+      ],
+      "point": [
+        "1:circle@0.5"
+      ],
+      "polygon": [
+        "1:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "display/hidden-skipped-default": {
+    "count": 4,
+    "hiddenCount": {
+      "included": 0,
+      "skipped": 5
+    },
+    "built": {
+      "route": [
+        "0:display@-1"
+      ],
+      "line": [
+        "0:display@-1"
+      ],
+      "point": [
+        "0:display@-1"
+      ],
+      "polygon": [
+        "0:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "display/hidden-included-on-the-fly": {
+    "count": 9,
+    "hiddenCount": {
+      "included": 5,
+      "skipped": 0
+    },
+    "built": {
+      "route": [
+        "0:display@-1",
+        "1:buffer@1"
+      ],
+      "line": [
+        "0:display@-1",
+        "1:buffer@0.75"
+      ],
+      "point": [
+        "0:display@-1",
+        "1:circle@0.5",
+        "2:circle@0.3"
+      ],
+      "polygon": [
+        "0:poly",
+        "1:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  },
+  "display/hidden-only-skipped": {
+    "count": 0,
+    "hiddenCount": {
+      "included": 0,
+      "skipped": 4
+    },
+    "built": {
+      "route": [],
+      "line": [],
+      "point": [],
+      "polygon": []
+    },
+    "sharedDisplayUntouched": true
+  },
+  "display/hidden-only-included": {
+    "count": 4,
+    "hiddenCount": {
+      "included": 4,
+      "skipped": 0
+    },
+    "built": {
+      "route": [
+        "1:buffer@1"
+      ],
+      "line": [
+        "1:buffer@0.75"
+      ],
+      "point": [
+        "1:circle@0.5"
+      ],
+      "polygon": [
+        "1:poly"
+      ]
+    },
+    "sharedDisplayUntouched": true
+  }
 }

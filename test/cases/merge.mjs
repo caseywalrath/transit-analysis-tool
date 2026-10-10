@@ -1,5 +1,5 @@
 // Golden cases for the pure Feature Merge helpers (js/core/merge.js —
-// docs/feature-merge-plan.md Phases 2-3): App.mergeGeom (chainLines, findBranch,
+// docs/archive/feature-merge-plan.md Phases 2-3): App.mergeGeom (chainLines, findBranch,
 // lengthMi, routeChain), App.mergeAttrs (hasValue, fieldHasValue,
 // mergeAttributes, reversalWarnings) and, from Phase 4a (Unmerge),
 // App.mergeHistory (fingerprintFeature, stopChanges, restoreStopRefs,

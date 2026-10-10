@@ -12,13 +12,15 @@ This document describes the quantitative methods underlying the Transit Propensi
 
 The tool produces corridor-level ridership estimates by combining census-derived demand indices with service elasticity models and optional empirical calibration. It is designed as a sketch-planning decision-support tool — not a replacement for regional travel demand models or FTA-standard forecasting procedures. All outputs are presented as ranges (conservative, moderate, optimistic) rather than single-point predictions, reflecting the inherent uncertainty in corridor-level estimation.
 
-**Scope.** The methodology covers five principal components:
+**Scope.** The methodology covers five principal components, plus population projections:
 
 1. Factor selection and data sources
 2. Quintile normalization and composite scoring
 3. Corridor Demand Index (CDI) computation
 4. Calibration methods
 5. Elasticity and scenario models
+
+Population projections (Section 7.4) re-score the same model for future horizon years.
 
 ---
 
@@ -32,15 +34,15 @@ The Transit Propensity Index evaluates latent transit demand using nine demograp
 |---|--------|-----------|--------|----------------|
 | 1 | Population Density | Persons per square mile | ACS B01003 | 35 |
 | 2 | Employment Density | Jobs per square mile | LODES WAC (C000) | 35 |
-| 3 | Zero-Vehicle Households | % of households with no vehicle available | ACS B08201, B11001 | 5 |
-| 4 | Low-Income (Poverty) | % of persons below the poverty level | ACS B17001, B01003 | 5 |
-| 5 | Senior Population (65+) | % of population aged 65 and over | ACS B01001 (12 cohorts) | 5 |
-| 6 | Disability Status | % of civilian noninstitutionalized population with a disability | ACS B18101 (12 cohorts) | 5 |
-| 7 | Minority | % of population who are not non-Hispanic White | ACS B03002 | 5 |
-| 8 | Youth (<18) | % of population under age 18 | ACS B01001 (8 cohorts) | 0 |
-| 9 | Limited English Proficiency | % of population age 5+ who speak English less than "very well" | ACS C16001 (12 categories) | 5 |
+| 3 | Zero-Vehicle Households (tract-only) | % of households with no vehicle available | ACS B08201, B11001 | 5 |
+| 4 | Low-Income % (Poverty) (tract-only) | % of persons below the poverty level | ACS B17001, B01003 | 5 |
+| 5 | Senior 65+ % | % of population aged 65 and over | ACS B01001 (12 cohorts) | 5 |
+| 6 | Disability % (tract-only) | % of civilian noninstitutionalized population with a disability | ACS B18101 (12 cohorts) | 5 |
+| 7 | Minority % | % of population who are not non-Hispanic White | ACS B03002 | 5 |
+| 8 | Young Adults 18–24 % | % of population aged 18–24 | ACS B01001 (8 cohorts) | 0 |
+| 9 | LEP % (Limited English Proficiency) (tract-only) | % of population age 5+ who speak English less than "very well" | ACS C16001 (12 categories) | 5 |
 
-The two density factors (population and employment) receive the largest default weights (35 each, totaling 70% of the composite) because density is the single strongest predictor of transit ridership across the literature.[^2] The remaining socioeconomic and equity factors together receive 30% of the weight, reflecting their secondary but meaningful contribution to transit propensity. Youth (<18) receives a default weight of zero but is available for user activation.
+The two density factors (population and employment) receive the largest default weights (35 each, totaling 70% of the composite) because density is the single strongest predictor of transit ridership across the literature.[^2] The remaining socioeconomic and equity factors together receive 30% of the weight, reflecting their secondary but meaningful contribution to transit propensity. Young Adults 18–24 % receives a default weight of zero but is available for user activation.
 
 All weights are user-adjustable. When weights are modified, the tool recalculates quintile scores and composite indices in real time without additional Census API calls.
 
@@ -50,7 +52,9 @@ All weights are user-adjustable. When weights are modified, the tool recalculate
 
 **LODES Employment Data.** LODES Workplace Area Characteristics (WAC) data provides block-level job counts (variable C000, total employment). Block-level counts are aggregated to the analysis geography (tract or block group) by matching the first 11 (tract) or 12 (block group) digits of the 15-digit block GEOID. If LODES data is not loaded, the Employment Density factor is excluded and its weight is redistributed equally among all other active factors.[^3]
 
-**LEP Tract-Level Fallback.** The Limited English Proficiency variable (table C16001) is published by the Census Bureau at the tract level only. When the analysis geography is set to block groups, LEP values are fetched at the tract level and assigned uniformly to all child block groups within each tract. An additional dynamic fallback operates for any ACS factor: if a factor yields zero finite values at the block group level (indicating the variable is unavailable at that geography in a given ACS vintage), the tool automatically re-fetches at the tract level and remaps values to block groups. These fallbacks are bypassed when area-weighted apportionment is enabled.[^4]
+**Tract-Only Factors and Tract-Level Fallback.** Four factors are treated as tract-only: Zero-Vehicle Households (B08201, B11001), Low-Income (B17001), Disability (B18101) and Limited English Proficiency (C16001). When the analysis geography is set to block groups, the variables for these factors (whenever their weight is non-zero) are fetched at the tract level and assigned uniformly to all child block groups within each tract. These four factors therefore carry no within-tract variation in block-group runs. This static handling is applied whether or not area-weighted apportionment is enabled.
+
+A second, dynamic fallback operates for the remaining ACS factors (Population Density, Senior, Minority, Young Adults 18–24): if a factor yields a non-finite value for one or more block groups (the variable is suppressed or unavailable at that geography in a given ACS vintage, whether for all block groups or only some), the tool re-fetches that factor's variables at the tract level and fills only the affected block groups from their parent tract. The dynamic fallback is bypassed when area-weighted apportionment is enabled.[^4]
 
 ### 2.3 Computation of Factor Values
 
@@ -60,7 +64,7 @@ Each factor is computed as a rate or density for each census geography:
 - **Employment Density:** Aggregated LODES job count (C000) divided by geography area in square miles.
 - **All percentage-based factors:** Numerator variable(s) summed and divided by the relevant denominator (total population, total households, or civilian noninstitutionalized population as appropriate), multiplied by 100.
 
-For factors with multi-cohort numerators (Senior, Disability, Youth, LEP), the tool sums 8–12 individual ACS variables to construct the numerator. The specific variable codes are documented in the tool's source code and correspond to standard ACS detailed table structures.
+For factors with multi-cohort numerators (Senior, Disability, Young Adults 18–24, LEP), the tool sums 8–12 individual ACS variables to construct the numerator. The specific variable codes are documented in the tool's source code and correspond to standard ACS detailed table structures.
 
 ---
 
@@ -150,13 +154,13 @@ CDI scores are classified into four tiers for interpretive convenience:
 
 ### 4.4 Segment-Level CDI
 
-When segment analysis is enabled, each route is divided into equal-length chunks (user-specified, e.g., 0.5 miles) using `turf.lineChunk()`. Each chunk receives a 0.5-mile buffer, and the population-weighted CDI is computed within that buffer against the same set of pre-fetched TPI geographies. This reveals spatial variation in demand along the corridor without additional Census API calls.
+When segment analysis is enabled, each route is divided into equal-length chunks (user-specified, e.g., 0.5 miles) using `turf.lineChunk()`. Each chunk receives a buffer (default 0.5 miles; configurable), and the population-weighted CDI is computed within that buffer against the same set of pre-fetched TPI geographies. This reveals spatial variation in demand along the corridor without additional Census API calls.
 
 ### 4.5 Normalization Pools
 
 Because quintile normalization is relative to the study area, the choice of which geographies constitute the normalization pool affects CDI values. The tool provides two modes:
 
-**Separate pools (default).** The calibration system and the demand/target system each receive independent quintile normalization. A CDI of 4.2 in one system is relative to that system's internal distribution.
+**Separate pools (default when "Same system as calibration" is checked).** The calibration system and the demand/target system each receive independent quintile normalization. A CDI of 4.2 in one system is relative to that system's internal distribution. When "Same system as calibration" is unchecked, the shared-pool option is switched on automatically (it may be unchecked manually to return to separate pools); when the box is checked, the shared-pool option is disabled.
 
 **Shared pool.** Both the calibration and demand systems are combined into a single TPI run. All geographies from both systems are scored against the same quintile distribution, making CDI values directly comparable across systems. After the shared run, the calibration is automatically refitted using the updated CDI values (see Section 5.3). Shared-pool normalization is recommended for cross-system analysis (e.g., calibrating with data from one metropolitan area and applying the calibration to corridors in a different city).[^6]
 
@@ -176,7 +180,7 @@ Optional but recommended columns:
 - Peak headway (minutes) — enables headway normalization (see Section 5.4)
 - Service type — provides context for interpreting calibration results
 
-The tool performs case-insensitive exact string matching between CSV route names and drawn feature names. Routes that do not match are excluded from calibration.
+Columns are assigned through a column-mapping step (Route Name, Daily Ridership, Peak Headway, Service Type). The tool performs case-insensitive exact string matching (after trimming whitespace) between CSV route names and drawn feature names; the first match wins. Routes that do not match are excluded from calibration. The interface requires at least two valid matched routes to run any calibration and shows a small-sample warning when fewer than five routes are used.
 
 ### 5.2 Ratio-Based Calibration
 
@@ -213,6 +217,8 @@ When headway data is available in the calibration CSV, observed ridership values
 $$R_i^{\text{norm}} = \frac{R_i}{f(h_{\text{ref}},\; h_i,\; \varepsilon)}$$
 
 where *f* is the frequency effect function (Section 6.1), *h*_ref is a reference headway of 30 minutes, *h_i* is the route's actual headway, and ε is the frequency elasticity parameter.
+
+The frequency elasticity ε used here is taken from the Elasticity tab's frequency elasticity input. An optional "Normalize by Length" setting additionally divides each route's ridership by its length before fitting (and the baseline projection is then scaled by corridor length; see Section 7.2).
 
 The calibration is then fit on (CDI_i, *R*_i^norm) pairs. This ensures the calibration factor reflects pure demand differences rather than being confounded by routes that have high ridership primarily because of high frequency.
 
@@ -266,7 +272,7 @@ The span effect is applied in the Scenarios tab only, where each scenario has an
 
 ### 6.3 Service Type Premiums
 
-Service quality improvements beyond frequency generate additional ridership. The tool models this through service type premiums — percentage multipliers applied to the frequency-adjusted ridership estimate. Four service type presets are provided:
+Service quality improvements beyond frequency generate additional ridership. The tool models this through service type premiums — percentage multipliers applied to the frequency-adjusted ridership estimate. Each service type carries a single low/high premium range (not separate frequency, speed and mode components). Four service type presets are provided:
 
 | Service Type | Premium Range (Low–High) | Description |
 |-------------|-------------------------|-------------|
@@ -275,7 +281,7 @@ Service quality improvements beyond frequency generate additional ridership. The
 | Limited-Stop Express | 0%–10% | Fewer stops for faster travel on longer trips |
 | BRT-Style | 5%–25% | Dedicated lanes, level boarding, branded stations |
 
-Premium values are user-adjustable via slider controls (0–150% range). The low and high values produce the conservative and optimistic ridership estimates, respectively, while the moderate estimate uses the midpoint: *mid* = (*low* + *high*) / 2.
+Premium values are user-adjustable via Conservative (%) and Optimistic (%) slider controls (0–150% range) that apply to the selected service type. The low and high values produce the conservative and optimistic ridership estimates, respectively, while the moderate estimate uses the midpoint: *mid* = (*low* + *high*) / 2.
 
 > **[Note to user]:** The default service premium values represent the author's professional judgment informed by industry literature on BRT and service-quality ridership effects. Users preparing formal planning documents may wish to cite specific sources supporting the premium values used in their analysis, such as TCRP Report 118 (*Bus Rapid Transit Practitioner's Guide*), FTA research on ridership effects of BRT investments, or local before/after studies of service upgrades.[^10]
 
@@ -285,7 +291,7 @@ The total service-effect multiplier combines frequency, span, and service premiu
 
 $$M_{\text{level}} = E_{\text{freq}} \times E_{\text{span}} \times (1 + p_{\text{level}})$$
 
-where *level* ∈ {low, mid, high} and *p* is the service premium fraction for that level.
+where *level* ∈ {low, mid, high} and *p* is the service premium fraction for that level. The span effect is applied in the Scenarios tab only; in the Elasticity tab the multiplier is *E*_freq × (1 + *p*).
 
 ### 6.5 Baseline Uncertainty Model
 
@@ -314,7 +320,7 @@ For each scenario, the tool computes standard transit operating metrics:
 
 $$V = \left\lceil \frac{2L}{v \cdot (h/60)} \right\rceil$$
 
-where *L* is route length (miles), *v* is average speed (mph), and *h* is headway (minutes). The factor of 2 accounts for round-trip travel. The ceiling function ensures a whole number of vehicles.
+where *L* is route length (miles), *v* is average speed (mph), and *h* is headway (minutes). The factor of 2 accounts for round-trip travel. The ceiling function ensures a whole number of vehicles, with a minimum of one.
 
 **Revenue hours per day:**
 
@@ -333,8 +339,9 @@ where *D* is service days per year and *c* is cost per revenue hour.
 Each scenario's ridership estimate proceeds as follows:
 
 1. **Baseline projection.** Compute calibrated baseline ridership for the selected corridor:
-   - Ratio method: *B*_mid = CDI × *k* × *L* (where *k* is the calibration factor and *L* is corridor length)
-   - Regression method: *B*_mid = max(0, (α + β × CDI) × *L*)
+   - Ratio method: *B*_mid = CDI × *k*
+   - Regression method: *B*_mid = max(0, α + β × CDI)
+   - The corridor length *L* enters only when "Normalize by Length" is enabled, in which case each expression is multiplied by *L*. In implementation, *B*_mid = max(0, CDI × *k* × *L*, (α + CDI × *k*) × *L*), where *k* is the calibration factor (the slope for regression), α = 0 for the ratio method, and *L* = 1 when length normalization is off.
 
 2. **Baseline uncertainty.** Apply the uncertainty band to obtain (*B*_low, *B*_mid, *B*_high).
 
@@ -351,6 +358,12 @@ $$\text{Boardings per revenue hour} = \frac{R_{\text{annual}}}{H_{\text{annual}}
 $$\text{Cost per boarding} = \frac{C_{\text{annual}}}{R_{\text{annual}}}$$
 
 The cost-per-boarding calculation uses inverted ridership levels (low ridership produces high cost per boarding, and vice versa) to maintain internal consistency of the conservative/optimistic framing.
+
+---
+
+### 7.4 Population Projections
+
+The Projections tab estimates how scenario ridership may change under future population conditions. The user uploads a population projection CSV (the interface references PPACG projections); projected population counts are added to the Census ACS baseline, and TPI is re-scored from the cached raw values for each horizon year (2030, 2040, 2050) without additional Census API calls. The scenario parameters from the Scenarios tab and the existing calibration are used, so the Calibrate and Scenarios tabs must be completed first. Results are shown as a timeline of the Moderate daily ridership estimate (with the Low–High range) alongside the CDI change for each horizon year, and can be exported as CSV.
 
 ---
 
@@ -382,7 +395,7 @@ This methodology is subject to several limitations that users should consider wh
 
 [^3]: When LODES data is absent, the 35-point employment weight is divided equally among all other factors with non-zero weights. For the default weight configuration, this adds approximately 4.4 points to each of the eight remaining active factors. The analysis remains valid but places heavier emphasis on residential population characteristics.
 
-[^4]: The dynamic tract-level fallback is a data-availability safeguard. It is bypassed under area-weighted apportionment because the apportionment procedure requires consistent geographic boundaries between the raw values and the intersection geometries.
+[^4]: The dynamic tract-level fallback is a data-availability safeguard. It is bypassed under area-weighted apportionment (the static tract-only handling is not) because the apportionment procedure requires consistent geographic boundaries between the raw values and the intersection geometries.
 
 [^5]: This is a standard rank-based quintile assignment. It is equivalent to assigning percentile ranks and grouping them into five equal bins. Ties at quintile boundaries are resolved by sort-order position (first occurrence receives the lower quintile).
 
@@ -404,18 +417,18 @@ This methodology is subject to several limitations that users should consider wh
 
 ## Appendix A: ACS Variable Reference
 
-The following table provides the complete ACS variable codes used for each TPI factor. All variables are from the ACS 5-year Detailed Tables.
+The following table provides the complete ACS variable codes used for each TPI factor. All variables are from the ACS 5-year Detailed Tables. Factors marked "tract-only" are fetched at the tract level and assigned to child block groups in block-group runs (Section 2.2).
 
 | Factor | Table | Variables (Numerator) | Denominator |
 |--------|-------|-----------------------|-------------|
 | Population Density | B01003 | B01003_001E | Geography area (sq mi) |
-| Zero-Vehicle HH | B08201, B11001 | B08201_002E | B11001_001E |
-| Low-Income | B17001, B01003 | B17001_002E | B01003_001E |
+| Zero-Vehicle HH (tract-only) | B08201, B11001 | B08201_002E | B11001_001E |
+| Low-Income % (Poverty) (tract-only) | B17001, B01003 | B17001_002E | B01003_001E |
 | Senior 65+ | B01001 | B01001_020E through _025E, _044E through _049E (12 cohorts, male + female) | B01003_001E |
-| Disability | B18101 | B18101_004E, _007E, _010E, _013E, _016E, _019E, _023E, _026E, _029E, _032E, _035E, _038E (12 cohorts) | B18101_001E |
+| Disability % (tract-only) | B18101 | B18101_004E, _007E, _010E, _013E, _016E, _019E, _023E, _026E, _029E, _032E, _035E, _038E (12 cohorts) | B18101_001E |
 | Minority | B03002 | B03002_001E − B03002_003E | B03002_001E |
-| Youth <18 | B01001 | B01001_003E through _006E, _027E through _030E (8 cohorts) | B01003_001E |
-| LEP | C16001 | C16001_005E, _008E, _011E, _014E, _017E, _020E, _023E, _026E, _029E, _032E, _035E, _038E (12 language categories) | C16001_001E |
+| Young Adults 18–24 % | B01001 | B01001_007E through _010E, _031E through _034E (8 cohorts, male + female) | B01003_001E |
+| LEP % (tract-only) | C16001 | C16001_005E, _008E, _011E, _014E, _017E, _020E, _023E, _026E, _029E, _032E, _035E, _038E (12 language categories) | C16001_001E |
 | Employment Density | LODES WAC | C000 (total jobs, block-level, aggregated to analysis geography) | Geography area (sq mi) |
 
 ---

@@ -1,8 +1,8 @@
 // js/core/polygons.js
 // Polygon drawing and management, map layer rendering.
 // Depends on: App.map (map.js).
-// Exports: polygons, handlePolygonClick, clearPolygons, undoLastPolygon,
-//          cancelPolygonDrawing, renderPolygonLayers
+// Exports: see the App.* block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -253,8 +253,7 @@
     renderPolygonLayers();
     App.setStatus("Polygon " + idx + " saved (" + nVertices + " vertices)");
     if (typeof App.exitDrawMode === "function") App.exitDrawMode();
-    // If the attributes popup is already open (on some other feature), follow
-    // it to this newly-drawn polygon. Never auto-open it if it wasn't open.
+    // Follow an already-open attributes popup to the new polygon; never auto-open it.
     if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
         typeof App.openAttrPopup === "function") {
       App.openAttrPopup("polygon", polygons.length - 1, feature);
@@ -342,6 +341,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     polygons.push(copy);
     renderPolygonLayers();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

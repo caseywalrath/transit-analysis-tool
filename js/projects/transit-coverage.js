@@ -1,11 +1,7 @@
-// js/projects/transit-coverage.js
-// Transit Coverage: registers as an analysis module, opens in a 2-column popup,
-// computes ACS population + LODES jobs coverage within a buffer distance of
-// selected transit routes/lines, clipped to a user-selected service area.
-// Depends on: App namespace, App.popup (popup.js), App.cache (cache.js),
-//   App.getEffectiveServiceBands (service-assembly.js), census.js, lodes.js, turf (CDN).
-// Step 2: checklists + input wiring + stale lifecycle.
-// No public API.
+// js/projects/transit-coverage.js — Transit Coverage module: ACS population + LODES jobs within a
+// buffer of selected transit routes/lines, clipped to a user-selected service area.
+// Depends on: App, App.popup, App.cache, App.getEffectiveServiceBands (service-assembly.js), census.js, lodes.js, turf.
+// No public API (App._tcTest is a test-only hook).  Detail: docs/reference/modules/transit-coverage.md
 
 (function () {
   "use strict";
@@ -13,16 +9,20 @@
 
   // ---- Module-local state (persists across popup open/close) ----
 
-  var _lastResult       = null;   // populated in Step 5: { geoLevel, year, ..., coverageClipped, thresholdClipped, serviceAreaUnion }
+  var _lastResult       = null;   // { geoLevel, year, ..., coverageClipped, thresholdClipped, serviceAreaUnion }
   var _stale            = false;
   var _running          = false;
   var _initialized       = false;
   // Checklist selection (transit features AND service-area polygons) is remembered as
-  // the features the user UNCHECKED, by stable { type, id } ref (Phase 4b) — array
+  // the features the user UNCHECKED, by stable { type, id } ref — array
   // positions shift when an earlier feature is deleted or merged. Anything not listed
   // (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
+  var _includeHidden     = false;   // one toggle for BOTH lists (docs/archive/hidden-features-analysis-plan.md)
+  // Taken at run time so update() can tell a relevant change from an unrelated
+  // hide/show (notifyProject fires on every visibility change).
+  var _runSnap           = null;    // { geom, hidden, refs: [{type,id}], includeHidden }
 
   // ---- DOM guard: only touch DOM when popup is open for this module ----
 
@@ -68,11 +68,32 @@
     if (!el) return out;
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
-      if (!boxes[i].checked) continue;
+      if (!boxes[i].checked || boxes[i].disabled) continue;   // disabled = hidden row, toggle off: kept in the saved selection, not analyzed
       var fid = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
       if (Number.isFinite(fid)) out.push({ type: boxes[i].getAttribute("data-type"), id: fid });
     }
     return out;
+  }
+
+  // Everything besides the hidden flag that changes a run and arrives via
+  // notifyProject: feature edits, LODES, display-buffer radii.
+  function runInputsSig() {
+    var fs = App.featureSettings || {};
+    return App.featureGeomSignature() + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") +
+      "#fs:" + JSON.stringify([fs.bufferRadius, fs.lineBufferRadius, fs.routeBufferRadius]);
+  }
+
+  function makeRunSnap(refs) {
+    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs), includeHidden: _includeHidden };
+  }
+
+  // True when the last run no longer matches the map: features changed, the hidden
+  // state of a feature in the run's selection changed, or the toggle changed.
+  function runIsOutdated() {
+    if (!_runSnap) return false;
+    if (_runSnap.includeHidden !== _includeHidden) return true;
+    if (_runSnap.geom !== runInputsSig()) return true;
+    return _runSnap.hidden !== App.hiddenSignature(_runSnap.refs);
   }
 
   // ---- Feature checklist (routes + lines) ----
@@ -84,7 +105,7 @@
     el.innerHTML = "";
     var hasFeatures = false;
 
-    function addRow(type, idx, name, badge) {
+    function addRow(type, idx, name, badge, feature) {
       hasFeatures = true;
       var ref = App.featureRef(type, idx);
       var checked = !(ref && isRefUnchecked(type, ref.id));
@@ -106,13 +127,14 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var routes = App.routes || [];
@@ -121,12 +143,12 @@
     for (var ri = 0; ri < routes.length; ri++) {
       addRow("route", ri,
         (routes[ri].properties && routes[ri].properties.name) || ("Route " + (ri + 1)),
-        "R");
+        "R", routes[ri]);
     }
     for (var li = 0; li < lines.length; li++) {
       addRow("line", li,
         (lines[li].properties && lines[li].properties.name) || ("Line " + (li + 1)),
-        "L");
+        "L", lines[li]);
     }
 
     if (!hasFeatures) {
@@ -143,7 +165,7 @@
     el.innerHTML = "";
     var hasAreas = false;
 
-    function addRow(idx, name) {
+    function addRow(idx, name, feature) {
       hasAreas = true;
       var ref = App.featureRef("polygon", idx);
       var checked = !(ref && isRefUnchecked("polygon", ref.id));
@@ -165,18 +187,19 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = "P";
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var polygons = App.polygons || [];
     for (var i = 0; i < polygons.length; i++) {
-      addRow(i, (polygons[i].properties && polygons[i].properties.name) || ("Polygon " + (i + 1)));
+      addRow(i, (polygons[i].properties && polygons[i].properties.name) || ("Polygon " + (i + 1)), polygons[i]);
     }
 
     if (!hasAreas) {
@@ -193,7 +216,7 @@
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       var cb = boxes[i];
-      if (!cb.checked) continue;
+      if (!cb.checked || cb.disabled) continue;
       var type = cb.getAttribute("data-type");
       var idx  = parseInt(cb.getAttribute("data-idx"), 10);
       if      (type === "route") routeIndices.push(idx);
@@ -209,7 +232,7 @@
     var boxes = el.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
       var cb = boxes[i];
-      if (!cb.checked) continue;
+      if (!cb.checked || cb.disabled) continue;
       polygonIndices.push(parseInt(cb.getAttribute("data-idx"), 10));
     }
     return { polygonIndices: polygonIndices };
@@ -370,9 +393,8 @@
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
 
-  // Test-only: expose the pure helpers to the golden harness
-  // (test/run-golden.mjs). Guarded by __MAT_TEST__ so it has no effect in the
-  // browser. See test/README.md.
+  // Test-only: expose the pure helpers to the golden harness (test/run-golden.mjs); guarded by
+  // __MAT_TEST__ so it is inert in the browser. See test/README.md.
   if (typeof window !== "undefined" && window.__MAT_TEST__) {
     App._tcTest = {
       computePeakHeadway: computePeakHeadway,
@@ -390,13 +412,13 @@
   // App.routeBuffers / App.lineBuffers (those belong to the shared
   // Feature Settings buffer radius, a different concern).
 
-  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers) {
+  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers, includeHidden) {
     var headwayRows = [];
     var allBuffers = [];
     var qualifyingBuffers = [];
     var bufferSet = useDisplayBuffers
-      ? App.buildDisplayBufferSet(sel)
-      : App.buildAnalysisBufferSet(sel, miles);
+      ? App.buildDisplayBufferSet(sel, { includeHidden: !!includeHidden })
+      : App.buildAnalysisBufferSet(sel, miles, { includeHidden: !!includeHidden });
 
     function featureIdOf(type, idx) {
       var ref = App.featureRef(type, idx);
@@ -437,7 +459,8 @@
     var coverageUnion  = App.foldAnalysisUnion(allBuffers);
     var thresholdUnion = (thresholdMin == null) ? null : App.foldAnalysisUnion(qualifyingBuffers);
 
-    return { coverageUnion: coverageUnion, thresholdUnion: thresholdUnion, headwayRows: headwayRows };
+    return { coverageUnion: coverageUnion, thresholdUnion: thresholdUnion, headwayRows: headwayRows,
+             hiddenCount: bufferSet.hiddenCount || { included: 0, skipped: 0 } };
   }
 
   function clipToServiceArea(unionFeat, serviceAreaUnion) {
@@ -477,11 +500,9 @@
     return { type: "FeatureCollection", features: features };
   }
 
-  // Colors resolve through the layer style cascade (Phase 7 of
-  // docs/layer-color-customization-plan.md) — a categorical spec, one class
-  // per semantic fill. The fallback array is byte-identical to the spec's
-  // defaultColors so a missing layer-palettes.js degrades to the original
-  // hardcoded colors instead of throwing.
+  // Colors resolve through the layer style cascade — a categorical spec, one class per semantic
+  // fill. The fallback array equals the spec's defaultColors so a missing layer-palettes.js
+  // degrades to the original colors instead of throwing.
   var TC_DEFAULT_COLORS = ["#93c5fd", "#1d4ed8", "#374151"];
   function tcColors() {
     return (typeof App.resolveLayerColors === "function" &&
@@ -519,9 +540,7 @@
       });
     } else {
       map.getSource(TC_SOURCE).setData(fc);
-      // Refresh paint too — without this a palette changed while results were
-      // already on screen would survive only until the next re-run, which is
-      // the exact failure mode this whole plan exists to avoid.
+      // Refresh paint too, or a palette changed while results are on screen would only apply on re-run.
       repaintOverlay();
     }
   }
@@ -564,7 +583,7 @@
   // showFloatingWidget resolves asynchronously only on first creation (it
   // fetches the fragment); re-showing an existing widget returns an already
   // resolved promise. Branching on thenable keeps every caller synchronous —
-  // the same wrapper shape the four Phase 5 legends use.
+  // the same wrapper shape the other module legends use.
   function showCoverageLegend() {
     if (!App.popup || !App.popup.showFloatingWidget) return;
     var p = App.popup.showFloatingWidget("tc-legend", "projects/transit-coverage-legend.html", {
@@ -593,6 +612,14 @@
 
   async function runCoverage() {
     if (_running) return;
+    // Everything the user ticked in a list is hidden on the map (toggle off): say so.
+    var pre = { feat: getSelectedFeatures(), area: getSelectedAreas() };
+    var hiddenChecked = function (id) { return document.querySelectorAll("#" + id + " input[type=checkbox]:checked:disabled").length; };
+    if ((!pre.feat.routeIndices.length && !pre.feat.lineIndices.length && hiddenChecked("tcFeatureList") > 0) ||
+        (!pre.area.polygonIndices.length && hiddenChecked("tcAreaList") > 0)) {
+      setStatus(App.hiddenSelectionMessage(0).error, "error");
+      return;
+    }
     _running = true;
     var runBtn = document.getElementById("tcRunBtn");
     if (runBtn) runBtn.disabled = true;
@@ -625,7 +652,16 @@
       }
 
       _useDisplayBuffers = !!(document.getElementById("tcUseDisplayBuffers") || {}).checked;
-      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers);
+      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers, _includeHidden);
+      var snap = makeRunSnap(checkedRefsIn("tcFeatureList").concat(checkedRefsIn("tcAreaList")));
+      // Hidden features that took part: route/line from the buffer set, plus hidden service-area polygons.
+      var hiddenIncluded = (unions.hiddenCount && unions.hiddenCount.included) || 0;
+      if (_includeHidden) {
+        areaSel.polygonIndices.forEach(function (pi) {
+          var pf = (App.polygons || [])[pi];
+          if (pf && pf.properties && pf.properties.hidden) hiddenIncluded++;
+        });
+      }
       var coverageUnion  = unions.coverageUnion;
       var thresholdUnion = unions.thresholdUnion;
       var headwayRows     = unions.headwayRows;
@@ -677,8 +713,10 @@
         headwayRows: headwayRows,
         coverageClipped: coverageClipped, thresholdClipped: thresholdClipped,
         serviceAreaUnion: serviceAreaUnion,
-        featRefs: checkedRefsIn("tcFeatureList"), areaRefs: checkedRefsIn("tcAreaList")
+        featRefs: checkedRefsIn("tcFeatureList"), areaRefs: checkedRefsIn("tcAreaList"),
+        hiddenIncluded: hiddenIncluded
       };
+      _runSnap = snap;
       _stale = false;
 
       renderResults(_lastResult);
@@ -715,6 +753,8 @@
     var resultsWrap = document.getElementById("tcResults");
     var emptyState  = document.getElementById("tcEmptyState");
     if (!container || !resultsWrap) return;
+    var hiddenNoteEl = document.getElementById("tcHiddenNote");
+    if (hiddenNoteEl) hiddenNoteEl.textContent = (result && App.hiddenSelectionMessage(result.hiddenIncluded || 0).notes) || "";
 
     if (!result) {
       resultsWrap.style.display = "none";
@@ -917,14 +957,12 @@
     if (_initialized) return;
     _initialized = true;
 
-    // Geography level / ACS year
     var geoLevel = document.getElementById("tcGeoLevel");
     if (geoLevel) geoLevel.addEventListener("change", markStale);
 
     var yearSel = document.getElementById("tcYearSelect");
     if (yearSel) yearSel.addEventListener("change", markStale);
 
-    // Coverage settings
     var bufferInput = document.getElementById("tcBufferMiles");
     if (bufferInput) bufferInput.addEventListener("change", markStale);
     var displayBuffersInput = document.getElementById("tcUseDisplayBuffers");
@@ -941,12 +979,28 @@
     var thresholdInput = document.getElementById("tcHeadwayThreshold");
     if (thresholdInput) thresholdInput.addEventListener("change", markStale);
 
-    // Transit features select all / clear
+    // Include hidden toggle: one for both lists, beside the first list's Select all | Clear.
+    var actionsEl = (document.getElementById("tcFeatSelectAll") || {}).parentNode;
+    if (actionsEl && !document.getElementById("tcIncludeHidden")) {
+      var toggleEl = App.buildIncludeHiddenToggle({
+        id: "tcIncludeHidden", checked: _includeHidden,
+        onChange: function (on) {
+          _includeHidden = on;
+          buildFeatureChecklist();           // re-decorate rows; checked states untouched
+          buildAreaChecklist();
+          if (App.cache) App.cache.save();
+          if (_lastResult && runIsOutdated()) markStale();
+        }
+      });
+      toggleEl.title = "Applies to both the routes/lines and the service-area polygons.";
+      actionsEl.appendChild(toggleEl);
+    }
+
     var featSelectAll = document.getElementById("tcFeatSelectAll");
     if (featSelectAll) {
       featSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#tcFeatureList input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -961,12 +1015,11 @@
       });
     }
 
-    // Service-area select all / clear
     var areaSelectAll = document.getElementById("tcAreaSelectAll");
     if (areaSelectAll) {
       areaSelectAll.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#tcAreaList input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -981,11 +1034,9 @@
       });
     }
 
-    // Analyze Coverage
     var runBtn = document.getElementById("tcRunBtn");
     if (runBtn) runBtn.addEventListener("click", runCoverage);
 
-    // Exports
     var csvBtn = document.getElementById("tcExportCSV");
     if (csvBtn) csvBtn.addEventListener("click", exportCSV);
     var gjBtn = document.getElementById("tcExportGeoJSON");
@@ -993,6 +1044,8 @@
   }
 
   function onOpen(core) {
+    var ihEl = document.getElementById("tcIncludeHidden");
+    if (ihEl) ihEl.checked = _includeHidden;
     buildFeatureChecklist();
     buildAreaChecklist();
     syncBufferControl();
@@ -1021,6 +1074,7 @@
     clearMapOverlay();
     if (App.popup && App.popup.hideFloatingWidget) App.popup.hideFloatingWidget("tc-legend");
     _lastResult = null;
+    _runSnap = null;
     _stale = false;
     if (isPopupVisible()) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
@@ -1040,11 +1094,12 @@
     if (_lastResult && (noFeatures || noAreas)) {
       clearAll();
     }
+    // notifyProject also fires on every hide/show: only go stale on a real change.
+    if (_lastResult && !_stale && runIsOutdated()) markStale();
     if (!isPopupVisible()) return;
     buildFeatureChecklist();
     buildAreaChecklist();
     updateLodesWarnings();
-    if (_lastResult) markStale();
   }
 
   // ---- Session persistence ----
@@ -1053,6 +1108,7 @@
     var settings = {
       bufferMiles:      null,
       useDisplayBuffers: _useDisplayBuffers,
+      includeHidden:    _includeHidden,   // additive, no schema bump
       dayType:          null,
       headwayThreshold: null,
       geoLevel:         null,
@@ -1098,6 +1154,7 @@
         useDisplayBuffers: _lastResult.useDisplayBuffers,
         dayType:         _lastResult.dayType,
         thresholdMin:    _lastResult.thresholdMin,
+        hiddenIncluded:  _lastResult.hiddenIncluded || 0,
         popTotal:        _lastResult.popTotal,
         popCovered:      _lastResult.popCovered,
         popThreshold:    _lastResult.popThreshold,
@@ -1148,6 +1205,9 @@
 
     if (bufferEl && Number.isFinite(settings.bufferMiles)) bufferEl.value = String(settings.bufferMiles);
     if (settings.useDisplayBuffers != null) _useDisplayBuffers = !!settings.useDisplayBuffers;
+    if (typeof settings.includeHidden === "boolean") _includeHidden = settings.includeHidden;
+    var ihRestoreEl = document.getElementById("tcIncludeHidden");
+    if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
     syncBufferControl();
     if (dayTypeEl && settings.dayType)                      dayTypeEl.value = settings.dayType;
     if (thresholdEl) {
@@ -1166,6 +1226,7 @@
       useDisplayBuffers: !!s.useDisplayBuffers,
       dayType:          s.dayType,
       thresholdMin:     s.thresholdMin,
+      hiddenIncluded:   s.hiddenIncluded || 0,
       popTotal:         s.popTotal,
       popCovered:       s.popCovered,
       popThreshold:     s.popThreshold,
@@ -1189,6 +1250,15 @@
       areaRefs:         null
     };
     _stale = false;
+    // Baseline for update(): the live routes/lines/polygons now, minus what the user unchecked.
+    var restoreRefs = [];
+    [["route", App.routes], ["line", App.lines], ["polygon", App.polygons]].forEach(function (g) {
+      (g[1] || []).forEach(function (f, i) {
+        var ref = App.featureRef(g[0], i);
+        if (ref && !isRefUnchecked(g[0], ref.id)) restoreRefs.push(ref);
+      });
+    });
+    _runSnap = makeRunSnap(restoreRefs);
 
     if (isPopupVisible()) {
       renderResults(_lastResult);
@@ -1203,10 +1273,8 @@
     name:       "Transit Coverage",
     enabled:    true,
     popupWidth: 1000,
-    // One width for both modes, under the 620px @container breakpoint — narrow,
-    // stacked task panel in every state, never resizes on run (see the fuller
-    // note in buffer-summary.js). 600 gives the coverage results table the most
-    // room available without un-stacking.
+    // One width for both modes, under the 620px @container breakpoint (narrow stacked panel,
+    // never resizes on run); see the fuller note in buffer-summary.js.
     panelWidths: { setup: 600, results: 600 },
     popupHTML:  "projects/transit-coverage-popup.html",
 

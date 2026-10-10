@@ -3,7 +3,8 @@
 // Depends on: App.map (map.js), App.bboxStringFromFeature (points.js),
 //             App.bufferUnionPolygon (points.js), pako (CDN), turf (CDN).
 // Exports: STATE_FIPS_TO_ABBR, getStateFromMapCenter, startDownload, lodesData,
-//          lodesFileName, setLodesLoadedUI, parseLodesFromUploadedFile,
+//          lodesFileName, lodesFileNames, setLodesLoadedUI, mergeLodesFile, clearLodesData,
+//          restoreLodesFromData, serializeLodesData, parseLodesFromUploadedFile,
 //          fetchBlocksInternalPointsInUnion, computeEmploymentServedOnly
 
 (function () {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/feature-split-smoke.mjs
 //
-// Browser smoke test for Feature Split (docs/feature-split-plan.md, Phase 1:
+// Browser smoke test for Feature Split (docs/archive/feature-split-plan.md, Phase 1:
 // "Split here" for lines and routes). Loads the real app, drives window.App
 // through page.evaluate and the real map right-click menu + dialog, and asserts:
 // piece count / IDs / inherited attributes / run-time share / Service choice /
@@ -297,7 +297,7 @@ async function main() {
     const pv = await page.evaluate(() => { const d = App.map.getSource("split-preview")._data || App.map.getSource("split-preview").serialize().data;
       const ids = App.map.getStyle().layers.map((l) => l.id);
       return { feats: d.features.map((f) => ({ k: f.properties.kind, n: f.geometry.coordinates.length, c: f.geometry.coordinates })),
-               aboveLines: ids.indexOf("split-preview-line") > ids.indexOf("lines-layer"), last: ids.slice(-2) }; });
+               aboveLines: App.lineStyleLayerIds().every((lid) => ids.indexOf(lid) >= 0 && ids.indexOf("split-preview-line") > ids.indexOf(lid)), last: ids.slice(-2) }; });
     const sec = pv.feats.find((f) => f.k === "section");
     check("preview highlights the stretch from the first point to the cursor (4 coords through 2 vertices); marker at the first cut; drawn above lines",
       sec && sec.n === 4 && pv.feats.some((f) => f.k === "cut") && pv.aboveLines && close(sec.c[1], LINE[1]) && close(sec.c[2], LINE[2]), pv);

@@ -1,8 +1,8 @@
 // js/app.js
-// Startup: wires core modules together, loads active project panel,
-// contains summary runners and core event bindings.
-// Depends on: all core modules (utils, map, points, census, lodes).
-// Exports: registerProject
+// Startup: module registry, shared module-state/inputs UI, Feature Settings,
+// toolbar/keyboard wiring and session restore (all inside the map "load" handler).
+// Loads after all core files; modules (js/projects/) load after it and register here.
+// Detail: docs/reference/core-app.md
 
 (function () {
   var App = window.App;
@@ -11,12 +11,7 @@
 
   App.drawMode = null; // null | "point" | "line" | "route" | "polygon" | "label" | "measure" | "box-select"
 
-  // ---- Variable checkbox UI ----
-  // The variable checkbox list is built at runtime by buffer-summary.js from
-  // VAR_META in utils.js (single source of truth). There is no sidebar Data
-  // Inputs panel — the checkboxes live inside the Feature Area Analysis popup.
-
-  // ---- Module registry (replaces single-project system) ----
+  // ---- Module registry ----
 
   var _modules = new Map(); // Map<id, moduleConfig>
 
@@ -24,15 +19,13 @@
     _modules.set(config.id, config);
   };
 
-  // Backward-compat alias so existing project files still work during migration
+  // Backward-compat alias.
   App.registerProject = App.registerModule;
 
   // ---- Shared module-state UI (stale banner + empty/onboarding state) ----
-  // Standardizes the two cross-cutting popup patterns so every analysis module
-  // looks/behaves the same:
-  //   (1) Stale banner with a working "Re-run" button.
-  //   (2) Friendly empty-state / first-open onboarding hint.
-  // Reuses the shared (despite the rf- prefix) .rf-status / .rf-info-box classes.
+  // Every analysis module uses this for its stale banner (with a working Re-run
+  // button) and empty/onboarding hint. The .rf-status / .rf-info-box classes are
+  // shared by all modules despite the rf- prefix.
   //
   // opts = {
   //   statusEl,            // .rf-status pill element OR its id string
@@ -54,7 +47,6 @@
 
     function hide(el) { if (el) el.style.display = "none"; }
 
-    // --- Empty / onboarding state wins ---
     if (opts.empty) {
       hide(statusEl);
       if (emptyEl) {
@@ -68,7 +60,7 @@
         } else if (typeof hint === "string" && hint) {
           emptyEl.innerHTML = '<p>' + hint + '</p>';
         }
-        // If no hint passed, leave whatever static markup the popup HTML shipped.
+        // No hint passed: keep the popup HTML's static markup.
       }
       return;
     }
@@ -76,13 +68,11 @@
     if (emptyEl) hide(emptyEl);
     if (!statusEl) return;
 
-    // --- Explicit status pill (neutral / running / done / error) ---
     if (opts.status) {
       _paintStatus(statusEl, opts.status.kind || "", opts.status.message || "", null);
       return;
     }
 
-    // --- Stale pill with Re-run button ---
     if (opts.stale) {
       _paintStatus(
         statusEl, "stale",
@@ -92,7 +82,6 @@
       return;
     }
 
-    // --- Nothing to show ---
     hide(statusEl);
   };
 
@@ -104,8 +93,7 @@
        kind === "error"   ? " rf-status-error"   :
        kind === "running" ? " rf-status-running" : "");
 
-    // The popup HTML ships a <span id="...StatusText"> inside the pill; keep using
-    // it when present so existing id references stay valid. Otherwise build one.
+    // Reuse the popup's <span id="...StatusText"> when present so id references stay valid.
     var textEl = statusEl.querySelector("[id$='StatusText'], .rf-status-text");
     if (!textEl) {
       statusEl.innerHTML = "";
@@ -115,7 +103,6 @@
     }
     textEl.textContent = message || "";
 
-    // Drop any prior Re-run button, then add a fresh one if requested.
     var oldBtn = statusEl.querySelector(".rf-status-rerun");
     if (oldBtn) oldBtn.parentNode.removeChild(oldBtn);
     if (onRerun) {
@@ -135,20 +122,11 @@
   }
 
   // ---- Shared collapsible module inputs ----
-  // Sibling of renderModuleState: the other cross-cutting popup pattern.
-  //
-  // WHY: a module's settings column is only interesting until you run it. In a
-  // narrow/stacked panel (see the @container rule in style.css) the settings sit
-  // ABOVE the results, so leaving them expanded pushes the answer below the fold.
-  // Collapsing them on a successful run hands the panel back to the results.
-  //
-  // The collapsed header still carries a one-line summary of what was actually
-  // run, so a collapsed panel can always answer "what am I looking at" without
-  // being reopened.
-  //
-  // TERMINOLOGY (a convention, not enforced by this code — see CLAUDE.md):
-  //   Inputs   — required selections; live in the settings column; collapse here.
-  //   Settings — optional/expert tuning; live behind a button, modal or <details>.
+  // WHY: in a narrow/stacked panel (see the @container rule in style.css) the
+  // settings column sits ABOVE the results, so leaving it expanded pushes the
+  // answer below the fold. A successful run collapses it; the header keeps a
+  // one-line summary of what was run.
+  // Inputs vs. Settings convention: see CLAUDE.md.
   //
   // opts = {
   //   hostEl,     // the module's .rf-settings-col element OR its id string
@@ -170,7 +148,6 @@
 
     var body = host.querySelector(":scope > .module-inputs-body");
 
-    // First call: build the header and move the existing content into a body.
     if (!body) {
       host.classList.add("module-inputs");
 
@@ -217,8 +194,7 @@
   };
 
   function _setInputsCollapsed(host, collapsed) {
-    // The caret rotation is driven purely by this class in CSS (down = expanded,
-    // right = collapsed), so there is no second piece of state to keep in sync.
+    // Caret rotation is driven by this class alone in CSS (no second state).
     host.classList.toggle("module-inputs-collapsed", collapsed);
     var header = host.querySelector(":scope > .module-inputs-header");
     if (header) header.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -239,8 +215,7 @@
     return combined;
   };
 
-  // Build a core API object for passing to project hooks.
-  // Rebuilt each call so values like lodesData are always current.
+  // The `core` object passed to module hooks; rebuilt per call so values like lodesData are current.
   function buildCore() {
     return {
       points: App.points,
@@ -274,7 +249,7 @@
   }
 
   // Notify all registered modules that data has changed.
-  // Called sequentially to avoid overwhelming Census API.
+  // Modules run sequentially to avoid overwhelming the Census API.
   async function notifyProject() {
     var core = buildCore();
     for (var entry of _modules.values()) {
@@ -282,10 +257,8 @@
         await entry.update(core);
       }
     }
-    // Keep the Layers tab current when features/analysis layers change.
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
-    // Re-apply the walk-network connector overlay if any Line's networkRole or
-    // geometry changed (cheap no-op when nothing did — see network-connectors.js).
+    // Cheap no-op unless a Line's networkRole/geometry changed (network-connectors.js).
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
   }
   App.notifyProject = notifyProject;
@@ -300,11 +273,22 @@
     }
   }
 
-  // Note: runSummary(), MANDATORY_VARS, expandGroups, and aggDescription live
-  // in js/projects/buffer-summary.js. Variable metadata, checkbox groups, and
-  // percentage denominators are all driven by VAR_META in js/core/utils.js.
+  // Clear one module's outputs through its own `clear` hook (the Layers panel's
+  // Remove layer). Returns false when the module is unknown or has no hook, so
+  // callers can tell "nothing to remove" from "removed".
+  App.clearModule = function (id) {
+    var m = _modules.get(id);
+    if (!m || typeof m.clear !== "function") return false;
+    m.clear();
+    return true;
+  };
+  // Lets the Layers panel offer Remove layer only for modules that can honour it.
+  App.moduleHasClear = function (id) {
+    var m = _modules.get(id);
+    return !!(m && typeof m.clear === "function");
+  };
 
-  // ---- Build Analysis sidebar panel HTML ----
+  // ---- Analysis toolbar menu HTML ----
 
   function buildAnalysisButtonsHTML() {
     var html = '<div class="analysis-module-list">';
@@ -351,8 +335,6 @@
     return html;
   }
 
-  // ---- Feature delete hook (called by features.js) ----
-
   // ---- Overlap offset computation ----
 
   var _computingOffsets = false;
@@ -380,7 +362,6 @@
 
       if (features.length < 2) { _pushOffsetSources(); _computingOffsets = false; return; }
 
-      // Build tiny proximity buffers
       var miniBufs = [];
       for (var i = 0; i < features.length; i++) {
         try {
@@ -388,7 +369,6 @@
         } catch (e) { miniBufs.push(null); }
       }
 
-      // Pairwise overlap detection
       var adj = [];
       for (var i = 0; i < features.length; i++) adj.push([]);
       for (var i = 0; i < features.length; i++) {
@@ -474,7 +454,7 @@
     if (rs) rs.setData({ type: "FeatureCollection", features: _withResolvedColorForOffset("route", App.routes || []) });
   }
 
-  // ---- Feature deletion hook ----
+  // ---- Feature deletion hook (called by features.js) ----
 
   App.onFeatureDelete = function () {
     if (typeof App.exitEditMode === "function") App.exitEditMode();
@@ -502,8 +482,13 @@
     lineLineWidth:      1,
     routeLineWidth:     1,
     polygonLineWidth:   1,
-    bufferLineWidth:    1
+    bufferLineWidth:    1,
+    bufferMerge:        false   // display only: draw overlapping buffers as one shape
   };
+
+  var MERGED_BUF_SRC  = "buffers-merged";
+  var MERGED_BUF_FILL = "buffers-merged-fill";
+  var MERGED_BUF_LINE = "buffers-merged-line";
 
   function _safeSetPaint(layerId, prop, val) {
     if (App.map && App.map.getLayer(layerId)) {
@@ -541,12 +526,12 @@
       _safeSetPaint("points-layer", "circle-stroke-opacity", opExpr);
     }
     if (type === "line" || type === "all") {
-      _safeSetPaint("lines-layer", "line-opacity",
-        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.lineOpacity / 100]);
+      App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-opacity",
+        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.lineOpacity / 100]); });
     }
     if (type === "route" || type === "all") {
-      _safeSetPaint("routes-layer", "line-opacity",
-        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]);
+      App.lineStyleLayerIds("route").forEach(function (lid) { _safeSetPaint(lid, "line-opacity",
+        ["case", ["has", "_opacity"], ["get", "_opacity"], fs.routeOpacity / 100]); });
     }
     if (type === "polygon" || type === "all") {
       _safeSetPaint("polygons-fill", "fill-opacity",
@@ -557,12 +542,24 @@
     if (type === "buffer" || type === "all") {
       var fillOp = fs.bufferFillOpacity / 100;
       var lineOp = fs.bufferLineOpacity / 100;
-      _safeSetPaint("buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("buffers-line", "line-opacity", lineOp);
-      _safeSetPaint("line-buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("line-buffers-line", "line-opacity", lineOp);
-      _safeSetPaint("route-buffers-fill", "fill-opacity", fillOp);
-      _safeSetPaint("route-buffers-line", "line-opacity", lineOp);
+      // Dissolved display: the per-feature layers stay in the style (hover and
+      // click hit-testing and the choropleth anchor read "buffers-fill") but
+      // draw nothing; the merged layers draw instead.
+      var merged = !!fs.bufferMerge;
+      var featFill = merged ? 0 : fillOp;
+      var featLine = merged ? 0 : lineOp;
+      _safeSetPaint("buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("buffers-line", "line-opacity", featLine);
+      _safeSetPaint("line-buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("line-buffers-line", "line-opacity", featLine);
+      _safeSetPaint("route-buffers-fill", "fill-opacity", featFill);
+      _safeSetPaint("route-buffers-line", "line-opacity", featLine);
+      _safeSetPaint(MERGED_BUF_FILL, "fill-opacity", fillOp);
+      _safeSetPaint(MERGED_BUF_LINE, "line-opacity", lineOp);
+      if (App.map && App.map.getLayer(MERGED_BUF_FILL)) {
+        App.map.setLayoutProperty(MERGED_BUF_FILL, "visibility", merged ? "visible" : "none");
+        App.map.setLayoutProperty(MERGED_BUF_LINE, "visibility", merged ? "visible" : "none");
+      }
     }
   };
 
@@ -575,12 +572,12 @@
         ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointStrokeWidth]);
     }
     if (type === "line" || type === "all") {
-      _safeSetPaint("lines-layer", "line-width",
-        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.lineLineWidth]);
+      App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-width",
+        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.lineLineWidth]); });
     }
     if (type === "route" || type === "all") {
-      _safeSetPaint("routes-layer", "line-width",
-        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.routeLineWidth]);
+      App.lineStyleLayerIds("route").forEach(function (lid) { _safeSetPaint(lid, "line-width",
+        ["case", ["has", "_lineWidth"], ["*", 3, ["get", "_lineWidth"]], 3 * fs.routeLineWidth]); });
     }
     if (type === "polygon" || type === "all") {
       _safeSetPaint("polygons-outlines-layer", "line-width",
@@ -593,7 +590,109 @@
     _safeSetPaint("buffers-line", "line-width", 2 * w);
     _safeSetPaint("line-buffers-line", "line-width", 2 * w);
     _safeSetPaint("route-buffers-line", "line-width", 2 * w);
+    _safeSetPaint(MERGED_BUF_LINE, "line-width", 2 * w);
   };
+
+  // ---- Dissolved buffer display ("Dissolve overlaps" in the Layers panel) ----
+  // Display only: App.buffers / lineBuffers / routeBuffers stay one polygon per
+  // feature, so every analysis and per-feature hit-test is unchanged. The
+  // merged layers draw the union of those polygons, so overlapping
+  // translucent fills no longer stack and inner outlines disappear.
+  // Same-colored buffers fuse; different colors still overlap where they cross.
+  var _mergedInputs = null;   // last [buffer, color] list, to skip identical recomputes
+  var _mergePending = false;
+
+  function _ensureMergedBufferLayers() {
+    var map = App.map;
+    if (map.getSource(MERGED_BUF_SRC)) return;
+    map.addSource(MERGED_BUF_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    // Above the point/line/route buffer layers, below the drawn features.
+    // Never below "buffers-fill": analysis overlays anchor there and must stay under buffers.
+    var before = map.getLayer("points-layer") ? "points-layer" : undefined;
+    map.addLayer({ id: MERGED_BUF_FILL, type: "fill", source: MERGED_BUF_SRC,
+      layout: { visibility: "none" },
+      paint: { "fill-color": ["get", "color"], "fill-opacity": 0.08 } }, before);
+    map.addLayer({ id: MERGED_BUF_LINE, type: "line", source: MERGED_BUF_SRC,
+      layout: { visibility: "none" },
+      paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.4 } }, before);
+  }
+
+  // [{buffer, color}] in draw order. Point buffers share the point section
+  // color (renderPointLayers); line/route buffers carry their own.
+  function _displayBufferInputs() {
+    var pointColor = (App.sectionColors && App.sectionColors.point) || "#2b6cb0";
+    var out = [];
+    (App.buffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: pointColor }); });
+    (App.lineBuffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: b.properties.resolvedColor }); });
+    (App.routeBuffers || []).forEach(function (b) { if (b) out.push({ buffer: b, color: b.properties.resolvedColor }); });
+    return out;
+  }
+
+  function _sameInputs(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].buffer !== b[i].buffer || a[i].color !== b[i].color) return false;
+    }
+    return true;
+  }
+
+  function _dissolveByColor(inputs) {
+    var groups = {}, order = [];
+    inputs.forEach(function (it) {
+      if (!groups[it.color]) { groups[it.color] = []; order.push(it.color); }
+      groups[it.color].push(it.buffer);
+    });
+    var features = [];
+    order.forEach(function (color) {
+      var acc = null, loose = [];
+      groups[color].forEach(function (b) {
+        if (!acc) { acc = b; return; }
+        // A buffer turf.union rejects (invalid geometry) is drawn as-is
+        // rather than dropped, so it never silently vanishes from the map.
+        try {
+          var u = turf.union(acc, b);
+          if (u) acc = u; else loose.push(b);
+        } catch (e) { loose.push(b); }
+      });
+      [acc].concat(loose).forEach(function (f) {
+        if (f) features.push({ type: "Feature", properties: { color: color }, geometry: f.geometry });
+      });
+    });
+    return { type: "FeatureCollection", features: features };
+  }
+
+  App.refreshMergedBuffers = function () {
+    var map = App.map;
+    if (!map || !map.getSource) return;
+    if (App.featureSettings.bufferMerge) {
+      _ensureMergedBufferLayers();
+      var inputs = _displayBufferInputs();
+      if (!_sameInputs(inputs, _mergedInputs)) {
+        _mergedInputs = inputs;
+        map.getSource(MERGED_BUF_SRC).setData(_dissolveByColor(inputs));
+      }
+    }
+    App.applyFeatureOpacity("buffer");
+    App.applyBufferLineWidth();
+  };
+
+  // Rebuilds fire in bursts (session restore runs all three), so recompute once per tick.
+  function _scheduleMergedBuffers() {
+    if (_mergePending || !(App.featureSettings && App.featureSettings.bufferMerge)) return;
+    _mergePending = true;
+    Promise.resolve().then(function () {
+      _mergePending = false;
+      App.refreshMergedBuffers();
+    });
+  }
+
+  // Follow the buffer sources themselves. points/lines/routes.js re-render
+  // through their own closure-local functions (addPoint, movePoint, drags, …),
+  // which bypass any App.* wrapper, but every one ends in setData on these sources.
+  var _BUF_SOURCES = { "buffers": 1, "line-buffers": 1, "route-buffers": 1 };
+  App.map.on("sourcedata", function (e) {
+    if (e.sourceId && _BUF_SOURCES[e.sourceId]) _scheduleMergedBuffers();
+  });
 
   // ---- Map load: wire everything ----
 
@@ -614,13 +713,6 @@
     // Initialize hover/selection highlight layers
     if (typeof App.initHighlightLayers === "function") App.initHighlightLayers();
 
-    // ---- Sidebar disabled (scaffolding kept for future use) ----
-    // Panels formerly registered here have been relocated:
-    // - Census checkboxes → Feature Area Analysis popup (buffer-summary.js)
-    // - LODES → Add Data dropdown (index.html)
-    // - Analysis modules → Analysis toolbar dropdown (below)
-
-    // Wire popup system
     App.popup.wire(_modules, buildCore);
 
     // Public opener for the Attribute Summary "system" module (registered with
@@ -629,7 +721,6 @@
       App.popup.open("attribute-summary", _modules, buildCore);
     };
 
-    // Wire the entry buttons in Feature Settings
     var asBtn = document.getElementById("open-attribute-summary");
     if (asBtn) {
       asBtn.addEventListener("click", function () {
@@ -644,7 +735,6 @@
       }
     };
 
-    // Populate Analysis toolbar dropdown with module buttons
     var analysisDropdown = document.getElementById("analysis-dropdown");
     if (analysisDropdown && _modules.size > 0) {
       analysisDropdown.innerHTML = buildAnalysisButtonsHTML();
@@ -693,6 +783,9 @@
         if (typeof App.setPolygonPreview === "function") App.setPolygonPreview(null);
         if (typeof App.setMeasurePreview === "function") App.setMeasurePreview(null);
 
+        // Street-exclusion editing and a draw tool both claim map clicks; the draw tool wins.
+        if (App.drawMode && typeof App.setWayExclusionMode === "function") App.setWayExclusionMode(false);
+
         // Clear feature selection when entering a draw mode
         // (box select keeps it — Shift/Ctrl drags add to / remove from it).
         if (App.drawMode && App.drawMode !== "box-select" && typeof App.clearSelection === "function") App.clearSelection();
@@ -739,8 +832,6 @@
         (p && typeof p.then === "function") ? p.then(after) : after();
       }
     };
-
-    // Variable checkbox Select All / Clear All — now wired in buffer-summary.js init()
 
     // Dark mode toggle
     var _darkBtn = document.getElementById("darkmode-btn");
@@ -1202,12 +1293,11 @@
       App.clearPolygons();
       if (typeof App.clearLabels    === "function") App.clearLabels();
       if (typeof App.clearTextBoxes === "function") App.clearTextBoxes();
-      if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
+      // Unload only: Clear removes map content, not the downloaded streets.
+      if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
-      document.getElementById("nGeos").textContent = "0";
-      document.getElementById("summaryStatus").style.display = "none";
       App.setStatus("Cleared");
       if (typeof App.clearPresentOverlays === "function") App.clearPresentOverlays();
       clearModules();
@@ -1333,8 +1423,6 @@
       }
     });
 
-    // PPACG Projection UI has moved to the Ridership Forecasting Projections tab.
-
     // Reset session button: clear everything AND localStorage
     var resetBtn = document.getElementById("reset");
     if (resetBtn) {
@@ -1375,6 +1463,20 @@
 
     // Municipal Boundaries toggle
     var _muniBoundariesActive = false;
+    // Any caller that hides the boundaries (the Layers panel's Remove layer, too)
+    // must also reset this flag, or the next Add Data click toggles them "off"
+    // again and the × icon lies about what is on the map.
+    if (typeof App.toggleMuniBoundaries === "function") {
+      var _toggleMuni = App.toggleMuniBoundaries;
+      App.toggleMuniBoundaries = function (show) {
+        if (!show) {
+          _muniBoundariesActive = false;
+          var mb = document.getElementById("muni-boundaries-btn");
+          if (mb) mb.classList.remove("add-data-active");
+        }
+        return _toggleMuni.apply(this, arguments);
+      };
+    }
     document.getElementById("muni-boundaries-btn").addEventListener("click", function () {
       addDataDropdown.style.display = "none";
       _muniBoundariesActive = !_muniBoundariesActive;
@@ -1470,8 +1572,9 @@
         isLoaded: function () {
           return typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
         },
+        // × unloads; the stored copy stays (Layers panel "Delete downloaded streets" removes it).
         clear: function () {
-          if (typeof App.clearRoadNetwork === "function") App.clearRoadNetwork();
+          if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
         }
       },
       {
@@ -1811,14 +1914,10 @@
     });
 
     // ---- Whole-row click for feature checklists (UI only) ----
-    // Every module builds its checklist rows the same way:
-    //   div.rf-feature-check-row > input[type=checkbox] + label + span.badge
-    // The checkbox and the label already handle their own clicks, but the row's
-    // padding and the type badge did not, so a click just beside the name did
-    // nothing. Rather than edit ten near-identical addRow() builders, one
-    // delegated listener covers every module — current and future. It toggles
-    // the row's checkbox and dispatches a real "change" event, so each module's
-    // existing handler (markStale, etc.) runs exactly as if the box was clicked.
+    // Rows are div.rf-feature-check-row > input[type=checkbox] + label + span.badge.
+    // Only the box and label toggled; clicks on row padding or the badge did nothing.
+    // One delegated listener covers every module: it toggles the checkbox and
+    // dispatches a real "change" event so each module's handler runs as normal.
     document.addEventListener("click", function (e) {
       var row = e.target.closest && e.target.closest(".rf-feature-check-row");
       if (!row) return;
@@ -1836,9 +1935,7 @@
       cb.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    // Checkbox change listeners — now wired in buffer-summary.js init()
-
-    // Wrap render/rebuild functions to re-apply opacity + line width after layers are recreated
+    // Re-apply opacity + line width after layers are recreated.
     (function () {
       function _wrapRender(fnName, applyFn) {
         var orig = App[fnName];

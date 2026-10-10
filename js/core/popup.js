@@ -1,8 +1,8 @@
 // js/core/popup.js
 // Generic analysis popup manager: opens module popups, floating map widgets.
 // Depends on: App namespace (utils.js).
-// Exports: App.popup.open, close, isOpen, currentModuleId,
-//          App.popup.showFloatingWidget, App.popup.hideFloatingWidget
+// Exports: App.popup.{open, close, isOpen, currentModuleId, setLayoutMode, layoutMode,
+//          showFloatingWidget, hideFloatingWidget, removeFloatingWidget, wire}
 
 (function () {
   "use strict";

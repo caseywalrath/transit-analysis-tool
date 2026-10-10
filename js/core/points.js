@@ -1,8 +1,8 @@
 // js/core/points.js
 // Point feature + buffer management, map layer rendering.
 // Depends on: App.map (map.js), turf (CDN).
-// Exports: points, buffers, addPoint, clearPoints, undoLastPoint,
-//          renderPointLayers, bufferUnionPolygon, getUnion, bboxStringFromFeature
+// Exports: see the App.* block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -87,8 +87,7 @@
     };
     points.push(feature);
     rebuildBuffers(bufferRadiusMiles);
-    // If the attributes popup is already open (on some other feature), follow
-    // it to this newly-drawn point. Never auto-open it if it wasn't open.
+    // Follow an already-open attributes popup to the new point; never auto-open it.
     if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
         typeof App.openAttrPopup === "function") {
       App.openAttrPopup("point", points.length - 1, feature);
@@ -118,8 +117,7 @@
     App.setStatus(feature.properties.name + " added");
   }
 
-  // Rebuild all buffers from current points at the given radius.
-  // If radius is 0, buffers are cleared (points remain on the map).
+  // Radius 0 clears buffers (points stay on the map).
   function rebuildBuffers(radiusMiles) {
     if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
     bufferRadiusMiles = radiusMiles;
@@ -128,10 +126,8 @@
     for (var i = 0; i < points.length; i++) {
       if (points[i].properties.hidden) continue;
 
-      // Walkshed study area: if this point is flagged serviceAreaType === "walkshed"
-      // and the Walkshed module has a valid cached polygon for it, use that polygon
-      // as the buffer (regardless of the circular radius). Falls back to the circle
-      // when no network/walkshed is available. See js/projects/walkshed.js.
+      // Points flagged serviceAreaType === "walkshed" use the Walkshed module's
+      // cached polygon instead of the circle; falls back to the circle without one.
       var attrs = points[i].properties.attributes || {};
       var ws = (attrs.serviceAreaType === "walkshed" && typeof App.getPointWalkshed === "function")
         ? App.getPointWalkshed(points[i].properties.pointIdx)
@@ -162,9 +158,7 @@
     renderPointLayers();
   }
 
-  // Rebuild buffers at the current radius (no argument needed). Used by the
-  // Walkshed module after it computes/flags walksheds so the buffer union picks
-  // them up without the caller needing to know the current radius.
+  // Rebuild at the current radius; Walkshed calls this after flagging walksheds.
   function refreshBuffers() { rebuildBuffers(bufferRadiusMiles); }
 
   function bufferUnionPolygon() {
@@ -226,6 +220,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     points.push(copy);
     rebuildBuffers(bufferRadiusMiles);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

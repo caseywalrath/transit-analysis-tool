@@ -1,6 +1,7 @@
 // js/core/feature-attributes.js
-// Per-feature attribute popup: floating draggable dialog (singleton).
-// Only one popup open at a time; opening a different feature replaces content.
+// Per-feature attribute popup (floating, draggable singleton) plus ATTR_FIELDS and the
+// shared editors. Schema is duplicated in js/projects/attribute-summary.js: change both together.
+// Detail: docs/reference/drawing-and-features.md
 // Exports:
 //   App.openAttrPopup(featureType, featureIndex, feature)
 //   App.closeAttrPopup()
@@ -26,46 +27,42 @@
     { id: "sunday",   label: "Sunday"   }
   ];
 
-  // Shared route/line fields — line mirrors route exactly
-  var ROUTE_FIELDS = [
+  // Transit-service fields shared by routes and lines (a Line can be attributed
+  // as a transit pattern too). Tagged with a section so the popup renders a
+  // "Transit service" header before them.
+  var TRANSIT_FIELDS = [
     { key: "group",     label: "Group",     type: "text",   placeholder: "e.g. Corridor A", groupPicker: true, hidden: true },
     { key: "direction", label: "Direction", type: "select", options: ["Both","NB","SB","EB","WB","Inbound","Outbound","Loop","CW","CCW"] },
     { key: "mode",      label: "Mode",      type: "select", options: ["Bus","BRT","Light Rail","Streetcar"] },
     { key: "serviceId", label: "Service",   type: "text",   placeholder: "e.g. Blue Line", servicePicker: true },
     { key: "avgSpeed",  label: "Avg speed", type: "number", unit: "mph", defaultValue: 14 },
     { key: "runTime",   label: "Run time",  type: "number", unit: "min", placeholder: "e.g. 45" }
-  ];
+  ].map(function (f) { f.section = "Transit service"; return f; });
 
-  // Fired when a Line's Walk network role changes (Not part of network ↔ Walk
-  // connector). Stub in Phase 2 of docs/network-connectors-plan.md — Phase 4
-  // makes App.refreshNetworkConnectors() actually reweld the graph.
+  // Per-feature buffer radius: study-area geometry, not appearance. Unlike every other field it lives on
+  // feature.properties._bufferRadius, NOT feature.properties.attributes — the
+  // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
+  // never touches `attributes`.
+  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area" };
+
+  var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
+
+  // Fired when a Line's Walk network role changes (Not part of network <-> Walk
+  // connector); re-welds the walk graph.
   function onNetworkRoleChange() {
     if (typeof App.refreshNetworkConnectors === "function") App.refreshNetworkConnectors();
-  }
-
-  // Returns a shallow copy of `fields` with `section` set on every entry, so
-  // the attributes popup renders a `.fp-attr-section` header before the first
-  // field of that section. Used to visually separate Lines' transit-route
-  // fields (which every Line inherits from Routes, even though most Lines in
-  // this app are NOT transit routes) from the Walk network field below.
-  function withSection(fields, section) {
-    return fields.map(function (f) {
-      var copy = {};
-      for (var k in f) copy[k] = f[k];
-      copy.section = section;
-      return copy;
-    });
   }
 
   // Lines share every Route field (a Line can be attributed as a transit
   // pattern too) plus one Walk network field Routes never get — Routes
   // already follow existing streets, so "connect this to the walk network"
-  // is meaningless for them. See docs/network-connectors-plan.md §2.
-  var LINE_FIELDS = withSection(ROUTE_FIELDS, "Transit service").concat([
+  // is meaningless for them. See docs/archive/network-connectors-plan.md §2.
+  var LINE_FIELDS = TRANSIT_FIELDS.concat([
     { key: "networkRole", label: "Walk network", type: "select", section: "Walk network",
       options: ["", "connector"],
       optionLabels: { "": "Not part of network", "connector": "Walk connector" },
-      onChange: onNetworkRoleChange }
+      onChange: onNetworkRoleChange },
+    BUFFER_FIELD
   ]);
 
   // Field definitions per feature type.
@@ -75,12 +72,13 @@
     line:  LINE_FIELDS,
     point: [
       { key: "group",            label: "Group",    type: "text", placeholder: "e.g. North Corridor", groupPicker: true, hidden: true },
-      { key: "serviceAreaType",  label: "Service area", type: "select",
+      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
+      { key: "associatedRoutes", label: "Routes"                                                 },
+      { key: "serviceAreaType",  label: "Service area", type: "select", section: "Study area",
         options: ["", "walkshed"],
         optionLabels: { "": "Circular buffer", "walkshed": "Walkshed" },
         onChange: onServiceAreaChange },
-      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
-      { key: "associatedRoutes", label: "Routes"                                                 }
+      BUFFER_FIELD
     ],
     polygon: [
       { key: "group",  label: "Group",  type: "text", placeholder: "e.g. Study Area", groupPicker: true, hidden: true },
@@ -112,7 +110,164 @@
   function onServiceAreaChange() {
     if (typeof App.ensurePointWalksheds === "function") App.ensurePointWalksheds();
     if (typeof App.refreshBuffers === "function") App.refreshBuffers();
+    if (typeof App.refreshBufferRadiusControls === "function") App.refreshBufferRadiusControls();
     if (typeof App.notifyProject === "function") App.notifyProject();
+  }
+
+  /* ---- Buffer radius control (shared with Attribute Summary) ---- */
+  //
+  // App.buildBufferRadiusControl(type, feature, opts) -> element (with .refresh())
+  //   type: "point" | "line" | "route".  opts: { note: bool }
+  // Shows the type default (Feature Settings) muted until
+  // feature.properties._bufferRadius is set; the x clears the override. Reads
+  // and writes properties._bufferRadius only (never attributes). The feature is
+  // held as a stable {type, id} ref and resolved on every write.
+  //
+  // Timing: the buffers are rebuilt live on every tick (so the map follows a
+  // drag), but the undo snapshot, cache save and App.notifyProject() (which
+  // makes analysis modules mark themselves stale) happen once per GESTURE:
+  // one drag, one +/- click, one typed value. A click/typed change is flushed on
+  // the next tick; a drag is flushed on mouseup.
+  //
+  // A point flagged serviceAreaType "walkshed" has its buffer replaced by the
+  // walkshed (points.js rebuildBuffers), so the control is disabled for it.
+  var BUFFER_DEFAULT_KEYS = { point: "bufferRadius", line: "lineBufferRadius", route: "routeBufferRadius" };
+  var BUFFER_ARRAYS = { point: "points", line: "lines", route: "routes" };
+  var BUFFER_STEPS_FALLBACK = [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  var WALKSHED_NOTE = "Walkshed replaces the buffer";
+  var _bufferControls = [];
+
+  function typeDefaultBuffer(type) {
+    var v = (App.featureSettings || {})[BUFFER_DEFAULT_KEYS[type]];
+    return v != null ? v : 0;
+  }
+
+  // Rebuild one type's buffers at its type default (per-feature overrides are
+  // applied inside the rebuild functions).
+  function rebuildBuffersForType(type) {
+    var fn = { point: "rebuildBuffers", line: "rebuildLineBuffers", route: "rebuildRouteBuffers" }[type];
+    if (fn && typeof App[fn] === "function") App[fn](typeDefaultBuffer(type));
+  }
+  App.rebuildBuffersForType = rebuildBuffersForType;
+
+  function buildBufferRadiusControl(type, feature, opts) {
+    opts = opts || {};
+    var arr = App[BUFFER_ARRAYS[type]] || [];
+    var ref = App.featureRef(type, arr.indexOf(feature));
+    var wrap = document.createElement("div");
+    wrap.className = "fp-buffer-ctl";
+    if (!ref) return wrap;
+
+    function props() { var f = App.featureById(ref.type, ref.id); return f ? f.properties : null; }
+    function isWalkshed() {
+      var p = props();
+      return type === "point" && !!p && !!p.attributes && p.attributes.serviceAreaType === "walkshed";
+    }
+    function currentValue() {
+      var p = props();
+      return (p && p._bufferRadius != null) ? p._bufferRadius : typeDefaultBuffer(type);
+    }
+
+    var dirty = false, dragging = false, timer = null;
+    function flush() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!dirty) return;
+      dirty = false;
+      if (App.cache && typeof App.cache.save === "function") App.cache.save();
+      if (typeof App.notifyProject === "function") App.notifyProject();
+    }
+    function schedule() {
+      if (dragging || timer) return;
+      timer = setTimeout(flush, 0);
+    }
+    function pushUndo() {
+      if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    }
+
+    var scrubber = App.buildScrubber({
+      values: App.BUFFER_RADIUS_STEPS || BUFFER_STEPS_FALLBACK,
+      unit: "mi",
+      value: currentValue(),
+      onChange: function (v) {
+        var p = props(); if (!p || isWalkshed()) return;
+        if (!dirty) { pushUndo(); dirty = true; }
+        p._bufferRadius = v;
+        rebuildBuffersForType(type);
+        syncState();
+        schedule();
+      }
+    });
+    wrap.appendChild(scrubber);
+
+    // A drag spans mousedown..mouseup on the control; flush once at the end.
+    scrubber.addEventListener("mousedown", function () {
+      dragging = true;
+      var up = function () {
+        document.removeEventListener("mouseup", up, true);
+        dragging = false;
+        flush();
+      };
+      document.addEventListener("mouseup", up, true);
+    });
+
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "lp-style-clear";
+    clearBtn.title = "Clear override (use the default buffer radius)";
+    clearBtn.setAttribute("aria-label", "Clear buffer override");
+    clearBtn.textContent = "\u00d7";
+    clearBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var p = props(); if (!p || p._bufferRadius == null) return;
+      flush();
+      pushUndo();
+      delete p._bufferRadius;
+      rebuildBuffersForType(type);
+      scrubber.refresh(currentValue());
+      syncState();
+      dirty = true;
+      flush();
+    });
+    wrap.appendChild(clearBtn);
+
+    var note = null;
+    if (opts.note) {
+      note = document.createElement("span");
+      note.className = "fp-buffer-note";
+      note.textContent = WALKSHED_NOTE;
+      wrap.appendChild(note);
+    }
+
+    function syncState() {
+      var p = props();
+      var has = !!p && p._bufferRadius != null;
+      var ws = isWalkshed();
+      wrap.classList.toggle("is-inherited", !has);
+      wrap.classList.toggle("is-disabled", ws);
+      wrap.title = ws ? WALKSHED_NOTE : "";
+      clearBtn.style.display = (has && !ws) ? "" : "none";
+      Array.prototype.forEach.call(scrubber.querySelectorAll("input,button"), function (el) { el.disabled = ws; });
+      if (note) note.style.display = ws ? "" : "none";
+    }
+    wrap.refresh = function () {
+      scrubber.refresh(currentValue());
+      syncState();
+    };
+    syncState();
+    if (_bufferControls.length > 40) _bufferControls = _bufferControls.filter(function (c) { return c.isConnected; });
+    _bufferControls.push(wrap);
+    return wrap;
+  }
+  App.buildBufferRadiusControl = buildBufferRadiusControl;
+
+  // Re-sync every live control (e.g. after a point's Service area type changes).
+  App.refreshBufferRadiusControls = function () {
+    _bufferControls = _bufferControls.filter(function (c) { return c.isConnected; });
+    _bufferControls.forEach(function (c) { c.refresh(); });
+  };
+
+  function buildBufferField(field, feature, featureType) {
+    return { el: buildBufferRadiusControl(featureType, feature, { note: true }), unit: null };
   }
 
   /* ---- Field builders ---- */
@@ -806,6 +961,7 @@
   }
 
   function buildFieldInput(field, attrs, feature, featureType) {
+    if (field.type === "buffer-radius") return buildBufferField(field, feature, featureType);
     if (field.key === "associatedRoutes") return buildRouteBadge(attrs);
     if (field.type === "select")      return buildSelect(field, attrs);
     if (field.type === "checkboxes")  return buildCheckboxes(field, attrs);
@@ -995,230 +1151,6 @@
     btn.title = collapsed ? "Expand" : "Collapse";
   }
 
-  // SVG icons for per-feature override buttons
-  var _OVR_OPACITY_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6" stroke-dasharray="3 2"/></svg>';
-  var _OVR_BUFFER_SVG  = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/></svg>';
-  var _OVR_WIDTH_SVG   = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="2" y1="8" x2="14" y2="8" stroke-width="2.5"/></svg>';
-  var _OVR_OFFSET_SVG  = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="6" x2="14" y2="6"/><line x1="2" y1="10" x2="14" y2="10"/></svg>';
-  var _OVR_DEFAULT_SVG = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 6.5A4 4 0 1 1 8 2.5"/><polyline points="8 0.5 10.5 2.5 8 4.5"/></svg>';
-
-  // Push updated feature GeoJSON data to MapLibre source so data-driven
-  // paint expressions pick up any changed feature.properties immediately.
-  // (The wrapped render functions also re-apply paint expressions via _wrapRender.)
-  function _pushFeatureLayer(ft) {
-    var fnName = { point: "renderPointLayers", line: "renderLineLayers",
-                   route: "renderRouteLayers", polygon: "renderPolygonLayers" }[ft];
-    if (fnName && typeof App[fnName] === "function") App[fnName]();
-  }
-
-  // Inverse of _polyOpacityValues fill component → returns S (0–100)
-  function _invertPolyFillOpacity(fill) {
-    if (fill <= 0.15) return Math.round(fill * 50 / 0.15);
-    return Math.round(50 + (fill - 0.15) * 50 / 0.85);
-  }
-
-  // Build the per-feature override icons container (opacity / buffer / width / offset / reset).
-  // Used by the per-feature attribute popup AND the Attribute Summary module.
-  // Returns a DOM div (`.fp-attr-overrides`) wired with click handlers, or null
-  // for label/textbox features (which have no per-feature overrides in this app).
-  function buildOverridesContainer(featureType, feature) {
-    if (featureType === "label" || featureType === "textbox") return null;
-
-    var TYPE_KEYS = {
-      point:   { opacityKey: "pointOpacity",   widthKey: "pointLineWidth",   bufferKey: "bufferRadius" },
-      line:    { opacityKey: "lineOpacity",     widthKey: "lineLineWidth",    bufferKey: "lineBufferRadius" },
-      route:   { opacityKey: "routeOpacity",    widthKey: "routeLineWidth",   bufferKey: "routeBufferRadius" },
-      polygon: { opacityKey: "polygonOpacity",  widthKey: "polygonLineWidth", bufferKey: null }
-    };
-    var REBUILD_FNS = {
-      point:  function (v) { if (typeof App.rebuildBuffers      === "function") App.rebuildBuffers(v); },
-      line:   function (v) { if (typeof App.rebuildLineBuffers  === "function") App.rebuildLineBuffers(v); },
-      route:  function (v) { if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(v); },
-      polygon: null
-    };
-    var keys = TYPE_KEYS[featureType] || TYPE_KEYS.point;
-    var rebuildFn = REBUILD_FNS[featureType] || null;
-
-    var overrides = document.createElement("div");
-    overrides.className = "fp-attr-overrides";
-
-    // Opacity
-    var opacityBtn = document.createElement("button");
-    opacityBtn.type = "button";
-    opacityBtn.className = "fp-sib";
-    opacityBtn.title = "Per-feature opacity";
-    opacityBtn.innerHTML = _OVR_OPACITY_SVG;
-    if (feature.properties._opacity != null || feature.properties._fillOpacity != null) {
-      opacityBtn.classList.add("fp-sib-has-override");
-    }
-    (function (btn, feat, ft, ok) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var curVal;
-        if (ft === "polygon") {
-          curVal = (feat.properties._fillOpacity != null)
-            ? _invertPolyFillOpacity(feat.properties._fillOpacity)
-            : (App.featureSettings && App.featureSettings.polygonFillOpacity != null
-                 ? _invertPolyFillOpacity(App.featureSettings.polygonFillOpacity / 100)
-                 : 50);
-        } else {
-          curVal = (feat.properties._opacity != null)
-            ? feat.properties._opacity * 100
-            : (App.featureSettings ? App.featureSettings[ok] : 100);
-        }
-        if (typeof App._openFpSlider === "function") {
-          App._openFpSlider(btn, {
-            min: 0, max: 100, step: 1, unit: "%",
-            value: curVal,
-            onChange: function (S) {
-              if (ft === "polygon") {
-                var pc = App._polyOpacityValues(S);
-                feat.properties._fillOpacity   = pc.fill;
-                feat.properties._borderOpacity = pc.border;
-              } else {
-                feat.properties._opacity = S / 100;
-              }
-              btn.classList.add("fp-sib-has-override");
-              _pushFeatureLayer(ft);
-              if (typeof App.cache !== "undefined") App.cache.save();
-            }
-          });
-        }
-      });
-    })(opacityBtn, feature, featureType, keys.opacityKey);
-    overrides.appendChild(opacityBtn);
-
-    // Buffer (not for polygons)
-    if (featureType !== "polygon") {
-      var bufferBtn = document.createElement("button");
-      bufferBtn.type = "button";
-      bufferBtn.className = "fp-sib";
-      bufferBtn.title = "Per-feature buffer radius";
-      bufferBtn.innerHTML = _OVR_BUFFER_SVG;
-      if (feature.properties._bufferRadius != null) {
-        bufferBtn.classList.add("fp-sib-has-override");
-      }
-      (function (btn, feat, bk, rbFn) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var curVal = (feat.properties._bufferRadius != null)
-            ? feat.properties._bufferRadius
-            : (App.featureSettings ? App.featureSettings[bk] : 0);
-          if (typeof App._openFpSlider === "function") {
-            App._openFpSlider(btn, {
-              values: (App.BUFFER_RADIUS_STEPS || [0,0.125,0.25,0.5,0.75,1,1.25,1.5,1.75,2]), unit: "mi",
-              value: curVal,
-              onChange: function (v) {
-                feat.properties._bufferRadius = v;
-                btn.classList.add("fp-sib-has-override");
-                if (rbFn) rbFn(App.featureSettings ? App.featureSettings[bk] : 0);
-                if (typeof App.cache !== "undefined") App.cache.save();
-              }
-            });
-          }
-        });
-      })(bufferBtn, feature, keys.bufferKey, rebuildFn);
-      overrides.appendChild(bufferBtn);
-    }
-
-    // Width
-    var widthBtn = document.createElement("button");
-    widthBtn.type = "button";
-    widthBtn.className = "fp-sib";
-    widthBtn.title = "Per-feature line width";
-    widthBtn.innerHTML = _OVR_WIDTH_SVG;
-    if (feature.properties._lineWidth != null) {
-      widthBtn.classList.add("fp-sib-has-override");
-    }
-    (function (btn, feat, ft, wk) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var curVal = (feat.properties._lineWidth != null)
-          ? feat.properties._lineWidth
-          : (App.featureSettings ? App.featureSettings[wk] : 1);
-        if (typeof App._openFpSlider === "function") {
-          App._openFpSlider(btn, {
-            min: 0, max: 5, step: 0.1, unit: "×",
-            value: curVal,
-            onChange: function (v) {
-              feat.properties._lineWidth = v;
-              btn.classList.add("fp-sib-has-override");
-              _pushFeatureLayer(ft);
-              if (typeof App.cache !== "undefined") App.cache.save();
-            }
-          });
-        }
-      });
-    })(widthBtn, feature, featureType, keys.widthKey);
-    overrides.appendChild(widthBtn);
-
-    // Offset (routes and lines only)
-    if (featureType === "route" || featureType === "line") {
-      var OFFSET_STEPS = [-6, -3, 0, 3, 6];
-      var offsetBtn = document.createElement("button");
-      offsetBtn.type = "button";
-      offsetBtn.className = "fp-sib";
-      offsetBtn.title = "Per-feature offset (perpendicular to line)";
-      offsetBtn.innerHTML = _OVR_OFFSET_SVG;
-      if (feature.properties._offsetManual) {
-        offsetBtn.classList.add("fp-sib-has-override");
-      }
-      (function (btn, feat, ft) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var curVal = (feat.properties._offset != null) ? feat.properties._offset : 0;
-          if (typeof App._openFpSlider === "function") {
-            App._openFpSlider(btn, {
-              values: OFFSET_STEPS, unit: "px",
-              value: curVal,
-              onChange: function (v) {
-                feat.properties._offset = v;
-                feat.properties._offsetManual = true;
-                btn.classList.add("fp-sib-has-override");
-                _pushFeatureLayer(ft);
-                if (typeof App.cache !== "undefined") App.cache.save();
-              }
-            });
-          }
-        });
-      })(offsetBtn, feature, featureType);
-      overrides.appendChild(offsetBtn);
-    }
-
-    // Reset
-    var defaultBtn = document.createElement("button");
-    defaultBtn.type = "button";
-    defaultBtn.className = "fp-sib";
-    defaultBtn.title = "Reset to global defaults";
-    defaultBtn.innerHTML = _OVR_DEFAULT_SVG;
-    (function (btn, feat, ft, bk, rbFn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        delete feat.properties._opacity;
-        delete feat.properties._fillOpacity;
-        delete feat.properties._borderOpacity;
-        delete feat.properties._lineWidth;
-        delete feat.properties._bufferRadius;
-        delete feat.properties._offset;
-        delete feat.properties._offsetManual;
-        _pushFeatureLayer(ft);
-        if (rbFn) rbFn(App.featureSettings ? (App.featureSettings[bk] || 0) : 0);
-        var oCb = document.getElementById("offsetOverlap");
-        if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") {
-          App.computeOverlapOffsets();
-        }
-        if (typeof App.cache !== "undefined") App.cache.save();
-        if (typeof App._closeFpSlider === "function") App._closeFpSlider();
-        overrides.querySelectorAll(".fp-sib-has-override").forEach(function (el) {
-          el.classList.remove("fp-sib-has-override");
-        });
-      });
-    })(defaultBtn, feature, featureType, keys.bufferKey, rebuildFn);
-    overrides.appendChild(defaultBtn);
-
-    return overrides;
-  }
-
   function populatePopupBody(featureType, featureIndex, feature) {
     buildPopupEl();
 
@@ -1235,31 +1167,19 @@
     var hdrSwatch = document.createElement("button");
     hdrSwatch.className = "fp-attr-popup-swatch";
     hdrSwatch.style.background = featureColor;
-    hdrSwatch.setAttribute("aria-label", "Change color");
-    hdrSwatch.title = "Change color";
+    hdrSwatch.setAttribute("aria-label", "Appearance");
+    hdrSwatch.title = "Appearance";
     (function (sw, ft, fi, feat) {
       sw.addEventListener("click", function (e) {
         e.stopPropagation();
-        if (typeof App.openColorPicker === "function") {
-          App.openColorPicker(sw, App.resolveFeatureColor(ft, feat), function (newColor) {
-            sw.style.background = newColor;
-            if (typeof App.updateFeatureColor === "function") App.updateFeatureColor(ft, fi, newColor);
+        if (typeof App.openAppearancePopup === "function") {
+          App.openAppearancePopup(sw, ft, fi, {
+            onChange: function () { sw.style.background = App.resolveFeatureColor(ft, feat); }
           });
         }
       });
     })(hdrSwatch, featureType, featureIndex, feature);
     controlsEl.appendChild(hdrSwatch);
-
-    // Remove existing overrides container, then rebuild it
-    var existingOverrides = controlsEl.querySelector(".fp-attr-overrides");
-    if (existingOverrides) existingOverrides.remove();
-
-    var overrides = buildOverridesContainer(featureType, feature) || (function () {
-      var d = document.createElement("div");
-      d.className = "fp-attr-overrides";
-      return d;
-    })();
-    controlsEl.appendChild(overrides);
 
     // Clear and rebuild body
     var body = _popupEl.querySelector(".fp-attr-popup-body");
@@ -1309,10 +1229,7 @@
     });
     body.appendChild(buildRow("Name", nameInput, null));
 
-    // Type-specific fields. A field carrying a new `section` value gets a
-    // small header row before it — used by Lines to visually separate
-    // "Transit service" fields (inherited from Routes) from "Walk network"
-    // fields (Lines only). Fields with no `section` render exactly as before.
+    // A field with a new `section` value gets a header row before it.
     var fields = ATTR_FIELDS[featureType] || [];
     var lastSection = null;
     fields.forEach(function (field) {
@@ -1599,10 +1516,15 @@
     return buildServiceSchedule(feature.properties.attributes);
   };
 
-  // Build a `.fp-attr-overrides` container with the per-feature override icons
-  // (opacity / buffer / width / offset / reset). Returns null for label/textbox.
-  App.buildOverrideIcons = function (featureType, feature) {
-    return buildOverridesContainer(featureType, feature);
+  // Re-sync the header swatch with the shown feature's resolved color (used by
+  // the Appearance popover after a color change made elsewhere).
+  App.refreshAttrPopupSwatch = function () {
+    if (!_popupEl || _currentType == null || _currentIdx == null) return;
+    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
+    if (!sw) return;
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
+    var feat = arr && arr[_currentIdx];
+    if (feat) sw.style.background = App.resolveFeatureColor(_currentType, feat);
   };
 
   // Build the `N routes` pill for a point feature. Returns the button DOM.

@@ -1,19 +1,11 @@
-/* Road-network offline store (IndexedDB).
- *
- * The downloaded street network is the one piece of session state that is both
- * expensive to reacquire — the public Overpass endpoint frequently fails and
- * needs several retries — and far too large for localStorage (tens of MB on a
- * city-scale download). It therefore lives in its own IndexedDB database rather
- * than riding the session cache in js/core/cache.js.
- *
- * Everything here is strictly an optimization: the in-memory network is already
- * built and usable whether or not a write lands, so every failure path is
- * swallowed rather than surfaced. Browsers may also evict IndexedDB under
- * storage pressure at any time, so a cached network must never be assumed to
- * be there — callers always fall back to a fresh download.
- *
- * Helper shape (_idbOpen/_idbTx/_idbRequest, async/await, errors swallowed)
- * deliberately mirrors the Recent Projects store in js/core/cache.js.
+/* Road-network offline store (IndexedDB) — App.networkStore.
+ * The network is expensive to re-fetch from Overpass and far too large for
+ * localStorage, so it gets its own database. Strictly an optimization: every
+ * failure is swallowed, and browsers may evict the store at any time, so
+ * callers always fall back to a fresh download.
+ * Do NOT copy the _idbTx/await helper shape of cache.js's Recent Projects
+ * store — see _withStore().
+ * Detail: docs/reference/road-network.md
  */
 (function () {
   var App = window.App;
@@ -47,13 +39,10 @@
   }
 
   // Run one transaction. `fn` receives the object store and MUST issue its
-  // requests synchronously (or from another request's onsuccess, where the
-  // transaction is still active) — never after an await. An IndexedDB
-  // transaction deactivates as soon as control returns to the event loop, so
-  // awaiting a request and then touching the store again throws
-  // TransactionInactiveError whenever the main thread is busy enough to push
-  // the continuation past a task boundary. That is exactly the situation at
-  // page startup, where this store's whole reason for existing is to be read.
+  // requests synchronously (or from another request's onsuccess) — never after
+  // an await. A transaction deactivates when control returns to the event loop,
+  // so await-then-touch throws TransactionInactiveError whenever the main thread
+  // is busy — i.e. at page startup, exactly when this store is read.
   // `fn` may return a zero-arg getter for the value to resolve with, collected
   // after the transaction commits.
   function _withStore(mode, fn) {
@@ -97,11 +86,9 @@
     return _withStore("readwrite", function (store) { store.put(record); });
   }
 
-  // Store one network, then trim the store back to MAX_ENTRIES.
-  // A failed write (quota exceeded is the realistic case — these records are
-  // large) retries exactly once after dropping every OTHER stored network,
-  // which is the only recovery available to us; a second failure is logged and
-  // otherwise ignored.
+  // Store one network, then trim to MAX_ENTRIES. A failed write (realistically
+  // quota) retries once after dropping every OTHER stored network; a second
+  // failure is logged and ignored.
   async function save(record) {
     if (!supported() || !record || !record.id) return false;
     try {
@@ -143,6 +130,60 @@
     }
   }
 
+  // Bounding box [w, s, e, n] from a stored id ("bbox:w,s,e,n", rounded to 3
+  // decimals by road-network.js extentCacheId), shrunk by the rounding error so
+  // it is never larger than the true extent. null for file imports, which have
+  // no known extent.
+  var ID_ROUND = 0.0005;
+  function _idBbox(id) {
+    if (typeof id !== "string" || id.indexOf("bbox:") !== 0) return null;
+    var p = id.slice(5).split(",").map(Number);
+    if (p.length !== 4 || p.some(function (v) { return !isFinite(v); })) return null;
+    return [p[0] + ID_ROUND, p[1] + ID_ROUND, p[2] - ID_ROUND, p[3] - ID_ROUND];
+  }
+
+  function _bboxContains(outer, inner) {
+    return outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3];
+  }
+
+  function _extentBbox(extent) {
+    if (Array.isArray(extent)) return extent;
+    if (extent && typeof turf !== "undefined") { try { return turf.bbox(extent); } catch (e) { return null; } }
+    return null;
+  }
+
+  // The newest stored network whose download extent contains `extent` (a
+  // [w, s, e, n] bbox or a GeoJSON Feature), or null. Candidates are chosen from
+  // the keys alone so only the winner's geojson is ever deserialized; its stored
+  // extent is then checked exactly. Stored extents are axis-aligned rectangles,
+  // so bbox containment is exact containment.
+  async function findCovering(extent) {
+    var need = _extentBbox(extent);
+    if (!supported() || !need) return null;
+    try {
+      var rec = await _withStore("readonly", function (store) {
+        var found = null;
+        var keysReq = store.index("savedAt").getAllKeys(); // oldest -> newest
+        keysReq.onsuccess = function () {
+          var ids = keysReq.result || [];
+          for (var i = ids.length - 1; i >= 0; i--) {
+            var bb = _idBbox(ids[i]);
+            if (!bb || !_bboxContains(bb, need)) continue;
+            var getReq = store.get(ids[i]);
+            getReq.onsuccess = function () { found = getReq.result || null; };
+            return;
+          }
+        };
+        return function () { return found; };
+      });
+      if (!rec || !rec.extent) return null;
+      var exact = _extentBbox(rec.extent);
+      return exact && _bboxContains(exact, need) ? rec : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function clear() {
     if (!supported()) return false;
     try {
@@ -158,6 +199,7 @@
     supported: supported,
     save: save,
     latest: latest,
+    findCovering: findCovering,
     clear: clear,
     MAX_ENTRIES: MAX_ENTRIES
   };

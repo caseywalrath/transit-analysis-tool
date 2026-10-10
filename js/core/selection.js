@@ -218,29 +218,63 @@
 
   // ---- Hover name tooltip ----
 
+  // Shown only after the cursor rests on a feature for HOVER_DELAY_MS, placed
+  // below-right of the cursor, click-through (CSS pointer-events: none) and
+  // suppressed while drawing, dragging, vertex-editing or box-selecting, so it
+  // never covers or intercepts the thing being worked on.
+  var HOVER_DELAY_MS = 450;
+  var _tipTimer = null;
+  var _tipShownFor = null;   // "type:index" of the feature whose name is showing
+
   function ensureHoverTooltip() {
     if (!_hoverTooltip) {
       _hoverTooltip = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
-        maxWidth: "220px"
+        maxWidth: "220px",
+        anchor: "top-left",
+        offset: [14, 18],
+        className: "feature-hover-popup"
       });
     }
     return _hoverTooltip;
   }
 
+  function tooltipSuppressed() {
+    if (App.drawMode) return true;
+    if (App._editing) return true;
+    if (App.boxSelect && App.boxSelect.isDragging && App.boxSelect.isDragging()) return true;
+    return false;
+  }
+
   function showHoverTooltip(type, index, lngLat) {
     if (!lngLat || !App.map) return;
-    var feature = getFeatureFromApp(type, index);
-    var name = feature && feature.properties && feature.properties.name;
-    if (!name) return;
-    ensureHoverTooltip()
-      .setLngLat(lngLat)
-      .setHTML('<div class="feature-hover-tooltip">' + escHtml(name) + "</div>")
-      .addTo(App.map);
+    var key = type + ":" + index;
+    if (tooltipSuppressed()) { hideHoverTooltip(); return; }
+    if (_tipShownFor === key) {
+      _hoverTooltip.setLngLat(lngLat); // already visible: follow the cursor
+      return;
+    }
+    hideHoverTooltip();
+    // Not visible yet: restart the rest timer on every move.
+    _tipTimer = setTimeout(function () {
+      _tipTimer = null;
+      if (tooltipSuppressed()) return;
+      if (!_hovered || _hovered.type !== type || _hovered.index !== index) return;
+      var feature = getFeatureFromApp(type, index);
+      var name = feature && feature.properties && feature.properties.name;
+      if (!name) return;
+      ensureHoverTooltip()
+        .setLngLat(lngLat)
+        .setHTML('<div class="feature-hover-tooltip">' + escHtml(name) + "</div>")
+        .addTo(App.map);
+      _tipShownFor = key;
+    }, HOVER_DELAY_MS);
   }
 
   function hideHoverTooltip() {
+    if (_tipTimer) { clearTimeout(_tipTimer); _tipTimer = null; }
+    _tipShownFor = null;
     if (_hoverTooltip) _hoverTooltip.remove();
   }
 
@@ -397,6 +431,7 @@
   App._selected           = null; // kept in sync via syncSelectedCompat()
   App.initHighlightLayers = initHighlightLayers;
   App.setHoveredFeature   = setHoveredFeature;
+  App.hideHoverTooltip    = hideHoverTooltip;
   App.clearHover          = clearHover;
   App.selectFeature       = selectFeature;
   App.toggleMultiSelect   = toggleMultiSelect;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/gtfs-browser-smoke.mjs
 //
-// Browser smoke test for Phase 1 of docs/gtfs-route-browser-plan.md (GTFS route
+// Browser smoke test for Phase 1 of docs/archive/gtfs-route-browser-plan.md (GTFS route
 // browser engine in js/projects/gtfs.js): route index, hide/show filters, the
 // highlight layers, zoom, and copy-as-line. A small synthetic feed is zipped
 // in-page with the vendored JSZip and loaded through App.loadGTFSFile.

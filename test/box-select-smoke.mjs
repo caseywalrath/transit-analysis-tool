@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// test/box-select-smoke.mjs — browser smoke test for box select (docs/box-select-plan.md).
+// test/box-select-smoke.mjs — browser smoke test for box select (docs/archive/box-select-plan.md).
 // USAGE: NODE_PATH=/path/to/playwright/node_modules node test/box-select-smoke.mjs
 // Same harness as test/feature-color-smoke.mjs (vendored CDN libs, remote aborted).
 

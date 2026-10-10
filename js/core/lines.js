@@ -1,8 +1,8 @@
 // js/core/lines.js
 // Line drawing and management, map layer rendering.
 // Depends on: App.map (map.js).
-// Exports: lines, handleLineClick, clearLines, undoLastLine,
-//          cancelLineDrawing, renderLineLayers
+// Exports: see the App.* block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -152,12 +152,9 @@
     // Saved lines (solid)
     if (!map.getSource("lines")) {
       map.addSource("lines", { type: "geojson", data: linesGeoJSON() });
-      map.addLayer({
-        id: "lines-layer",
-        type: "line",
-        source: "lines",
-        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
-      });
+      // Three style layers (solid keeps the "lines-layer" id) — see App.addLineStyleLayers.
+      App.addLineStyleLayers(map, "line", "lines",
+        { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] });
     } else {
       map.getSource("lines").setData(linesGeoJSON());
     }
@@ -281,8 +278,7 @@
     rebuildLineBuffers(lineBufferRadiusMiles);
     App.setStatus("Line " + idx + " saved (" + nWaypoints + " waypoints)");
     if (typeof App.exitDrawMode === "function") App.exitDrawMode();
-    // If the attributes popup is already open (on some other feature), follow
-    // it to this newly-drawn line. Never auto-open it if it wasn't open.
+    // Follow an already-open attributes popup to the new line; never auto-open it.
     if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
         typeof App.openAttrPopup === "function") {
       App.openAttrPopup("line", lines.length - 1, feature);
@@ -383,6 +379,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     // A copy with no explicit color needs its own palette slot (array position
     // would drift whenever an earlier line is deleted).
     if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();

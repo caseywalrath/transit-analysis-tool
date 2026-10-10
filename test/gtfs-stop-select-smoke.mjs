@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/gtfs-stop-select-smoke.mjs
 //
-// Browser smoke test for Phase 5 item 1 of docs/gtfs-stop-selection-plan.md:
+// Browser smoke test for Phase 5 item 1 of docs/archive/gtfs-stop-selection-plan.md:
 // box select on the GTFS stops target, the on-map bar, stop right-click items,
 // stop-list export/import, feed switching, reload restore, clear lifecycle, and
 // the "Selected" export scope for drawn features.

@@ -1,27 +1,16 @@
 // js/core/walk-audit.js
-// Sidewalk-data audit engine (window.WalkAudit), the same engine-namespace
-// convention as window.WalkCost / window.ConnectorGraph / window.Travelshed.
-// See docs/sidewalk-data-plan.md for the full design and phased build order.
-//
-// CONSTRAINT: the top section contains ONLY plain-value math — no turf, no
-// DOM, no Map/Set, no App state — so the golden harness (test/run-golden.mjs)
-// loads it directly into a bare node:vm sandbox. The App-level block below it
-// reads window.App only inside function bodies, never at load time, following
-// the same rule js/core/walk-cost.js / js/core/layer-palettes.js already
-// follow.
-//
-// Phase 1 (js/core/road-network.js) already captured sidewalk/footway/wayId
-// onto _segmentIndex. This file starts at Phase 2: turning those tags into a
-// visible coverage layer.
+// Sidewalk-data audit (window.WalkAudit) + the Sidewalk coverage layer/summary.
+// CONSTRAINT: the top section is plain-value math only — no turf, DOM, Map/Set
+// or App state — so the golden harness loads it into a bare node:vm sandbox.
+// The App-level block below uses App members only at call time.
+// Detail: docs/reference/road-network.md (design: docs/sidewalk-data-plan.md)
 
 (function () {
   "use strict";
 
-  // seg.footway === "sidewalk" (or a pedestrian-class hwy) means this segment
-  // IS mapped sidewalk/footway geometry — a different way than the road
-  // centerline it may run alongside — so the sidewalk= attribute doesn't
-  // apply to it at all. Everything else is judged by the sidewalk= tag on the
-  // centerline itself.
+  // footway=sidewalk (or a pedestrian-class hwy) means the segment IS separately
+  // mapped sidewalk geometry, so sidewalk= doesn't apply; everything else is
+  // judged by the sidewalk= tag on the road centerline.
   var FOOTWAY_HWY = {
     footway: true, path: true, steps: true, pedestrian: true, cycleway: true
   };
@@ -54,12 +43,10 @@
     return Math.sqrt(dLat * dLat + dLng * dLng);
   }
 
-  // segments: array of { coords, footway, hwy, sidewalk, crossing } — the
-  // shape App.getWalkNetworkSegments() returns (plus a "crossing" field,
-  // carried straight from Overpass, that road-network.js does not currently
-  // put on segment records — coverageStats() reads it defensively so a
-  // future caller can add it without this function changing).
-  // Returns a plain object; empty input yields all zeros, never NaN.
+  // segments: the App.getWalkNetworkSegments() shape. `crossing` is read
+  // defensively: road-network.js does not currently put it on segment records,
+  // so live counts come from footway=crossing only.
+  // Empty input yields all zeros, never NaN.
   function coverageStats(segments) {
     segments = segments || [];
     var roadKm = 0, footwayKm = 0, crossingCount = 0;
@@ -102,10 +89,7 @@
     coverageStats: coverageStats
   };
 
-  // ---- App-level block (docs/sidewalk-data-plan.md Phase 2) ----
-  // Reads window.App only inside function bodies, never at load time, so this
-  // file still loads cleanly in the golden-test sandbox (no App/turf/Map
-  // globals there).
+  // ---- App-level block ----
 
   var App = window.App;
 
@@ -120,8 +104,7 @@
     unknown: "#94a3b8"
   };
 
-  // Same "insert below drawn features" convention as network-connectors.js's
-  // firstUserLayer() / gtfs.js's firstUserLayer().
+  // Insert below drawn features (same as network-connectors.js / gtfs.js).
   function firstUserLayer() {
     var map = App.map;
     var candidates = ["points-layer", "lines-layer", "routes-layer", "polygons-fill"];
@@ -144,22 +127,23 @@
     return { type: "FeatureCollection", features: features };
   }
 
-  // Rebuilds the sidewalk-coverage reference layer from current network
-  // state. Removes the source/layer entirely when no network is loaded, same
-  // convention as network-connectors.js's refreshWalkNetworkLayer(). Default
-  // visibility is hidden — this is an audit overlay the user opts into, not
-  // the walk network itself (docs/sidewalk-data-plan.md §2: different
-  // semantics, independent toggle from walk-network-line).
-  function refreshSidewalkCoverageLayer() {
+  // Set by Remove layer so routine refreshes (exclusions, connectors) don't
+  // bring the overlay straight back. The overlay has no Add Data toggle of its
+  // own; loading a network (download, file, restore) re-enables it.
+  var _removed = false;
+
+  // Rebuilds the sidewalk-coverage layer; removed entirely when no network is
+  // loaded. Hidden by default — an opt-in audit overlay with its own toggle,
+  // independent of walk-network-line.
+  //   opts.reenable : true on a fresh network load — clears a prior removal.
+  function refreshSidewalkCoverageLayer(opts) {
     var map = App && App.map;
     if (!map) return;
+    if (opts && opts.reenable) _removed = false;
+    if (_removed) { removeLayer(); return; }
 
     var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
-    if (!loaded) {
-      if (map.getLayer(SW_LAYER)) map.removeLayer(SW_LAYER);
-      if (map.getSource(SW_SRC)) map.removeSource(SW_SRC);
-      return;
-    }
+    if (!loaded) { removeLayer(); return; }
 
     var segments = typeof App.getWalkNetworkSegments === "function"
       ? App.getWalkNetworkSegments() : [];
@@ -188,19 +172,27 @@
     }
   }
 
+  function removeLayer() {
+    var map = App.map;
+    if (map.getLayer(SW_LAYER)) map.removeLayer(SW_LAYER);
+    if (map.getSource(SW_SRC)) map.removeSource(SW_SRC);
+  }
+
   App.refreshSidewalkCoverageLayer = refreshSidewalkCoverageLayer;
+  // Layers panel Remove: drops only the overlay; the street network is untouched.
+  App.removeSidewalkCoverageLayer = function () {
+    _removed = true;
+    if (App.map) removeLayer();
+  };
 
-  // ---- Coverage statistics (docs/sidewalk-data-plan.md Phase 3) ----
+  // ---- Coverage statistics ----
 
-  // Below this, sidewalk-only routing (Stage D) would be unreliable — the
-  // flood would confidently under-report reachability. Mirrors the threshold
-  // language in the plan's §1.4/Checkpoint 1.
+  // Below this, sidewalk-only routing would be unreliable — the flood would
+  // confidently under-report reachability.
   var LOW_COVERAGE_PCT = 25;
 
-  // Mirrors App.getConnectorReportSummary() (network-connectors.js) exactly —
-  // the established pattern for a one-line module footer. Returns null when
-  // no network is loaded, so callers hide the line entirely rather than
-  // showing a misleading "0%".
+  // { text, detail, warn } like App.getConnectorReportSummary(). null when no
+  // network is loaded, so callers hide the line instead of a misleading "0%".
   function getSidewalkCoverageSummary() {
     var loaded = typeof App.roadNetworkLoaded === "function" && App.roadNetworkLoaded();
     if (!loaded) return null;

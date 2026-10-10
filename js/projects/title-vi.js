@@ -1,9 +1,9 @@
 // js/projects/title-vi.js
-// Title VI Service Equity Analysis — module registration, popup lifecycle,
-// tab switching, CSV import, feature checklists, map overlay, session
-// persistence, exports.
-// Depends on: App namespace, window.TitleVI (engine), turf (CDN).
-// Exports: none (self-registers via App.registerModule)
+// Title VI Service Equity Analysis — module UI: popup lifecycle, tabs,
+// feature checklists, map overlay, session persistence, exports. Math lives
+// in title-vi-engine.js (window.TitleVI), which must load first.
+// Depends on: App, window.TitleVI, turf (CDN). Exports: none (self-registers).
+// Detail: docs/reference/modules/title-vi.md
 
 (function () {
   "use strict";
@@ -27,8 +27,6 @@
   // Cached demographics per scenario (for instant threshold re-evaluation)
   var _cachedDemographics = {};  // scenarioId -> demographics object
   var _cachedImpactedGeom = {};  // scenarioId -> GeoJSON geometry
-
-  // ---- DOM guard ----
 
   function isPopupVisible() {
     return App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "title-vi";
@@ -106,7 +104,7 @@
 
   // Checklist rows carry the feature's stable ID (data-feature-id), not its
   // array index, so a saved/remembered filter survives deleting or merging an
-  // earlier feature (docs/feature-merge-plan.md Phase 4b).
+  // earlier feature.
   function makeFeatureCheckRow(type, id, name, checked) {
     var row = document.createElement("div");
     row.className = "rf-feature-check-row";
@@ -311,7 +309,6 @@
     var card = document.querySelector('[data-alteration-idx="' + idx + '"]');
     if (!card) return;
 
-    // Read change type
     var typeSelect = card.querySelector(".tvi-alt-type");
     if (typeSelect) alt.changeType = typeSelect.value;
 
@@ -321,7 +318,6 @@
     if (beforeSelect) alt.before = parseFeatureRef(beforeSelect);
     if (afterSelect) alt.after = parseFeatureRef(afterSelect);
 
-    // Read name
     var nameInput = card.querySelector(".tvi-alt-name");
     if (nameInput) alt.name = nameInput.value;
 
@@ -416,7 +412,6 @@
     var fareEl = section.querySelector(".tvi-cm-fare-pct");
     if (fareEl) fareEl.textContent = c.farePct !== null && Number.isFinite(c.farePct) ? (c.farePct >= 0 ? "+" : "") + fmt(c.farePct) + "%" : "\u2014";
 
-    // Show loss/gain indicators
     var lossEl = section.querySelector(".tvi-cm-loss");
     var gainEl = section.querySelector(".tvi-cm-gain");
     if (lossEl) lossEl.textContent = c.serviceLossArea ? "Yes" : "None";
@@ -910,8 +905,7 @@
 
   // ---- Map overlay for impacted area ----
 
-  // Colors resolve through the layer style cascade (Phase 7 of
-  // docs/layer-color-customization-plan.md) — a categorical spec with two
+  // Colors resolve through the layer style cascade: a categorical spec with two
   // classes, [loss, gain]. Both the fill and the outline of each class share
   // one color, so a class is one swatch, not two. The fallback array is
   // byte-identical to the spec's defaultColors so a missing layer-palettes.js
@@ -1042,6 +1036,27 @@
     if (map.getSource("tvi-gain")) map.removeSource("tvi-gain");
   }
 
+  // Drops computed output only (map overlay, results, baseline, caches, stale
+  // flag); scenarios, policy and other inputs stay. Called by Clear and Reset
+  // Session via the module registry, so the popup may never have been opened.
+  function clearAll() {
+    clearOverlay();
+    _results = {};
+    _baseline = null;
+    _cachedDemographics = {};
+    _cachedImpactedGeom = {};
+    _stale = false;
+    if (!_initialized) return;
+    App.renderModuleState({ statusEl: "tviStaleWarning" });
+    var baseBox = document.getElementById("tviBaselineBox");
+    if (baseBox) baseBox.style.display = "none";
+    var emptyEl = document.getElementById("tviResultsEmpty");
+    var wrapEl = document.getElementById("tviResultsWrap");
+    if (emptyEl) emptyEl.style.display = "";
+    if (wrapEl) wrapEl.style.display = "none";
+    updateComparisonTable();
+  }
+
   // ---- Scenario management ----
 
   function populateScenarioDropdown() {
@@ -1153,7 +1168,6 @@
 
     var comparison = TV.compareScenarios(analyzedResults);
 
-    // Build header
     var thead = document.getElementById("tviCompThead");
     if (thead) {
       var headerRow = "<tr><th></th>";
@@ -1164,7 +1178,6 @@
       thead.innerHTML = headerRow;
     }
 
-    // Build body
     var tbody = document.getElementById("tviCompTbody");
     if (tbody) {
       var rows = [
@@ -1742,7 +1755,8 @@
     init: function (core) { init(core); },
     onOpen: function (core) { onOpen(core); },
     onClose: function () { onClose(); },
-    update: async function (core) { await update(core); }
+    update: async function (core) { await update(core); },
+    clear: clearAll
   });
 
 })();

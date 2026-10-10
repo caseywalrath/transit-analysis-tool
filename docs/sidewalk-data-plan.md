@@ -1,6 +1,14 @@
 # Sidewalk Data for Walkshed Analysis — Implementation Plan
 
-Status: **planned, not started.**
+> **Status:** Partial (verified 2026-10).
+> Shipped: Stage A (Phases 1-4: tag capture, coverage layer, coverage stats, manual street exclusion) in js/core/walk-audit.js, road-network.js, network-connectors.js.
+> Remaining:
+> - Phase 5 (gap analysis engine): no gap/worklist code in js/
+> - Phase 6 (gap markers and worklist UI): none in js/
+> - Phase 7 (attribute-vs-geometry gaps): none in js/
+> - Phase 8 (sidewalk-only traversal mode): no sidewalk-only mode in js/ (only a comment in walk-audit.js)
+> - Phase 9 (crossing penalties from mapped crossings, optional): not found
+
 
 ## How to use this doc
 
@@ -170,7 +178,7 @@ around:
 - **User-excluded is not the same as class-blocked, for welding.**
   `connector-graph.js` skips `pedBlocked` candidates for both crossing splits
   (`:191`) and welds (`:243`) — the bridge/freeway mitigation from
-  `docs/network-connectors-plan.md` §1. That must keep applying to motorways but
+  `docs/archive/network-connectors-plan.md` §1. That must keep applying to motorways but
   **not** to user-excluded streets, or the exclude-coarsely-restore-precisely
   workflow in §1.5 silently fails: a connector drawn along an excluded street
   would not weld at its ends.
@@ -192,7 +200,7 @@ around:
 - **`App.networkSettings` is the home for shared network state** (the exclusion
   list, Stage D's walk mode), matching `snapToleranceFt` / `crossingMajorSec` /
   `crossingMinorSec`. Never per-module state — see
-  `docs/network-connectors-plan.md` §2.
+  `docs/archive/network-connectors-plan.md` §2.
 
 ---
 

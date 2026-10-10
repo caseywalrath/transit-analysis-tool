@@ -1,7 +1,6 @@
 // js/core/box-select.js
-// Box select (drag a rectangle on the map to select features) —
-// docs/box-select-plan.md. Phase 1: pure hit-test helpers only. Phase 2 adds
-// the drag tool to this same file.
+// Box select (drag a rectangle on the map to select features), plus
+// App.bulkFeatures group actions. Detail: docs/reference/drawing-and-features.md
 //
 // ---- Pure helpers (App.boxSelectGeom) ----
 // No DOM, map, or turf access (so the golden harness loads this file as-is).
@@ -112,7 +111,7 @@
   }
 
   // Combine a current key selection with the keys hit by a drag
-  // (docs/gtfs-stop-selection-plan.md Phase 1). op: "replace" | "add" |
+  // (docs/archive/gtfs-stop-selection-plan.md Phase 1). op: "replace" | "add" |
   // "remove". Keys are strings; order is kept and duplicates dropped; the
   // inputs are never mutated.
   function combineKeys(currentKeys, hitKeys, op) {
@@ -147,7 +146,7 @@
     polygonHits: polygonHits
   };
 
-  // ---- Drag tool (Phase 2) ----
+  // ---- Drag tool ----
   // Active while App.drawMode === "box-select" (toolbar button / A key, wired by
   // the generic tool-button handler in app.js). Mouse events are intercepted on
   // window in the CAPTURE phase, so MapLibre never sees the mousedown: the map
@@ -159,7 +158,7 @@
   var CLICK_PX = 4;
   var _drag = null; // { x0, y0, x1, y1, rectEl, badgeEl, cache, raf, target }
 
-  // ---- Targets (docs/gtfs-stop-selection-plan.md Phase 3) ----
+  // ---- Targets (docs/archive/gtfs-stop-selection-plan.md Phase 3) ----
   // What a drag selects. "features" (drawn features) is built in and runs the
   // original code path untouched. Other targets are point-only and register
   // through App.boxSelect.registerTarget(spec):
@@ -345,7 +344,7 @@
     _drag = null;
   }
 
-  // Phase 4: Shift+drag starts a box even with the tool off (no other draw
+  // Shift+drag starts a box even with the tool off (no other draw
   // mode active). MapLibre's own Shift+drag box zoom is disabled in map.js.
   function shiftStart(e) {
     return e.shiftKey && !App.drawMode;
@@ -583,7 +582,7 @@
   else watchToolButton();
   }
 
-  // ---- Group actions on a multi-selection (Phase 3): App.bulkFeatures ----
+  // ---- Group actions on a multi-selection App.bulkFeatures ----
   // Shared by the map right-click menu (editing.js), the Features-pane
   // right-click menu (features.js) and the Delete key (app.js). `list` is
   // [{type, index}]; labels and anything stale are ignored.
@@ -633,6 +632,7 @@
     if (App.undo) App.undo.push();
     list.forEach(function (s) { featureOf(s).properties.hidden = !!hidden; });
     afterChange(typesOf(list));
+    if (typeof App.notifyProject === "function") App.notifyProject();
     App.setStatus((hidden ? "Hid " : "Showed ") + describe(list));
   }
 

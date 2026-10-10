@@ -1,18 +1,14 @@
 // js/core/merge.js
-// Feature Merge (docs/feature-merge-plan.md). Phases 2-3: lines, polygons,
-// routes, points ("combine stops") and line + route (result is a Line).
-// Phase 4a: every merge records its undo-independent history on the survivor
-// (properties._mergedFrom) so App.merge.unmerge() can split it apart later.
+// Feature Merge and Unmerge: lines, routes, polygons, points ("combine stops")
+// and line + route (result is a Line). Every merge records its history on the
+// survivor (properties._mergedFrom) so App.merge.unmerge() can split it apart.
+// Detail: docs/reference/drawing-and-features.md
 //
 // Three layers, each usable on its own:
 //   1. Pure helpers (no turf / DOM / map — loaded by the golden harness):
-//        App.mergeGeom  — chainLines, findBranch, lengthMi, routeChain
-//                         (planRouteChain / assembleChain: route waypoint +
-//                         connector assembly)
-//        App.mergeAttrs — hasValue, fieldHasValue, mergeAttributes,
-//                         reversalWarnings
-//        App.mergeHistory — fingerprintFeature, stopChanges, restoreStopRefs,
-//                         validateHistory, stripHistory (Unmerge support)
+//        App.mergeGeom (chaining, branch detection, route waypoint +
+//        connector assembly), App.mergeAttrs (attribute rules),
+//        App.mergeHistory (Unmerge support). Full lists at each export block.
 //   2. Per-type STRATEGIES (line, route, point, polygon, linemix). A
 //      strategy's analyze() inspects a selection SYNCHRONOUSLY and cheaply and
 //      returns a "plan": errors / warnings / summary / discarded list, the
@@ -21,7 +17,7 @@
 //      user clicks Merge (routes use it to street-route connectors). The undo
 //      snapshot is taken after prepare() finishes, right before apply().
 //   3. App.merge — run() (the undoable operation, returns a Promise),
-//      openDialog() (the modal), and unmerge() / openUnmergeDialog() (Phase 4a).
+//      openDialog() (the modal), and unmerge() / openUnmergeDialog().
 //
 // Refs: a selection member is { type, index } (indices are per type, so a
 // line + route selection addresses two arrays). Single-type callers may still
@@ -40,6 +36,7 @@
 //   App.dropPointWalksheds / App.refreshBuffers (points) — all only touched
 //   inside functions, never at load time.
 // Exports: App.mergeGeom, App.mergeAttrs, App.mergeHistory, App.merge
+//   (App.merge._dialogKit is the dialog shell shared with split.js)
 
 (function () {
   var App = window.App = window.App || {};
@@ -496,7 +493,7 @@
   };
 
   /* =====================================================================
-     Pure merge-history helpers (Phase 4a — Unmerge)
+     Pure merge-history helpers (Unmerge)
      ===================================================================== */
 
   // JSON with sorted object keys, so two structurally equal values always
@@ -654,7 +651,7 @@
   var TYPE_LABEL = { point: "Point", line: "Line", route: "Route", polygon: "Polygon" };
   // Per-feature appearance overrides a surviving line inherits from a route
   // primary (the cascade's per-feature half — see layers-panel.js).
-  var APPEARANCE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth", "_bufferRadius", "_offset", "_offsetManual"];
+  var APPEARANCE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth", "_bufferRadius", "_offset", "_offsetManual", "_lineStyle"];
 
   function arrayFor(type) {
     return { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[type] || [];
@@ -667,8 +664,8 @@
 
   // Stops whose associatedRoutes reference any removed line/route.
   // removedByType = { line: [ids], route: [ids] }; survivor is a Line or Route
-  // (survivorType). Returns the repoints that WOULD be made (dialog count and,
-  // in Phase 4, the `_mergedFrom` record); dryRun=false applies them. The list
+  // (survivorType). Returns the repoints that WOULD be made (dialog count and
+  // the `_mergedFrom` record); dryRun=false applies them. The list
   // is de-duplicated, and a link to the survivor keeps its cached name fresh.
   function repointStops(removedByType, survivorType, survivor, dryRun) {
     var repoints = [];
@@ -1063,7 +1060,7 @@
     var survivorFeat = getFeat(plan.survivor);
     var removedFeats = plan.removed.map(getFeat);
 
-    // Phase 4a history, captured BEFORE anything mutates: a deep clone of every
+    // Merge history, captured BEFORE anything mutates: a deep clone of every
     // selected feature (primary and survivor included — in a line + route merge
     // with a route primary they are different features). A clone keeps whatever
     // `_mergedFrom` its feature already carried, so Unmerge goes back one level.
@@ -1147,7 +1144,7 @@
   }
 
   /* =====================================================================
-     Unmerge (Phase 4a)
+     Unmerge
      ===================================================================== */
 
   function getHistory(type, index) {
@@ -1263,7 +1260,7 @@
     container.appendChild(ul);
   }
 
-  // ---- Shared dialog shell (merge + unmerge dialogs) ----
+  // ---- Shared dialog shell (merge, unmerge and split dialogs) ----
 
   // Overlay + card + title. Returns { overlay, box }.
   function buildShell(titleText) {
@@ -1321,10 +1318,9 @@
     return me;
   }
 
-  // Module references to each merged feature (App.describeFeatureUsage, the
-  // Phase 3 hook from docs/feature-split-plan.md). The survivor keeps its ID,
-  // so its references now cover the merged feature; a removed feature's ID is
-  // gone, so its references go missing. -> { warn: [..], info: [..] }
+  // Module references to each merged feature (App.describeFeatureUsage).
+  // The survivor keeps its ID, so its references now cover the merged feature;
+  // a removed feature's ID is gone, so its references go missing. -> { warn: [..], info: [..] }
   function usageForMerge(plan) {
     var out = { warn: [], info: [] };
     if (typeof App.describeFeatureUsage !== "function" || !plan || !plan.refs) return out;

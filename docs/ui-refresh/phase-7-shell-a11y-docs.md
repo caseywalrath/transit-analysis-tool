@@ -1,6 +1,6 @@
 # Phase 7 — Shell hierarchy, accessibility, documentation
 
-Status: **complete** (2026-08-13)
+> **Status:** Shipped (verified 2026-10). Current behavior: docs/reference/ui-layout.md. This file is historical.
 
 **Goal:** finish the original refresh with consistent narrow layouts for single-step
 analysis panels, toolbar and Analysis-menu grouping, and an accessibility pass — then

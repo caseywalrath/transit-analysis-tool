@@ -1,10 +1,8 @@
 // js/core/routes.js
 // Route drawing: waypoint-based lines snapped to the street network via OSRM.
 // Depends on: App.map (map.js), turf.
-// Exports: routes, routeBuffers, handleRouteClick, setRoutePreview,
-//          rebuildRouteBuffers, routeBufferUnionPolygon,
-//          removeRoute, clearRoutes, undoLastRoute, cancelRouteDrawing,
-//          renderRouteLayers, updateRouteWaypoint
+// Exports: see the App.* block at the end of the file.
+// Detail: docs/reference/drawing-and-features.md
 
 (function () {
   var App = window.App = window.App || {};
@@ -228,12 +226,9 @@
     // Saved routes (solid teal line)
     if (!map.getSource("routes")) {
       map.addSource("routes", { type: "geojson", data: routesGeoJSON() });
-      map.addLayer({
-        id: "routes-layer",
-        type: "line",
-        source: "routes",
-        paint: { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] }
-      });
+      // Three style layers (solid keeps the "routes-layer" id) — see App.addLineStyleLayers.
+      App.addLineStyleLayers(map, "route", "routes",
+        { "line-color": ["get", "resolvedColor"], "line-width": 3, "line-opacity": 0.8, "line-offset": ["coalesce", ["get", "_offset"], 0] });
     } else {
       map.getSource("routes").setData(routesGeoJSON());
     }
@@ -498,8 +493,7 @@
     rebuildRouteBuffers(routeBufferRadiusMiles);
     App.setStatus("Route " + idx + " saved (" + nWp + " waypoints)");
     if (typeof App.exitDrawMode === "function") App.exitDrawMode();
-    // If the attributes popup is already open (on some other feature), follow
-    // it to this newly-drawn route. Never auto-open it if it wasn't open.
+    // Follow an already-open attributes popup to the new route; never auto-open it.
     if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
         typeof App.openAttrPopup === "function") {
       App.openAttrPopup("route", routes.length - 1, feature);
@@ -651,6 +645,7 @@
     if (src.properties.attributes) {
       copy.properties.attributes = JSON.parse(JSON.stringify(src.properties.attributes));
     }
+    App.copyAppearanceOverrides(src.properties, copy.properties);
     // Own palette slot when no explicit color (see duplicateLine).
     if (!copy.properties.color) copy.properties.colorSeq = App._nextColorSeq();
     routes.push(copy);

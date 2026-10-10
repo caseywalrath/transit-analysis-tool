@@ -15,11 +15,12 @@
 //             App.BUFFER_RADIUS_STEPS, App.sectionColors, App.featureSettings,
 //             App.getTypeDefaultColor, App.getBasemaps, App.switchBasemap,
 //             App.cache, App.refreshFeaturePanel.
-// Analysis/reference layer color styling (docs/layer-color-customization-plan.md
-// Phase 6) additionally depends on window.LayerPalette, App.resolveLayerColors,
+// Analysis/reference layer color styling additionally depends on
+// window.LayerPalette, App.resolveLayerColors,
 // App.setLayerStyle, App.clearLayerStyle, App.layerStyles, App.mapPalette,
 // App.repaintStyledLayers (js/core/layer-palettes.js) — all optional, guarded
 // with typeof checks so a missing script tag just omits the style drawers.
+// Detail: docs/reference/layers-and-styling.md
 (function () {
   var App = window.App = window.App || {};
 
@@ -54,9 +55,15 @@
     { id: "walk-network-line",    label: "Walk network",         layers: [{ id: "walk-network-line", op: "line-opacity" },
       { id: "walk-network-excluded-line", op: "line-opacity" },
       { id: "network-joins-point", op: "circle-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      // Remove keeps the downloaded copy so it can come back without a new
+      // download; deleting it is a separate, confirmed action.
+      clear: callIf("unloadRoadNetwork"),
+      extraActions: [{ label: "Delete downloaded streets", status: "Deleted downloaded streets",
+        confirm: "Delete the downloaded streets from this browser? They will need to be downloaded again.",
+        run: callIf("clearRoadNetwork") }] },
+    // Only the overlay — the street network it colors stays loaded.
     { id: "sidewalk-coverage-line", label: "Sidewalk coverage",  layers: [{ id: "sidewalk-coverage-line", op: "line-opacity" }],
-      clear: callIf("clearRoadNetwork") },
+      clear: callIf("removeSidewalkCoverageLayer") },
     { id: "gtfs-shapes-layer",    label: "GTFS routes",          layers: [{ id: "gtfs-shapes-layer", op: "line-opacity" }],
       clear: callIf("clearGTFS"), styleKey: "gtfs-shapes" },
     { id: "gtfs-stops-layer",     label: "GTFS stops",           layers: [{ id: "gtfs-stops-layer", op: "circle-opacity" },
@@ -84,16 +91,14 @@
       layers: [{ id: "bas-choropleth-fill", op: "fill-opacity" }, { id: "bas-choropleth-line", op: "line-opacity" }] },
     { id: "tpi-choropleth-fill", label: "Transit Propensity", moduleId: "transit-propensity", styleKey: "tpi",
       layers: [{ id: "tpi-choropleth-fill", op: "fill-opacity" }, { id: "tpi-choropleth-line", op: "line-opacity" }] },
-    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring",
+    { id: "corridor-scoring-routes-layer", label: "Corridor Scoring", moduleId: "corridor-scoring", styleKey: "corridor-scoring", undoRestores: true,
       layers: [{ id: "corridor-scoring-routes-layer", op: "line-opacity" }] },
     { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
     { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed", styleKey: "transit-travelshed",
       layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-line", op: "line-opacity" }] },
-    // Added after an audit found five map-rendering surfaces were never
-    // registered here, so their output was invisible to this panel — no
-    // show/hide, no opacity, no reorder. Entries only render when the layer is
-    // actually on the map (see entryPresent), so listing them all is safe.
+    // Entries only render when the layer is actually on the map (see
+    // entryPresent), so listing them all is safe.
     { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage", styleKey: "transit-coverage",
       layers: [{ id: "transit-coverage-coverage-layer", op: "fill-opacity" },
                { id: "transit-coverage-threshold-layer", op: "fill-opacity" },
@@ -102,6 +107,7 @@
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
     { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
+      clear: function () { if (typeof App.clearWalkshedStreets === "function") App.clearWalkshedStreets(); },
       layers: [{ id: "walkshed-seg", op: "line-opacity" }] },
     { id: "tvi-impacted-fill", label: "Title VI service change", moduleId: "title-vi", styleKey: "title-vi",
       layers: [{ id: "tvi-impacted-fill", op: "fill-opacity" },
@@ -112,10 +118,53 @@
       layers: [{ id: "lbar-sites-layer", op: "circle-opacity" }] },
     // Not a module of its own — census.js renders this for whichever analysis
     // last fetched geographies, so it gets no moduleId.
-    { id: "census-geos-fill", label: "Census geographies",
+    // Removing it clears Feature Area Analysis, whose map output it is; leaving
+    // that module's legend up with no map behind it would mislead.
+    { id: "census-geos-fill", label: "Census geographies", clearModuleId: "buffer-summary",
       layers: [{ id: "census-geos-fill", op: "fill-opacity" },
                { id: "census-geos-line", op: "line-opacity" }] }
   ];
+
+  // The function Remove layer runs for an entry, or null when it has none.
+  // Analysis rows default to their module's clear hook; resolved at menu time
+  // because modules register after this file loads. An explicit `clear: null`
+  // opts a row out (its own street-only clear is wired separately).
+  function entryClearFn(entry) {
+    if (typeof entry.clear === "function") return entry.clear;
+    if (entry.clear === null) return null;
+    var mid = entry.clearModuleId || entry.moduleId;
+    if (!mid || typeof App.moduleHasClear !== "function" || !App.moduleHasClear(mid)) return null;
+    return function () { App.clearModule(mid); };
+  }
+
+  // Shared path for every row action that takes something off the map (Remove
+  // layer and an entry's extraActions). Order matters: the snapshot must
+  // precede the change, modules must see the change before the save so the
+  // saved state is post-removal, and the panel re-renders last.
+  function applyEntryAction(fn, status) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    fn();
+    var done = typeof App.notifyProject === "function" ? App.notifyProject() : null;
+    if (typeof App.cache !== "undefined" && App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
+    render();
+    if (typeof App.setStatus === "function") App.setStatus(status);
+    return done;
+  }
+
+  function removeEntry(entry) {
+    var fn = entryClearFn(entry);
+    if (!fn) return;
+    // Only claim Undo restores the layer where the module's saved state redraws it.
+    return applyEntryAction(fn, "Removed " + entry.label + (entry.undoRestores ? " — Undo to restore" : ""));
+  }
+
+  // An entry's extra ⋯ menu action: { label, run, status?, confirm? }. A
+  // `confirm` message gates destructive actions behind window.confirm().
+  function runExtraAction(entry, action) {
+    if (action.confirm && !window.confirm(action.confirm)) return;
+    return applyEntryAction(action.run, action.status || action.label);
+  }
 
   // Per-session band ordering (panel order = map order, top of list = top of map).
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
@@ -157,7 +206,9 @@
     { type: "buffer", label: "Buffers", controls: [
         { label: "Fill",    kind: "number", key: "bufferFillOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 8 },
         { label: "Outline", kind: "number", key: "bufferLineOpacity", min: 0, max: 100, step: 5,   unit: "%",      def: 40 },
-        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 }
+        { label: "Width",   kind: "number", key: "bufferLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Dissolve overlaps", kind: "toggle", key: "bufferMerge", def: false,
+          title: "Display only. Draws overlapping buffers as one shape; analysis still uses each feature's own buffer." }
       ] }
   ];
 
@@ -191,13 +242,6 @@
     }
   }
 
-  // Inverse of App._polyOpacityValues' fill component → returns S (0-100).
-  // Duplicated from feature-attributes.js's private helper of the same
-  // shape (small pure function, not worth a cross-file export).
-  function _invertPolyFill(fill) {
-    if (fill <= 0.15) return Math.round(fill * 50 / 0.15);
-    return Math.round(50 + (fill - 0.15) * 50 / 0.85);
-  }
 
   // ---- Style preview swatch (small inline SVG, approximate — an indicator,
   // not a simulation) ----
@@ -275,179 +319,19 @@
     return svg;
   }
 
-  // ---- Generic override-row builder (used by both the type style drawer's
-  // number controls, indirectly via App.buildScrubber, and the per-feature
-  // override drawer below, which additionally shows inherited state) ----
-  function buildOverrideRow(label, scrubCfg, api) {
-    var row = document.createElement("div");
-    row.className = "lp-style-row";
-
-    var lab = document.createElement("span");
-    lab.className = "lp-style-label";
-    lab.textContent = label;
-    row.appendChild(lab);
-
-    var controlWrap = document.createElement("div");
-    controlWrap.className = "lp-style-control";
-    row.appendChild(controlWrap);
-
-    var scrubber = App.buildScrubber({
-      min: scrubCfg.min, max: scrubCfg.max, step: scrubCfg.step,
-      values: scrubCfg.values, unit: scrubCfg.unit,
-      value: api.getValue(),
-      onChange: function (v) {
-        api.setValue(v);
-        setOverridden(true);
-      }
-    });
-    controlWrap.appendChild(scrubber);
-
-    var clearBtn = document.createElement("button");
-    clearBtn.type = "button";
-    clearBtn.className = "lp-style-clear";
-    clearBtn.title = "Clear override (use default)";
-    clearBtn.textContent = "×";
-    clearBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      api.clearValue();
-      scrubber.refresh(api.getValue());
-      setOverridden(false);
-    });
-    controlWrap.appendChild(clearBtn);
-
-    function setOverridden(has) {
-      row.classList.toggle("lp-inherited", !has);
-      clearBtn.style.display = has ? "" : "none";
-    }
-    setOverridden(api.hasOverride());
-
-    return row;
-  }
-
   // ---- Per-feature override drawer (buildFeatureRow) ----
-  // No polygon entry in OPACITY_KEYS: the polygon opacity override is handled
-  // separately below (a single input drives the fill/border pair via
-  // App._polyOpacityValues), so this map is only consulted for the other
-  // three types, whose opacity default is still one plain featureSettings field.
-  var OPACITY_KEYS = { point: "pointOpacity", line: "lineOpacity", route: "routeOpacity" };
-  var WIDTH_KEYS    = { point: "pointLineWidth", line: "lineLineWidth", route: "routeLineWidth", polygon: "polygonLineWidth" };
-  var BUFFER_KEYS   = { point: "bufferRadius", line: "lineBufferRadius", route: "routeBufferRadius" };
-  var REBUILD_FNS   = {
-    point: function (v) { if (typeof App.rebuildBuffers      === "function") App.rebuildBuffers(v); },
-    line:  function (v) { if (typeof App.rebuildLineBuffers  === "function") App.rebuildLineBuffers(v); },
-    route: function (v) { if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(v); }
-  };
-  var RENDER_FNS = { point: "renderPointLayers", line: "renderLineLayers", route: "renderRouteLayers", polygon: "renderPolygonLayers" };
-
-  function _pushFeatureLayer(ft) {
-    var fn = RENDER_FNS[ft];
-    if (fn && typeof App[fn] === "function") App[fn]();
-  }
-  function _saveCache() {
-    if (App.cache && typeof App.cache.save === "function") App.cache.save();
-  }
-
+  // The rows (opacity / width / offset) are built by
+  // App.buildFeatureOverrideRows (js/core/feature-appearance.js) — the same
+  // builder the Appearance popover uses, so the cascade logic lives once.
+  // Per-feature buffer radius is NOT here: it is study-area geometry, edited
+  // from the Attributes popup / Attribute Summary (App.buildBufferRadiusControl).
   function buildFeatureOverrideDrawer(it) {
     var body = document.createElement("div");
     body.className = "lp-style-drawer lp-style-drawer-feature";
-
-    var feat = it.feature, ft = it.type;
-    var spec = FEATURE_OVERRIDE_SPECS[ft];
-    if (!spec) return body;
-
-    // Opacity
-    body.appendChild(buildOverrideRow("Opacity", { min: 0, max: 100, step: 1, unit: "%" }, {
-      hasOverride: function () {
-        return ft === "polygon" ? feat.properties._fillOpacity != null : feat.properties._opacity != null;
-      },
-      getValue: function () {
-        if (ft === "polygon") {
-          if (feat.properties._fillOpacity != null) return _invertPolyFill(feat.properties._fillOpacity);
-          var defFill = (App.featureSettings && App.featureSettings.polygonFillOpacity != null) ? App.featureSettings.polygonFillOpacity : 15;
-          return _invertPolyFill(defFill / 100);
-        }
-        if (feat.properties._opacity != null) return feat.properties._opacity * 100;
-        return (App.featureSettings && App.featureSettings[OPACITY_KEYS[ft]] != null) ? App.featureSettings[OPACITY_KEYS[ft]] : 100;
-      },
-      setValue: function (v) {
-        if (ft === "polygon") {
-          var pc = App._polyOpacityValues(v);
-          feat.properties._fillOpacity   = pc.fill;
-          feat.properties._borderOpacity = pc.border;
-        } else {
-          feat.properties._opacity = v / 100;
-        }
-        _pushFeatureLayer(ft);
-        _saveCache();
-      },
-      clearValue: function () {
-        delete feat.properties._opacity;
-        delete feat.properties._fillOpacity;
-        delete feat.properties._borderOpacity;
-        _pushFeatureLayer(ft);
-        _saveCache();
-      }
-    }));
-
-    // Width (single control — see FEATURE_OVERRIDE_SPECS comment above)
-    body.appendChild(buildOverrideRow(spec.widthLabel, { min: 0, max: 5, step: 0.1, unit: "×" }, {
-      hasOverride: function () { return feat.properties._lineWidth != null; },
-      getValue: function () {
-        if (feat.properties._lineWidth != null) return feat.properties._lineWidth;
-        return (App.featureSettings && App.featureSettings[WIDTH_KEYS[ft]] != null) ? App.featureSettings[WIDTH_KEYS[ft]] : 1;
-      },
-      setValue: function (v) { feat.properties._lineWidth = v; _pushFeatureLayer(ft); _saveCache(); },
-      clearValue: function () { delete feat.properties._lineWidth; _pushFeatureLayer(ft); _saveCache(); }
-    }));
-
-    // Offset (lines and routes only)
-    if (spec.hasOffset) {
-      var OFFSET_STEPS = [-6, -3, 0, 3, 6];
-      body.appendChild(buildOverrideRow("Offset", { values: OFFSET_STEPS, unit: "px" }, {
-        hasOverride: function () { return !!feat.properties._offsetManual; },
-        getValue: function () { return (feat.properties._offset != null) ? feat.properties._offset : 0; },
-        setValue: function (v) {
-          feat.properties._offset = v;
-          feat.properties._offsetManual = true;
-          _pushFeatureLayer(ft);
-          _saveCache();
-        },
-        clearValue: function () {
-          delete feat.properties._offset;
-          delete feat.properties._offsetManual;
-          _pushFeatureLayer(ft);
-          var oCb = document.getElementById("offsetOverlap");
-          if (oCb && oCb.checked && typeof App.computeOverlapOffsets === "function") App.computeOverlapOffsets();
-          _saveCache();
-        }
-      }));
-    }
-
-    // Buffer radius (points, lines, routes — not polygons). Geometry rather
-    // than appearance, but a per-feature override with no other home; last
-    // in the drawer.
-    if (spec.hasBuffer) {
-      body.appendChild(buildOverrideRow("Buffer", { values: App.BUFFER_RADIUS_STEPS || [0, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2], unit: "mi" }, {
-        hasOverride: function () { return feat.properties._bufferRadius != null; },
-        getValue: function () {
-          if (feat.properties._bufferRadius != null) return feat.properties._bufferRadius;
-          return (App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0;
-        },
-        setValue: function (v) {
-          feat.properties._bufferRadius = v;
-          var rb = REBUILD_FNS[ft];
-          if (rb) rb((App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0);
-          _saveCache();
-        },
-        clearValue: function () {
-          delete feat.properties._bufferRadius;
-          var rb = REBUILD_FNS[ft];
-          if (rb) rb((App.featureSettings && App.featureSettings[BUFFER_KEYS[ft]]) || 0);
-          _saveCache();
-        }
-      }));
-    }
-
+    if (!FEATURE_OVERRIDE_SPECS[it.type] || typeof App.buildFeatureOverrideRows !== "function") return body;
+    App.buildFeatureOverrideRows(it.type, it.feature, {}).forEach(function (r) {
+      body.appendChild(r);
+    });
     return body;
   }
 
@@ -587,8 +471,7 @@
   }
 
   // ---- Analysis/reference layer style drawer (Palette/Reverse/Color, per
-  // styleKey — docs/layer-color-customization-plan.md Phase 6). Mirrors
-  // buildTypeStyleRow's shape but writes through App.setLayerStyle /
+  // styleKey). Mirrors buildTypeStyleRow's shape but writes through App.setLayerStyle /
   // App.clearLayerStyle instead of App.sectionColors / App.featureSettings,
   // since these are analysis-rendered layers, not drawn features (see the
   // App.registerLayerRepainter registry in layer-palettes.js — this drawer
@@ -702,8 +585,8 @@
       if (isCustom) {
         // Two endpoint picks in place of the Reverse row — reversing a 2-stop
         // gradient is just swapping these two, so a Reverse control here
-        // would be a redundant fourth row (the plan's §3 caps a drawer at
-        // three). The resolver paints From -> To literally for the same
+        // would be a redundant fourth row (a drawer holds at most three).
+        // The resolver paints From -> To literally for the same
         // reason, so these swatches always read the way the map does.
         var gRow = document.createElement("div");
         gRow.className = "lp-style-row";
@@ -828,7 +711,7 @@
     return body;
   }
 
-  // ---- GTFS stop-selection menu items (docs/gtfs-stop-selection-plan.md Phase 4c) ----
+  // ---- GTFS stop-selection menu items (docs/archive/gtfs-stop-selection-plan.md Phase 4c) ----
   var _stopListInput = null;
   function pickStopListFile() {
     if (!_stopListInput) {
@@ -897,6 +780,13 @@
         else _expandedLayerStyle[entry.styleKey] = true;
       });
       row.appendChild(caret);
+    } else {
+      // No style drawer, so no caret: reserve the caret's width so this row's
+      // grip and name line up with the expandable rows around it.
+      var spacer = document.createElement("span");
+      spacer.className = "lp-caret-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
     }
 
     var grip = document.createElement("span");
@@ -985,20 +875,23 @@
       if (typeof entry.menuItems === "function") {
         try { opts = opts.concat(entry.menuItems() || []); } catch (err) { /* ignore */ }
       }
-      if (typeof entry.clear === "function") {
-        opts.push({ label: "Remove layer", action: function () {
-          entry.clear();
-          if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
-          render();
-        } });
+      if (entryClearFn(entry)) {
+        opts.push({ label: "Remove layer", action: function () { removeEntry(entry); } });
       }
+      (entry.extraActions || []).forEach(function (act) {
+        opts.push({ label: act.label, action: function () { runExtraAction(entry, act); } });
+      });
       return opts;
     }
 
     menu.addEventListener("click", function (e) {
       e.stopPropagation();
       if (typeof App.showContextMenu === "function") {
-        App.showContextMenu(e.clientX, e.clientY, layerMenuOptions());
+        // Keyboard activation (detail 0) has no pointer position; anchor to the button.
+        var b = menu.getBoundingClientRect();
+        var x = e.detail === 0 ? b.left : e.clientX;
+        var y = e.detail === 0 ? b.bottom : e.clientY;
+        App.showContextMenu(x, y, layerMenuOptions());
       }
     });
     row.appendChild(menu);
@@ -1047,6 +940,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
   }
 
   // Solo: show only the given items, hide every other drawn feature.
@@ -1063,6 +957,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -1075,6 +970,7 @@
     Object.keys(types).forEach(function (t) { App.rerenderForType(t); });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
@@ -1139,18 +1035,13 @@
     typeIcon.type = "button";
     typeIcon.className = "fp-type-icon";
     typeIcon.innerHTML = (App.TYPE_ICON_SVGS || {})[it.type] || "";
-    typeIcon.title = "Change " + (TYPE_LABELS_LOCAL[it.type] || it.type) + " color";
+    typeIcon.title = "Appearance";
     typeIcon.setAttribute("aria-label", typeIcon.title);
     typeIcon.style.color = App.resolveFeatureColor(it.type, it.feature);
     typeIcon.addEventListener("click", function (e) {
       e.stopPropagation();
-      var curColor = typeIcon.style.color;
-      App.openColorPicker(typeIcon, curColor, function (nc) {
-        it.feature.properties.color = nc;
-        App.rerenderForType(it.type);
-        if (App.cache && typeof App.cache.save === "function") App.cache.save();
-        if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-        render();
+      App.openAppearancePopup(typeIcon, it.type, it.index, {
+        onChange: function () { typeIcon.style.color = App.resolveFeatureColor(it.type, it.feature); }
       });
     });
     row.appendChild(typeIcon);
@@ -1194,6 +1085,10 @@
       }
       opts.push({ label: "Edit attributes…", action: function () {
         if (typeof App.openAttrPopup === "function") App.openAttrPopup(it.type, it.index, it.feature);
+      } });
+      opts.push({ label: "Delete", action: function () {
+        if (typeof App.deleteFeature === "function") App.deleteFeature(it.type, it.index);
+        render();
       } });
       if (typeof App.showContextMenu === "function") App.showContextMenu(e.clientX, e.clientY, opts);
     });
@@ -1357,11 +1252,12 @@
     });
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
     render();
   }
 
   // ---- GTFS route browser (under the "GTFS routes" reference row) ----
-  // Reads the Phase 1 API in js/projects/gtfs.js (App.gtfsRouteIndex & co).
+  // Reads the route-browser API in js/projects/gtfs.js (App.gtfsRouteIndex & co).
   // UI state lives here so it survives render() rebuilds; filter typing and
   // expand/collapse only touch the browser's own list, never the whole panel.
   var GTFS_ROW_ID = "gtfs-shapes-layer";
@@ -1694,6 +1590,7 @@
       }
     });
     applyTypeStyle(t.type);
+    if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
 
@@ -1792,6 +1689,22 @@
           });
           controlWrap.appendChild(clearColorBtn);
         }
+      } else if (ctl.kind === "toggle") {
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!App.featureSettings[ctl.key];
+        cb.setAttribute("aria-label", ctl.label);
+        if (ctl.title) row.title = ctl.title;
+        lab.classList.add("lp-style-toggle-label");
+        lab.addEventListener("click", function (e) { e.stopPropagation(); cb.click(); });
+        cb.addEventListener("click", function (e) { e.stopPropagation(); });
+        cb.addEventListener("change", function () {
+          App.featureSettings[ctl.key] = cb.checked;
+          if (t.type === "buffer" && typeof App.refreshMergedBuffers === "function") App.refreshMergedBuffers();
+          refreshPreview();
+          if (App.cache && typeof App.cache.save === "function") App.cache.save();
+        });
+        controlWrap.appendChild(cb);
       } else {
         var scrubber = App.buildScrubber({
           min: ctl.min, max: ctl.max, step: ctl.step, unit: ctl.unit,
@@ -1825,8 +1738,7 @@
     return wrap;
   }
 
-  // ---- Global palette row (top of Analysis band — docs/layer-color-
-  // customization-plan.md Phase 6 §6.3). One shared palette choice that
+  // ---- Global palette row (top of Analysis band). One shared palette choice that
   // reaches every layer whose styleKey accepts that palette's family; a
   // layer with its own per-layer override (buildLayerStyleDrawer above)
   // keeps that override regardless of this selection. ----

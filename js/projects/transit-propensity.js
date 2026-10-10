@@ -1,6 +1,6 @@
 // js/projects/transit-propensity.js
-// Transit Propensity Index: registers as an analysis module, opens in a 2-column popup,
-// renders choropleth + floating legend.
+// Transit Propensity Index module: UI, choropleth + floating legend, export.
+// Scoring lives in tpi-scoring.js. Detail: docs/reference/modules/transit-propensity.md
 // Depends on: App namespace, TPI namespace (tpi-scoring.js), App.popup (popup.js), turf (CDN).
 // Exports: App.getTpiWeights()
 
@@ -15,7 +15,7 @@
   var _weights = TPI.getDefaultWeights();
   var _pendingWeights = null;     // temporary copy while Adjust Weights modal is open
   // Checklist selection is remembered as the features the user UNCHECKED, by stable
-  // { type, id } ref (Phase 4b) — array positions shift when an earlier feature is
+  // { type, id } ref — array positions shift when an earlier feature is
   // deleted or merged. Anything not listed (including newly drawn features) is
   // checked. Run-time index arrays are still built from the live checkboxes.
   var _uncheckedRefs = [];
@@ -27,6 +27,10 @@
   var _apportionByArea = false;
   var _bufferMiles = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
+  var _includeHidden = false;     // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
+  // Taken at run time so update() can tell a relevant change from an unrelated
+  // hide/show (notifyProject fires on every visibility change).
+  var _runSnap = null;            // { geom, hidden, refs: [{type,id}], includeHidden }
 
   function getTpiClass(score) {
     if (!Number.isFinite(score)) return "N/A";
@@ -53,8 +57,8 @@
 
   function buildUnionFromFilter(filter) {
     var set = _useDisplayBuffers
-      ? App.buildDisplayBufferSet(filter)
-      : App.buildAnalysisBufferSet(filter, _bufferMiles);
+      ? App.buildDisplayBufferSet(filter, { includeHidden: _includeHidden })
+      : App.buildAnalysisBufferSet(filter, _bufferMiles, { includeHidden: _includeHidden });
     _lastBufferSet = set;
     return set.union;
   }
@@ -111,7 +115,7 @@
       var cb = boxes[i];
       var type = cb.getAttribute("data-type");
       var idx  = parseInt(cb.getAttribute("data-idx"), 10);
-      if (cb.checked) {
+      if (cb.checked && !cb.disabled) {   // disabled = hidden row (toggle off): kept checked, not analyzed
         if      (type === "route")   routeIndices.push(idx);
         else if (type === "line")    lineIndices.push(idx);
         else if (type === "point")   pointIndices.push(idx);
@@ -120,6 +124,41 @@
     }
     return { routeIndices: routeIndices, lineIndices: lineIndices,
              pointIndices: pointIndices, polygonIndices: polygonIndices };
+  }
+
+  // Checked, enabled rows as stable refs — the features a run analyzes.
+  function getRunRefs() {
+    var el = document.getElementById("tpiFeatureChecklist");
+    var out = [];
+    if (!el) return out;
+    var boxes = el.querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].checked || boxes[i].disabled) continue;
+      var id = parseInt(boxes[i].getAttribute("data-feature-id"), 10);
+      if (Number.isFinite(id)) out.push({ type: boxes[i].getAttribute("data-type"), id: id });
+    }
+    return out;
+  }
+
+  // Everything besides the hidden flag that changes a run and arrives via
+  // notifyProject: feature edits (geometry/attributes), LODES, display-buffer radii.
+  function runInputsSig() {
+    var fs = App.featureSettings || {};
+    return App.featureGeomSignature() + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") +
+      "#fs:" + JSON.stringify([fs.bufferRadius, fs.lineBufferRadius, fs.routeBufferRadius]);
+  }
+
+  function makeRunSnap(refs) {
+    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs), includeHidden: _includeHidden };
+  }
+
+  // True when the last run no longer matches the map: features changed, the hidden
+  // state of a feature in the run's selection changed, or the toggle changed.
+  function runIsOutdated() {
+    if (!_runSnap) return true;
+    if (_runSnap.includeHidden !== _includeHidden) return true;
+    if (_runSnap.geom !== runInputsSig()) return true;
+    return _runSnap.hidden !== App.hiddenSignature(_runSnap.refs);
   }
 
   // ---- Feature checklist ----
@@ -131,7 +170,7 @@
     el.innerHTML = "";
     var hasFeatures = false;
 
-    function addRow(type, idx, name, badge) {
+    function addRow(type, idx, name, badge, feature) {
       hasFeatures = true;
       var ref = App.featureRef(type, idx);
       var checked = !(ref && isRefUnchecked(type, ref.id));
@@ -153,13 +192,14 @@
       badgeEl.className = "rf-feature-type-badge";
       badgeEl.textContent = badge;
 
-      lbl.addEventListener("click", function (e) { e.preventDefault(); cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
+      lbl.addEventListener("click", function (e) { e.preventDefault(); if (cb.disabled) return; cb.checked = !cb.checked; captureChecklistSelection(); markStale(); });
       cb.addEventListener("change", function () { captureChecklistSelection(); markStale(); });
 
       row.appendChild(cb);
       row.appendChild(lbl);
       row.appendChild(badgeEl);
       el.appendChild(row);
+      App.decorateHiddenRow(row, cb, feature, _includeHidden);
     }
 
     var routes   = App.routes   || [];
@@ -167,10 +207,10 @@
     var pts      = App.points   || [];
     var polys    = App.polygons || [];
 
-    for (var ri = 0; ri < routes.length; ri++) addRow("route",   ri, (routes[ri].properties && routes[ri].properties.name) || ("Route "   + (ri + 1)), "R");
-    for (var li = 0; li < lines.length;  li++) addRow("line",    li, (lines[li].properties  && lines[li].properties.name)  || ("Line "    + (li + 1)), "L");
-    for (var si = 0; si < pts.length;    si++) addRow("point",   si, (pts[si].properties    && pts[si].properties.name)    || ("Point " + (si + 1)), "S");
-    for (var gi = 0; gi < polys.length;  gi++) addRow("polygon", gi, (polys[gi].properties  && polys[gi].properties.name)  || ("Polygon " + (gi + 1)), "P");
+    for (var ri = 0; ri < routes.length; ri++) addRow("route",   ri, (routes[ri].properties && routes[ri].properties.name) || ("Route "   + (ri + 1)), "R", routes[ri]);
+    for (var li = 0; li < lines.length;  li++) addRow("line",    li, (lines[li].properties  && lines[li].properties.name)  || ("Line "    + (li + 1)), "L", lines[li]);
+    for (var si = 0; si < pts.length;    si++) addRow("point",   si, (pts[si].properties    && pts[si].properties.name)    || ("Point " + (si + 1)), "S", pts[si]);
+    for (var gi = 0; gi < polys.length;  gi++) addRow("polygon", gi, (polys[gi].properties  && polys[gi].properties.name)  || ("Polygon " + (gi + 1)), "P", polys[gi]);
 
     if (!hasFeatures) {
       el.innerHTML = '<div style="padding:6px;color:var(--muted);font-size:12px;">No features drawn.</div>';
@@ -398,6 +438,7 @@
         fallbackEl.style.display = "none";
       }
     }
+    updateHiddenNote(result);
     var apportionEl = document.getElementById("tpiApportionNote");
     if (apportionEl) {
       if (result.apportionByArea) {
@@ -407,6 +448,14 @@
         apportionEl.style.display = "none";
       }
     }
+  }
+
+  function updateHiddenNote(result) {
+    var el = document.getElementById("tpiHiddenNote");
+    if (!el) return;
+    var note = App.hiddenSelectionMessage((result && result.hiddenIncluded) || 0).notes;
+    el.textContent = note;
+    el.style.display = note ? "" : "none";
   }
 
   function updateExportButtons(enabled) {
@@ -595,6 +644,12 @@
 
   async function runTPI() {
     if (_running) return;
+    // Everything the user ticked is hidden on the map (toggle off): say so.
+    var checkedDisabled = document.querySelectorAll("#tpiFeatureChecklist input[type=checkbox]:checked:disabled").length;
+    if (checkedDisabled > 0 && !getRunRefs().length) {
+      setTpiStatus(App.hiddenSelectionMessage(0).error, "error");
+      return;
+    }
     _running = true;
 
     var runBtn   = document.getElementById("tpiRun");
@@ -611,8 +666,11 @@
 
       var featureFilter = getFeatureFilter();
       var unionPolygon  = buildUnionFromFilter(featureFilter);
+      var hiddenCount   = (_lastBufferSet && _lastBufferSet.hiddenCount) || { included: 0, skipped: 0 };
+      var snap          = makeRunSnap(getRunRefs());
 
       if (!_lastBufferSet || _lastBufferSet.count === 0) {
+        if (hiddenCount.skipped > 0) throw new Error(App.hiddenSelectionMessage(hiddenCount).error);
         throw new Error("Could not build buffers for the selected features.");
       }
 
@@ -639,7 +697,9 @@
       result.bufferMiles = _bufferMiles;
       result.bufferSet   = _lastBufferSet;
       result.bufferByRef = bufferSetByRef(_lastBufferSet);
+      result.hiddenIncluded = hiddenCount.included || 0;
       _lastResult     = result;
+      _runSnap        = snap;
       _stale          = false;
 
       // Render census overlay (clipped when area apportionment is on)
@@ -693,16 +753,12 @@
 
   // ---- Choropleth rendering ----
 
-  // Still referenced by the hide-toggle wiring below — App.choropleth.render()
-  // with id: "tpi" produces exactly these ids via its "<id>-choropleth-*"
-  // convention (js/core/choropleth.js), so they remain valid without a
-  // TPI_SOURCE constant (no longer used now that render()/remove() own the
-  // source directly).
+  // Layer ids App.choropleth.render() produces for id "tpi" via its
+  // "<id>-choropleth-*" convention (js/core/choropleth.js); used by the hide toggle.
   var TPI_FILL_LAYER = "tpi-choropleth-fill";
   var TPI_LINE_LAYER = "tpi-choropleth-line";
 
-  // Hover popup for the "tpi" choropleth (Phase 3 Step 3.2 of
-  // docs/feature-area-choropleth-plan.md \u2014 migrated onto App.choropleth).
+  // Hover popup for the "tpi" choropleth.
   function tpiHoverHTML(props) {
     var score  = props.tpiScore;
     var geoid2 = props.GEOID || "\u2014";
@@ -730,13 +786,8 @@
     return html;
   }
 
-  // Manual breaks [1,2,3,4] with the "blues" ramp reproduce the same 5 colors
-  // TPI's old inline continuous interpolate used at integer scores
-  // (#eff3ff/#bdd7e7/#6baed6/#3182bd/#08519c), now as discrete classes rather
-  // than a gradient \u2014 the settled Phase 3 Step 3.2 tradeoff (pixel-for-pixel
-  // parity with the old continuous ramp is not required). A null/non-numeric
-  // tpiScore renders App.choropleth's no-data gray via its typeof guard,
-  // replacing the old coalesce-to-0-then-gray hack.
+  // Manual breaks [1,2,3,4] with the "blues" ramp give 5 discrete classes, one per
+  // integer score. A null/non-numeric tpiScore renders the engine's no-data gray.
   function renderChoropleth(result) {
     var map = App.map;
     if (!map || !result) return;
@@ -770,9 +821,8 @@
       });
     }
 
-    // Layer ids are load-bearing (Layers-panel manifest, ui-screens) and are
-    // exactly reproduced by the "<id>-choropleth-*" convention: id: "tpi"
-    // yields tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
+    // Layer ids are load-bearing (Layers-panel manifest, ui-screens): id "tpi"
+    // must yield tpi-choropleth-fill/-line, matching TPI_FILL_LAYER/TPI_LINE_LAYER.
     App.choropleth.render({
       id: "tpi", features: features, valueProp: "tpiScore",
       breaks: [1, 2, 3, 4], ramp: "blues",
@@ -834,6 +884,7 @@
   function clearChoropleth() {
     removeChoropleth();
     _lastResult = null;
+    _runSnap    = null;
     _stale      = false;
     App.popup.hideFloatingWidget("tpi-legend");
     if (isPopupVisible()) {
@@ -873,8 +924,8 @@
       polygonIndices: polys.map(function (_, i) { return i; })
     };
     var bufferSet = _useDisplayBuffers
-      ? App.buildDisplayBufferSet(allFilter)
-      : App.buildAnalysisBufferSet(allFilter, _bufferMiles);
+      ? App.buildDisplayBufferSet(allFilter, { includeHidden: _includeHidden })
+      : App.buildAnalysisBufferSet(allFilter, _bufferMiles, { includeHidden: _includeHidden });
 
     for (var si = 0; si < pts.length; si++) {
       var pb = bufferSet.get("point", si);
@@ -1105,12 +1156,26 @@
     var resetBtn = document.getElementById("tpiResetWeights");
     if (resetBtn) resetBtn.addEventListener("click", resetModalToDefaults);
 
+    // Include hidden toggle (next to Select all | Clear)
+    var actionsEl = (document.getElementById("tpiSelectAll") || {}).parentNode;
+    if (actionsEl && !document.getElementById("tpiIncludeHidden")) {
+      actionsEl.appendChild(App.buildIncludeHiddenToggle({
+        id: "tpiIncludeHidden", checked: _includeHidden,
+        onChange: function (on) {
+          _includeHidden = on;
+          buildFeatureChecklist();           // re-decorate rows; checked states untouched
+          if (App.cache) App.cache.save();
+          if (_lastResult && runIsOutdated()) markStale(); else renderInputs();
+        }
+      }));
+    }
+
     // Select all / clear
     var selectAllLink = document.getElementById("tpiSelectAll");
     if (selectAllLink) {
       selectAllLink.addEventListener("click", function (e) {
         e.preventDefault();
-        document.querySelectorAll("#tpiFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        document.querySelectorAll("#tpiFeatureChecklist input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
         captureChecklistSelection();
         markStale();
       });
@@ -1183,6 +1248,8 @@
     var bufferMilesEl = document.getElementById("tpiBufferMiles");
     if (bufferMilesEl) bufferMilesEl.value = String(_bufferMiles);
     syncBufferControl();
+    var ihEl = document.getElementById("tpiIncludeHidden");
+    if (ihEl) ihEl.checked = _includeHidden;
 
     // Rebuild checklist (features may have changed since last open)
     buildFeatureChecklist();
@@ -1218,13 +1285,19 @@
   }
 
   async function update(core) {
-    if (_lastResult && !core.getUnion()) {
+    // No union only means "everything is gone" when no features exist at all —
+    // hiding every feature (now announced via notifyProject) must keep the results.
+    var anyFeature = (App.points || []).length + (App.lines || []).length +
+      (App.routes || []).length + (App.polygons || []).length > 0;
+    if (_lastResult && !core.getUnion() && !anyFeature) {
       clearChoropleth();
-    } else {
+    } else if (_lastResult && !_stale && runIsOutdated()) {
+      // notifyProject also fires on every hide/show: only go stale on a real change.
       markStale();
     }
     if (isPopupVisible()) {
       buildFeatureChecklist();
+      renderInputs();
       var lodesWarnBtn = document.getElementById("tpiLodesWarnBtn");
       if (lodesWarnBtn) lodesWarnBtn.style.display = App.lodesData ? "none" : "";
     }
@@ -1239,6 +1312,7 @@
       apportionByArea:  _apportionByArea,
       bufferMiles:      _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
+      includeHidden:    _includeHidden,   // additive, no schema bump
       selectedCorridor: _selectedCorridor,
       uncheckedFeatures: _uncheckedRefs.filter(function (r) { return App.resolveFeatureRef(r) >= 0; })
     };
@@ -1252,6 +1326,7 @@
       effectiveWeights:     tpi.effectiveWeights ? Object.assign({}, tpi.effectiveWeights) : {},
       tractFallbackFactors: tpi.tractFallbackFactors ? tpi.tractFallbackFactors.slice() : [],
       apportionByArea:      tpi.apportionByArea || false,
+      hiddenIncluded:       tpi.hiddenIncluded || 0,
       scores:               App.mapToObj(tpi.scores),
       factorScores:         App.nestedMapToObj(tpi.factorScores),
       rawValues:            App.nestedMapToObj(tpi.rawValues)
@@ -1268,6 +1343,9 @@
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
+    if (typeof data.includeHidden === "boolean") _includeHidden = data.includeHidden;
+    var ihRestoreEl = document.getElementById("tpiIncludeHidden");
+    if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
     // Legacy (v1) sessions saved array indices. Features are restored in saved order
     // and given IDs before module hooks run, so an old index still names the right
     // feature RIGHT NOW — convert to IDs here.
@@ -1304,12 +1382,22 @@
       effectiveWeights:     r.effectiveWeights     || {},
       tractFallbackFactors: r.tractFallbackFactors || [],
       apportionByArea:      r.apportionByArea      || false,
+      hiddenIncluded:       r.hiddenIncluded       || 0,
       scores:               App.objToMap(r.scores),
       factorScores:         App.nestedObjToMap(r.factorScores),
       rawValues:            App.nestedObjToMap(r.rawValues)
     };
     _lastResult = restored;
     _stale      = false;
+    // Baseline for update(): the live features now, minus whatever the user had unchecked.
+    var restoreRefs = [];
+    [["route", App.routes], ["line", App.lines], ["point", App.points], ["polygon", App.polygons]].forEach(function (g) {
+      (g[1] || []).forEach(function (f, i) {
+        var ref = App.featureRef(g[0], i);
+        if (ref && !isRefUnchecked(g[0], ref.id)) restoreRefs.push(ref);
+      });
+    });
+    _runSnap = makeRunSnap(restoreRefs);
 
     if (restored.geos && restored.geos.length > 0) {
       renderChoropleth(restored);

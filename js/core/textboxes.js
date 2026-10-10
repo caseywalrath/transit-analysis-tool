@@ -1,7 +1,6 @@
 // js/core/textboxes.js
 // Draggable, resizable text box annotations placed on the map by click-and-drag.
-// Exports: textBoxes, addTextBox, removeTextBox, clearTextBoxes, undoLastTextBox,
-//          duplicateTextBox, renderTextBoxMarkers, updateTextBoxAppearance
+// Exports: see the Exports block at the end of the file.
 
 (function () {
   var App = window.App = window.App || {};

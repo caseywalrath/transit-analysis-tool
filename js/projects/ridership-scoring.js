@@ -1,7 +1,7 @@
 // js/projects/ridership-scoring.js
-// Ridership Forecasting computation engine.
-// Wraps TPI scoring for corridor demand, adds service elasticity,
-// scenario building, and calibration logic.
+// Ridership Forecasting engine (pure computation): wraps TPI scoring for corridor
+// demand, adds service elasticity, scenario building and calibration.
+// Detail: docs/reference/modules/ridership-forecasting.md
 // Depends on: TPI namespace (tpi-scoring.js), App namespace, turf (CDN).
 // Exports: window.RidershipModel namespace
 
@@ -13,10 +13,7 @@
 
   var SQM_PER_SQMI = 2589988.110336;
 
-  // =========================================================================
-  // Service type presets (literature-based defaults)
-  // Each service type has low/mid/high multiplier ranges
-  // =========================================================================
+  // Service type presets (literature-based defaults); servicePremium is a low/high fraction range.
 
   var SERVICE_TYPES = [
     {
@@ -67,15 +64,11 @@
   }
   RM.getServiceType = getServiceType;
 
-  // =========================================================================
-  // Layer 1: Corridor Demand Potential
-  // Wraps TPI.computeTPI(), adds segment analysis and CDI aggregate
-  // =========================================================================
+  // ===== Layer 1: Corridor Demand Potential (wraps TPI.computeTPI) =====
 
   // Stable ID of the drawn feature at array position `index` (null if unknown).
   // Per-route results carry it alongside the positional featureIndex so callers
-  // can re-find the feature after deletions/merges shift the arrays
-  // (docs/feature-merge-plan.md, Phase 4b).
+  // can re-find the feature after deletions/merges shift the arrays.
   function featureIdAt(type, index) {
     var ref = App.featureRef ? App.featureRef(type, index) : null;
     return ref ? ref.id : null;
@@ -195,11 +188,9 @@
   RM.computeCorridorCDI = computeCorridorCDI;
 
   // Per-route/line CDI: extract individual route CDI from system-wide TPI result.
-  // Uses the same population-weighted intersection logic as computeSegments(),
-  // but operates on full route/line buffers instead of segment chunks.
-  // This enables the "snapshot" approach: TPI is run once across ALL features
-  // with shared quintile normalization, then per-route CDI is extracted by
-  // aggregating only the geographies overlapping each individual buffer.
+  // Same population-weighted intersection as computeSegments(), on full buffers.
+  // TPI runs once across ALL features (shared quintile normalization); each route's
+  // CDI then aggregates only the geographies overlapping its own buffer.
   // featureFilter (optional): { routeIndices: [0,2,...], lineIndices: [1,3,...] }
   // If null/undefined, all routes and lines are included (backward compatible).
   // bufferSet (optional): an App.buildAnalysisBufferSet() result — when given,
@@ -208,7 +199,6 @@
     var results = [];
     var popRaw = tpiResult.rawValues.get("pop_density");
 
-    // Collect routes + lines with their buffers
     var features = [];
     var routes = App.routes || [];
     var routeBuffers = bufferSet ? null : (App.routeBuffers || []);
@@ -241,13 +231,10 @@
       }
     }
 
-    // For each feature, compute population-weighted CDI from overlapping TPI geos
-    // Also collect per-factor breakdowns and composite range for transparency
     for (var fi = 0; fi < features.length; fi++) {
       var feat = features[fi];
       var weightedSum = 0, totalPop = 0, geoCount = 0;
 
-      // Per-factor accumulators (weighted sum of quintile scores per factor)
       var factorWeightedSums = {};
       var factorPopSums = {};
       var compositeMin = Infinity;
@@ -280,11 +267,9 @@
         totalPop += pop;
         geoCount++;
 
-        // Track min/max composite scores
         if (scoreData.composite < compositeMin) compositeMin = scoreData.composite;
         if (scoreData.composite > compositeMax) compositeMax = scoreData.composite;
 
-        // Extract per-factor quintile scores for this geo
         if (tpiResult.factorScores) {
           var fsIter = tpiResult.factorScores.entries();
           var fsEntry = fsIter.next();
@@ -305,7 +290,6 @@
         }
       }
 
-      // Build factor breakdown: population-weighted average quintile per factor
       var factorBreakdown = {};
       for (var fId in factorWeightedSums) {
         factorBreakdown[fId] = factorPopSums[fId] > 0
@@ -387,7 +371,7 @@
     var unmatched = [];
     var duplicateWarnings = [];
 
-    // Build lookup: lowercase name -> routeCDI entry (first match wins)
+    // lowercase name -> routeCDI entry (first match wins)
     var lookup = {};
     for (var i = 0; i < routeCDIs.length; i++) {
       var key = (routeCDIs[i].name || "").trim().toLowerCase();
@@ -420,14 +404,12 @@
   // Segment analysis: split routes/lines into equal chunks, compute CDI per segment.
   // selectedCorridor: "all" or falsy = process all routes + lines;
   //                   "route:N" or "line:N" = only that feature (faster single-corridor view).
-  // segBufferMiles (optional): buffer distance around each segment chunk; defaults to 0.5
-  //   (the historical hardcoded value) when not given or <= 0.
+  // segBufferMiles (optional): buffer distance around each segment chunk; 0.5 when not given or <= 0.
   function computeSegments(tpiResult, segmentMiles, selectedCorridor, segBufferMiles) {
     var effSegBufferMiles = (segBufferMiles > 0) ? segBufferMiles : 0.5;
     var routes = App.routes || [];
     var lines  = App.lines  || [];
 
-    // Build the list of features to segment based on corridor selection
     var toProcess = [];
     if (selectedCorridor && selectedCorridor !== "all") {
       var parts   = selectedCorridor.split(":");
@@ -439,7 +421,6 @@
         toProcess.push({ feature: lines[selIdx], type: "line", index: selIdx });
       }
     } else {
-      // System-wide: all routes and lines
       for (var ri = 0; ri < routes.length; ri++) {
         if (routes[ri] && routes[ri].geometry) {
           toProcess.push({ feature: routes[ri], type: "route", index: ri });
@@ -476,7 +457,6 @@
 
         if (!segBuffer) continue;
 
-        // Intersect segment buffer with TPI geographies
         var segScoreSum = 0;
         var segPopSum   = 0;
         var segGeoCount = 0;
@@ -487,12 +467,10 @@
           var scoreData = geoid ? tpiResult.scores.get(geoid) : null;
           if (!scoreData || !Number.isFinite(scoreData.composite)) continue;
 
-          // Quick check: does this geography intersect the segment buffer?
           var intersects;
           try { intersects = turf.booleanIntersects(geo, segBuffer); } catch (_) { continue; }
           if (!intersects) continue;
 
-          // Compute overlap fraction
           var inter;
           try { inter = turf.intersect(geo, segBuffer); } catch (_) { continue; }
           if (!inter) continue;
@@ -542,7 +520,8 @@
   }
   RM.classifyCDI = classifyCDI;
 
-  // Re-score demand from cached TPI raw values (no API calls)
+  // Re-score demand from cached TPI raw values (no API calls).
+  // Segments are rebuilt with the default 0.5 mi segment buffer (no buffer option here).
   function rescoreDemand(lastResult, weights, segmentMiles) {
     if (!lastResult || !lastResult.tpiResult) return null;
     var tpi = lastResult.tpiResult;
@@ -568,10 +547,7 @@
   }
   RM.rescoreDemand = rescoreDemand;
 
-  // =========================================================================
-  // Layer 3: Service Elasticity
-  // Applies literature-based multipliers to convert demand into ridership estimates
-  // =========================================================================
+  // ===== Layer 3: Service Elasticity (literature-based multipliers) =====
 
   // Frequency elasticity: ridership_change = (new_freq / old_freq) ^ elasticity
   // Default 0.6. Consistent with ranges reported in TCRP Report 95 (~0.3-0.6) and
@@ -580,7 +556,6 @@
   // corroborates the diminishing-returns shape of this power curve.
   function computeFrequencyEffect(baseHeadway, newHeadway, elasticity) {
     if (!baseHeadway || !newHeadway || baseHeadway <= 0 || newHeadway <= 0) return 1;
-    // Convert headway to frequency: freq = 60 / headway
     var baseFreq = 60 / baseHeadway;
     var newFreq = 60 / newHeadway;
     return Math.pow(newFreq / baseFreq, elasticity || 0.6);
@@ -611,7 +586,6 @@
   function applyElasticity(baseDemandCDI, params) {
     var st = getServiceType(params.serviceTypeId || "local_bus");
 
-    // Frequency effect from headway change
     var freqEffect = computeFrequencyEffect(
       params.baseHeadway || 30,
       params.newHeadway || st.defaultHeadway,
@@ -658,10 +632,7 @@
   }
   RM.applyBaselineUncertainty = applyBaselineUncertainty;
 
-  // =========================================================================
-  // Layer 4: Scenario Builder
-  // Computes operating metrics for a service scenario
-  // =========================================================================
+  // ===== Layer 4: Scenario Builder (operating metrics for a service scenario) =====
 
   // buildScenario(params)
   // params: {
@@ -689,19 +660,15 @@
     // One-way trip time (hours)
     var tripTimeHrs = routeLength / avgSpeed;
 
-    // Round trips per day = span / (2 * tripTime) -- simplified
     var roundTripTime = tripTimeHrs * 2;
-    var tripsPerHour = 60 / headway;
-
-    // Revenue hours per day = trips per day * trip time per trip
-    // vehicles needed = ceil(roundTripTime / (headway/60))
+    var tripsPerHour = 60 / headway; // unused
+    // Fleet = round-trip time / headway; every vehicle is assumed to run the full span
+    // (no layover or peak/off-peak split).
     var vehiclesNeeded = Math.max(1, Math.ceil(roundTripTime / (headway / 60)));
     var revenueHoursPerDay = vehiclesNeeded * span;
 
-    // Annual revenue hours
     var annualRevenueHours = revenueHoursPerDay * serviceDays;
 
-    // Annual operating cost
     var annualCost = annualRevenueHours * costPerRevHr;
 
     // Ridership from elasticity result or demand CDI
@@ -725,14 +692,13 @@
       high: dailyRidership.high * serviceDays
     };
 
-    // Boardings per revenue hour
     var boardingsPerRevHr = {
       low:  annualRidership.low / annualRevenueHours,
       mid:  annualRidership.mid / annualRevenueHours,
       high: annualRidership.high / annualRevenueHours
     };
 
-    // Cost per boarding
+    // Cost per boarding is inverted: the low-cost case pairs with high ridership.
     var costPerBoarding = {
       low:  annualRidership.high > 0 ? annualCost / annualRidership.high : Infinity,
       mid:  annualRidership.mid > 0 ? annualCost / annualRidership.mid : Infinity,
@@ -798,10 +764,7 @@
   }
   RM.scenarioToRow = scenarioToRow;
 
-  // =========================================================================
-  // Layer 2: Calibration
-  // Ratio-based and simple regression calibration
-  // =========================================================================
+  // ===== Layer 2: Calibration (ratio and simple regression) =====
 
   // Ratio-based calibration: calibFactor = observedRidership / demandIndex
   function calibrateRatio(observedData) {
@@ -820,7 +783,6 @@
 
     var factor = n > 0 ? sumRatio / n : 1;
 
-    // Compute R-squared for the ratio model
     var rSquared = null;
     if (n >= 2) {
       var predicted = [];
@@ -900,7 +862,6 @@
     return ssTot > 0 ? 1 - (ssRes / ssTot) : 0;
   }
 
-  // Import/export calibration coefficients
   // Export calibration coefficients + optional metadata (weights, perRouteCDI, settings).
   // options: { weights, featureFilter, perRouteCDI, geoLevel, year }
   function exportCoefficients(calibResult, options) {
@@ -930,7 +891,6 @@
         return { error: "Invalid calibration file format" };
       }
       var result = { calibration: data.calibration };
-      // v2 metadata
       if (data.weights) result.weights = data.weights;
       if (data.perRouteCDI) result.perRouteCDI = data.perRouteCDI;
       if (data.featureFilter) result.featureFilter = data.featureFilter;
@@ -943,9 +903,6 @@
   }
   RM.importCoefficients = importCoefficients;
 
-  // =========================================================================
-  // Route length utility
-  // =========================================================================
 
   function getRouteLength() {
     var routes = App.routes || [];

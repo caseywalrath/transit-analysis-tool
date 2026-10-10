@@ -36,7 +36,7 @@
 //
 // Shared plumbing (Playwright loading, Chromium resolution, vendored-CDN
 // route interception, the static server, small polling utilities) lives in
-// test/browser/harness.mjs — see docs/browser-test-harness-plan.md for why.
+// test/browser/harness.mjs — see docs/archive/browser-test-harness-plan.md for why.
 
 import { readFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -432,7 +432,7 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_gtfs-route-browser", "fail", e.message);
   }
 
-  // ---- GTFS stop selection (docs/gtfs-stop-selection-plan.md Phase 5) ----
+  // ---- GTFS stop selection (docs/archive/gtfs-stop-selection-plan.md Phase 5) ----
   // Small synthetic feed (6 stops, one shape), 3 selected + 1 id not in the
   // feed so the badge shows the "not in feed" suffix. Captures the box-select
   // bar on the GTFS stops target, the Export menu with the stop button, and
@@ -519,6 +519,45 @@ async function captureTheme(browser, theme, port) {
     await page.evaluate(() => window.App.closeAttrPopup());
   } catch (e) {
     record(theme + "_attr-popup", "fail", e.message);
+  }
+
+  // ---- Shared Appearance popover (docs/archive/feature-appearance-plan.md Phase 1) ----
+  try {
+    await page.evaluate(() => {
+      const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;
+      window.App.openAppearancePopup(icon, "route", 0, {});
+    });
+    await page.locator("#fp-appearance-popover").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#fp-appearance-popover", join(OUT_DIR, theme + "_appearance-popover.png"), theme + "_appearance-popover");
+    await page.evaluate(() => window.App.closeAppearancePopup());
+  } catch (e) {
+    record(theme + "_appearance-popover", "fail", e.message);
+  }
+
+  // ---- Line style control + dashed/dotted lines (Phase 3) ----
+  try {
+    await page.evaluate(() => {
+      const A = window.App;
+      if (A.lines[0]) A.lines[0].properties._lineStyle = "dashed";
+      if (A.routes[0]) A.routes[0].properties._lineStyle = "dotted";
+      A.renderLineLayers(); A.renderRouteLayers();
+      const icon = document.querySelector("#fp-tab-features .fp-item .fp-type-icon") || document.body;
+      A.openAppearancePopup(icon, A.routes[0] ? "route" : "line", 0, {});
+    });
+    await page.locator("#fp-appearance-popover").waitFor({ state: "visible", timeout: 5000 });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#fp-appearance-popover", join(OUT_DIR, theme + "_appearance-line-style.png"), theme + "_appearance-line-style");
+    await page.evaluate(() => window.App.closeAppearancePopup());
+    await shootPage(page, join(OUT_DIR, theme + "_line-styles-map.png"), theme + "_line-styles-map");
+    await page.evaluate(() => {
+      const A = window.App;
+      if (A.lines[0]) delete A.lines[0].properties._lineStyle;
+      if (A.routes[0]) delete A.routes[0].properties._lineStyle;
+      A.renderLineLayers(); A.renderRouteLayers();
+    });
+  } catch (e) {
+    record(theme + "_appearance-line-style", "fail", e.message);
   }
 
   // ---- Module popups ----

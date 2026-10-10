@@ -3,8 +3,9 @@
 // Depends on: App.map (map.js), App.bboxStringFromFeature (points.js),
 //             App.getMeta (utils.js), turf (CDN).
 // Exports: renderCensusOverlay, fetchAllTigerwebFeatures, fetchTigerwebGeos,
-//          parseGEOID, fetchACSValues, fetchACSCountyValues,
-//          aggregateWithinUnion, computeGeoOverlapFractions, computeAcsValueOnly
+//          parseGEOID, fetchACSValues, fetchACSBatchCached, fetchACSMultiValues,
+//          fetchACSCountyValues, aggregateWithinUnion, computeGeoOverlapFractions,
+//          computeAcsValueOnly, plus the fetch-cache controls near the end of the file
 
 (function () {
   var App = window.App = window.App || {};
@@ -48,8 +49,12 @@
 
   function clearCensusOverlay() {
     var map = App.map;
-    if (!map || !map.getSource("census-geos")) return;
-    map.getSource("census-geos").setData({ type: "FeatureCollection", features: [] });
+    if (!map) return;
+    // Remove rather than empty, so the Layers panel row disappears too;
+    // the next draw re-creates the source and both layers.
+    if (map.getLayer("census-geos-fill")) map.removeLayer("census-geos-fill");
+    if (map.getLayer("census-geos-line")) map.removeLayer("census-geos-line");
+    if (map.getSource("census-geos")) map.removeSource("census-geos");
   }
 
   // --- Paginated TIGERweb query (shared by census.js and lodes.js) ---
@@ -322,7 +327,7 @@
   // popup, show the apportioned share). apportionByArea true = fractional
   // area overlap (turf.intersect area ratio); false = 1 for any geo that
   // intersects the union, else the geo is simply absent from the returned
-  // map (same skip-on-failure behavior as the inlined version this replaces).
+  // map.
   function computeGeoOverlapFractions(unionFeat, geos, apportionByArea) {
     var fractions = new Map();
 
@@ -359,8 +364,7 @@
   // options.fractions (optional): a precomputed Map<GEOID, frac> from
   // computeGeoOverlapFractions — when present, it is used instead of
   // recomputing the overlap per call (a geo absent from the map is skipped,
-  // same as a failed/no-overlap geo below). With no options.fractions,
-  // behavior is byte-identical to before this option existed.
+  // same as a failed/no-overlap geo below).
   function aggregateWithinUnion(unionFeat, geos, valueMap, aggMode, options) {
     var apportionByArea = !(options && options.apportionByArea === false);
     var precomputedFractions = options && options.fractions;

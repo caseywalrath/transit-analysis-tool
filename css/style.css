@@ -54,10 +54,13 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.12);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.22);
 
+  /* ---- Layout ---- */
+  --fp-width: 250px;  /* right-hand Features/Layers panel; the module popup's right gutter derives from it */
+
   /* ---- Motion ---- */
   --ease-fast: 0.12s ease;
 
-  /* ---- Form control sizing (phase 4) ----
+  /* ---- Form control sizing ----
      Two tiers. The comfortable tier is the default for popup/sidebar controls;
      the compact tier is for dense, many-rows-at-once surfaces (the floating
      attribute popup, the Attribute Summary grid, inline value boxes) where the
@@ -383,7 +386,7 @@ button { cursor: pointer; }
 
 /* ---- Right-side feature panel ---- */
 #feature-panel {
-  width: 208px;
+  width: var(--fp-width);
   min-width: 24px;
   border-left: 1px solid var(--border);
   padding: 0;
@@ -533,6 +536,13 @@ button { cursor: pointer; }
   min-height: 24px;
 }
 .lp-caret.open { transform: rotate(180deg); }
+/* Stands in for .lp-caret on layer rows with no style drawer (same 24px width)
+   so every row's grip and name share one left edge. */
+.lp-caret-spacer {
+  flex-shrink: 0;
+  width: 24px;
+  min-width: 24px;
+}
 .lp-group-header {
   font-weight: var(--weight-semibold);
   border-left: 3px solid transparent;
@@ -546,8 +556,7 @@ button { cursor: pointer; }
   font-style: italic;
 }
 /* Compact tier + the shared chevron: this select sits outside .module-popup-body
-   so it wasn't picked up by the phase 4 control rules, leaving it the only
-   native-arrow select left in the app chrome. */
+   so the shared control rules don't reach it. */
 .lp-basemap-select {
   flex: 1;
   font-size: var(--text-sm);
@@ -624,13 +633,15 @@ button { cursor: pointer; }
   gap: 3px;
 }
 /* The shared .fp-scrubber is sized for wider contexts (module popups, the
-   #fp-slider-popover). Inside a style-drawer row at the 208px panel width
-   there isn't room for its default sizing plus a readable label, so this
+   #fp-slider-popover). Inside a style-drawer row at the panel's width
+   (--fp-width) there isn't room for its default sizing plus a readable label, so this
    scopes a more compact size to just this container rather than shrinking
    the shared control everywhere it's used. */
 .lp-style-control .fp-scrub-btn { width: 16px; height: 16px; }
 .lp-style-control .fp-scrub-input { width: 30px; }
 .lp-style-row.lp-inherited .fp-scrub-input { color: var(--muted); font-weight: var(--weight-medium); }
+.lp-style-control input[type="checkbox"] { margin: 0; cursor: pointer; }
+.lp-style-toggle-label { cursor: pointer; }
 .lp-style-clear {
   background: transparent;
   border: none;
@@ -655,17 +666,15 @@ button { cursor: pointer; }
   cursor: pointer;
 }
 .lp-style-reset:hover { color: var(--danger); border-color: var(--danger-hover); }
-/* Layer palette select (docs/layer-color-customization-plan.md Phase 6) reuses
+/* Layer palette select reuses
    .lp-basemap-select, which is flex:1 for its usual full-width row context;
    inside the narrower .lp-style-control it needs a cap so a long palette
-   label can't push the 208px panel into horizontal scroll. */
+   label can't push the panel into horizontal scroll. */
 .lp-style-control .lp-basemap-select { max-width: 104px; flex: 0 1 auto; }
 /* --- Shared census-cache status line (analysis modules) --- */
-/* A status NOTE, not a control. It previously carried a filled background, a
-   full border and a radius, which — sitting directly under Corridor Scoring's
-   "Adjust Weights" outline button at the same width — read as a second button.
-   A left accent rule on a transparent ground says "information" instead. The
-   .cc-refetch-btn inside it stays a button; that one really is clickable. */
+/* A status NOTE, not a control: a left accent rule on a transparent ground,
+   because a filled/bordered box under an outline button reads as a second
+   button. The .cc-refetch-btn inside it really is clickable. */
 .cc-status {
   display: flex;
   align-items: center;
@@ -1639,8 +1648,7 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   display: flex;
   align-items: center;
   position: relative;
-  /* 3px, not 1px: phase 3 raised the row text to 14px and the old spacing left
-     the names visually crowded. */
+  /* 3px, not 1px: 14px row text looks crowded with tighter spacing. */
   padding: 3px 0;
   border-radius: 4px;
   transition: background 0.1s;
@@ -1796,13 +1804,6 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   min-height: 24px;
   margin-top: 2px;
 }
-.fp-attr-overrides {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  flex-shrink: 0;
-}
-.fp-sib.fp-sib-has-override { color: var(--accent); }
 .fp-attr-popup-body {
   padding: 12px 14px 14px;
   overflow-y: auto;
@@ -1871,9 +1872,41 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   margin-bottom: 5px;
   min-height: 22px;
 }
+/* Per-feature buffer radius control (App.buildBufferRadiusControl): used in the
+   Attributes popup's "Study area" section and the Attribute Summary Buffer
+   column. Compact scrubber sizing, same as the Layers style drawers. */
+.fp-buffer-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+.fp-buffer-ctl .fp-scrubber { gap: 3px; }
+.fp-buffer-ctl .fp-scrub-btn { width: 16px; height: 16px; }
+.fp-buffer-ctl .fp-scrub-input,
+.module-popup-body .fp-buffer-ctl .fp-scrub-input {
+  width: 40px;
+  min-height: 0;
+  height: 22px;
+  padding: 2px 1px;
+  font-size: var(--text-xs);
+  text-align: center;
+  box-sizing: border-box;
+}
+.fp-buffer-ctl.is-inherited .fp-scrub-input { color: var(--muted); font-weight: var(--weight-medium); }
+.fp-buffer-ctl.is-disabled { opacity: 0.55; }
+.fp-buffer-ctl.is-disabled .fp-scrub-input,
+.fp-buffer-ctl.is-disabled .fp-scrub-btn { cursor: not-allowed; }
+.fp-buffer-note {
+  flex: 1 0 100%;
+  font-size: var(--text-2xs, 10px);
+  color: var(--muted);
+}
+
 /* Section header row (e.g. "Transit service" / "Walk network" on Lines) —
    visually separates field groups within one feature type's attribute set.
-   See docs/network-connectors-plan.md §2. */
+   See docs/archive/network-connectors-plan.md §2. */
 .fp-attr-section {
   font-size: var(--text-2xs, 10px);
   font-weight: var(--weight-semibold, 600);
@@ -2202,7 +2235,7 @@ input.fp-attr-input[type="number"] {
 }
 
 /* Small differentiator chip on a Line row marked as a walk network connector
-   (attributes.networkRole === "connector") — see docs/network-connectors-plan.md §2. */
+   (attributes.networkRole === "connector") — see docs/archive/network-connectors-plan.md §2. */
 .fp-net-chip {
   flex: 0 0 auto;
   font-size: var(--text-2xs, 10px);
@@ -2496,11 +2529,8 @@ code { font-family: var(--font-mono); }
 }
 
 /* ---- BAS popup layout ---- */
-/* Feature Area Analysis. The popup moved onto the shared
-   .rf-section-row / .rf-settings-col / .rf-results-col schema, so the bespoke
-   .bas-popup-layout / .bas-variables / .bas-settings* wrappers it used to need
-   are gone; what remains is the variable checklist and this module's own
-   primary button.
+/* Feature Area Analysis uses the shared .rf-section-row / .rf-settings-col /
+   .rf-results-col layout; only the variable checklist and primary button live here.
 
    Tertiary/link actions — padded for a ≥24px hit area, matching
    .rf-feature-select-actions a. */
@@ -2665,9 +2695,9 @@ code { font-family: var(--font-mono); }
   justify-content: flex-end;
   /* #module-popup overlays the whole viewport (it is a sibling of #main-content,
      not of #feature-panel, so it can't just dock inside the map column) —
-     clear the 208px feature panel + its 1px border plus the original 24px
-     gutter so a freshly opened/re-docked panel doesn't rest underneath it. */
-  padding-right: 233px;
+     clear the feature panel (--fp-width) + its 1px border plus the original
+     24px gutter so a freshly opened/re-docked panel doesn't rest underneath it. */
+  padding-right: calc(var(--fp-width) + 25px);
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -2881,7 +2911,7 @@ body.present-mode .module-popup {
   padding: 8px 10px;
 }
 
-/* ---- TPI popup body wrapper (new 2-column layout) ---- */
+/* ---- TPI popup body wrapper ---- */
 .tpi-body {
   padding: 16px;
   overflow-y: auto;
@@ -3108,7 +3138,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 }
 .fta-layer-toggle input { width: auto; margin: 0; }
 
-/* ---- TPI popup multi-column layout (legacy, kept for reference) ---- */
+/* ---- TPI popup multi-column layout ---- */
 .tpi-popup-layout {
   display: flex;
   gap: 16px;
@@ -3136,9 +3166,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   flex-direction: column;
   gap: 8px;
 }
-/* Sizing/look come from the shared button rules further down (phase 4); only
-   the column-fill width lives here. The raw hexes this block used to carry
-   (#fff / #eef1f5 / #2b6cb0 / #2c5282) are now tokens. */
+/* Sizing/look come from the shared button rules further down; only the
+   column-fill width lives here. */
 .tpi-popup-actions button { width: 100%; }
 .tpi-popup-actions button:disabled {
   opacity: 0.5;
@@ -3458,9 +3487,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   display: flex;
   gap: 20px;
 }
-/* 280, not 240: phase 4's 34px controls and their labels need the extra room.
-   Each module's popupWidth grew by the same 40px so the results column keeps
-   the width it had. */
+/* 280px: the 34px controls and their labels need the room. */
 .rf-settings-col {
   width: 280px;
   flex-shrink: 0;
@@ -3471,9 +3498,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   flex: 1;
 }
 
-/* Stable seams for later Advanced/Settings consolidation. These wrappers are
-   intentionally presentation-neutral: moving a complete group will not alter
-   element IDs, listeners, or the input-action footer. */
+/* Presentation-neutral wrappers: moving a whole group does not alter element
+   IDs, listeners, or the input-action footer. */
 .data-input-group + .data-input-group { margin-top: var(--space-4); }
 .module-input-actions {
   display: flex;
@@ -3556,7 +3582,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   color: var(--muted);
   margin-bottom: 8px;
 }
-/* ---- Field labels & rhythm (phase 4) ----
+/* ---- Field labels & rhythm ----
    .tiny is used two ways in the popup HTML: as a field label above a control,
    and as generic small print (<p class="tiny">, legend rows). Only the label
    form is restyled, and only when it isn't wrapping its own input — a label
@@ -3569,10 +3595,7 @@ label.tiny:not(:has(input)) {
   margin-bottom: var(--space-1);
 }
 
-/* Layout primitive for a label + control pair. Defined here so phase 4 and
-   phase 5 share one spec; phase 5 is what rolls the popup HTML onto it
-   (replacing the per-element inline margin-top:10px scattered through
-   projects/*.html). Nothing uses it yet. */
+/* Layout primitive for a label + control pair. */
 .form-field { margin-top: var(--space-3); }
 .form-field:first-child { margin-top: 0; }
 .form-field > label {
@@ -3599,11 +3622,11 @@ label.tiny:not(:has(input)) {
   gap: var(--space-2);
 }
 
-/* ---- Form controls (phase 4) ------------------------------------------
+/* ---- Form controls ------------------------------------------
    ONE spec for every text/number/select control in every analysis popup,
    applied by selector list so all 15 modules inherit at once. Everything is
    tokenized, so this block covers BOTH themes — there is deliberately no
-   matching body.dark-mode block (the old broad one was deleted).
+   matching body.dark-mode block.
 
    Two tiers:
      comfortable (--ctl-height, 34px)   — the default, used here
@@ -4409,11 +4432,9 @@ select.fp-attr-input,
   .rf-settings-col { width: 100%; border: none; padding: 0; }
 }
 
-/* Panel-width responsiveness (phase 4). Same stacking as the viewport rule
-   above, but keyed to the POPUP's own width via the container context on
-   .module-popup-dialog — so a module becomes a tall task panel (phase 6's
-   dock-right floating panels) by changing only its popupWidth, with no HTML
-   restructuring. Walkshed is the pilot at 460px.
+/* Panel-width responsiveness. Same stacking as the viewport rule above, but
+   keyed to the POPUP's own width via the container context on
+   .module-popup-dialog, so a docked panel stacks by changing only its popupWidth.
 
    Placement matters: @container adds no specificity, so this has to come
    after .rf-settings-col / .rf-feature-checklist are defined above. */
@@ -4563,9 +4584,6 @@ select.fp-attr-input,
   border-radius: 6px;
   padding: 10px 12px;
 }
-
-/* .tvi-stale-banner removed — Title VI now uses the shared .rf-status stale
-   banner via App.renderModuleState(). */
 
 .tvi-route-table {
   width: 100%;
@@ -4731,60 +4749,198 @@ select.fp-attr-input,
 /* ---- Color picker popover ---- */
 #fp-color-picker {
   position: fixed;
+  box-sizing: border-box;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
   padding: 10px;
-  width: 192px;
+  width: 190px;
   z-index: 9999;
 }
+.fp-cp-body { width: 168px; max-width: 100%; }
 .fp-cp-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
   margin-bottom: 8px;
 }
-.fp-cp-cell {
-  width: 22px;
-  height: 22px;
-  border-radius: 3px;
-  border: 2px solid transparent;
+.fp-cp-cell,
+.fp-cp-recent-cell {
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
   cursor: pointer;
   padding: 0;
 }
-.fp-cp-cell:hover {
-  border-color: var(--text-primary);
+.fp-cp-cell:hover,
+.fp-cp-recent-cell:hover {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 0;
+  position: relative;
+  z-index: 1;
+}
+.fp-cp-cell:focus-visible,
+.fp-cp-recent-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+.fp-cp-cell-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+.fp-cp-recent { margin-bottom: 8px; }
+.fp-cp-recent-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+.fp-cp-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
 }
 .fp-cp-hex-row {
   display: flex;
   gap: 4px;
   align-items: center;
+  position: relative;
 }
 .fp-cp-hex-input {
-  flex: 1;
-  font-size: var(--text-sm);
+  flex: 1 1 56px;
+  font-size: var(--text-xs);
   padding: 3px 4px;
   border: 1px solid var(--border);
   border-radius: 3px;
   font-family: var(--font-mono);
   min-width: 0;
 }
-.fp-cp-apply {
-  font-size: var(--text-sm);
-  padding: 3px 8px;
+.fp-cp-apply,
+.fp-cp-custom {
+  font-size: var(--text-xs);
+  padding: 3px 5px;
   cursor: pointer;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface-alt);
+  color: var(--text-primary);
   flex-shrink: 0;
 }
-.fp-cp-apply:hover {
-  background: #e8e8e8;
+.fp-cp-apply:hover,
+.fp-cp-custom:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-secondary);
+}
+.fp-cp-custom-input {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
 }
 .fp-swatch-neutral {
   background: var(--surface-raised) !important;
   border-color: var(--border) !important;
+}
+
+/* ---- Appearance popover (js/core/feature-appearance.js) ---- */
+.fa-popover {
+  position: fixed;
+  z-index: 9150;
+  width: 232px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  font-size: var(--text-sm);
+}
+.fa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.fa-title {
+  font-weight: var(--weight-semibold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fa-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+}
+.fa-close:hover { color: var(--text-primary); background: var(--surface-hover); }
+.fa-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.fa-popover .lp-style-label { min-width: 52px; font-size: var(--text-xs); }
+.fa-color-swatch {
+  width: 22px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  display: inline-block;
+}
+.fa-color-row.lp-inherited .fa-color-swatch { opacity: 0.85; }
+.fa-segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fa-seg-btn {
+  padding: 1px 6px;
+  border: none;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.fa-seg-btn + .fa-seg-btn { border-left: 1px solid var(--border); }
+.fa-seg-btn:hover { background: var(--surface-hover); }
+.fa-seg-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+.lp-style-row.lp-inherited .fa-seg-btn.is-active {
+  background: var(--surface-hover);
+  color: var(--muted);
+}
+.fa-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
 }
 
 /* ---- Type icon (doubles as quick color picker) ---- */
@@ -5016,11 +5172,8 @@ body.view-only-mode #draw-actions button {
    DARK MODE  —  body.dark-mode overrides
    ================================================================ */
 body.dark-mode {
-  /* Legacy tokens: values intentionally UNCHANGED here — phase 1 is additive
-     only (see docs/ui-refresh/phase-1-design-tokens.md, "the only visible
-     change allowed is accent-color"). Consolidating these onto the new
-     semantic tokens below (some of which use different, refined hexes) is
-     phase 2's job, done under full screenshot review. */
+  /* Legacy tokens, still used by older rules; the semantic tokens below are
+     the preferred set. */
   --border: #374151;
   --muted:  #9ca3af;
   --bg:     #1e1e2e;
@@ -5039,7 +5192,7 @@ body.dark-mode {
 
   /* ---- Color tokens: text ---- */
   --text-primary:   #e2e8f0;
-  --text-secondary: #a8b2c1;   /* refined vs. legacy --muted (#9ca3af); phase 2 migrates */
+  --text-secondary: #a8b2c1;   /* refined vs. legacy --muted (#9ca3af) */
   --text-faint:     #9ca3af;   /* = legacy --muted's current value */
   --text-disabled:  #718096;
   /* Text ON a filled --accent / --danger button. Dark mode's accent (#63b3ed)
@@ -5050,7 +5203,7 @@ body.dark-mode {
   --text-invert:    #1a202c;
 
   /* ---- Color tokens: borders ---- */
-  /* --border stays (#374151) for now; --border-strong is new/unused until phase 2. */
+  /* --border stays (#374151). */
   --border-strong:  #4a5568;
 
   /* ---- Color tokens: accent ---- */
@@ -5064,7 +5217,7 @@ body.dark-mode {
   --danger-hover:   #f56565;
   --danger-soft:    rgba(252, 129, 129, 0.12);
   --ok-bg: #0c2b22;  --ok-bd: #1f5c46;  --ok-text: #6ee7b7;
-  --warn-bg: #2f2413; --warn-bd: #92610f; --warn-text: #fbbf24;   /* refined vs. legacy --warnbg/--warnbd; phase 2 migrates */
+  --warn-bg: #2f2413; --warn-bd: #92610f; --warn-text: #fbbf24;   /* refined vs. legacy --warnbg/--warnbd */
   --err-bg: #331b1b;  --err-bd: #7f2f2f; --err-text: #fca5a5;
   --info-bg: #16243a; --info-bd: #2c4a75; --info-text: #93c5fd;
 
@@ -5144,10 +5297,6 @@ body.dark-mode .fp-group-name-edit {
 }
 
 /* ---- Attribute popup ---- */
-/* body.dark-mode .fp-attr-input deleted in phase 4 — its color/border are now
-   token-driven by the compact control tier, which covers both themes. */
-/* body.dark-mode .fp-attr-confirm-no rules deleted in phase 4 — the base rule
-   is token-driven (--surface-alt / --surface-hover) and covers both themes. */
 body.dark-mode .fp-attr-confirm > span { color: #fca5a5; }
 body.dark-mode .fp-svc-section-title { color: #a0aec0; }
 body.dark-mode .fp-svc-header { color: #718096; border-bottom-color: #4a5568; }
@@ -5171,8 +5320,7 @@ body.dark-mode .fp-svc-mirror-empty { color: #718096; }
    CSS forces background-color:transparent with higher specificity
    (.maplibregl-ctrl-group button) than a plain .basemap-btn class selector
    can beat. Only a compound selector like this one has enough specificity
-   to win, in either theme - see the phase-2 slice 4 commit for how this
-   was found (a regression caught in dark_shell's diff). */
+   to win, in either theme. */
 body.dark-mode .basemap-btn { background: var(--surface-raised); }
 body.dark-mode .basemap-btn:hover { background: #374151; }
 
@@ -5183,13 +5331,8 @@ body.dark-mode .module-popup-dialog { background: #1e1e2e; }
 body.dark-mode .floating-widget { background: rgba(30,30,46,0.95); }
 
 /* ---- Analysis module buttons ---- */
-/* body.dark-mode .analysis-module-btn deleted in phase 4 — color is now
-   var(--text-primary) in the base rule, which covers both themes. */
-
-/* Generic inputs / selects inside popups: the old dark block here was deleted
-   in phase 4. Every declaration it carried (bg #2a2a3d, color #e2e8f0, border
-   #4a5568, focus #63b3ed + ring) is now produced by the tokenized "Form
-   controls" block, which serves both themes from one place. */
+/* Popup inputs/selects and .analysis-module-btn need no dark rules: the
+   tokenized "Form controls" block and base rules cover both themes. */
 
 /* ---- Pills and breakpoint items ---- */
 body.dark-mode .bpItem { background: #2a2a3d; }
@@ -5201,14 +5344,9 @@ body.dark-mode .pill.ml   { background: #3d2200; border-color: #9a4e00; color: #
 body.dark-mode .pill.low  { background: #3a1a1a; border-color: #7f1d1d; color: #fca5a5; }
 
 /* ---- Shared tab style (FTA / RF / TVI) ---- */
-/* Previously had dark overrides for the hover/active states here, but every
-   declaration now matches what the dark token block already supplies for
-   the tokenized .fta-tab/.rf-tab/.tvi-tab light rules - see phase-2 slices
-   5 and 6. */
+/* No overrides needed: the tokenized .fta-tab/.rf-tab/.tvi-tab rules cover dark mode. */
 
 /* ---- TPI ---- */
-/* body.dark-mode .tpi-popup-actions button rules deleted in phase 4 — the
-   shared secondary-button rule is token-driven and covers both themes. */
 body.dark-mode .tpi-status-done { background: #1a3a2a; border-color: #2d6a4f; }
 body.dark-mode .tpi-status-error { background: #3a1a1a; border-color: #7f1d1d; }
 body.dark-mode .tpi-composite-value { color: #f1f5f9; }
@@ -5258,8 +5396,6 @@ body.dark-mode .rf-proj-cdi-row td { background: rgba(99,179,237,0.10); }
 body.dark-mode .rf-route-score-row:hover { background: rgba(255,255,255,0.07); }
 body.dark-mode .rf-route-factor-bar-wrap { background: #374151; }
 body.dark-mode .rf-weights-modal-title { color: #f1f5f9; }
-/* body.dark-mode .rf-btn-sm deleted in phase 4 — color is now
-   var(--text-primary) in the base rule, which covers both themes. */
 
 /* ---- Title VI ---- */
 body.dark-mode .tvi-baseline-box { background: #1e3a5f; border-color: #2b6cb0; }
@@ -5428,6 +5564,15 @@ body.dark-mode .result-error td { color: #fc8181; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Click-through, no pointer tip: the name never blocks a vertex handle or drag. */
+.feature-hover-popup,
+.feature-hover-popup * {
+  pointer-events: none;
+}
+.feature-hover-popup .maplibregl-popup-tip {
+  display: none;
 }
 
 /* ---- Click detail popup ---- */
@@ -5977,7 +6122,7 @@ body.dark-mode .tb-trip-table td { border-color: #2d2d3d; color: #ddd; }
   margin: 6px 0 2px;
 }
 
-/* Dark mode for the new bits */
+/* Dark mode */
 body.dark-mode .tb-summary thead th { color: #a0aec0; border-color: #2d2d3d; }
 body.dark-mode .tb-summary tbody td { color: #ddd; border-color: #2d2d3d; }
 body.dark-mode .tb-summary .tb-summary-day-label { color: #ccc; }
@@ -6218,6 +6363,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     24px            /* swatch */
     1.4fr           /* name */
     96px            /* service area */
+    116px           /* buffer radius */
     0.8fr           /* id */
     1fr             /* routes badge */
     24px;           /* copy attributes */
@@ -6234,6 +6380,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
     68px            /* run time */
     84px            /* bands */
     84px            /* walk network role (lines only; "—" for routes) */
+    116px           /* buffer radius */
     24px;           /* copy attributes */
 }
 .as-grid-polygons {
@@ -6252,6 +6399,7 @@ body.dark-mode .as-section-header { border-color: #2d2d3d; }
 }
 
 .as-col-narrow  { }
+.as-col-buffer  { }
 .as-col-num     { }
 .as-col-check { justify-self: center; }
 .as-col-copy  { justify-self: center; }
@@ -6618,3 +6766,27 @@ body.present-mode .box-select-bar { display: none; }
 .maplibregl-canvas-container.maplibregl-interactive,
 .maplibregl-canvas-container.maplibregl-interactive:active { cursor: default; }
 .maplibregl-canvas-container.maplibregl-interactive.maplibregl-track-pointer { cursor: default; }
+
+/* Analysis checklists: hidden-feature rows (js/core/analysis-checklist.js) */
+.ac-hidden { color: var(--text-disabled); cursor: not-allowed; }
+.ac-hidden input[type="checkbox"] { cursor: not-allowed; }
+.ac-hidden-tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.ac-include-hidden {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}

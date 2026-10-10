@@ -1,21 +1,11 @@
 // js/core/utils.js
-// Shared utility functions, variable metadata, and helpers.
-// No dependencies beyond PapaParse (loaded via CDN).
-// Exports: setStatus, escapeHTML, escapeAttr, parseCSV, fillSelect,
-//          enableSelect, toNumberSafe, normalizeTractGEOID, guessHeader,
-//          VAR_META, GROUP_INFO, getMeta, getCheckboxGroups,
-//          getCheckboxGroupMembers, getDenominator, setAggUI, formatValue,
-//          FEATURE_ID_PROP, nextFeatureId, ensureFeatureIds,
-//          featureRef, resolveFeatureRef, featureById, featureRefKey,
-//          parseFeatureRefKey, migrateIndexRefKey, indexFilterToRefs,
-//          uncheckedRefsFromIndexFilter
+// Shared helpers: VAR_META (ACS/LODES variable metadata), feature IDs/refs,
+// the feature color cascade, line-style layer helpers, feature-usage hook.
+// Loads after config.js; only external dependency is PapaParse (CDN).
+// Detail: docs/reference/core-app.md
 
 (function () {
   var App = window.App = window.App || {};
-
-  // Census API key now lives in js/core/config.js (loaded before this file),
-  // alongside the CARTO basemap key — see that file's header for why those
-  // values are public by design.
 
   // Sequential color palette for new lines + routes (shared sequence, 18 distinct colors)
   App.FEATURE_COLORS = [
@@ -30,7 +20,7 @@
   // Per-section color overrides (null = use sequential or built-in default)
   App.sectionColors = { point: null, line: null, route: null, polygon: null };
 
-  // --- Feature color resolution (docs/feature-color-system-plan.md) ---
+  // --- Feature color resolution ---
   // One cascade, for every drawn feature type, resolved fresh on every render:
   //   1. feature.properties.color, when non-empty — a per-feature override.
   //   2. App.sectionColors[type], when non-empty — a flat type-level default.
@@ -53,10 +43,8 @@
     if (typeof n === "number" && isFinite(n) && n >= _colorSeqCounter) _colorSeqCounter = n + 1;
   }
 
-  // Fallback for a line/route with no stamped colorSeq (every feature drawn
-  // before this cascade existed). Reproduces the array-position formula the
-  // creation sites used before colorSeq existed, so an untouched session
-  // resolves to the color it already has.
+  // Fallback for a line/route with no stamped colorSeq (older sessions): the
+  // array-position formula, so an untouched session keeps its colors.
   function _positionalColorSeq(featureType, feature) {
     if (featureType === "route") {
       return (App.lines ? App.lines.length : 0) + (App.routes ? App.routes.indexOf(feature) : 0);
@@ -85,14 +73,13 @@
     return "#2b6cb0"; // point, and any unrecognized type
   }
 
-  // --- Stable per-type feature IDs (docs/feature-merge-plan.md, Phase 1) ---
+  // --- Stable per-type feature IDs ---
   // Every drawn feature carries an integer ID in a per-type property
   // (pointIdx / lineIdx / routeIdx / polyIdx). It is used to map a clicked map
   // feature back to its array index and to link stops to routes
   // (attributes.associatedRoutes[].featureId). IDs are handed out from a
-  // monotonic per-type counter, so they are never reused after a delete
-  // (the old `array.length + 1` scheme repeated IDs once anything was removed).
-  // Display names ("Route 3") are independent of the ID and unchanged.
+  // monotonic per-type counter, so they are never reused after a delete.
+  // Display names ("Route 3") are independent of the ID.
 
   App.FEATURE_ID_PROP = { point: "pointIdx", line: "lineIdx", route: "routeIdx", polygon: "polyIdx" };
 
@@ -181,7 +168,7 @@
     });
   }
 
-  // --- Feature references by stable ID (docs/feature-merge-plan.md, Phase 4b) ---
+  // --- Feature references by stable ID ---
   // Array indices shift whenever an earlier feature is deleted or merged, so a
   // module that remembers a feature by index silently retargets. A feature ref
   // is { type, id } (type = point|line|route|polygon, id = the per-type stable
@@ -307,7 +294,7 @@
   App.indexFilterToRefs = function (filter) { return indexFilterToRefsIn(_liveArrays(), filter); };
   App.ensureFeatureIds = ensureFeatureIds;
 
-  /* Feature usage hook (docs/feature-split-plan.md Phase 3). Analysis modules
+  /* Feature usage hook. Analysis modules
      register a provider fn(type, id) -> [label | {label, severity}] that says
      how they refer to a feature; the Split and Merge dialogs ask
      describeFeatureUsage(type, id) -> [{module, label, severity: "warn"|"info"}].
@@ -337,7 +324,7 @@
     return out;
   };
 
-  // "Last action wins" (docs/feature-color-sync-plan.md): a type-wide color
+  // "Last action wins": a type-wide color
   // chosen in the Layers tab must reach every feature of that type, so each
   // feature's own override is cleared and it inherits the type setting again.
   // Does not re-render or push undo -- App.setTypeColor (features.js) does both.
@@ -717,4 +704,76 @@
   App.objToMap = objToMap;
   App.nestedMapToObj = nestedMapToObj;
   App.nestedObjToMap = nestedObjToMap;
+
+  // ---- Per-feature line style ----
+  // Drawn Lines/Routes render in THREE layers over one source, one per
+  // properties._lineStyle value, because MapLibre's line-dasharray cannot be a
+  // data expression. The solid layer keeps the historical id. Never reference
+  // "lines-layer"/"routes-layer" alone for hit-testing — use these helpers.
+  var LINE_STYLES = ["solid", "dashed", "dotted"];
+  var LINE_STYLE_LAYERS = {
+    line:  ["lines-layer",  "lines-layer-dashed",  "lines-layer-dotted"],
+    route: ["routes-layer", "routes-layer-dashed", "routes-layer-dotted"]
+  };
+  // Dash arrays are in line-width units. Dotted = zero-length dash + round cap.
+  var LINE_STYLE_DASH = { dashed: [4, 2.5], dotted: [0, 2] };
+
+  function normalizeLineStyle(v) {
+    return (v === "dashed" || v === "dotted") ? v : "solid";
+  }
+  // MapLibre filter for one style layer. The solid filter catches absent,
+  // "", "solid" and any unknown value, so a feature can never vanish.
+  function lineStyleFilter(style) {
+    if (style === "dashed" || style === "dotted") return ["==", ["get", "_lineStyle"], style];
+    return ["!", ["in", ["coalesce", ["get", "_lineStyle"], ""], ["literal", ["dashed", "dotted"]]]];
+  }
+  function lineStyleLayerIds(type) {
+    if (type === "line" || type === "route") return LINE_STYLE_LAYERS[type].slice();
+    return LINE_STYLE_LAYERS.line.concat(LINE_STYLE_LAYERS.route);
+  }
+  // "line" | "route" | null for a MapLibre layer id.
+  function lineStyleLayerType(layerId) {
+    if (LINE_STYLE_LAYERS.line.indexOf(layerId) >= 0) return "line";
+    if (LINE_STYLE_LAYERS.route.indexOf(layerId) >= 0) return "route";
+    return null;
+  }
+  // Creates the three style layers for a line/route source (call once, when
+  // the source is first added). paint is the solid layer's paint object.
+  function addLineStyleLayers(map, type, sourceId, paint) {
+    LINE_STYLE_LAYERS[type].forEach(function (id, i) {
+      var style = LINE_STYLES[i];
+      var p = {};
+      for (var k in paint) p[k] = paint[k];
+      var spec = { id: id, type: "line", source: sourceId, filter: lineStyleFilter(style), paint: p };
+      if (LINE_STYLE_DASH[style]) p["line-dasharray"] = LINE_STYLE_DASH[style];
+      if (style === "dotted") spec.layout = { "line-cap": "round" };
+      map.addLayer(spec);
+    });
+  }
+
+  // Per-feature appearance overrides (color is copied separately by callers).
+  // Used by Duplicate (Decision 5): copy every override, never _mergedFrom.
+  var APPEARANCE_OVERRIDE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth",
+    "_offset", "_offsetManual", "_lineStyle", "_bufferRadius"];
+  function copyAppearanceOverrides(srcProps, dstProps) {
+    if (!srcProps || !dstProps) return dstProps;
+    APPEARANCE_OVERRIDE_KEYS.forEach(function (k) {
+      // An automatic overlap offset (no _offsetManual) belongs to the source's
+      // position, not its look — the copy gets its own from the next recompute.
+      if ((k === "_offset" || k === "_offsetManual") && !srcProps._offsetManual) return;
+      if (srcProps[k] !== undefined && srcProps[k] !== null) dstProps[k] = srcProps[k];
+    });
+    return dstProps;
+  }
+  App.APPEARANCE_OVERRIDE_KEYS = APPEARANCE_OVERRIDE_KEYS;
+  App.copyAppearanceOverrides = copyAppearanceOverrides;
+
+  App.LINE_STYLES = LINE_STYLES;
+  App.LINE_STYLE_LAYERS = LINE_STYLE_LAYERS;
+  App.LINE_STYLE_DASH = LINE_STYLE_DASH;
+  App.normalizeLineStyle = normalizeLineStyle;
+  App.lineStyleFilter = lineStyleFilter;
+  App.lineStyleLayerIds = lineStyleLayerIds;
+  App.lineStyleLayerType = lineStyleLayerType;
+  App.addLineStyleLayers = addLineStyleLayers;
 })();

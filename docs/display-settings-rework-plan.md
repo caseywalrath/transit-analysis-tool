@@ -1,5 +1,9 @@
 # Display Settings rework — implementation plan
 
+> **Status:** Partial (verified 2026-10). Shipped: Phases 1-5 (Display Settings module removed, scrubber `App.buildScrubber`, Layers style drawers, Attribute Summary without appearance icons, style-presets entry in features.md).
+> Remaining:
+> - Phase 0 (resizable feature panel): no drag handle in index.html or js/core/features.js; `--fp-width` is still a fixed 250px in css/style.css:58.
+
 Replaces the 15-fader Display Settings matrix with per-type style drawers in the Layers panel,
 and separates appearance from analysis geometry and from attribute data.
 
@@ -120,7 +124,9 @@ that constant, for `.fp-collapsed` and for `body.present-mode`.
 
 Replace this with a single variable:
 
-- Define `--fp-width: 208px` on `#app`.
+- Define `--fp-width: 208px` on `#app`. *(Done early, separately from this plan: `--fp-width` now exists on
+  `:root` and the default was widened to 250px, so substitute 250px for 208px wherever this phase says 208px.
+  `#feature-panel` and `.module-popup` already read the variable; step 0.1 is complete.)*
 - `#feature-panel { width: var(--fp-width); }`
 - `.module-popup { padding-right: calc(var(--fp-width) + 25px); }`
 - The collapsed and present-mode rules stay as they are — they already force `24px` and can keep
@@ -362,7 +368,7 @@ Settings is deleted.
 ### Scope note
 
 This phase concerns **drawn feature** styling only. It is unrelated to
-`docs/layers-panel-styling-eval.md`, which evaluated exposing *analysis choropleth* ramp/class
+`docs/archive/layers-panel-styling-eval.md`, which evaluated exposing *analysis choropleth* ramp/class
 specs in the Layers panel and recommended against it. That decision stands; do not revisit it and
 do not add style drawers to `ANALYSIS` or `REFERENCE` manifest entries.
 
@@ -632,7 +638,7 @@ Do not implement these as part of any phase above.
   prove out.
 - **Removing the override icons from the per-feature attribute popup.** Noted in 4.4.
 - **Analysis-layer (choropleth) style controls in the Layers panel.** Settled against in
-  `docs/layers-panel-styling-eval.md`.
+  `docs/archive/layers-panel-styling-eval.md`.
 - **Label and text box type-level style defaults.** Labels and text boxes are DOM markers, not map
   layers, and sit outside the `featureSettings` / paint-property model this plan works in. A
   Labels drawer is a reasonable later addition but needs its own design.

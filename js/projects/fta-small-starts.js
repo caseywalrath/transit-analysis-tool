@@ -1,8 +1,7 @@
-// js/projects/fta-small-starts.js
-// FTA Small Starts (Land Use): breakpoint classification, CRE / ESS / LBAR upload + computation.
-// Popup-based UI with 2 tabs (Ratings | Data Inputs).
-// Depends on: App namespace (utils, map, points, census, lodes), turf (CDN).
-// Exports: none (self-registers via App.registerModule)
+// js/projects/fta-small-starts.js — FTA Small Starts Land Use ratings: breakpoint classification,
+// CRE / ESS / LBAR upload + computation. Tabbed popup (Ratings | Data Inputs).
+// Depends on: App (utils, map, points, census, lodes), turf. Exports: none (self-registers).
+// Detail: docs/reference/modules/fta-small-starts.md
 
 (function () {
   "use strict";
@@ -99,10 +98,15 @@
     if (map.getSource("lbar-sites"))      map.removeSource("lbar-sites");
   }
 
+  // Set by Clear / Reset Session. Uploaded LBAR sites are input data and survive
+  // a clear, so without this flag the next update() would redraw the layer.
+  // Cleared by the next ratings run or by the user toggling the layer checkbox.
+  var _lbarCleared = false;
+
   function refreshLbarLayerVisibility() {
     var cb = document.getElementById("ftaToggleLbarLayer");
     var on = cb && cb.checked;
-    if (!on || !LBAR_SITES || LBAR_SITES.length === 0) { removeLbarLayer(); return; }
+    if (_lbarCleared || !on || !LBAR_SITES || LBAR_SITES.length === 0) { removeLbarLayer(); return; }
     ensureLbarLayer();
   }
 
@@ -325,19 +329,16 @@
     var year     = document.getElementById("ftaYearSelect").value;
     var geoLevel = document.getElementById("ftaGeoLevel").value;
 
-    // LBAR units in point union
     var lbarPoint = 0;
     for (var i = 0; i < LBAR_SITES.length; i++) {
       var s = LBAR_SITES[i];
       if (turf.booleanPointInPolygon(turf.point([s.lon, s.lat]), unionFeat)) lbarPoint += s.units;
     }
 
-    // Total housing units in point union
     var huPointRes  = await App.computeAcsValueOnly("B25001_001E", year, geoLevel);
     var huPoint     = huPointRes.value;
     var sharePoint  = (Number.isFinite(huPoint) && huPoint > 0) ? (lbarPoint / huPoint) : NaN;
 
-    // County share
     var counties = parseCountyListInput();
     if (counties.length === 0)
       return { ratio: NaN, sharePoint: sharePoint, shareCounty: NaN,
@@ -395,8 +396,9 @@
 
     var runBtn   = document.getElementById("ftaRun");
     if (runBtn) runBtn.disabled = true;
+    _lbarCleared = false;
+    refreshLbarLayerVisibility();
 
-    // Reset all pills
     setPill("bpPopPill",  "N/A", "na");
     setPill("bpEmpPill",  "N/A", "na");
     setPill("bpLbarPill", "N/A", "na");
@@ -624,7 +626,6 @@
     if (_initialized) return;
     _initialized = true;
 
-    // Tab switching
     var tabs = document.querySelectorAll(".fta-tab");
     for (var t = 0; t < tabs.length; t++) {
       tabs[t].addEventListener("click", function (e) {
@@ -632,17 +633,18 @@
       });
     }
 
-    // Compute Ratings
     var runBtn = document.getElementById("ftaRun");
     if (runBtn) runBtn.addEventListener("click", function () { updateBreakpointRatings(); });
 
-    // Export
     var exportBtn = document.getElementById("ftaExportCSV");
     if (exportBtn) exportBtn.addEventListener("click", exportRatingsCSV);
 
     // LBAR layer toggle
     var toggleLbar = document.getElementById("ftaToggleLbarLayer");
-    if (toggleLbar) toggleLbar.addEventListener("change", refreshLbarLayerVisibility);
+    if (toggleLbar) toggleLbar.addEventListener("change", function () {
+      _lbarCleared = false;
+      refreshLbarLayerVisibility();
+    });
 
     var ratingsSettings = document.querySelector('.fta-tab-content[data-tab="ratings"] .rf-settings-col');
     if (ratingsSettings) ratingsSettings.addEventListener("change", function () { renderInputs(); });
@@ -922,6 +924,30 @@
     // State persists in closure
   }
 
+  // Removes the map output and ratings. Uploaded CRE/ESS/LBAR data is input and is kept.
+  function clearAll() {
+    removeLbarLayer();
+    _lbarCleared = true;
+    _lastRatings = null;
+    if (!isPopupVisible()) return;
+    ["bpPopPill", "bpEmpPill", "bpLbarPill", "bpCrePill", "bpEssPill"].forEach(function (id) {
+      setPill(id, "N/A", "na");
+    });
+    var setVal = function (id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; };
+    ["bpPopValue", "bpEmpValue", "bpLbarValue", "bpCreValue", "bpEssValue"].forEach(function (id) {
+      setVal(id, "\u2014");
+    });
+    setVal("bpLbarNote", "Requires LBAR inventory + counties");
+    setVal("bpCreNote",  "Requires CRE upload");
+    setVal("bpEssNote",  "Requires ESS upload + points");
+    var statusEl = document.getElementById("ftaStatus");
+    if (statusEl) statusEl.style.display = "none";
+    var exportBtn = document.getElementById("ftaExportCSV");
+    if (exportBtn) exportBtn.disabled = true;
+    renderInputs(false);
+    if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("setup");
+  }
+
   async function update(core) {
     refreshLbarLayerVisibility();
     if (isPopupVisible()) {
@@ -968,7 +994,8 @@
     init:    function (core) { init(core); },
     onOpen:  function (core) { onOpen(core); },
     onClose: function (core) { onClose(core); },
-    update:  async function (core) { await update(core); }
+    update:  async function (core) { await update(core); },
+    clear:   clearAll
   });
 
   // Register with session cache

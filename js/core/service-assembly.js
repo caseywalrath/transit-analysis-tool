@@ -18,15 +18,16 @@
 //   solo:   "solo-<type>-id<stable ID>"      e.g. "solo-route-id12"
 // The solo key is built from the feature's stable ID (properties.routeIdx /
 // lineIdx), NOT its array index, so it survives deleting or merging an earlier
-// feature (docs/feature-merge-plan.md Phase 4b). The old format was
-// "solo-<type>-<arrayIndex>" ("solo-route-3"); the "id" infix makes the two
-// formats impossible to confuse, and migrateServiceKey upgrades a legacy one.
+// feature. The old format was "solo-<type>-<arrayIndex>" ("solo-route-3"); the
+// "id" infix makes the two formats impossible to confuse, and migrateServiceKey
+// upgrades a legacy one. Detail: docs/reference/drawing-and-features.md
 
 (function () {
   "use strict";
   var App = window.App = window.App || {};
 
-  // Valid direction opposites for 2-pattern Services (3+ pattern Services have no pair rule) (sorted, "|"-joined key).
+  // Valid direction opposites for 2-pattern Services (sorted, "|"-joined key);
+  // 3+ pattern Services have no pair rule.
   var VALID_PAIR_KEYS = {
     "NB|SB":            true,
     "EB|WB":            true,
@@ -64,8 +65,7 @@
   function validateService(svc, runtimeMode) {
     var ps = svc.patterns;
 
-    // 3+ patterns (docs/gtfs-route-browser-plan.md "Phase 3 design"): each
-    // pattern is costed as its own one-way trip stream, so the opposite-pair
+    // 3+ patterns: each pattern is costed as its own one-way trip stream, so the opposite-pair
     // rule cannot apply. Instead every pattern needs a one-way direction —
     // "Both" (also what a blank direction reads as) would be ambiguous.
     if (ps.length >= 3) {
@@ -78,7 +78,6 @@
       });
     }
 
-    // 2-pattern: must be valid opposites
     if (ps.length === 2) {
       var key = [ps[0].direction, ps[1].direction].sort().join("|");
       if (!VALID_PAIR_KEYS[key]) {
@@ -124,7 +123,6 @@
       });
     }
 
-    // No service bands with a headway defined on any pattern
     var hasAnyBand = ps.some(function (p) {
       var s = p.service || {};
       var any = function (arr) {
