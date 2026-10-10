@@ -345,12 +345,15 @@ async function main() {
     await page.waitForTimeout(1000); // debounced autosave
     await page.reload({ waitUntil: "load" });
     await ready();
-    await page.waitForTimeout(500);
-    check("selection restored with no feed loaded", (await sel()) === "a1,a2,b1,b4", await sel());
-    check("no feed -> nothing in feed", eq(await page.evaluate(() => App.gtfsStops.count()), { total: 4, inFeed: 0 }), await page.evaluate(() => App.gtfsStops.count()));
+    // The feed itself now comes back too (IndexedDB copy of the last ZIP,
+    // js/core/gtfs-store.js): the last one loaded was nobuild.zip.
+    await page.waitForFunction("App.gtfsStops.isAvailable().ok && App.map.getLayer('gtfs-stops-selected')", { timeout: 15000 });
+    check("selection restored", (await sel()) === "a1,a2,b1,b4", await sel());
+    check("last-loaded feed restored: 4 selected, 2 in it", eq(await page.evaluate(() => App.gtfsStops.count()), { total: 4, inFeed: 2 }), await page.evaluate(() => App.gtfsStops.count()));
+    check("restored feed name is the last one loaded", await page.evaluate(() => App.gtfsStops.feedFileName()) === "nobuild.zip");
     await page.evaluate(() => App.map.jumpTo({ center: [-104.8, 38.808], zoom: 15 }));
     await loadFeed("build.zip", []);
-    check("selection reappears once the feed loads (highlight + counts)", (await sel()) === "a1,a2,b1,b4" &&
+    check("selection reappears once the other feed loads (highlight + counts)", (await sel()) === "a1,a2,b1,b4" &&
       eq(await page.evaluate(() => App.gtfsStops.count()), { total: 4, inFeed: 4 }) &&
       await page.evaluate(() => JSON.stringify(App.map.getFilter("gtfs-stops-selected")).includes('"b4"')));
 

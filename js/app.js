@@ -1881,6 +1881,19 @@
       });
     }
 
+    // Same idea for the GTFS feed: the session autosave holds only the stop
+    // selection and hidden routes, so the feed's ZIP is kept in IndexedDB and
+    // re-parsed here — see App.restoreCachedGTFS() in js/projects/gtfs.js. Also
+    // after the session restore above, so the stop list and hidden sets are in
+    // place before the feed arrives.
+    if (typeof App.restoreCachedGTFS === "function") {
+      App.restoreCachedGTFS().then(function (restored) {
+        if (restored) notifyProject();
+      }).catch(function (e) {
+        console.warn("GTFS cache restore failed:", e);
+      });
+    }
+
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");
     if (_viewOnlyFreshBtn) {

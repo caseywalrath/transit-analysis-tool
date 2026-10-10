@@ -35,6 +35,7 @@
   var _hiddenRoutes  = {};        // routeKey -> true
   var _hiddenShapes  = {};        // shape_id -> true
   var _pendingHidden = null;      // { routes: [], shapes: [] } from a restored session
+  var _loadSeq = 0;               // bumped by every load and clear, so a slower, older load can tell it was superseded
   var UNASSIGNED_KEY = "__unassigned__";
   var HL_CASING = "gtfs-shapes-hl-casing";
   var HL_LAYER  = "gtfs-shapes-hl";
@@ -409,13 +410,20 @@
 
   // ---- ZIP / CSV parsing ----
 
-  async function loadGTFSFile(file) {
-    App.setStatus("Reading GTFS feed\u2026");
+  // opts.restored: the ZIP came from the IndexedDB copy of the last session
+  // (restoreCachedGTFS below), not from the user. A restored load keeps the hidden
+  // route/shape sets the session restore queued, and is not written back to the
+  // store. Resolves true when the feed is on the map, false otherwise (bad ZIP, or
+  // a newer load/clear superseded this one while it was parsing).
+  async function loadGTFSFile(file, opts) {
+    var restored = !!(opts && opts.restored);
+    var seq = ++_loadSeq;
+    App.setStatus(restored ? "Restoring GTFS feed\u2026" : "Reading GTFS feed\u2026");
     try {
       var zip = await JSZip.loadAsync(file);
     } catch (e) {
       App.setStatus("GTFS error: not a valid ZIP file.");
-      return;
+      return false;
     }
 
     var data = new Map();
@@ -430,14 +438,14 @@
 
     if (!entries.length) {
       App.setStatus("GTFS error: no .txt files found in ZIP.");
-      return;
+      return false;
     }
 
     // Require at least one GTFS-spec required file before treating this as a feed.
     var hasRequired = entries.some(function (e) { return REQUIRED[e.name]; });
     if (!hasRequired) {
       App.setStatus("GTFS error: ZIP contains no required GTFS files (stops, routes, trips, stop_times, calendar, calendar_dates, or agency).");
-      return;
+      return false;
     }
 
     App.setStatus("Parsing GTFS files\u2026");
@@ -460,11 +468,57 @@
       }
     }
 
-    _pendingHidden = null; // a fresh upload never inherits a session's hidden sets
+    // A newer load, or a Remove layer, happened while this one was parsing.
+    if (seq !== _loadSeq) return false;
+
+    if (!restored) _pendingHidden = null; // a fresh upload never inherits a session's hidden sets
     _feedFileName = file.name || "";
     applyGtfsData(data);
+    if (restored) applyPendingHidden();
     changed(); // feed name changed + re-apply highlight/counts; the stop list itself is kept (D8)
-    App.setStatus("GTFS loaded: " + data.size + " file(s).");
+    if (restored) {
+      App.setStatus("GTFS feed restored from last session: " + _feedFileName + " (" + data.size + " file(s)).");
+    } else {
+      App.setStatus("GTFS loaded: " + data.size + " file(s).");
+      persistFeed(file, seq);
+    }
+    return true;
+  }
+
+  // Keep the ZIP in IndexedDB (js/core/gtfs-store.js) so a page refresh brings
+  // the feed back. Deferred one tick: nothing downstream waits on it. Skipped
+  // when a newer load or a Remove layer has happened since, so a dismissed feed
+  // can never be written back after its clear.
+  function persistFeed(file, seq) {
+    if (!file || !file.name || typeof file.arrayBuffer !== "function") return;
+    if (!App.gtfsStore || !App.gtfsStore.supported()) return;
+    setTimeout(function () {
+      file.arrayBuffer().then(function (buf) {
+        if (seq !== _loadSeq) return;
+        return App.gtfsStore.save(file.name, buf);
+      }).catch(function () { /* optimization only */ });
+    }, 0);
+  }
+
+  // Bring back the feed that was loaded when the page was last open. Called once
+  // at startup from app.js, after cache.restore() so the stop selection and the
+  // queued hidden sets are already in place. Resolves true when a feed was
+  // restored. Re-parses the original ZIP through loadGTFSFile(), the same path as
+  // an upload. A feed that arrived some other way first (a session file, or the
+  // user picking a ZIP while this was reading) wins and this does nothing.
+  async function restoreCachedGTFS() {
+    if (_gtfsData) return false;
+    if (!App.gtfsStore || !App.gtfsStore.supported()) return false;
+    var startSeq = _loadSeq;
+    var rec = await App.gtfsStore.latest();
+    if (!rec || !rec.bytes) return false;
+    if (_gtfsData || _loadSeq !== startSeq) return false;
+    var file = new File([rec.bytes], rec.name, { type: "application/zip" });
+    var ok = await loadGTFSFile(file, { restored: true });
+    // Unreadable copy and nothing else touched the feed meanwhile: drop it so it
+    // does not fail again on every refresh.
+    if (!ok && !_gtfsData && _loadSeq === startSeq + 1) App.gtfsStore.clear();
+    return ok;
   }
 
   // Post-parse step shared by file-upload and restore-from-session paths.
@@ -505,6 +559,11 @@
   }
 
   function clearGTFS() {
+    _loadSeq++; // cancels any load still parsing
+    // Clearing is an explicit "remove this" action (Remove layer, Clear all
+    // features, Reset Session), so the stored copy goes too — otherwise the next
+    // refresh would resurrect the feed the user just dismissed.
+    if (App.gtfsStore) App.gtfsStore.clear();
     _gtfsData = null;
     _selectedFile = null;
     _routeIndex = null;
@@ -1566,6 +1625,7 @@
   // ---- Expose on App namespace ----
   App.gtfsData     = _gtfsData;   // null until loaded
   App.loadGTFSFile = loadGTFSFile;
+  App.restoreCachedGTFS = restoreCachedGTFS;
   App.clearGTFS    = clearGTFS;
   App.restoreGTFSFromData = restoreGTFSFromData;
   App.serializeGTFSData   = serializeGTFSData;
