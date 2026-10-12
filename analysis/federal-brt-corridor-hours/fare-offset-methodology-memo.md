@@ -2,7 +2,7 @@
 
 **Subject:** Proposed method, data limitations and recommended handling for comparing added fare revenue (from added ridership) against added operating cost, Federal Blvd BRT
 **Date:** 2026-10-12
-**Status:** Methodology review. No ridership or fare figures have been applied yet.
+**Status:** Methodology review, with preliminary estimates in Section 7 (inputs to be confirmed)
 **Related:** `service-hours-reconciliation-memo.md` and `README.md` in this folder
 
 ## Summary
@@ -109,3 +109,72 @@ Corridor BRT projects usually forecast a few thousand new daily trips. Expect fa
 2. From STOPS, get the Build minus No-Build change in total system linked trips (average weekday) and the forecast year.
 3. Get weekday revenue hours: No-Build Routes 30/31 from the No-Build GTFS, and BRT from the Plan spreadsheet's WK Hours sheet.
 4. Calculate the weekday offset ratio. Annualize, and run the sensitivities: marginal cost, fare year, full year with weekends, ramp-up.
+
+## 7. Preliminary estimates (2026-10-12)
+
+**For later comparison only.** Several inputs are unconfirmed (see 7.1). All dollars are 2024 dollars: the fare comes from 2024 NTD data, so it is paired with the 2024 cost rate from the Plan memo's chain, $180.85 per revenue hour.
+
+### 7.1 Inputs
+
+| Input | Value | Source | To confirm |
+|---|---|---|---|
+| Weekday ridership, No-Build | 6,720 | STOPS | Linked or unlinked? Corridor routes only, or the whole system? |
+| Weekday ridership, Build | 9,566 | STOPS | Same |
+| Added weekday ridership | **2,846** | Build − No-Build | — |
+| Fare per unlinked trip | $0.81 | 2024 NTD | Update to 2023 to match the GTFS base year |
+| Cost per revenue hour | $180.85 | Plan memo rate chain, 2024 | — |
+| Weekday revenue hours, No-Build Routes 30 + 31 | 231.4 | No-Build GTFS, each bus's first departure to last arrival (bus assignments that serve only 30/31) | One bus assignment that also runs another route is excluded (small) |
+| Weekday revenue hours, BRT | 311.6 | Plan spreadsheet, WK Hours | — |
+| Added weekday revenue hours | **80.2** | — | — |
+| Weekdays per year | 255 | Plan memo | — |
+
+Route 29 and the other unchanged routes are left out of both sides. For reference, weekday trip time without layover is 185.8 hours for No-Build Routes 30 + 31 and 247.1 hours for the BRT.
+
+### 7.2 Base estimate (weekday, revenue hours, full cost rate)
+
+| | No-Build | Build | Change |
+|---|---|---|---|
+| Weekday ridership | 6,720 | 9,566 | +2,846 |
+| Weekday fare revenue | $5,443 | $7,748 | **+$2,305** |
+| Weekday revenue hours | 231.4 | 311.6 | +80.2 |
+| Weekday operating cost | $41,849 | $56,353 | **+$14,504** |
+| Farebox recovery | 13.0% | 13.7% | — |
+| Annual (255 weekdays): fare revenue | $1.39M | $1.98M | **+$0.59M** |
+| Annual (255 weekdays): operating cost | $10.67M | $14.37M | **+$3.70M** |
+
+**Base result: added fare revenue covers about 16% of the added weekday operating cost.** That is about $0.59 million of $3.70 million a year on weekdays, leaving a net added cost of about $3.1 million a year.
+
+Farebox recovery is about the same in both scenarios, so the BRT neither improves nor worsens the corridor's cost recovery much. The added riders pay for about the same share of the added service as existing riders do today.
+
+### 7.3 Sensitivities
+
+| Case | Change from base | Offset ratio |
+|---|---|---|
+| Base | — | **16%** |
+| Trip time only (no layover) on both sides | +61.3 hrs/day instead of +80.2 | 21% |
+| Ridership is linked trips (assumes 1.3 boardings per trip, so $1.05 per trip) | Revenue × 1.3 | 21% |
+| Marginal cost at 70% of the full rate | Cost × 0.7 | 23% |
+| Linked trips + marginal cost | Both | 30% |
+| Part of the added ridership is diverted from other routes (half is new) | Revenue × 0.5 | 8% |
+| 2029 cost rate ($209.66) with the fare held at $0.81 | Cost × 1.16 | 14% |
+| Full year (see note) | Weekend hours added | ~11% |
+
+**Full-year note.** Weekend increases in hours are larger than on weekdays:
+- Saturday: 166.8 → 277.0 (+110.2)
+- Sunday/holiday: 115.9 → 245.9 (+130.0)
+
+That brings the annual increase to about 33,700 revenue hours, or $6.10 million. Weekend ridership is not yet available. Scaling weekday revenue to about 300 weekday-equivalent days gives about $0.69 million, an offset of about 11%. Adding weekends therefore lowers the ratio.
+
+### 7.4 Reading the results
+
+- **Expected range: about 10% to 30%.** The base case is about 16%.
+- **The biggest unknown is what 6,720 and 9,566 measure.**
+  - If they are BRT and corridor-route boardings rather than the change in total system trips, part of the 2,846 is riders moving from other routes. Those riders bring no new fare, which pushes the ratio toward the low end.
+  - If they are linked system trips, the ratio moves up.
+- **Inputs to update when confirmed:**
+  1. what the STOPS figures measure, and their forecast year;
+  2. the 2023 NTD fare per trip;
+  3. a marginal cost rate, if RTD has one.
+
+  Each enters the tables above as a direct multiplier.
+
