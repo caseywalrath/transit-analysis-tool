@@ -56,6 +56,11 @@ for r in read(os.path.join(feed, "stop_times.txt")):
 
 out_rows = []
 gaps = collections.Counter()
+_dirs = collections.defaultdict(set)
+for _t in trips:
+    _dirs[_t["route_id"]].add(_t.get("direction_id", ""))
+two_way_routes = {r for r, d in _dirs.items() if len(d) > 1}
+deps = collections.defaultdict(dict)  # (route, service, direction, stop) -> {trip_id: first departure sec}
 for t in trips:
     rows = st.get(t["trip_id"])
     if not rows:
@@ -98,6 +103,20 @@ for t in trips:
         a, b = hms(run[0]["departure_time"]), hms(run[-1]["arrival_time"])
         pts = [(float(stops[x["stop_id"]]["stop_lat"]), float(stops[x["stop_id"]]["stop_lon"])) for x in run]
         mi = sum(miles(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+        # Direction: GTFS direction_id when the route uses both values; otherwise geography
+        # (the Build feed codes every BRT trip as 0). Geography alone fails for routes like 35
+        # that run up Federal to Evans and back on every trip, passing the same stops both ways.
+        if t["route_id"] in two_way_routes:
+            geo_dir = "d" + t.get("direction_id", "")
+        else:
+            dlat, dlon = pts[-1][0] - pts[0][0], pts[-1][1] - pts[0][1]
+            geo_dir = ("N" if dlat > 0 else "S") if abs(dlat) >= abs(dlon) * 0.77 else ("E" if dlon > 0 else "W")
+        # Measure at pass-through stops only: a run's first and last stops are terminals or
+        # turn-on/turn-off points, where departures bunch and distort the headway.
+        for x in run[1:-1]:
+            if x["stop_id"] in corr:
+                deps[(t["route_id"], t["service_id"], geo_dir, x["stop_id"])].setdefault(t["trip_id"], hms(x["departure_time"]))
+                # one count per trip: route 35 passes the same stop twice (up Federal to Evans and back)
         out_rows.append({
             "route_id": t["route_id"], "service_id": t["service_id"], "trip_id": t["trip_id"],
             "direction_id": t.get("direction_id", ""), "block_id": (t.get("block_id") or "").strip(),
@@ -116,11 +135,42 @@ for r in out_rows:
     a = agg[(r["route_id"], r["service_id"])]
     a[0] += 1; a[1] += r["corridor_min"] / 60; a[2] += r["corridor_mi"]
     if r["block_id"]: a[3].add(r["block_id"])
+def peak_of(times):
+    """Peak frequency at one stop, as an average headway = 60 / typical peak departures per hour.
+    Typical peak = the median of the three busiest clock hours, so one bunched hour (route 31
+    has a single 7-bus hour among its 6-bus hours) doesn't set the figure, and unevenly offset
+    patterns (the Build BRT alternates 6/9 or 4/11 min gaps at 8 buses/hr) still read as their
+    average. window = first to last clock hour with at least that many departures."""
+    per_hr = collections.Counter(x // 3600 for x in times.values())
+    if not per_hr:
+        return None
+    top = sorted(per_hr.values(), reverse=True)[:3]
+    n = top[len(top) // 2]
+    hrs = [hr for hr, c in per_hr.items() if c >= n]
+    window = "%02d:00-%02d:00" % (min(hrs), max(hrs) + 1) if n > 1 else ""
+    return 60.0 / n, n, window
+
+
+# Per route x service: busiest corridor stop in each travel direction (N/S/E/W); route peak = best direction.
+peak = {}
+for (rid, sid, dr, stop), times in deps.items():
+    key = (rid, sid, dr)
+    if key not in peak or len(times) > len(peak[key][1]):
+        peak[key] = (stop, times)
+route_peak = {}
+for (rid, sid, dr), (stop, times) in peak.items():
+    p = peak_of(times)
+    if p and ((rid, sid) not in route_peak or p[0] < route_peak[(rid, sid)][0]):
+        route_peak[(rid, sid)] = p + (stops[stop]["stop_name"],)
+
 with open(os.path.join(outdir, label + "_summary.csv"), "w", newline="") as f:
     w = csv.writer(f)
-    w.writerow(["route_id", "service_id", "trip_runs", "corridor_hrs", "corridor_mi", "blocks"])
+    w.writerow(["route_id", "service_id", "trip_runs", "corridor_hrs", "corridor_mi", "blocks",
+                "peak_headway_min", "peak_trips_per_hr", "peak_window", "peak_measured_at"])
     for (rid, sid), (n, h, mi, bl) in sorted(agg.items()):
-        w.writerow([rid, sid, n, round(h, 2), round(mi, 2), len(bl)])
+        hw, tph, win, at = route_peak.get((rid, sid), ("", "", "", ""))
+        w.writerow([rid, sid, n, round(h, 2), round(mi, 2), len(bl),
+                    round(hw, 1) if hw != "" else "", tph, win, at])
 
 print("%s: list=%d stops, excluded routes=%s, trip-runs=%d" % (label, len(corr), sorted(excluded), len(out_rows)))
 print("gap stops (non-list stop between list stops; stop, route: trips):")

@@ -37,6 +37,19 @@ For each trip, the scripts find stretches of 2 or more consecutive stops that ar
 
 Service IDs: `WK` = weekday, `SA` = Saturday, `SU` = Sunday, `DPSWK` = school-day add-on trips.
 
+## Peak frequency columns
+
+`*_summary.csv` carries `peak_headway_min`, `peak_trips_per_hr`, `peak_window` and `peak_measured_at`; `route_comparison.csv` carries `nobuild_peak_headway_min` and `build_peak_headway_min`.
+
+How it is measured, per route, service day and direction:
+- At the corridor stop served by the most trips, counting only stops a trip passes through (not where it starts or ends) and each trip once.
+- Departures are counted per clock hour. The typical peak is the middle value of the three busiest hours, and the headway is 60 ÷ that count. This is an average, so evenly or unevenly spaced service reads the same: the BRT's two patterns alternate 6/9-minute gaps at 8 buses an hour and read as 7.5.
+- `peak_window` is the first to last clock hour that reaches the peak count (blank for hourly service).
+- Direction comes from GTFS `direction_id` when a route uses both values. Otherwise it is taken from the map (north/south or east/west), because the Build feed codes every BRT trip as direction 0.
+- The route's figure is its more frequent direction.
+
+Weekday results: route 31 every 10 min (06:00–18:00), BRT every 7.5 min where the two patterns overlap (05:00–19:00), route 35 every 30 min, routes 14 every 30, and 29/30/36/120E/120W every 60. These match the service descriptions in the Dec 2024 Service Plan memo. One oddity: route 30 on Sundays reads 30 min (08:00–16:00) near Evans, because the feed has two Sunday trips an hour there.
+
 ## Caveats
 
 1. **BRT stop IDs.** The BRT uses its own stop IDs, stacked on the local stops (local 13714, BRT 113714). The exported list caught only 4 of the BRT's 88 stops, so as exported the BRT counted zero hours. `build_stops_plus_brt.csv` adds every stop the BRT serves; all are on Federal within the list's extent. To fix it at the source instead: load Build in the app, Select stops by box, Shift+drag the corridor, re-export.

@@ -1,18 +1,18 @@
-route_id,service_id,trip_runs,corridor_hrs,corridor_mi,blocks
-120E,SA,30,1.81,30.08,3
-120E,SU,30,1.64,30.08,3
-120E,WK,36,2.2,36.09,7
-120W,WK,12,1.25,18.64,7
-14,SA,52,1.38,18.82,3
-14,SU,22,0.58,7.96,2
-14,WK,52,1.38,18.82,3
-29,SA,31,3.35,43.57,3
-29,SU,31,3.17,43.57,3
-29,WK,37,4.1,53.23,3
-35,SA,100,11.73,164.08,4
-35,SU,56,6.72,91.83,2
-35,WK,100,11.73,164.08,4
-36,SA,31,3.56,45.37,4
-36,SU,31,3.37,45.37,4
-36,WK,36,4.04,52.2,3
-FED 4C,WK,260,242.34,4004.26,0
+route_id,service_id,trip_runs,corridor_hrs,corridor_mi,blocks,peak_headway_min,peak_trips_per_hr,peak_window,peak_measured_at
+120E,SA,30,1.81,30.08,3,60.0,1,,W 120th Ave & Zuni St
+120E,SU,30,1.64,30.08,3,60.0,1,,W 120th Ave & Zuni St
+120E,WK,36,2.2,36.09,7,60.0,1,,W 120th Ave & Zuni St
+120W,WK,12,1.25,18.64,7,60.0,1,,W 120th Ave & Zuni St
+14,SA,52,1.38,18.82,3,30.0,2,07:00-19:00,S Federal Blvd & W Louisiana Ave
+14,SU,22,0.58,7.96,2,60.0,1,,S Federal Blvd & W Louisiana Ave
+14,WK,52,1.38,18.82,3,30.0,2,07:00-19:00,S Federal Blvd & W Louisiana Ave
+29,SA,31,3.35,43.57,3,60.0,1,,S Federal Blvd & W Bates Ave
+29,SU,31,3.17,43.57,3,60.0,1,,S Federal Blvd & W Bates Ave
+29,WK,37,4.1,53.23,3,60.0,1,,S Federal Blvd & W Bates Ave
+35,SA,100,11.73,164.08,4,30.0,2,09:00-19:00,S Federal Blvd & W Harvard Ave
+35,SU,56,6.72,91.83,2,60.0,1,,S Federal Blvd & W Harvard Ave
+35,WK,100,11.73,164.08,4,30.0,2,09:00-19:00,S Federal Blvd & W Harvard Ave
+36,SA,31,3.56,45.37,4,60.0,1,,S Federal Blvd & W Bates Ave
+36,SU,31,3.37,45.37,4,60.0,1,,S Federal Blvd & W Bates Ave
+36,WK,36,4.04,52.2,3,60.0,1,,S Federal Blvd & W Bates Ave
+FED 4C,WK,260,242.34,4004.26,0,7.5,8,05:00-19:00,S Federal Blvd/W Colorado Ave BRT NB
