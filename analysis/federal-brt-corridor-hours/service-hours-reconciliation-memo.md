@@ -15,7 +15,7 @@ The Plan memo reports BRT service at 112,470 annual hours against a 2023 baselin
 - The **2023 baseline counts trip time only**: first stop to last stop, no layover.
 - The **BRT figure counts revenue hours including layover and recovery** at the terminals.
 
-Measured on the same basis, the BRT plan is about **+39% to +40%** over 2023 service. That matches this folder's independent corridor analysis (+37% on a typical weekday). Because every cost in the memo is hours × one hourly rate, the "BRT vs existing" cost gap is overstated for the same reason, by roughly **$3.6–4.9 million a year** in 2029 dollars.
+Measured on the same basis, the BRT plan is about **+39% to +45%** over 2023 service. That matches this folder's independent corridor analysis (+45% on a typical weekday once the plan's late-night trips are included). Because every cost in the memo is hours × one hourly rate, the "BRT vs existing" cost gap is overstated for the same reason, by roughly **$3.6–4.2 million a year** in 2029 dollars.
 
 The comparison against the System Optimization Plan (SOP) is set aside here. The GTFS feeds are January 2023 service, and the SOP's 98,600 hours can't be checked against anything available.
 
@@ -41,26 +41,26 @@ The BRT hours come from the spreadsheet's **WK Hours** sheet. Each bus is counte
 
 | Day | BRT revenue hrs/day (with layover) | BRT trip hrs/day (no layover) |
 |---|---|---|
-| Weekday | 311.6 | 247.1 |
-| Saturday | 277.0 | 209.7 |
-| Sunday/Holiday | 245.9 | 183.5 |
-| **Annual** | **108,123** (memo: 108,050) | **84,549** |
+| Weekday | 311.6 | 256.3 |
+| Saturday | 277.0 | 218.6 |
+| Sunday/Holiday | 245.9 | 188.5 |
+| **Annual** | **108,123** (memo: 108,050) | **87,651** |
 
-The memo's 108,050 is the sum of rounded table values; the spreadsheet's unrounded total is 108,123. The trip-only column was computed from the spreadsheet's WK/SA/SU Times sheets: first to last timepoint for every trip, both directions. Layover makes up about a fifth of the BRT revenue hours.
+The memo's 108,050 is the sum of rounded table values; the spreadsheet's unrounded total is 108,123. The trip-only column was computed from the spreadsheet's WK/SA/SU Times sheets: first to last timepoint for every trip, both directions, including the trips that run past midnight. Layover makes up about a fifth of the BRT revenue hours (19%).
 
 ## 3. Like-for-like comparison
 
 | Basis | 2023 existing | BRT plan + Route 29 | Change |
 |---|---|---|---|
 | Memo (mixed bases) | 63,800 (trip time) | 112,470 (with layover) | **+76%** |
-| Both trip time only | 63,617 | 84,549 + 4,430 = 88,980 | **+40%** |
+| Both trip time only | 63,617 | 87,651 + 4,430 = 92,080 | **+45%** |
 | Both with layover | 80,980 | 112,550 | **+39%** |
 
 Notes on the "both with layover" row:
 - The existing Routes 30/31 figure (76,551) uses each bus's day from first departure to last arrival, grouped by the feed's bus assignments (`block_id`). This is the same method the spreadsheet uses for BRT.
 - Route 29 (4,430) is counted as trip time only, because its buses also run other routes and their day can't be split out. The total is 76,551 + 4,430 = 80,980.
 
-Both like-for-like methods land at about +39% to +40%.
+Both like-for-like methods land at about +39% to +45%.
 
 ### Cross-check against the corridor-only analysis
 
@@ -70,7 +70,7 @@ This folder's corridor analysis measures something narrower: scheduled time **on
 |---|---|---|---|
 | Corridor trip hours | 195.1 | 267.0 | +72.0 hrs (**+37%**) |
 
-The Build feed is missing the plan's late-evening BRT trips (about 7.4 trip hours on a weekday; see Section 5). Adding them back puts the change at roughly +77 hours (+39%), consistent with the route-level result above.
+The Build feed has no running times for the plan's 16 late-night BRT trips (16.4 trip hours on a weekday; see Section 5). Adding them back puts the change at roughly +88 hours (+45%), consistent with the trip-time route-level result above.
 
 ## 4. Operating cost
 
@@ -97,18 +97,37 @@ Using the spreadsheet's unrounded 112,550 hours, the BRT figure is $23,597,145.
 | Basis | Increase over existing | Overstated by | At $209.66/hr |
 |---|---|---|---|
 | Memo (mixed) | 48,670 hrs | — | — |
-| Both trip time only | 88,980 − 63,617 = 25,363 hrs | 23,307 hrs | **$4.9M/yr** |
+| Both trip time only | 92,080 − 63,617 = 28,463 hrs | 20,207 hrs | **$4.2M/yr** |
 | Both with layover | 112,550 − 80,980 = 31,570 hrs | 17,100 hrs | **$3.6M/yr** |
 
-So the BRT-vs-existing operating cost increase is overstated by roughly **$3.6–4.9 million a year** in 2029 dollars.
+So the BRT-vs-existing operating cost increase is overstated by roughly **$3.6–4.2 million a year** in 2029 dollars.
 
 The BRT-vs-SOP gap ($2.9M) is like for like only if the SOP's 98,600 hours also include layover; the memo doesn't say.
 
 ## 5. Other reconciliation notes
 
-- **Plan schedule vs Build GTFS (weekday).** The Plan spreadsheet has 269 BRT trips (247.1 trip hours). The Build feed has 260 timed trips (242.3 hours) plus 16 placeholder trips whose times are all 00:00.
-  - On the matching 260 trips, the feed runs 2.6 hours longer, about 0.6 minutes per trip.
-  - The feed is missing the plan's 9 extra trips (7.4 hours): 5 full-length late-evening trips and 4 short pull-in/pull-out trips. The plan's last departure is 23:54; the feed's is 21:55.
+- **Plan schedule vs Build GTFS.** Running hours (no layover), with and without the late-night trips. "Late-night" means trips departing after 21:55, the Build feed's last timed BRT departure.
+
+  | Day | Source | All trips | All hrs | Excl. late-night: trips | Excl. late-night: hrs | Late-night trips (full-corridor) | Late-night hrs | Last departure |
+  |---|---|---|---|---|---|---|---|---|
+  | Weekday | Plan spreadsheet | 276 | 256.3 | 260 | 239.9 | 16 (14) | 16.4 | 01:27 |
+  | Weekday | Build GTFS | 276 (16 untimed) | — | 260 | 242.3 | 16 (all 00:00) | — | 21:55 |
+  | Weekday | Build GTFS + plan late-night times (est.) | 276 | ~258.7 | 260 | 242.3 | 16 | 16.4 | — |
+  | Saturday | Plan spreadsheet | 260 | 218.6 | 243 | 202.2 | 17 (8) | 16.5 | 01:38 |
+  | Sunday/Holiday | Plan spreadsheet | 224 | 188.5 | 213 | 177.9 | 11 (5) | 10.6 | 00:38 |
+
+  Findings:
+  - The Build feed has the same 276 weekday trips as the plan.
+  - Its 16 placeholder trips are the plan's 16 late-night trips (8 each direction). The feed codes them as the full Wagon Road–Englewood pattern (45 stops) with every time set to 00:00, probably because the model could not represent service past midnight. The plan has 14 of the 16 as full-corridor trips and 2 as short trips.
+  - Excluding the late-night trips, the feed runs 2.4 hours a weekday (1.0%) longer than the plan, about 0.6 minutes per trip.
+  - Including the late-night trips, the plan's weekday total of 256.3 hours matches the figure computed by hand from WK Times (about 256).
+  - Generated by `plan_vs_gtfs.py`; output in `output/brt_plan_vs_gtfs_running_hours.csv`.
+- **Correction (2026-10-12).** An earlier version of this memo read the spreadsheet's after-midnight times (stored as dates) as blank, and so reported:
+  - 269 weekday trips, 247.1 hours, and a last departure of 23:54;
+  - weekend figures that were also too low;
+  - +40% on a trip-time basis, and a $4.9M overstatement.
+
+  The figures above, and in Sections 2–4 and 6, are corrected.
 - **Weekends.** The Build feed has no Saturday or Sunday BRT trips. Weekend comparisons must use the Plan spreadsheet, not the feed.
 - **"Platform" vs "revenue" hours.** The Plan memo uses "platform time" in one place and revenue hours elsewhere. The annual figures are revenue hours; platform hours, which add travel to and from the garage, appear in the spreadsheet but are not used.
 - **Baseline date.** Both feeds are RTD's January 2023 runboard (generated 2023-01-11). Corridor service may have changed in later service changes. A current No-Build would need a current RTD feed.
@@ -117,7 +136,7 @@ The BRT-vs-SOP gap ($2.9M) is like for like only if the SOP's 98,600 hours also 
 
 Report the BRT service increase on one consistent basis, either:
 - **revenue hours with layover:** about 81,000 hours today vs 112,550 for the plan (+39%), or
-- **trip time only:** 63,600 vs 89,000 (+40%).
+- **trip time only:** 63,600 vs 92,100 (+45%).
 
 Restate the BRT-vs-existing operating cost on the same basis. Before using the BRT-vs-SOP comparison, confirm with RTD whether the SOP's 98,600 hours include layover.
 

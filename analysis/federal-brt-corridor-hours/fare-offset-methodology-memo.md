@@ -54,9 +54,9 @@ Revenue-type hours (with layover) are already available for both scenarios:
 | Scenario | Trip hours (no layover) | Hours with layover | Ratio | Source |
 |---|---|---|---|---|
 | No-Build, Routes 30 + 31 | ~59,190 | ~76,550 | 1.29 | No-Build GTFS: each bus's first departure to last arrival (`reconcile_memo.py`) |
-| Build, BRT + Route 29 | ~88,980 | ~112,550 | 1.26 | Plan spreadsheet, WK Hours sheet |
+| Build, BRT + Route 29 | ~92,080 | ~112,550 | 1.22 | Plan spreadsheet, WK Hours sheet |
 
-The layover share is similar in both scenarios. If either side ever has to be estimated, scaling trip hours by the other side's ratio is a defensible fallback.
+The layover share is broadly similar in both scenarios: about 23% of revenue hours for the No-Build and 18% for the BRT. If either side ever has to be estimated, scaling trip hours by the other side's ratio is a defensible fallback.
 
 **Use dollar amounts, not a percentage alone.** The question is added revenue ÷ added cost, which needs a dollar figure on both sides. A percentage change in hours is only an intermediate step.
 
@@ -128,7 +128,7 @@ Corridor BRT projects usually forecast a few thousand new daily trips. Expect fa
 | Added weekday revenue hours | **80.2** | — | — |
 | Weekdays per year | 255 | Plan memo | — |
 
-Route 29 and the other unchanged routes are left out of both sides. For reference, weekday trip time without layover is 185.8 hours for No-Build Routes 30 + 31 and 247.1 hours for the BRT.
+Route 29 and the other unchanged routes are left out of both sides. For reference, weekday trip time without layover is 185.8 hours for No-Build Routes 30 + 31 and 256.3 hours for the BRT (all 276 plan trips, including late-night).
 
 ### 7.2 Base estimate (weekday, revenue hours, full cost rate)
 
@@ -151,7 +151,7 @@ Farebox recovery is about the same in both scenarios, so the BRT neither improve
 | Case | Change from base | Offset ratio |
 |---|---|---|
 | Base | — | **16%** |
-| Trip time only (no layover) on both sides | +61.3 hrs/day instead of +80.2 | 21% |
+| Trip time only (no layover) on both sides | +70.5 hrs/day instead of +80.2 | 18% |
 | Ridership is linked trips (assumes 1.3 boardings per trip, so $1.05 per trip) | Revenue × 1.3 | 21% |
 | Marginal cost at 70% of the full rate | Cost × 0.7 | 23% |
 | Linked trips + marginal cost | Both | 30% |

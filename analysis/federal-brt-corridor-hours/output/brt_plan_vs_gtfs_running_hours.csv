@@ -1,0 +1,6 @@
+day_type,source,all_trips,all_hrs,excl_late_trips,excl_late_hrs,late_trips,late_hrs,late_full_corridor_trips,last_departure
+Weekday,Plan spreadsheet,276,256.28,260,239.93,16,16.35,14,25:27
+Weekday,Build GTFS,276,,260,242.34,16,,,21:55
+Weekday,Build GTFS + plan late-night times (estimate),276,258.69,260,242.34,16,16.35,,
+Saturday,Plan spreadsheet,260,218.62,243,202.15,17,16.47,8,25:38
+Sunday/Holiday,Plan spreadsheet,224,188.47,213,177.85,11,10.62,5,24:38

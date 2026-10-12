@@ -33,6 +33,7 @@ For each trip, the scripts find stretches of 2 or more consecutive stops that ar
 | `output/nobuild_trips.csv`, `output/build_trips.csv` | One row per trip: route, service day, direction, block, entry/exit stop and time, corridor stops, minutes, miles. |
 | `service-hours-reconciliation-memo.md` | **Memo** reconciling this analysis with the Dec 2024 BRT Service Plan memo and spreadsheet (why its +76% is about +39% like for like). |
 | `fare-offset-methodology-memo.md` | **Memo** reviewing the method for comparing added BRT fare revenue (from STOPS ridership) against added operating cost: limitations and recommended handling. |
+| `plan_vs_gtfs.py` → `output/brt_plan_vs_gtfs_running_hours.csv` | BRT running hours, Plan spreadsheet vs Build GTFS, weekday/Saturday/Sunday, with and without the late-night trips (departing after 21:55). The table is also in the reconciliation memo, Section 5. Needs `openpyxl`. |
 | `reconcile_memo.py` | Reproduces the memo's numbers (needs the No-Build feed, the Plan spreadsheet and `openpyxl`). |
 | `output/nobuild_summary.csv`, `output/build_summary.csv` | Per route × service_id totals. |
 
@@ -56,7 +57,7 @@ Weekday results: route 31 every 10 min (06:00–18:00), BRT every 7.5 min where 
 1. **BRT stop IDs.** The BRT uses its own stop IDs, stacked on the local stops (local 13714, BRT 113714). The exported list caught only 4 of the BRT's 88 stops, so as exported the BRT counted zero hours. `build_stops_plus_brt.csv` adds every stop the BRT serves; all are on Federal within the list's extent. To fix it at the source instead: load Build in the app, Select stops by box, Shift+drag the corridor, re-export.
 2. **Evans/Clay loop.** Stops 21208, 21209 and 13565 (used by routes 29, 30, 31, 36) are not on the list. The 2-stop skip rule counts the loop time; without it, No-Build drops about 14 weekday hours and the change becomes about +79.
 3. **No weekend BRT in the Build feed.** All 276 BRT trips are weekday only, so the Saturday (−85%) and Sunday (−84%) results reflect the model feed, not a real plan. Compare weekdays only.
-4. **16 BRT placeholder trips** with 00:00 times are skipped (no real schedule).
+4. **16 BRT placeholder trips** with 00:00 times are skipped (no real schedule). They are the plan's 16 late-night weekday trips, which depart after 21:55 and run to about 02:30. Adding their plan running time (16.4 hrs) makes the weekday Build about 283 hrs, a change of about +88 (+45%). See `output/brt_plan_vs_gtfs_running_hours.csv`.
 5. **No BRT `block_id`**, so vehicle counts can't come from the Build feed.
 
 ## Re-running

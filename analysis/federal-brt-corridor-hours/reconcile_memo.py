@@ -56,6 +56,8 @@ wb = openpyxl.load_workbook(xlsx, data_only=True)
 
 
 def sec(v):
+    if isinstance(v, datetime.datetime):  # after midnight is stored as a date: 1900-01-01 00:24 = 24:24
+        return (v - datetime.datetime(1899, 12, 31)).total_seconds()
     if isinstance(v, datetime.time):
         return v.hour * 3600 + v.minute * 60 + v.second
     if isinstance(v, datetime.timedelta):
