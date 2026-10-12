@@ -73,6 +73,15 @@ rows.insert(1, ["Weekday", "Build GTFS", g[0] + placeholders, "", g[0], g[1], pl
                 "", "%02d:%02d" % divmod(max(a for a, _ in timed) // 60, 60)])
 rows.insert(2, ["Weekday", "Build GTFS + plan late-night times (estimate)", g[0] + placeholders,
                 round(g[1] + late_hrs, 2), g[0], g[1], placeholders, late_hrs, "", ""])
+# Weekend "GTFS modeled": the feed has no weekend BRT, so scale each weekend day's plan
+# hours (late-night trips omitted, as the feed omits them) by the weekday feed/plan
+# ratio on the same non-late trips.
+ratio = g[1] / summ([x for x in pl if x[0] <= CUT])[1]
+for day in ("Saturday", "Sunday/Holiday"):
+    n, hrs = summ([x for x in plan[day] if x[0] <= CUT])
+    i = next(k for k, r in enumerate(rows) if r[0] == day) + 1
+    rows.insert(i, [day.split("/")[0] + " (GTFS modeled)", "Plan x weekday GTFS/plan ratio %.4f" % ratio,
+                    "", "", n, round(hrs * ratio, 2), "", "", "", ""])
 
 with open(out, "w", newline="") as f:
     w = csv.writer(f)

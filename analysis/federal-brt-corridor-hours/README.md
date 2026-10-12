@@ -33,7 +33,7 @@ For each trip, the scripts find stretches of 2 or more consecutive stops that ar
 | `output/nobuild_trips.csv`, `output/build_trips.csv` | One row per trip: route, service day, direction, block, entry/exit stop and time, corridor stops, minutes, miles. |
 | `service-hours-reconciliation-memo.md` | **Memo** reconciling this analysis with the Dec 2024 BRT Service Plan memo and spreadsheet (why its +76% is about +39% like for like). |
 | `fare-offset-methodology-memo.md` | **Memo** reviewing the method for comparing added BRT fare revenue (from STOPS ridership) against added operating cost: limitations and recommended handling. |
-| `plan_vs_gtfs.py` → `output/brt_plan_vs_gtfs_running_hours.csv` | BRT running hours, Plan spreadsheet vs Build GTFS, weekday/Saturday/Sunday, with and without the late-night trips (departing after 21:55). The table is also in the reconciliation memo, Section 5. Needs `openpyxl`. |
+| `plan_vs_gtfs.py` → `output/brt_plan_vs_gtfs_running_hours.csv` | BRT running hours, Plan spreadsheet vs Build GTFS, weekday/Saturday/Sunday, with and without the late-night trips (departing after 21:55), plus modeled Saturday and Sunday GTFS rows (plan × the weekday feed/plan ratio, late-night trips omitted). The table is also in the reconciliation memo, Section 5. Needs `openpyxl`. |
 | `reconcile_memo.py` | Reproduces the memo's numbers (needs the No-Build feed, the Plan spreadsheet and `openpyxl`). |
 | `output/nobuild_summary.csv`, `output/build_summary.csv` | Per route × service_id totals. |
 

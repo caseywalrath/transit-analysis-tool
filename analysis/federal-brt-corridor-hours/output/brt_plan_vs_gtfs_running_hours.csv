@@ -3,4 +3,6 @@ Weekday,Plan spreadsheet,276,256.28,260,239.93,16,16.35,14,25:27
 Weekday,Build GTFS,276,,260,242.34,16,,,21:55
 Weekday,Build GTFS + plan late-night times (estimate),276,258.69,260,242.34,16,16.35,,
 Saturday,Plan spreadsheet,260,218.62,243,202.15,17,16.47,8,25:38
+Saturday (GTFS modeled),Plan x weekday GTFS/plan ratio 1.0100,,,243,204.18,,,,
 Sunday/Holiday,Plan spreadsheet,224,188.47,213,177.85,11,10.62,5,24:38
+Sunday (GTFS modeled),Plan x weekday GTFS/plan ratio 1.0100,,,213,179.64,,,,
