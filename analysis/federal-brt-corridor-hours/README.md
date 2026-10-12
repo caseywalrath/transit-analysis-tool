@@ -31,6 +31,8 @@ For each trip, the scripts find stretches of 2 or more consecutive stops that ar
 | `compare.py` | The two summaries → `route_comparison.csv`. |
 | `output/route_comparison.csv` | **Main result.** One row per day type × route: trips, hours, miles for each scenario, plus the change. TOTAL row per day type. |
 | `output/nobuild_trips.csv`, `output/build_trips.csv` | One row per trip: route, service day, direction, block, entry/exit stop and time, corridor stops, minutes, miles. |
+| `service-hours-reconciliation-memo.md` | **Memo** reconciling this analysis with the Dec 2024 BRT Service Plan memo and spreadsheet (why its +76% is about +39% like for like). |
+| `reconcile_memo.py` | Reproduces the memo's numbers (needs the No-Build feed, the Plan spreadsheet and `openpyxl`). |
 | `output/nobuild_summary.csv`, `output/build_summary.csv` | Per route × service_id totals. |
 
 Service IDs: `WK` = weekday, `SA` = Saturday, `SU` = Sunday, `DPSWK` = school-day add-on trips.
