@@ -120,6 +120,7 @@ js/projects/                Analysis modules, one reference doc each under docs/
   attribute-summary.js      Attribute Summary (system module)   [drawing-and-features]
   mitigation-needs*.js      Dormant illustration module (script tags commented out)
 projects/*.html             Popup bodies and legend fragments, documented with their module
+analysis/                   One-off offline analyses (Python + CSV), not loaded by the app; each folder has a README
 docs/                       Feature plans (historical design records) and docs/reference/
 test/                       Golden, browser and UI-screenshot harnesses, comment guard
 ```

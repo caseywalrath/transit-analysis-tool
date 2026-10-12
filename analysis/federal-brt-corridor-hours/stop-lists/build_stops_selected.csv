@@ -1,0 +1,191 @@
+stop_id,stop_code,stop_name,stop_lat,stop_lon,location_type,parent_station,in_feed,feed_file
+13714,13714,Federal Blvd & W 29th Ave,39.758669,-105.025336,0,,1,Build_GTFS.zip
+13775,13775,Federal Blvd & W 95th Ave,39.869078,-105.025215,0,,1,Build_GTFS.zip
+13819,13819,S Federal Blvd & W Harvard Ave,39.672082,-105.024954,0,,1,Build_GTFS.zip
+13692,13692,Federal Blvd & W 100th Ave,39.877882,-105.025327,0,,1,Build_GTFS.zip
+20132,20132,Federal Blvd & W 107th Pl,39.890106,-105.025241,0,,1,Build_GTFS.zip
+13738,13738,Federal Blvd & W 58th Ave,39.802971,-105.025453,0,,1,Build_GTFS.zip
+13761,13761,Federal Blvd & W 82nd Ave,39.845136,-105.025010,0,,1,Build_GTFS.zip
+13258,13258,W Dartmouth Ave & S Dale Ct,39.660551,-105.021664,0,,1,Build_GTFS.zip
+13721,13721,Federal Blvd & W 41st Ave,39.773193,-105.025144,0,,1,Build_GTFS.zip
+13812,13812,S Federal Blvd & W Exposition Ave,39.703702,-105.024984,0,,1,Build_GTFS.zip
+13327,13327,W Dartmouth Ave & S Zuni St,39.660451,-105.015242,0,,1,Build_GTFS.zip
+13768,13768,Federal Blvd & W 8th Ave,39.729654,-105.025279,0,,1,Build_GTFS.zip
+34532,34532,Clear Creek-Federal Station Gate B,39.804151,-105.023053,0,34507,1,Build_GTFS.zip
+13720,13720,Federal Blvd & W 3rd Ave,39.721907,-105.025313,0,,1,Build_GTFS.zip
+13822,13822,S Federal Blvd & W Iliff Ave,39.676189,-105.024937,0,,1,Build_GTFS.zip
+13853,13853,S Federal Blvd & W Virginia Ave,39.708014,-105.024996,0,,1,Build_GTFS.zip
+13247,13247,W Dartmouth Ave & S Bryant St,39.660553,-105.018397,0,,1,Build_GTFS.zip
+13762,13762,Federal Blvd & W 82nd Ave,39.845197,-105.024724,0,,1,Build_GTFS.zip
+13811,13811,S Federal Blvd & W Exposition Ave,39.703739,-105.025181,0,,1,Build_GTFS.zip
+13772,13772,Federal Blvd & W 92nd Ave,39.862778,-105.025250,0,,1,Build_GTFS.zip
+13293,13293,1800 Block W Dartmouth Ave,39.660525,-105.008274,0,,1,Build_GTFS.zip
+13854,13854,S Federal Blvd & W Virginia Ave,39.707188,-105.025204,0,,1,Build_GTFS.zip
+34440,34440,South Federal Blvd & West Alameda Ave,39.712177,-105.025253,0,,1,Build_GTFS.zip
+13728,13728,Federal Blvd & W 47th Ave,39.782872,-105.025287,0,,1,Build_GTFS.zip
+13760,13760,Federal Blvd & W 80th Ave,39.841410,-105.025018,0,,1,Build_GTFS.zip
+13724,13724,Federal Blvd & W 44th Ave,39.776280,-105.025319,0,,1,Build_GTFS.zip
+13311,13311,W Dartmouth Ave & S Santa Fe Dr,39.660326,-105.000170,0,,1,Build_GTFS.zip
+13732,13732,Federal Blvd & W 52nd Ave,39.790373,-105.025325,0,,1,Build_GTFS.zip
+13699,13699,Federal Blvd & W 10th Ave,39.732643,-105.025277,0,,1,Build_GTFS.zip
+13264,13264,W Dartmouth Ave & S Federal Blvd,39.660440,-105.023814,0,,1,Build_GTFS.zip
+13743,13743,Federal Blvd & W 62nd Ave,39.809613,-105.025152,0,,1,Build_GTFS.zip
+13740,13740,Federal Blvd & W 5th Ave,39.724027,-105.024930,0,,1,Build_GTFS.zip
+13767,13767,Federal Blvd & W 8th Ave,39.729677,-105.025051,0,,1,Build_GTFS.zip
+13802,13802,S Federal Blvd & W Cornell Ave,39.662576,-105.025258,0,,1,Build_GTFS.zip
+26176,26176,Englewood Station Gate D,39.655819,-104.999518,0,33712,1,Build_GTFS.zip
+13711,13711,Federal Blvd & W 26th Ave,39.755667,-105.025076,0,,1,Build_GTFS.zip
+13726,13726,Federal Blvd & W 46th Ave,39.779961,-105.025304,0,,1,Build_GTFS.zip
+13704,13704,Federal Blvd & W 17th Ave,39.744283,-105.025117,0,,1,Build_GTFS.zip
+13821,13821,Federal Blvd & W Highland Park Pl,39.762860,-105.025319,0,,1,Build_GTFS.zip
+22399,22399,Federal Blvd & W 104th Ave Farside,39.885863,-105.024955,0,,1,Build_GTFS.zip
+13735,13735,Federal Blvd & W 54th Ave,39.794487,-105.025379,0,,1,Build_GTFS.zip
+13764,13764,Federal Blvd & W 84th Ave,39.848660,-105.025054,0,,1,Build_GTFS.zip
+13833,13833,S Federal Blvd & W Louisiana Ave,39.693910,-105.024933,0,,1,Build_GTFS.zip
+19050,19050,W Dartmouth Ave & S Lipan St,39.660502,-105.002833,0,,1,Build_GTFS.zip
+13310,13310,W Dartmouth Ave & S Santa Fe Dr,39.660563,-105.000006,0,,1,Build_GTFS.zip
+26180,26180,Englewood Station Gate H,39.656478,-104.999244,0,33712,1,Build_GTFS.zip
+13729,13729,Federal Blvd & W 4th Ave,39.722287,-105.025028,0,,1,Build_GTFS.zip
+13856,13856,S Federal Blvd & W Yale Ave,39.667331,-105.025221,0,,1,Build_GTFS.zip
+13752,13752,Federal Blvd & W 70th Ave,39.823644,-105.025178,0,,1,Build_GTFS.zip
+26186,26186,S Federal Blvd & W Evans Ave Gate D,39.677545,-105.025260,0,34140,1,Build_GTFS.zip
+25023,25023,S Inca St & W Dartmouth Ave,39.659699,-104.997158,0,,1,Build_GTFS.zip
+19051,19051,W Dartmouth Ave & S Tejon St,39.660540,-105.011562,0,,1,Build_GTFS.zip
+13718,13718,Federal Blvd & W 38th Ave,39.769614,-105.025159,0,,1,Build_GTFS.zip
+13742,13742,Federal Blvd & W 60th Ave,39.805624,-105.025149,0,,1,Build_GTFS.zip
+13757,13757,Federal Blvd & W 74th Ave,39.829413,-105.024793,0,,1,Build_GTFS.zip
+13813,13813,S Federal Blvd & W Florida Ave,39.689857,-105.024936,0,,1,Build_GTFS.zip
+26104,26104,Wagon Road PnR Gate D,39.912483,-104.994614,0,33746,1,Build_GTFS.zip
+13747,13747,Federal Blvd & W 65th Pl,39.815404,-105.025091,0,,1,Build_GTFS.zip
+18050,18050,W 120th Ave & Pecos St,39.913764,-105.005348,0,,1,Build_GTFS.zip
+26229,26229,W 120th Ave & Mariposa St,39.914152,-105.001995,0,,1,Build_GTFS.zip
+13318,13318,W Dartmouth Ave & S Tejon St,39.660429,-105.010587,0,,1,Build_GTFS.zip
+13713,13713,Federal Blvd & W 29th Ave,39.758860,-105.025092,0,,1,Build_GTFS.zip
+13787,13787,S Federal Blvd & W Bayaud Ave,39.715358,-105.024955,0,,1,Build_GTFS.zip
+13769,13769,Federal Blvd & W 90th Pl,39.860971,-105.024929,0,,1,Build_GTFS.zip
+21724,21724,Federal Blvd & W 96th Ave,39.871123,-105.024990,0,,1,Build_GTFS.zip
+13741,13741,Federal Blvd & W 5th Ave,39.724152,-105.025253,0,,1,Build_GTFS.zip
+13716,13716,Federal Blvd & W 35th Ave,39.765891,-105.025055,0,,1,Build_GTFS.zip
+13693,13693,Federal Blvd & W 104th Ave Nearside,39.884053,-105.024975,0,,1,Build_GTFS.zip
+13708,13708,Federal Blvd & W 23rd Ave,39.751407,-105.025014,0,,1,Build_GTFS.zip
+13828,13828,S Federal Blvd & W Jewell Ave,39.681972,-105.025142,0,,1,Build_GTFS.zip
+13719,13719,Federal Blvd & W 38th Ave,39.768645,-105.025344,0,,1,Build_GTFS.zip
+13783,13783,S Federal Blvd & W Amherst Ave,39.665654,-105.025017,0,,1,Build_GTFS.zip
+26231,26231,W 120th Ave & Zuni St,39.914186,-105.015132,0,,1,Build_GTFS.zip
+13745,13745,Federal Blvd & W 64th Ave,39.813151,-105.025147,0,,1,Build_GTFS.zip
+13706,13706,Federal Blvd & W 20th Ave,39.747888,-105.025117,0,,1,Build_GTFS.zip
+13691,13691,Federal Blvd & W 100th Ave,39.878662,-105.025023,0,,1,Build_GTFS.zip
+13296,13296,W Dartmouth Ave & S Platte River Dr,39.660404,-105.004801,0,,1,Build_GTFS.zip
+13722,13722,Federal Blvd & W 41st Ave,39.773423,-105.025336,0,,1,Build_GTFS.zip
+13763,13763,Federal Blvd & W 84th Ave,39.849698,-105.024765,0,,1,Build_GTFS.zip
+13788,13788,S Federal Blvd & W Bayaud Ave,39.714733,-105.025276,0,,1,Build_GTFS.zip
+22019,22019,Federal Blvd & W 86th Ave,39.852574,-105.025079,0,,1,Build_GTFS.zip
+13715,13715,Federal Blvd & W 32nd Ave,39.762412,-105.025124,0,,1,Build_GTFS.zip
+13786,13786,S Federal Blvd & W Bates Ave,39.663477,-105.025030,0,,1,Build_GTFS.zip
+13709,13709,Federal Blvd & W 23rd Ave,39.750933,-105.025317,0,,1,Build_GTFS.zip
+40001,40001,Englewood City Center,39.655240,-104.998550,0,33712,1,Build_GTFS.zip
+13696,13696,Federal Blvd & W 108th Ave,39.892346,-105.024910,0,,1,Build_GTFS.zip
+13758,13758,Federal Blvd & W 7th Ave,39.727194,-105.025315,0,,1,Build_GTFS.zip
+24890,24890,Englewood Station,39.655904,-104.999736,0,33712,1,Build_GTFS.zip
+26184,26184,S Federal Blvd & W Evans Ave Gate B,39.677948,-105.025260,0,34140,1,Build_GTFS.zip
+13727,13727,Federal Blvd & W 47th Ave,39.782393,-105.025094,0,,1,Build_GTFS.zip
+34703,34703,Westminster Station Gate D,39.823246,-105.027215,0,34549,1,Build_GTFS.zip
+13806,13806,S Federal Blvd & W Cornell Ave,39.660754,-105.025035,0,,1,Build_GTFS.zip
+13730,13730,Federal Blvd & W 50th Ave,39.787751,-105.025087,0,,1,Build_GTFS.zip
+25024,25024,Inca St & W Dartmouth Ave,39.659563,-104.997222,0,,1,Build_GTFS.zip
+19041,19041,W Dartmouth Ave & S Platte River Dr,39.660389,-105.002307,0,,1,Build_GTFS.zip
+26109,26109,Wagon Road PnR Gate B,39.912258,-104.994002,0,33746,1,Build_GTFS.zip
+13827,13827,S Federal Blvd & W Jewell Ave,39.682532,-105.024946,0,,1,Build_GTFS.zip
+26185,26185,S Federal Blvd & W Evans Ave Gate C,39.677770,-105.025261,0,34140,1,Build_GTFS.zip
+34675,34675,W 26th Ave & Federal Blvd,39.754771,-105.024810,0,,1,Build_GTFS.zip
+21367,21367,Federal Blvd & W 39th Ave,39.771441,-105.025337,0,,1,Build_GTFS.zip
+13749,13749,Federal Blvd & W 67th Ave,39.818018,-105.025028,0,,1,Build_GTFS.zip
+13832,13832,S Federal Blvd & W Louisiana Ave,39.692798,-105.025209,0,,1,Build_GTFS.zip
+22773,22773,Federal Blvd & W 19th Ave,39.746163,-105.025118,0,,1,Build_GTFS.zip
+13694,13694,Federal Blvd & W 104th Ave,39.884373,-105.025314,0,,1,Build_GTFS.zip
+26178,26178,Englewood Station Gate F,39.656131,-104.999399,0,33712,1,Build_GTFS.zip
+13712,13712,Federal Blvd & W 27th Ave,39.755605,-105.025318,0,,1,Build_GTFS.zip
+13836,13836,S Federal Blvd & W Mississippi Ave,39.697120,-105.024980,0,,1,Build_GTFS.zip
+34702,34702,Westminster Station Gate C,39.823131,-105.027173,0,34549,1,Build_GTFS.zip
+13824,13824,Federal Blvd & W 1st Ave,39.717654,-105.025271,0,,1,Build_GTFS.zip
+13731,13731,Federal Blvd & W 50th Ave,39.786801,-105.025288,0,,1,Build_GTFS.zip
+26174,26174,Englewood Station Gate B,39.655319,-104.999591,0,33712,1,Build_GTFS.zip
+13750,13750,Federal Blvd & W 6th Ave,39.726872,-105.024988,0,,1,Build_GTFS.zip
+13705,13705,Federal Blvd & W 1st Ave,39.717990,-105.024955,0,,1,Build_GTFS.zip
+13698,13698,Federal Blvd & W 10th Ave,39.733214,-105.025048,0,,1,Build_GTFS.zip
+13820,13820,S Federal Blvd & W Harvard Ave,39.671712,-105.025174,0,,1,Build_GTFS.zip
+13778,13778,Federal Blvd & W 97th Ave,39.872342,-105.025356,0,,1,Build_GTFS.zip
+13723,13723,Federal Blvd & W 44th Ave,39.776918,-105.025086,0,,1,Build_GTFS.zip
+26227,26227,W 120th Ave & Zuni St,39.913879,-105.015295,0,,1,Build_GTFS.zip
+13771,13771,Federal Blvd & W 92nd Ave,39.863982,-105.024961,0,,1,Build_GTFS.zip
+13780,13780,Federal Blvd & W 98th Ave,39.874647,-105.025346,0,,1,Build_GTFS.zip
+13725,13725,Federal Blvd & W 46th Ave,39.780596,-105.025087,0,,1,Build_GTFS.zip
+33290,33290,S Federal Blvd & W Evans Ave Gate E,39.677222,-105.025247,0,34140,1,Build_GTFS.zip
+13782,13782,S Federal Blvd & W Alameda Ave,39.710616,-105.025270,0,,1,Build_GTFS.zip
+13733,13733,Federal Blvd & W 52nd Ave,39.790638,-105.025052,0,,1,Build_GTFS.zip
+13736,13736,Federal Blvd & W 56th Ave,39.797730,-105.025137,0,,1,Build_GTFS.zip
+13774,13774,Federal Blvd & W 94th Ave,39.866900,-105.024949,0,,1,Build_GTFS.zip
+13744,13744,Federal Blvd & W 62nd Ave,39.809309,-105.025448,0,,1,Build_GTFS.zip
+13804,13804,Federal Blvd & Cottonwood Dr,39.839203,-105.025086,0,,1,Build_GTFS.zip
+13297,13297,W Dartmouth Ave & S Platte River Dr,39.660510,-105.004822,0,,1,Build_GTFS.zip
+13829,13829,S Federal Blvd & W Kentucky Ave,39.700918,-105.024985,0,,1,Build_GTFS.zip
+26230,26230,W 120th Ave & Pecos St,39.914169,-105.006705,0,,1,Build_GTFS.zip
+13257,13257,W Dartmouth Ave & S Dale Ct,39.660442,-105.021260,0,,1,Build_GTFS.zip
+26106,26106,Wagon Road PnR Gate F,39.912496,-104.993985,0,33746,1,Build_GTFS.zip
+13707,13707,Federal Blvd & W 20th Ave,39.747314,-105.025355,0,,1,Build_GTFS.zip
+13746,13746,Federal Blvd & W 64th Ave,39.812458,-105.025450,0,,1,Build_GTFS.zip
+26232,26232,W 120th Ave & Federal Blvd,39.914285,-105.022516,0,,1,Build_GTFS.zip
+13823,13823,S Federal Blvd & W Iliff Ave,39.674707,-105.025165,0,,1,Build_GTFS.zip
+13739,13739,Federal Blvd & W 58th Ave,39.802877,-105.025140,0,,1,Build_GTFS.zip
+13777,13777,Federal Blvd & W 97th Ave,39.872507,-105.025077,0,,1,Build_GTFS.zip
+13830,13830,S Federal Blvd & W Kentucky Ave,39.700093,-105.025218,0,,1,Build_GTFS.zip
+13703,13703,Decatur / Federal Station Gate E,39.737734,-105.024986,0,34232,1,Build_GTFS.zip
+13248,13248,W Dartmouth Ave & S Bryant St,39.660443,-105.018451,0,,1,Build_GTFS.zip
+13776,13776,Federal Blvd & W 95th Ave,39.869298,-105.024936,0,,1,Build_GTFS.zip
+13702,13702,Decatur / Federal Station Gate F,39.737666,-105.025362,0,34232,1,Build_GTFS.zip
+13784,13784,S Federal Blvd & W Amherst Ave,39.664595,-105.025244,0,,1,Build_GTFS.zip
+26179,26179,Englewood Station Gate G,39.656238,-104.999351,0,33712,1,Build_GTFS.zip
+34701,34701,Westminster Station Gate B,39.823295,-105.027012,0,34549,1,Build_GTFS.zip
+13294,13294,1600 Block W Dartmouth Ave,39.660414,-105.007175,0,,1,Build_GTFS.zip
+34531,34531,Clear Creek-Federal Station Gate A,39.804192,-105.023342,0,34507,1,Build_GTFS.zip
+25436,25436,Englewood Station,39.655291,-105.000065,0,33712,1,Build_GTFS.zip
+11643,11643,W 71st Ave & Grove St,39.824717,-105.026585,0,,1,Build_GTFS.zip
+13779,13779,Federal Blvd & W 98th Ave,39.875483,-105.025049,0,,1,Build_GTFS.zip
+13734,13734,Federal Blvd & W 54th Ave,39.794949,-105.025094,0,,1,Build_GTFS.zip
+13756,13756,Federal Blvd & W 74th Ave,39.829863,-105.025118,0,,1,Build_GTFS.zip
+18820,18820,Federal Blvd & W 17th Ave,39.743602,-105.025320,0,,1,Build_GTFS.zip
+13701,13701,Federal Blvd & W Holden Pl,39.735913,-105.025429,0,,1,Build_GTFS.zip
+13737,13737,Federal Blvd & W 56th Ave,39.798154,-105.025445,0,,1,Build_GTFS.zip
+13809,13809,S Federal Blvd & W Evans Ave Gate G,39.679071,-105.024881,0,34140,1,Build_GTFS.zip
+13754,13754,Federal Blvd & W 72nd Ave,39.826917,-105.025102,0,,1,Build_GTFS.zip
+13801,13801,S Federal Blvd & W Colorado Ave,39.684737,-105.025145,0,,1,Build_GTFS.zip
+23509,23509,S Federal Blvd & W Warren Ave,39.677566,-105.024891,0,34140,1,Build_GTFS.zip
+13781,13781,S Federal Blvd & W Alameda Ave,39.711542,-105.024903,0,,1,Build_GTFS.zip
+13831,13831,Federal Blvd & W Longfellow Pl,39.815280,-105.025388,0,,1,Build_GTFS.zip
+26226,26226,W 120th Ave & Federal Blvd,39.913947,-105.022642,0,,1,Build_GTFS.zip
+13748,13748,Federal Blvd & W 67th Ave,39.817616,-105.025328,0,,1,Build_GTFS.zip
+13765,13765,Federal Blvd & W 88th Ave,39.856551,-105.024877,0,,1,Build_GTFS.zip
+13326,13326,W Dartmouth Ave & S Wyandot St,39.660551,-105.014948,0,,1,Build_GTFS.zip
+15355,15355,W Mississippi Ave & S Federal Blvd,39.696666,-105.024684,0,,1,Build_GTFS.zip
+26175,26175,Englewood Station Gate C,39.655756,-104.999554,0,33712,1,Build_GTFS.zip
+13766,13766,Federal Blvd & W 88th Ave,39.856776,-105.025173,0,,1,Build_GTFS.zip
+13770,13770,Federal Blvd & W 90th Pl,39.860524,-105.025227,0,,1,Build_GTFS.zip
+22020,22020,Federal Blvd & W 86th Ave,39.852931,-105.024782,0,,1,Build_GTFS.zip
+13700,13700,Federal Blvd & W 12th Ave,39.735104,-105.025017,0,,1,Build_GTFS.zip
+13800,13800,S Federal Blvd & W Colorado Ave,39.684671,-105.024949,0,,1,Build_GTFS.zip
+26108,26108,Wagon Road PnR Gate H,39.912274,-104.993530,0,33746,1,Build_GTFS.zip
+13814,13814,S Federal Blvd & W Florida Ave,39.689210,-105.025157,0,,1,Build_GTFS.zip
+13807,13807,S Federal Blvd & W Ellsworth Ave,39.716303,-105.025258,0,,1,Build_GTFS.zip
+21725,21725,Federal Blvd & W 96th Ave,39.870398,-105.025257,0,,1,Build_GTFS.zip
+13717,13717,Federal Blvd & W 35th Ave,39.765341,-105.025324,0,,1,Build_GTFS.zip
+13759,13759,Federal Blvd & W 80th Ave,39.842107,-105.024736,0,,1,Build_GTFS.zip
+13773,13773,Federal Blvd & W 94th Ave,39.866803,-105.025235,0,,1,Build_GTFS.zip
+13837,13837,S Federal Blvd & W Mississippi Ave,39.696460,-105.025212,0,,1,Build_GTFS.zip
+13855,13855,S Federal Blvd & W Yale Ave,39.667972,-105.024995,0,,1,Build_GTFS.zip
+13803,13803,Federal Blvd & Cottonwood Dr,39.838864,-105.024713,0,,1,Build_GTFS.zip
+13751,13751,Federal Blvd & W 70th Ave,39.822608,-105.024892,0,,1,Build_GTFS.zip
+13753,13753,Federal Blvd & W 72nd Ave,39.827649,-105.024755,0,,1,Build_GTFS.zip
+190002,,Federal Blvd & 112th Ave BRT,39.898923,-105.025169,0,,1,Build_GTFS.zip
+134701,,Westminster Station BRT,39.823295,-105.027012,0,,1,Build_GTFS.zip
+126228,,120th Ave & Huron St BRT NB,39.913745,-104.999741,0,,1,Build_GTFS.zip
+190003,,Federal Blvd & 112th Ave BRT NB,39.898625,-105.024812,0,,1,Build_GTFS.zip
