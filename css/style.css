@@ -1801,8 +1801,8 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 24px;
-  margin-top: 2px;
+  flex-shrink: 0;
+  margin-right: var(--space-2);
 }
 .fp-attr-popup-body {
   padding: 12px 14px 14px;
@@ -1810,7 +1810,6 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   flex: 1;
 }
 #fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-body { display: none; }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-controls { display: none; }
 #fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-collapse svg { transform: rotate(180deg); }
 /* Slightly larger inputs inside the popup */
 #fp-attr-popup .fp-attr-label {
@@ -4942,6 +4941,70 @@ select.fp-attr-input,
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border);
 }
+
+/* ---- Point icons (js/core/point-icons.js) ---- */
+/* Floating icon picker, opened from the Appearance popover and Layers > Style
+   Defaults. Sits above .fa-popover (9150) so it can open from it. */
+.pi-picker {
+  position: fixed;
+  z-index: 9250;
+  width: 236px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  font-size: var(--text-sm);
+}
+.pi-group-title {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pi-group-title:first-child { margin-top: 0; }
+.pi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+.pi-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pi-tile:hover { background: var(--surface-hover); }
+.pi-tile.is-active { background: var(--accent-soft); border-color: var(--accent); }
+/* The "current icon" button in a style row (Appearance popover, Style Defaults). */
+/* Exactly the size of .lp-swatch so the Icon row lines up with the Color row. */
+.pi-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pi-current:hover { background: var(--surface-hover); }
+.lp-style-row.lp-inherited .pi-current { opacity: 0.75; }
+.pi-preview { display: block; }
 
 /* ---- Type icon (doubles as quick color picker) ---- */
 .fp-type-icon {

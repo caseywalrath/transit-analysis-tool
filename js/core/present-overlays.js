@@ -118,16 +118,19 @@
                       feat.properties.attributes &&
                       feat.properties.attributes.group;
 
+        // Points carry their icon so the legend swatch matches the map.
+        var iconId = (t.key === "point") ? App.resolvePointIcon(feat) : null;
         items.push({
           id:      t.key + ":" + idx,
           label:   name,
           color:   color,
           shape:   t.shape,
+          iconId:  iconId,
           isGroup: false
         });
 
         if (grpName && !groups[grpName]) {
-          groups[grpName] = { color: color, shape: t.shape };
+          groups[grpName] = { color: color, shape: t.shape, iconId: iconId };
         }
       });
     });
@@ -139,6 +142,7 @@
         label:   gName,
         color:   groups[gName].color,
         shape:   groups[gName].shape,
+        iconId:  groups[gName].iconId,
         isGroup: true
       });
     });
@@ -156,8 +160,11 @@
   }
 
   // ── legend content ─────────────────────────────────────────────────────────
-  function _swatchSVG(shape, color) {
+  function _swatchSVG(shape, color, iconId) {
     var c = _esc(color);
+    if (shape === "circle" && iconId && iconId !== window.PointIcons.DEFAULT_ID) {
+      return '<img alt="" src="' + _esc(App.pointIconDataURL(iconId, color)) + '" style="height:1.3em;width:auto;display:block">';
+    }
     if (shape === "circle") {
       return '<svg width="1em" height="1em" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="' + c + '"/></svg>';
     }
@@ -282,7 +289,7 @@
       var name = (_legendNames[id] !== undefined) ? _legendNames[id] : item.label;
       rows.push(
         '<div class="pm-legend-row">' +
-          '<span class="pm-legend-swatch">' + _swatchSVG(item.shape, item.color) + '</span>' +
+          '<span class="pm-legend-swatch">' + _swatchSVG(item.shape, item.color, item.iconId) + '</span>' +
           '<span class="pm-legend-name" contenteditable="true" spellcheck="false" data-key="' + _esc(id) + '">' + _esc(name) + '</span>' +
         '</div>'
       );
@@ -405,7 +412,7 @@
       var labelText = item.isGroup ? item.label + " (group)" : item.label;
       return '<label class="pm-picker-row">' +
         '<input type="checkbox" class="pm-picker-check" value="' + _esc(item.id) + '"' + checked + '>' +
-        '<span class="pm-picker-swatch">' + _swatchSVG(item.shape, item.color) + '</span>' +
+        '<span class="pm-picker-swatch">' + _swatchSVG(item.shape, item.color, item.iconId) + '</span>' +
         '<span class="pm-picker-label">' + _esc(labelText) + '</span>' +
         '</label>';
     }

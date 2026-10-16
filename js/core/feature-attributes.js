@@ -1035,6 +1035,12 @@
     var titleRow = document.createElement("div");
     titleRow.className = "fp-attr-popup-title-row";
 
+    // The Appearance swatch sits at the left of the title row, ahead of the
+    // title (populatePopupBody fills it).
+    var controls = document.createElement("div");
+    controls.className = "fp-attr-popup-controls";
+    titleRow.appendChild(controls);
+
     var titleEl = document.createElement("span");
     titleEl.className = "fp-attr-popup-title";
     titleRow.appendChild(titleEl);
@@ -1069,11 +1075,6 @@
     titleRow.appendChild(headerActions);
     header.appendChild(titleRow);
 
-    // Feature appearance controls are kept on their own left-aligned row so
-    // the title and window controls stay easy to scan.
-    var controls = document.createElement("div");
-    controls.className = "fp-attr-popup-controls";
-    header.appendChild(controls);
     el.appendChild(header);
 
     // Body
@@ -1158,7 +1159,7 @@
     _popupEl.querySelector(".fp-attr-popup-title").textContent =
       (TYPE_LABELS[featureType] || featureType) + " Attributes";
 
-    // Update or create color swatch in the left-aligned appearance-controls row.
+    // Update or create the Appearance swatch (left of the title).
     var headerEl = _popupEl.querySelector(".fp-attr-popup-header");
     var controlsEl = headerEl.querySelector(".fp-attr-popup-controls");
     var existingSwatch = controlsEl.querySelector(".fp-attr-popup-swatch");

@@ -34,6 +34,9 @@
       var props = {};
       for (var k in f.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(f.properties, k)) props[k] = f.properties[k]; }
       props.resolvedColor = App.resolveFeatureColor(featureType, f);
+      // Points also need their icon props, or a dragged icon would turn back
+      // into a dot until the drop (resolvedIcon drives both point layers).
+      if (featureType === "point") App.stampPointIcon(props, f, props.resolvedColor);
       return { type: "Feature", properties: props, geometry: f.geometry };
     });
   }
@@ -382,6 +385,13 @@
     return map.queryRenderedFeatures(point, { layers: existing });
   }
 
+  // Where the dragged point's coordinate belongs for this mouse event: the
+  // cursor, less the grab offset recorded at mousedown (non-zero only for icons).
+  function pointDragLngLat(e) {
+    if (!editState || (!editState.dx && !editState.dy)) return e.lngLat;
+    return App.map.unproject([e.point.x - editState.dx, e.point.y - editState.dy]);
+  }
+
   // ---- Initialization (called from app.js on map load) ----
 
   function init() {
@@ -427,7 +437,7 @@
       }
 
       // Check points — show "move" only if already selected, otherwise "pointer"
-      var pointHits = safeQuery(e.point, ["points-layer"]);
+      var pointHits = safeQuery(e.point, App.pointLayerIds());
       if (pointHits.length > 0) {
         var sIdx = findPointIndex(pointHits[0]);
         var isSelPoint = App._selected && App._selected.type === "point" && App._selected.index === sIdx;
@@ -506,13 +516,22 @@
       }
 
       // Check for point drag — only allowed when point is already selected
-      var pointHits = safeQuery(e.point, ["points-layer"]);
+      var pointHits = safeQuery(e.point, App.pointLayerIds());
       if (pointHits.length > 0) {
         var ptIdx = findPointIndex(pointHits[0]);
         if (ptIdx >= 0 &&
             App._selected && App._selected.type === "point" && App._selected.index === ptIdx) {
           e.preventDefault();
-          editState = { type: "point-drag", index: ptIdx };
+          editState = { type: "point-drag", index: ptIdx, dx: 0, dy: 0 };
+          // An icon can be grabbed anywhere on its bitmap (a pin by its head,
+          // well above the coordinate). Keep that grab offset so the point
+          // doesn't jump to put its coordinate under the cursor. Dots keep the
+          // original behaviour (coordinate follows the cursor exactly).
+          if (App.resolvePointIcon(App.points[ptIdx]) !== window.PointIcons.DEFAULT_ID) {
+            var gp = map.project(App.points[ptIdx].geometry.coordinates);
+            editState.dx = e.point.x - gp.x;
+            editState.dy = e.point.y - gp.y;
+          }
           App._editing = editState;
           map.dragPan.disable();
           map.getCanvas().style.cursor = "move";
@@ -526,7 +545,8 @@
 
       if (editState.type === "point-drag") {
         // Lightweight live update (no buffer rebuild)
-        App.points[editState.index].geometry.coordinates = [e.lngLat.lng, e.lngLat.lat];
+        var dl = pointDragLngLat(e);
+        App.points[editState.index].geometry.coordinates = [dl.lng, dl.lat];
         var stSrc = map.getSource("points-src");
         if (stSrc) stSrc.setData({ type: "FeatureCollection", features: _withResolvedColor("point", App.points) });
         return;
@@ -638,7 +658,8 @@
       if (!editState) return;
 
       if (editState.type === "point-drag") {
-        App.movePoint(editState.index, e.lngLat.lng, e.lngLat.lat);
+        var dropAt = pointDragLngLat(e);
+        App.movePoint(editState.index, dropAt.lng, dropAt.lat);
         editState = null;
         App._editing = null;
         map.dragPan.enable();
@@ -753,7 +774,7 @@
       }
 
       // Not in edit mode: point click → select; line/route/polygon click → enter vertex edit mode
-      var pointHits = safeQuery(e.point, ["points-layer"]);
+      var pointHits = safeQuery(e.point, App.pointLayerIds());
       if (pointHits.length > 0) {
         var sIdx = findPointIndex(pointHits[0]);
         if (sIdx >= 0 && typeof App.selectFeature === "function") App.selectFeature("point", sIdx);
@@ -821,7 +842,7 @@
       }
 
       // Priority 2: feature hit → show attributes context menu
-      var stHits = safeQuery(e.point, ["points-layer"]);
+      var stHits = safeQuery(e.point, App.pointLayerIds());
       var fHits  = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
       var hit    = (stHits.length ? stHits : fHits)[0];
       if (!hit) return;
@@ -830,7 +851,7 @@
       var layerId      = hit.layer.id;
       var featureType  = null;
       var featureIndex = -1;
-      if      (layerId === "points-layer") { featureType = "point";  featureIndex = findPointIndex(hit); }
+      if      (App.isPointLayerId(layerId)) { featureType = "point";  featureIndex = findPointIndex(hit); }
       else if (App.lineStyleLayerType(layerId) === "line")    { featureType = "line";     featureIndex = findLineIndex(hit); }
       else if (App.lineStyleLayerType(layerId) === "route")   { featureType = "route";    featureIndex = findRouteIndex(hit); }
       else if (layerId === "polygons-fill")  { featureType = "polygon";  featureIndex = findPolygonIndex(hit); }
