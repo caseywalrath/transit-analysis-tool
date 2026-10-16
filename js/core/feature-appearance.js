@@ -3,8 +3,8 @@
 // Shared per-feature Appearance editing. Detail: docs/reference/drawing-and-features.md
 //
 //  - App.openAppearancePopup(anchorEl, type, index, opts): the singleton
-//    #fp-appearance-popover (color, opacity, width, offset, line style, Reset
-//    all) for ONE feature.
+//    #fp-appearance-popover (color, icon [points], opacity, width, offset,
+//    line style, Reset all) for ONE feature.
 //  - App.buildFeatureOverrideRows(type, feature, opts): the override rows, shared
 //    by the popover and the Layers-tab per-feature drawer so the "muted default
 //    until overridden, x clears" cascade lives in one place. Buffer radius is
@@ -175,6 +175,63 @@
     return row;
   }
 
+  // "Icon" row (points only): a button showing the resolved icon, opening the
+  // shared picker, + the usual muted-default / x clear. Writes ONLY through
+  // App.setFeaturePointIcon (one undo step per pick). Default (and cleared) =
+  // the type default from Layers > Style Defaults.
+  function buildPointIconRow(ref, opts) {
+    var row = document.createElement("div");
+    row.className = "lp-style-row fa-icon-row";
+    var lab = document.createElement("span");
+    lab.className = "lp-style-label";
+    lab.textContent = "Icon";
+    row.appendChild(lab);
+    var wrap = document.createElement("div");
+    wrap.className = "lp-style-control";
+    row.appendChild(wrap);
+
+    function feat() { return resolve(ref); }
+    function sync() {
+      var f = feat();
+      var has = !!f && window.PointIcons.has(f.properties._pointIcon);
+      row.classList.toggle("lp-inherited", !has);
+      wrap.innerHTML = "";
+      if (!f) return;
+      var id = App.resolvePointIcon(f);
+      var color = App.resolveFeatureColor("point", f);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pi-current";
+      btn.title = "Change icon (" + window.PointIcons.get(id).label + (has ? "" : ", default") + ")";
+      btn.setAttribute("aria-label", "Change icon");
+      btn.appendChild(App.buildPointIconPreview(id, color, 22));
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        App.openPointIconPicker(btn, { value: id, color: color, onPick: function (picked) { apply(picked); } });
+      });
+      wrap.appendChild(btn);
+      if (has) {
+        var clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "lp-style-clear";
+        clearBtn.title = "Clear override (use default)";
+        clearBtn.setAttribute("aria-label", "Clear Icon override");
+        clearBtn.textContent = "×";
+        clearBtn.addEventListener("click", function (e) { e.stopPropagation(); apply(null); });
+        wrap.appendChild(clearBtn);
+      }
+    }
+    function apply(id) {
+      var idx = App.resolveFeatureRef(ref);
+      if (idx < 0) return;
+      App.setFeaturePointIcon(idx, id);   // one undo step; re-render, save, panels
+      sync();
+      if (typeof opts.onChange === "function") opts.onChange();
+    }
+    sync();
+    return row;
+  }
+
   // Returns an array of DOM rows. opts: { onChange }.
   // onChange fires after every write (value change or clear).
   function buildFeatureOverrideRows(type, feature, opts) {
@@ -193,6 +250,9 @@
     }
     // Guarded write: skips (and does nothing) if the feature is gone.
     function write(fn) { var p = props(); if (!p) return; fn(p); changed(); }
+
+    // Icon (points only)
+    if (type === "point") rows.push(buildPointIconRow(ref, opts));
 
     // Opacity
     rows.push(buildOverrideRow("Opacity", { min: 0, max: 100, step: 1, unit: "%" }, {
@@ -286,7 +346,7 @@
 
   function hasOwnAppearance(p) {
     return p.color || p._opacity != null || p._fillOpacity != null || p._borderOpacity != null ||
-      p._lineWidth != null || !!p._offsetManual ||
+      p._lineWidth != null || !!p._offsetManual || window.PointIcons.has(p._pointIcon) ||
       App.normalizeLineStyle(p._lineStyle) !== "solid";
   }
 
@@ -322,6 +382,7 @@
       p = resolve(_ref).properties;
       delete p._opacity; delete p._fillOpacity; delete p._borderOpacity;
       delete p._lineWidth;
+      delete p._pointIcon;
       if (p._offsetManual) { delete p._offset; delete p._offsetManual; }
       if (type === "line" || type === "route") App.setFeatureLineStyle(type, idx, "solid");  // push is a no-op inside the batch
       rerender(type);
@@ -426,6 +487,8 @@
     document.addEventListener("mousedown", function (e) {
       if (!_pop) return;
       if (_pop.contains(e.target)) return;
+      // The icon picker is a separate body-level popover opened from this one.
+      if (e.target.closest && e.target.closest("#fp-icon-picker")) return;
       // Remember what was open: the same swatch's click (which follows this
       // mousedown) must toggle it closed, not reopen it. The swatch is often
       // rebuilt by a panel refresh, so this is keyed by feature, not by element.
@@ -435,6 +498,8 @@
     document.addEventListener("keydown", function (e) {
       if (!_pop) return;
       if (e.key === "Escape") {
+        // Escape belongs to the icon picker first when it is open on top.
+        if (document.getElementById("fp-icon-picker")) return;
         closePopup();
         e.stopPropagation();
         return;

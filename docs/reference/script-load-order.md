@@ -20,6 +20,7 @@ network-connectors.js needs road-network.js; App.refreshWalkNetworkLayer etc.
 walk-audit.js        pure window.WalkAudit + App block (call time); after road-network/network-connectors
 travelshed.js        pure; window.Travelshed
 connector-graph.js   pure; window.ConnectorGraph
+point-icons.js      pure window.PointIcons + App block (call time); before points.js, whose rendering calls App.stampPointIcon
 points.js / lines.js / routes.js / polygons.js   need App.map, turf
 labels.js            App.labels, addLabel/removeLabel/…
 textboxes.js         App.addTextBox/removeTextBox/renderTextBoxMarkers/…

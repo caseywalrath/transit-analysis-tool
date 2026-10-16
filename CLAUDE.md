@@ -36,6 +36,7 @@ Project onboarding for Claude Code sessions. Read this first.
   - `group: "GROUP_X"` → shown only inside group X's checkbox (mutually exclusive with `displayInChecklist`); labels in `GROUP_INFO`.
   - `denominator: "<code>"` → percent against that variable; `"$group"` → against the sum of the group's members; omit for no percent column.
 - **Feature attribute changes must update BOTH the per-feature popup and Attribute Summary.** The schema is duplicated in `js/core/feature-attributes.js` (`ATTR_FIELDS`, the `#fp-attr-popup`) and `js/projects/attribute-summary.js` (`renderPoints` / `renderLineLike` / `renderPolygons` / `renderMarkers`). Any add/remove/rename/type change of a `feature.properties.attributes.*` field, or a direct `feature.properties.*` field shown in the UI, changes both files in the same commit. Adding or removing a column also changes the matching grid template in `css/style.css` (`.as-grid-points` / `-routelike` / `-polygons` / `-marker`): header and data rows share it. A multi-row editor (Time Bands, Route Picker) is a shared helper in `feature-attributes.js` (`App.buildXBadge` + `App.openXPopup`), never a second copy.
+- **Drawn Points render in two layers — never use `points-layer` literally for hit-testing or paint.** `properties._pointIcon` (cascade: per-point > `App.featureSettings.pointIcon` > `"dot"`) is stamped as `resolvedIcon`; Dot is the original circle layer `points-layer`, every other icon is the symbol layer `points-icon-layer` right above it. Use `App.pointLayerIds()` / `App.isPointLayerId(id)`; any code that builds point GeoJSON itself (drag previews, highlight sources) must call `App.stampPointIcon(props, feature, color)` or the icon turns into a dot. Write the icon only through `App.setFeaturePointIcon` / `App.setTypePointIcon`. Adding an icon is a one-entry edit in `js/core/point-icons.js` (`ICONS`, plus a `GLYPHS` path for a new symbol); bump nothing else. The only allowed bare `"points-layer"` literals are the `firstUserLayer()` insert-below anchors. Test: `test/browser/point-icons.test.mjs`.
 - **Drawn Lines/Routes render in three style layers — never use `lines-layer`/`routes-layer` literally for hit-testing or paint.** `properties._lineStyle` (`"dashed"`/`"dotted"`, anything else = solid) splits each source into `lines-layer` (solid) + `-dashed` + `-dotted`, because MapLibre's `line-dasharray` cannot be a data expression. Use `App.lineStyleLayerIds(type?)`, `App.lineStyleLayerType(layerId)`, `App.addLineStyleLayers(map, type, sourceId, paint)` and `App.setFeatureLineStyle(type, index, style)`. The only allowed bare literals are the `firstUserLayer()` insert-below anchors in `gtfs.js`/`walk-audit.js`/`network-connectors.js` (the solid layer is always lowest). Test: `test/browser/line-style.test.mjs`.
 
 ## Testing
@@ -82,6 +83,7 @@ js/core/
   walk-audit.js             window.WalkAudit — sidewalk coverage classification + layer   [road-network]
   travelshed.js             window.Travelshed — transit travelshed math (pure)   [road-network]
   connector-graph.js        window.ConnectorGraph — connector planarization (pure)   [road-network]
+  point-icons.js            window.PointIcons — point icon registry (pure) + icon drawing, picker, setters   [drawing-and-features]
   points.js / lines.js / routes.js / polygons.js   Drawing, buffers, rendering per type   [drawing-and-features]
   labels.js / textboxes.js  Map label and text-box annotations (DOM markers)
   measure.js                Temporary distance/area measure tool
@@ -128,11 +130,11 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 
 ## Script Load Order
 
-Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `travelshed`, `connector-graph`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
+Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
 config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → road-network
-→ network-connectors → walk-audit → travelshed → connector-graph → points → lines → routes → polygons
+→ network-connectors → walk-audit → travelshed → connector-graph → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
 → feature-appearance → feature-attributes → merge → split → layers-panel → census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js

@@ -787,6 +787,7 @@
     typeIcon.setAttribute("aria-label", "Appearance — " + (TYPE_LABELS_LOCAL[featureType] || featureType));
     var _currentColor = App.resolveFeatureColor(featureType, feature);
     typeIcon.style.color = _currentColor;
+    if (featureType === "point") App.applyPointTypeIcon(typeIcon, feature);
     (function (btn, ft, fi, feat) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();

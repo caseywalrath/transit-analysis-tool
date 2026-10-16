@@ -18,6 +18,7 @@
         var props = {};
         for (var k in p.properties) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(p.properties, k)) props[k] = p.properties[k]; }
         props.resolvedColor = App.resolveFeatureColor("point", p);
+        App.stampPointIcon(props, p, props.resolvedColor);
         return { type: "Feature", properties: props, geometry: p.geometry };
       })
     };
@@ -33,6 +34,7 @@
     var pointColor = (App.sectionColors && App.sectionColors.point) || "#2b6cb0";
     var ptsSrc = "points-src";
     var ptsLayer = "points-layer";
+    var iconLayer = "points-icon-layer";
     var bufSrc = "buffers";
     var bufFillLayer = "buffers-fill";
     var bufLineLayer = "buffers-line";
@@ -58,11 +60,16 @@
     }
 
     if (!map.getSource(ptsSrc)) {
+      App.installPointIconMissingHandler();
       map.addSource(ptsSrc, { type: "geojson", data: pointsGeoJSON() });
+      // Dots stay the original circle layer (zero change for existing
+      // projects); every other icon is the symbol layer right above it. Both
+      // read resolvedIcon, so their filters are complementary and total.
       map.addLayer({
         id: ptsLayer,
         type: "circle",
         source: ptsSrc,
+        filter: window.PointIcons.dotFilter(),
         paint: {
           "circle-radius": 6,
           "circle-stroke-width": 2,
@@ -70,6 +77,26 @@
           "circle-stroke-color": "#ffffff"
         }
       });
+      // Inserted directly above points-layer (not on top of the stack) so it
+      // shares the points' z-slot with the lines/routes/polygons added later.
+      var ids = map.getStyle().layers.map(function (l) { return l.id; });
+      var above = ids[ids.indexOf(ptsLayer) + 1];
+      map.addLayer({
+        id: iconLayer,
+        type: "symbol",
+        source: ptsSrc,
+        filter: window.PointIcons.iconFilter(),
+        layout: {
+          "icon-image": ["get", "iconImage"],
+          "icon-anchor": window.PointIcons.anchorExpr(),
+          // Dots never hide each other; icons must not either. Placement
+          // collision would otherwise drop overlapping stops at low zoom.
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "symbol-z-order": "source",
+          "icon-size": 1
+        }
+      }, above);
     } else {
       map.getSource(ptsSrc).setData(pointsGeoJSON());
     }

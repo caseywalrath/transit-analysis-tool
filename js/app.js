@@ -468,6 +468,7 @@
 
   App.featureSettings = {
     pointOpacity:       100,
+    pointIcon:          "dot",   // type default icon id (js/core/point-icons.js)
     lineOpacity:        100,
     routeOpacity:       100,
     polygonFillOpacity: 15,
@@ -493,6 +494,12 @@
   function _safeSetPaint(layerId, prop, val) {
     if (App.map && App.map.getLayer(layerId)) {
       App.map.setPaintProperty(layerId, prop, val);
+    }
+  }
+
+  function _safeSetLayout(layerId, prop, val) {
+    if (App.map && App.map.getLayer(layerId)) {
+      App.map.setLayoutProperty(layerId, prop, val);
     }
   }
 
@@ -524,6 +531,7 @@
       var opExpr = ["case", ["has", "_opacity"], ["get", "_opacity"], op];
       _safeSetPaint("points-layer", "circle-opacity", opExpr);
       _safeSetPaint("points-layer", "circle-stroke-opacity", opExpr);
+      _safeSetPaint("points-icon-layer", "icon-opacity", opExpr);
     }
     if (type === "line" || type === "all") {
       App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-opacity",
@@ -570,6 +578,11 @@
         ["case", ["has", "_lineWidth"], ["*", 6, ["get", "_lineWidth"]], 6 * fs.pointLineWidth]);
       _safeSetPaint("points-layer", "circle-stroke-width",
         ["case", ["has", "_lineWidth"], ["*", 2, ["get", "_lineWidth"]], 2 * fs.pointStrokeWidth]);
+      // Icons: Size scales the whole symbol (1 = its natural size). Width
+      // (pointStrokeWidth) only applies to Dot — an icon's white ring is part
+      // of its bitmap.
+      _safeSetLayout("points-icon-layer", "icon-size",
+        ["case", ["has", "_lineWidth"], ["get", "_lineWidth"], fs.pointLineWidth]);
     }
     if (type === "line" || type === "all") {
       App.lineStyleLayerIds("line").forEach(function (lid) { _safeSetPaint(lid, "line-width",

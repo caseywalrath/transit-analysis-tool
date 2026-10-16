@@ -125,18 +125,35 @@
       }
     });
 
-    // Point — larger circle with stronger stroke
+    // Point — larger circle with stronger stroke (Dot icon only)
     map.addLayer({
       id: "hl-circle",
       type: "circle",
       source: "hl-feature",
-      filter: ["==", ["geometry-type"], "Point"],
+      filter: ["all", ["==", ["geometry-type"], "Point"], window.PointIcons.dotFilter()],
       paint: {
         "circle-radius": 8,
         "circle-color": ["coalesce", ["get", "hl_color"], "#2b6cb0"],
         "circle-opacity": 0.9,
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff"
+      }
+    });
+
+    // Point with an icon — the same bitmap, enlarged. A circle would sit on a
+    // pin's tip instead of its body, so the icon itself is the highlight.
+    map.addLayer({
+      id: "hl-icon",
+      type: "symbol",
+      source: "hl-feature",
+      filter: ["all", ["==", ["geometry-type"], "Point"], window.PointIcons.iconFilter()],
+      layout: {
+        "icon-image": ["get", "iconImage"],
+        "icon-anchor": window.PointIcons.anchorExpr(),
+        "icon-size": ["*", 1.3, ["case", ["has", "_lineWidth"], ["get", "_lineWidth"],
+          ["coalesce", ["get", "hl_size"], 1]]],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
       }
     });
   }
@@ -186,6 +203,10 @@
         var fp = feature.properties;
         if (fp) { for (var k in fp) { if (k !== "_mergedFrom" && Object.prototype.hasOwnProperty.call(fp, k)) props[k] = fp[k]; } }
         props.hl_color = color;
+        if (active.type === "point") {
+          App.stampPointIcon(props, feature, color);
+          props.hl_size = (App.featureSettings && App.featureSettings.pointLineWidth != null) ? App.featureSettings.pointLineWidth : 1;
+        }
         featureGeos.push({ type: "Feature", geometry: feature.geometry, properties: props });
       }
       if (buffer) {
@@ -439,6 +460,8 @@
   App.clearSelection      = clearSelection;
   App.setSelection        = setSelection;
   App.applyPanelHighlight = applyPanelHighlight;
+  // Rebuild the map highlight (e.g. after a selected point's icon changed).
+  App.refreshSelectionHighlight = updateHighlightSources;
   App.isFeatureSelected   = isSelected;
   App.getSelectedFeatures = function () { return _multiSelected.slice(); };
 })();

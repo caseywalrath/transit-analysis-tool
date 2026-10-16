@@ -146,6 +146,7 @@
       polygonLineWidth:  (App.featureSettings && App.featureSettings.polygonLineWidth  != null) ? App.featureSettings.polygonLineWidth  : 1,
       bufferLineWidth:   (App.featureSettings && App.featureSettings.bufferLineWidth   != null) ? App.featureSettings.bufferLineWidth   : 1,
       pointOpacity:      (App.featureSettings && App.featureSettings.pointOpacity      != null) ? App.featureSettings.pointOpacity      : 100,
+      pointIcon:         window.PointIcons.normalize(App.featureSettings && App.featureSettings.pointIcon),
       lineOpacity:       (App.featureSettings && App.featureSettings.lineOpacity       != null) ? App.featureSettings.lineOpacity       : 100,
       routeOpacity:      (App.featureSettings && App.featureSettings.routeOpacity      != null) ? App.featureSettings.routeOpacity      : 100,
       polygonFillOpacity: (App.featureSettings && App.featureSettings.polygonFillOpacity != null) ? App.featureSettings.polygonFillOpacity : 15,
@@ -271,6 +272,8 @@
       if (state.bufferLineWidth   != null) fs.bufferLineWidth   = state.bufferLineWidth;
       // Opacity — default gracefully for old sessions without these fields
       fs.pointOpacity   = (state.pointOpacity   != null) ? state.pointOpacity   : 100;
+      // Absent on sessions saved before point icons existed (and unknown ids) → Dot.
+      fs.pointIcon      = window.PointIcons.normalize(state.pointIcon);
       fs.lineOpacity    = (state.lineOpacity     != null) ? state.lineOpacity    : 100;
       fs.routeOpacity   = (state.routeOpacity    != null) ? state.routeOpacity   : 100;
 
@@ -558,6 +561,7 @@
       App.featureSettings.polygonLineWidth  = 1;
       App.featureSettings.bufferLineWidth   = 1;
       App.featureSettings.pointOpacity      = 100;
+      App.featureSettings.pointIcon         = "dot";
       App.featureSettings.lineOpacity       = 100;
       App.featureSettings.routeOpacity      = 100;
       App.featureSettings.polygonFillOpacity = 15;
@@ -1214,7 +1218,8 @@
         labels: arrs.labels,
         bufferRadius:      (App.featureSettings && App.featureSettings.bufferRadius      != null) ? App.featureSettings.bufferRadius      : 0.5,
         lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0.5,
-        routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0.5
+        routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0.5,
+        pointIcon:         window.PointIcons.normalize(App.featureSettings && App.featureSettings.pointIcon)
       };
       var json = JSON.stringify(state, null, 2);
       var blob = new Blob([json], { type: "application/json" });
@@ -1800,7 +1805,8 @@
       labels: labels || [],
       bufferRadius:      (App.featureSettings && App.featureSettings.bufferRadius      != null) ? App.featureSettings.bufferRadius      : 0.5,
       lineBufferRadius:  (App.featureSettings && App.featureSettings.lineBufferRadius  != null) ? App.featureSettings.lineBufferRadius  : 0.5,
-      routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0.5
+      routeBufferRadius: (App.featureSettings && App.featureSettings.routeBufferRadius != null) ? App.featureSettings.routeBufferRadius : 0.5,
+      pointIcon:         window.PointIcons.normalize(App.featureSettings && App.featureSettings.pointIcon)
     };
     applyState(state);
     save();

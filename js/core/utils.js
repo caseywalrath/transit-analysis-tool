@@ -754,7 +754,7 @@
   // Per-feature appearance overrides (color is copied separately by callers).
   // Used by Duplicate (Decision 5): copy every override, never _mergedFrom.
   var APPEARANCE_OVERRIDE_KEYS = ["_opacity", "_fillOpacity", "_borderOpacity", "_lineWidth",
-    "_offset", "_offsetManual", "_lineStyle", "_bufferRadius"];
+    "_offset", "_offsetManual", "_lineStyle", "_bufferRadius", "_pointIcon"];
   function copyAppearanceOverrides(srcProps, dstProps) {
     if (!srcProps || !dstProps) return dstProps;
     APPEARANCE_OVERRIDE_KEYS.forEach(function (k) {

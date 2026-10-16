@@ -1,0 +1,387 @@
+{
+  "list/markers": [
+    {
+      "id": "dot",
+      "label": "Dot",
+      "group": "markers",
+      "shape": "dot"
+    },
+    {
+      "id": "pin",
+      "label": "Pin",
+      "group": "markers",
+      "shape": "pin"
+    },
+    {
+      "id": "square",
+      "label": "Square",
+      "group": "markers",
+      "shape": "square"
+    },
+    {
+      "id": "diamond",
+      "label": "Diamond",
+      "group": "markers",
+      "shape": "diamond"
+    },
+    {
+      "id": "star",
+      "label": "Star",
+      "group": "markers",
+      "shape": "star"
+    }
+  ],
+  "list/transit-ids": [
+    {
+      "id": "bus",
+      "label": "Bus",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "bus"
+    },
+    {
+      "id": "shelter",
+      "label": "Bus shelter",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "shelter"
+    },
+    {
+      "id": "rail",
+      "label": "Rail",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail"
+    },
+    {
+      "id": "rail-metro",
+      "label": "Metro / subway",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail-metro"
+    },
+    {
+      "id": "rail-light",
+      "label": "Light rail / tram",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail-light"
+    },
+    {
+      "id": "ferry",
+      "label": "Ferry",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "ferry"
+    },
+    {
+      "id": "parking",
+      "label": "Park & ride",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "parking"
+    },
+    {
+      "id": "bicycle-share",
+      "label": "Bike share",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "bicycle-share"
+    },
+    {
+      "id": "airport",
+      "label": "Airport",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "airport"
+    }
+  ],
+  "list/all-count": [
+    {
+      "id": "dot",
+      "label": "Dot",
+      "group": "markers",
+      "shape": "dot"
+    },
+    {
+      "id": "pin",
+      "label": "Pin",
+      "group": "markers",
+      "shape": "pin"
+    },
+    {
+      "id": "square",
+      "label": "Square",
+      "group": "markers",
+      "shape": "square"
+    },
+    {
+      "id": "diamond",
+      "label": "Diamond",
+      "group": "markers",
+      "shape": "diamond"
+    },
+    {
+      "id": "star",
+      "label": "Star",
+      "group": "markers",
+      "shape": "star"
+    },
+    {
+      "id": "bus",
+      "label": "Bus",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "bus"
+    },
+    {
+      "id": "shelter",
+      "label": "Bus shelter",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "shelter"
+    },
+    {
+      "id": "rail",
+      "label": "Rail",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail"
+    },
+    {
+      "id": "rail-metro",
+      "label": "Metro / subway",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail-metro"
+    },
+    {
+      "id": "rail-light",
+      "label": "Light rail / tram",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "rail-light"
+    },
+    {
+      "id": "ferry",
+      "label": "Ferry",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "ferry"
+    },
+    {
+      "id": "parking",
+      "label": "Park & ride",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "parking"
+    },
+    {
+      "id": "bicycle-share",
+      "label": "Bike share",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "bicycle-share"
+    },
+    {
+      "id": "airport",
+      "label": "Airport",
+      "group": "transit",
+      "shape": "badge",
+      "glyph": "airport"
+    },
+    {
+      "id": "building",
+      "label": "Building",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "building"
+    },
+    {
+      "id": "commercial",
+      "label": "Office",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "commercial"
+    },
+    {
+      "id": "residential-community",
+      "label": "Apartments",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "residential-community"
+    },
+    {
+      "id": "home",
+      "label": "House",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "home"
+    },
+    {
+      "id": "industry",
+      "label": "Industrial",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "industry"
+    },
+    {
+      "id": "warehouse",
+      "label": "Warehouse",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "warehouse"
+    },
+    {
+      "id": "shop",
+      "label": "Retail",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "shop"
+    },
+    {
+      "id": "grocery",
+      "label": "Grocery",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "grocery"
+    },
+    {
+      "id": "town-hall",
+      "label": "Government",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "town-hall"
+    },
+    {
+      "id": "school",
+      "label": "School",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "school"
+    },
+    {
+      "id": "college",
+      "label": "College",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "college"
+    },
+    {
+      "id": "hospital",
+      "label": "Hospital",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "hospital"
+    },
+    {
+      "id": "library",
+      "label": "Library",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "library"
+    },
+    {
+      "id": "park",
+      "label": "Park",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "park"
+    },
+    {
+      "id": "lodging",
+      "label": "Hotel",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "lodging"
+    },
+    {
+      "id": "restaurant",
+      "label": "Restaurant",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "restaurant"
+    },
+    {
+      "id": "stadium",
+      "label": "Stadium",
+      "group": "places",
+      "shape": "badge",
+      "glyph": "stadium"
+    }
+  ],
+  "get/unknown-falls-back-to-dot": {
+    "id": "dot",
+    "label": "Dot",
+    "group": "markers",
+    "shape": "dot"
+  },
+  "has/known": true,
+  "has/unknown": false,
+  "has/non-string": false,
+  "has/prototype-key-is-not-an-icon": false,
+  "normalize/known": "pin",
+  "normalize/unknown": "dot",
+  "normalize/undefined": "dot",
+  "hex6/six-digit-mixed-case": "2b6cb0",
+  "hex6/three-digit": "ff8800",
+  "hex6/no-hash": "e53e3e",
+  "hex6/css-name-falls-back": "2b6cb0",
+  "hex6/empty-falls-back": "2b6cb0",
+  "glyphColorFor/dark-fill-white-glyph": "#ffffff",
+  "glyphColorFor/light-fill-dark-glyph": "#1a202c",
+  "glyphColorFor/unparseable-uses-default-blue": "#ffffff",
+  "imageId/bus-blue": "pi:bus:2b6cb0",
+  "imageId/dot-has-no-image": null,
+  "imageId/unknown-is-dot-so-null": null,
+  "imageId/hyphenated-id": "pi:rail-metro:38a169",
+  "parseImageId/round-trip": {
+    "id": "rail-metro",
+    "hex": "38a169"
+  },
+  "parseImageId/foreign-image": null,
+  "parseImageId/dot-is-not-an-image": null,
+  "parseImageId/bad-color": null,
+  "resolve/override-wins": "pin",
+  "resolve/falls-to-type-default": "bus",
+  "resolve/explicit-dot-override-beats-default": "dot",
+  "resolve/unknown-override-ignored": "bus",
+  "resolve/unknown-default-is-dot": "dot",
+  "resolve/no-props-no-default": "dot",
+  "dotFilter": [
+    "==",
+    [
+      "coalesce",
+      [
+        "get",
+        "resolvedIcon"
+      ],
+      "dot"
+    ],
+    "dot"
+  ],
+  "iconFilter": [
+    "!=",
+    [
+      "coalesce",
+      [
+        "get",
+        "resolvedIcon"
+      ],
+      "dot"
+    ],
+    "dot"
+  ],
+  "anchorExpr/only-pin-anchors-at-the-tip": [
+    "match",
+    [
+      "get",
+      "resolvedIcon"
+    ],
+    [
+      "pin"
+    ],
+    "bottom",
+    "center"
+  ]
+}

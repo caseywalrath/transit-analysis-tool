@@ -179,12 +179,16 @@
 
   // Per-type style drawer contents. Each control is { label, kind, key, min,
   // max, step, unit, def } — kind is "color" (no key/min/max/step/unit/def)
-  // or "number" (mounts App.buildScrubber, writes App.featureSettings[key]).
+  // "icon" (Points only: opens App.openPointIconPicker, writes through
+  // App.setTypePointIcon), or "number" (mounts App.buildScrubber, writes
+  // App.featureSettings[key]).
   var DRAWN_TYPES = [
     { type: "point", label: "Points", controls: [
         { label: "Color", kind: "color" },
+        { label: "Icon",  kind: "icon" },
         { label: "Size",  kind: "number", key: "pointLineWidth",   min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
-        { label: "Width", kind: "number", key: "pointStrokeWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1 },
+        { label: "Width", kind: "number", key: "pointStrokeWidth", min: 0, max: 5,   step: 0.1, unit: "×", def: 1,
+          title: "Outline width of Dot markers. Icons keep their built-in white outline." },
         { label: "Opacity",       kind: "number", key: "pointOpacity",     min: 0, max: 100, step: 5,   unit: "%",      def: 100 }
       ] },
     { type: "line", label: "Lines", controls: [
@@ -255,11 +259,27 @@
       var r = Math.max(2, Math.min(7, 2 + (fs.pointLineWidth || 1) * 2));
       var psw = Math.max(0.5, (fs.pointStrokeWidth != null ? fs.pointStrokeWidth : 1) * 1.5);
       var pOp = (fs.pointOpacity != null ? fs.pointOpacity : 100) / 100;
-      var c = document.createElementNS(SVG_NS, "circle");
-      c.setAttribute("cx", "20"); c.setAttribute("cy", "8"); c.setAttribute("r", r);
-      c.setAttribute("fill", pColor); c.setAttribute("fill-opacity", pOp);
-      c.setAttribute("stroke", "#ffffff"); c.setAttribute("stroke-width", psw);
-      svg.appendChild(c);
+      var pIcon = window.PointIcons.normalize(fs.pointIcon);
+      if (pIcon !== window.PointIcons.DEFAULT_ID) {
+        // The preview is 16px tall; an icon's natural size is up to 32px, so
+        // it is drawn scaled to fit (a pin is the tallest).
+        var pShape = window.PointIcons.SHAPES[window.PointIcons.get(pIcon).shape];
+        var ph = 16, pw = Math.round(pShape.w * ph / pShape.h);
+        var im = document.createElementNS(SVG_NS, "image");
+        var href = App.pointIconDataURL(pIcon, pColor);
+        im.setAttribute("href", href);
+        im.setAttributeNS("http://www.w3.org/1999/xlink", "href", href);
+        im.setAttribute("x", String(20 - pw / 2)); im.setAttribute("y", "0");
+        im.setAttribute("width", String(pw)); im.setAttribute("height", String(ph));
+        im.setAttribute("opacity", pOp);
+        svg.appendChild(im);
+      } else {
+        var c = document.createElementNS(SVG_NS, "circle");
+        c.setAttribute("cx", "20"); c.setAttribute("cy", "8"); c.setAttribute("r", r);
+        c.setAttribute("fill", pColor); c.setAttribute("fill-opacity", pOp);
+        c.setAttribute("stroke", "#ffffff"); c.setAttribute("stroke-width", psw);
+        svg.appendChild(c);
+      }
     } else if (type === "line" || type === "route") {
       var lColor = App.getTypeDefaultColor ? App.getTypeDefaultColor(type) : "#e53e3e";
       var lw = Math.max(1, (fs[type + "LineWidth"] || 1) * 3);
@@ -1038,6 +1058,7 @@
     typeIcon.title = "Appearance";
     typeIcon.setAttribute("aria-label", typeIcon.title);
     typeIcon.style.color = App.resolveFeatureColor(it.type, it.feature);
+    if (it.type === "point") App.applyPointTypeIcon(typeIcon, it.feature);
     typeIcon.addEventListener("click", function (e) {
       e.stopPropagation();
       App.openAppearancePopup(typeIcon, it.type, it.index, {
@@ -1585,6 +1606,8 @@
     t.controls.forEach(function (ctl) {
       if (ctl.kind === "color") {
         App.setTypeColor(t.type, null);
+      } else if (ctl.kind === "icon") {
+        App.setTypePointIcon(window.PointIcons.DEFAULT_ID);
       } else {
         App.featureSettings[ctl.key] = ctl.def;
       }
@@ -1643,12 +1666,44 @@
       lab.className = "lp-style-label";
       lab.textContent = ctl.label;
       row.appendChild(lab);
+      if (ctl.title) row.title = ctl.title;
 
       var controlWrap = document.createElement("div");
       controlWrap.className = "lp-style-control";
       row.appendChild(controlWrap);
 
-      if (ctl.kind === "color") {
+      if (ctl.kind === "icon") {
+        var curIcon = window.PointIcons.normalize(App.featureSettings.pointIcon);
+        var iconBtn = document.createElement("button");
+        iconBtn.type = "button";
+        iconBtn.className = "pi-current";
+        iconBtn.title = "Change default icon (" + window.PointIcons.get(curIcon).label + ")";
+        iconBtn.setAttribute("aria-label", "Change default icon for " + t.label);
+        iconBtn.appendChild(App.buildPointIconPreview(curIcon, App.getTypeDefaultColor("point"), 22));
+        iconBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          App.openPointIconPicker(iconBtn, {
+            value: App.featureSettings.pointIcon,
+            color: App.getTypeDefaultColor("point"),
+            onPick: function (id) { App.setTypePointIcon(id); render(); }
+          });
+        });
+        controlWrap.appendChild(iconBtn);
+        if (curIcon !== window.PointIcons.DEFAULT_ID) {
+          var clearIconBtn = document.createElement("button");
+          clearIconBtn.type = "button";
+          clearIconBtn.className = "lp-style-clear";
+          clearIconBtn.textContent = "×";
+          clearIconBtn.title = "Reset to Dot";
+          clearIconBtn.setAttribute("aria-label", "Reset " + t.label + " icon to Dot");
+          clearIconBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            App.setTypePointIcon(window.PointIcons.DEFAULT_ID);
+            render();
+          });
+          controlWrap.appendChild(clearIconBtn);
+        }
+      } else if (ctl.kind === "color") {
         var flatColor = App.sectionColors && App.sectionColors[t.type];
         var sw = document.createElement("button");
         sw.type = "button";
