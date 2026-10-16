@@ -1679,7 +1679,7 @@
         iconBtn.className = "pi-current";
         iconBtn.title = "Change default icon (" + window.PointIcons.get(curIcon).label + ")";
         iconBtn.setAttribute("aria-label", "Change default icon for " + t.label);
-        iconBtn.appendChild(App.buildPointIconPreview(curIcon, App.getTypeDefaultColor("point"), 22));
+        iconBtn.appendChild(App.buildPointIconPreview(curIcon, App.getTypeDefaultColor("point"), 20));
         iconBtn.addEventListener("click", function (e) {
           e.stopPropagation();
           App.openPointIconPicker(iconBtn, {

@@ -346,6 +346,13 @@ async function colorBox(page, clip, rgb) {
     const DEF_BTN = '#fp-tab-layers .pi-current[aria-label="Change default icon for Points"]';
     await page.locator(DEF_BTN).waitFor({ state: "visible", timeout: 5000 });
     check("Style defaults > Points has an Icon row", true);
+    const align = await page.evaluate((sel) => {
+      const sw = document.querySelector("#fp-tab-layers .lp-style-group .lp-swatch").getBoundingClientRect();
+      const ic = document.querySelector(sel).getBoundingClientRect();
+      return { swatch: [sw.left, sw.right, sw.width, sw.height], icon: [ic.left, ic.right, ic.width, ic.height] };
+    }, DEF_BTN);
+    check("the Icon button is exactly the Color swatch's size and lines up with it",
+      align.swatch.every((v, i) => Math.abs(v - align.icon[i]) < 0.6), align);
     await page.locator(DEF_BTN).click();
     await page.locator('#fp-icon-picker .pi-tile[data-icon="rail-metro"]').click();
     await page.waitForFunction(() => App.featureSettings.pointIcon === "rail-metro", null, { timeout: 5000 }).catch(() => {});
@@ -361,6 +368,20 @@ async function colorBox(page, clip, rgb) {
     check("× on the Icon row returns the default to Dot", (await page.evaluate(() => App.featureSettings.pointIcon)) === "dot");
     await page.locator('.fp-tab-btn[data-fptab="features"]').click();
     await page.waitForTimeout(150);
+
+    // ---- Attributes popup header: swatch shares the title's row, left of it ----
+    await page.evaluate(() => App.openAttrPopup("point", 0, App.points[0]));
+    await page.locator("#fp-attr-popup .fp-attr-popup-swatch").waitFor({ state: "visible", timeout: 5000 });
+    const hdr = await page.evaluate(() => {
+      const r = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+      return { sw: r("#fp-attr-popup .fp-attr-popup-swatch"), title: r("#fp-attr-popup .fp-attr-popup-title"), row: r("#fp-attr-popup .fp-attr-popup-title-row"),
+        inRow: !!document.querySelector("#fp-attr-popup .fp-attr-popup-title-row .fp-attr-popup-swatch") };
+    });
+    check("the Appearance swatch is in the title row, to the left of the title and vertically inside it",
+      hdr.inRow && hdr.sw.r <= hdr.title.l && hdr.sw.t >= hdr.row.t - 0.5 && hdr.sw.b <= hdr.row.b + 0.5, hdr);
+    await page.evaluate(() => document.querySelector("#fp-attr-popup .fp-attr-popup-collapse").click());
+    check("the swatch stays visible while the popup is collapsed", await page.evaluate(() => document.querySelector("#fp-attr-popup .fp-attr-popup-swatch").getBoundingClientRect().width > 0));
+    await page.evaluate(() => App.closeAttrPopup());
 
     // ---- Duplicate ----
     const dup = await page.evaluate(() => { App.setFeaturePointIcon(3, "bus"); App.duplicatePoint(3); return App.points[App.points.length - 1].properties._pointIcon; });

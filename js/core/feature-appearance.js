@@ -204,7 +204,7 @@
       btn.className = "pi-current";
       btn.title = "Change icon (" + window.PointIcons.get(id).label + (has ? "" : ", default") + ")";
       btn.setAttribute("aria-label", "Change icon");
-      btn.appendChild(App.buildPointIconPreview(id, color, 22));
+      btn.appendChild(App.buildPointIconPreview(id, color, 20));
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         App.openPointIconPicker(btn, { value: id, color: color, onPick: function (picked) { apply(picked); } });

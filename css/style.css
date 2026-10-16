@@ -1801,8 +1801,8 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 24px;
-  margin-top: 2px;
+  flex-shrink: 0;
+  margin-right: var(--space-2);
 }
 .fp-attr-popup-body {
   padding: 12px 14px 14px;
@@ -1810,7 +1810,6 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   flex: 1;
 }
 #fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-body { display: none; }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-controls { display: none; }
 #fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-collapse svg { transform: rotate(180deg); }
 /* Slightly larger inputs inside the popup */
 #fp-attr-popup .fp-attr-label {
@@ -4988,13 +4987,16 @@ select.fp-attr-input,
 .pi-tile:hover { background: var(--surface-hover); }
 .pi-tile.is-active { background: var(--accent-soft); border-color: var(--accent); }
 /* The "current icon" button in a style row (Appearance popover, Style Defaults). */
+/* Exactly the size of .lp-swatch so the Icon row lines up with the Color row. */
 .pi-current {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 2px;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex-shrink: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 4px;
