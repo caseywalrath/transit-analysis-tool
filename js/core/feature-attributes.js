@@ -44,7 +44,10 @@
   // feature.properties._bufferRadius, NOT feature.properties.attributes — the
   // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
   // never touches `attributes`.
-  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area" };
+  // skipIf: multi-select editing leaves walkshed points out (their buffer is
+  // replaced by the walkshed; see js/core/attr-bulk.js R5).
+  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area",
+                       skipIf: { attr: "serviceAreaType", equals: "walkshed" } };
 
   var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
 
@@ -73,8 +76,10 @@
     line:  LINE_FIELDS,
     point: [
       { key: "group",            label: "Group",    type: "text", placeholder: "e.g. North Corridor", groupPicker: true, hidden: true },
-      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
-      { key: "associatedRoutes", label: "Routes"                                                 },
+      // bulk: false = identity field, never edited across a multi-selection;
+      // bulk: "replace" = complex editor, seeded from the first feature when Mixed.
+      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042", bulk: false },
+      { key: "associatedRoutes", label: "Routes", bulk: "replace"                                 },
       { key: "serviceAreaType",  label: "Service area", type: "select", section: "Study area",
         options: ["", "walkshed"],
         optionLabels: { "": "Circular buffer", "walkshed": "Walkshed" },
@@ -99,6 +104,7 @@
   };
 
   function saveAttrCache() {
+    if (_muteSave) return;
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
@@ -1549,8 +1555,174 @@
     _cur = { type: featureType, index: featureIndex, feature: feature };
   }
 
-  // Multi-selection: group actions plus a member list (shared-field editing is
-  // a later step). Clicking a member narrows the selection to it.
+  /* ---- Multi-selection: shared-field editing (rules in js/core/attr-bulk.js) ---- */
+
+  // The service schedule is not an ATTR_FIELDS row (it renders full-width), so
+  // multi mode adds it as a pseudo-field for routes and lines.
+  var SERVICE_PSEUDO = { key: "service", label: "Service schedule", type: "service", bulk: "replace", section: "Service schedule" };
+  function bulkFieldsByType() {
+    var out = {};
+    Object.keys(ATTR_FIELDS).forEach(function (t) {
+      out[t] = (t === "route" || t === "line") ? ATTR_FIELDS[t].concat([SERVICE_PSEUDO]) : ATTR_FIELDS[t];
+    });
+    return out;
+  }
+  function fieldDef(type, key) {
+    var list = bulkFieldsByType()[type] || [];
+    for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
+    return null;
+  }
+
+  // Inner saveAttrCache() calls are muted while a seeded "Replace all…" editor
+  // is open: they edit a scratch copy, and the one real undo step is taken
+  // when the copy is applied.
+  var _muteSave = false;
+
+  // Write value to every eligible item as ONE undo step, run each distinct
+  // field onChange once, then save / refresh / re-render the dock.
+  function bulkWrite(items, key, value) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    var hooks = [], types = {};
+    items.forEach(function (it) {
+      var field = fieldDef(it.type, key);
+      if (!field || !window.AttrBulk.eligible(field, it.feature)) return;
+      var p = it.feature.properties;
+      types[it.type] = true;
+      if (field.type === "buffer-radius") {
+        if (value === null) delete p._bufferRadius; else p._bufferRadius = value;
+      } else {
+        if (!p.attributes) p.attributes = {};
+        var v = (value && typeof value === "object") ? JSON.parse(JSON.stringify(value)) : value;
+        if (v === null || v === "") delete p.attributes[key]; else p.attributes[key] = v;
+        // Labels mirror their style attributes onto properties for the marker.
+        if (it.type === "label" || it.type === "textbox") {
+          if (key === "fontSize") p.fontSize = v;
+          if (key === "bgColor") { p.bgColor = v; p.color = v; }
+          if (key === "textColor") p.textColor = v;
+          var upd = it.type === "label" ? App.updateLabelAppearance : App.updateTextBoxAppearance;
+          if (typeof upd === "function") upd(it.index);
+        }
+      }
+      if (typeof field.onChange === "function" && hooks.indexOf(field.onChange) < 0) hooks.push(field.onChange);
+    });
+    if (key === "bufferRadius") Object.keys(types).forEach(rebuildBuffersForType);
+    hooks.forEach(function (fn) { try { fn(items[0].feature.properties.attributes || {}); } catch (e) {} });
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
+    syncAttrDock();
+  }
+
+  // One editor row for a shared field. a = an AttrBulk.analyze entry.
+  function buildBulkRow(a, items, field) {
+    var mixed = a.state === "mixed";
+    var none = a.state === "none";
+    var el, unit = field.unit || null;
+    function commit(v) { bulkWrite(items, a.key, v); }
+
+    if (a.bulk === "replace") {
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "ad-replace";
+      el.textContent = mixed ? "Mixed · Replace all…" : "Edit all…";
+      el.title = mixed ? "Opens with the first selected feature's values; saving copies them to all" : "";
+      el.addEventListener("click", function () { openReplaceEditor(a, items, el); });
+    } else if (a.type === "select") {
+      el = document.createElement("select");
+      el.className = "fp-attr-input";
+      if (mixed) {
+        var m = document.createElement("option");
+        m.value = "\u0000mixed"; m.textContent = "Mixed"; m.disabled = true; m.selected = true;
+        el.appendChild(m);
+      }
+      (field.options || []).forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt;
+        o.textContent = (field.optionLabels && (opt in field.optionLabels)) ? field.optionLabels[opt] : (opt === "" ? "—" : opt);
+        if (!mixed && (opt === "" ? (a.value === null || a.value === "") : a.value === opt)) o.selected = true;
+        el.appendChild(o);
+      });
+      el.addEventListener("change", function () { commit(el.value === "" ? null : el.value); });
+    } else if (a.type === "color") {
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "fp-attr-color-swatch" + (mixed ? " ad-swatch-mixed" : "");
+      if (!mixed) el.style.background = a.value || (a.key === "textColor" ? "#ffffff" : "#1a202c");
+      el.title = mixed ? "Mixed" : field.label;
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (typeof App.openColorPicker === "function") {
+          App.openColorPicker(el, a.value || "#1a202c", function (c) { commit(c); });
+        }
+      });
+    } else if (a.type === "buffer-radius") {
+      el = document.createElement("input");
+      el.type = "number";
+      el.min = "0"; el.step = "0.125";
+      el.className = "fp-attr-input";
+      el.placeholder = mixed ? "Mixed" : "Default";
+      el.title = "Empty = the type's default radius";
+      if (!mixed && a.value !== null) el.value = a.value;
+      unit = "mi";
+      el.addEventListener("change", function () {
+        var v = el.value === "" ? null : parseFloat(el.value);
+        commit(v === null || isNaN(v) ? null : Math.max(0, v));
+      });
+    } else {
+      el = document.createElement("input");
+      el.type = a.type === "number" ? "number" : "text";
+      el.className = "fp-attr-input";
+      if (a.type === "number") { el.min = "0"; el.step = "1"; }
+      el.placeholder = mixed ? "Mixed" : (field.placeholder || "");
+      if (!mixed && a.value !== null) el.value = a.value;
+      if (a.key === "serviceId") el.setAttribute("list", "fp-service-datalist");
+      el.addEventListener("change", function () {
+        if (a.type === "number") commit(el.value === "" ? null : parseFloat(el.value));
+        else commit(el.value.trim() === "" ? null : el.value.trim());
+      });
+    }
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter" && el.blur) el.blur(); });
+    if (none) { el.disabled = true; el.title = "Not editable for these features"; }
+
+    var row = buildRow(a.label, el, unit);
+    if (!none && a.eligible < a.total) {
+      var note = document.createElement("div");
+      note.className = "ad-bulk-note";
+      var skipped = a.total - a.eligible;
+      note.textContent = "Skips " + skipped + (skipped === 1 ? " feature" : " features") +
+        (a.key === "bufferRadius" ? " with a walkshed" : "");
+      var wrap = document.createElement("div");
+      wrap.appendChild(row);
+      wrap.appendChild(note);
+      return wrap;
+    }
+    return row;
+  }
+
+  // R6: edit a scratch copy seeded from the first eligible feature; on close,
+  // copy it to every eligible feature if anything changed.
+  function openReplaceEditor(a, items, anchor) {
+    var seedItem = null;
+    for (var i = 0; i < items.length; i++) {
+      if (window.AttrBulk.eligible(fieldDef(items[i].type, a.key), items[i].feature)) { seedItem = items[i]; break; }
+    }
+    if (!seedItem) return;
+    var seedAttrs = JSON.parse(JSON.stringify(seedItem.feature.properties.attributes || {}));
+    var before = JSON.stringify(seedAttrs[a.key] === undefined ? null : seedAttrs[a.key]);
+    _muteSave = true;
+    // Closing the editor unchanged writes nothing, even when values were Mixed.
+    function done() {
+      _muteSave = false;
+      var after = seedAttrs[a.key] === undefined ? null : seedAttrs[a.key];
+      if (JSON.stringify(after) !== before) bulkWrite(items, a.key, after);
+    }
+    if (a.key === "service") {
+      App.openTimeBandsPopup({ properties: { name: items.length + " features", attributes: seedAttrs } }, anchor, done);
+    } else {
+      App.openRoutePickerPopup(seedAttrs, anchor, done);
+    }
+  }
+
   function renderMulti(list) {
     _overlaps = null;
     setHeader(list.length + " features selected", "Selection", null, null, null);
@@ -1561,11 +1733,68 @@
         })
       : []);
     var body = freshBody();
-    var ul = document.createElement("ul");
-    ul.className = "ad-members";
+
+    var items = [];
     list.forEach(function (s) {
       var f = featureFor(s.type, s.index);
-      if (!f) return;
+      if (f) items.push({ type: s.type, index: s.index, feature: f });
+    });
+
+    // Type chips: click one to narrow the selection to that type.
+    var counts = window.AttrBulk.typeCounts(items);
+    if (counts.length > 1) {
+      var chips = document.createElement("div");
+      chips.className = "ad-chips";
+      counts.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "ad-chip";
+        b.textContent = c.count + " " + (TYPE_LABELS[c.type] || c.type) + (c.count === 1 ? "" : "s");
+        b.title = "Select only these";
+        b.addEventListener("click", function () {
+          var only = list.filter(function (s) { return s.type === c.type; });
+          if (typeof App.setSelection === "function") App.setSelection(only);
+        });
+        chips.appendChild(b);
+      });
+      body.appendChild(chips);
+    }
+
+    var shared = window.AttrBulk.analyze(bulkFieldsByType(), items);
+    if (!shared.length) {
+      var hint = document.createElement("div");
+      hint.className = "ad-empty";
+      hint.textContent = counts.length > 1
+        ? "These feature types share no attributes. Pick a type above to edit its fields."
+        : "No attributes to edit together.";
+      body.appendChild(hint);
+    }
+    var current = null, currentLabel = null;
+    shared.forEach(function (a) {
+      var label = a.section || "Attributes";
+      if (label !== currentLabel) { current = addSection(body, label); currentLabel = label; }
+      current.appendChild(buildBulkRow(a, items, fieldDef(items[0].type, a.key)));
+    });
+
+    // Totals
+    var lenMi = 0, areaM2 = 0;
+    items.forEach(function (it) {
+      try {
+        if (it.type === "line" || it.type === "route") lenMi += turf.length(it.feature, { units: "miles" });
+        if (it.type === "polygon") areaM2 += turf.area(it.feature);
+      } catch (e) {}
+    });
+    if (lenMi > 0 || areaM2 > 0) {
+      var m = addSection(body, "Measurements");
+      if (lenMi > 0) infoRow(m, "Total length", fmtLength(lenMi));
+      if (areaM2 > 0) infoRow(m, "Total area", fmtArea(areaM2));
+    }
+
+    var ms = addSection(body, "Selection");
+    var ul = document.createElement("ul");
+    ul.className = "ad-members";
+    items.forEach(function (s) {
+      var f = s.feature;
       var li = document.createElement("li");
       var b = document.createElement("button");
       b.type = "button";
@@ -1586,7 +1815,8 @@
       li.appendChild(b);
       ul.appendChild(li);
     });
-    body.appendChild(ul);
+    ms.appendChild(ul);
+    buildFooter(body);
     _cur = { multi: true, list: list.slice() };
   }
 

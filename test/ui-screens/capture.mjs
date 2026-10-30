@@ -521,6 +521,28 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_attr-dock", "fail", e.message);
   }
 
+  // ---- Attributes dock: multi-selection (shared fields, Mixed values) ----
+  try {
+    await page.evaluate(() => {
+      var App = window.App;
+      var list = [];
+      for (var i = 0; i < Math.min(2, App.routes.length); i++) list.push({ type: "route", index: i });
+      if (App.points.length) list.push({ type: "point", index: 0 });
+      App.setSelection(list);
+      App.openAttrDock();
+    });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-multi.png"), theme + "_attr-dock-multi");
+    await page.evaluate(() => {
+      window.App.setSelection([{ type: "route", index: 0 }, { type: "route", index: 1 }]);
+    });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-multi-routes.png"), theme + "_attr-dock-multi-routes");
+    await page.evaluate(() => window.App.closeAttrDock());
+  } catch (e) {
+    record(theme + "_attr-dock-multi", "fail", e.message);
+  }
+
   // ---- Shared Appearance popover (docs/archive/feature-appearance-plan.md Phase 1) ----
   try {
     await page.evaluate(() => {

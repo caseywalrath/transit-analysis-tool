@@ -1,7 +1,16 @@
 # Attributes Dock — Plan
 
 Replace the floating attributes popup (`#fp-attr-popup`) with a docked attributes panel on the
-left edge of the map that opens on a normal left click. Status: **Phases 1–2 done; Phases 3–4 planned.**
+left edge of the map that opens on a normal left click. Status: **Phases 1–3 done; Phase 4 planned.**
+
+### Phase 3 as built (differences from the plan below)
+
+- `appliesTo(feature)` became a declarative `skipIf: { attr, equals }` so the golden cases can express it.
+- The Buffer row in multi mode is a plain number box (empty = type default), not the scrubber control.
+- "Replace all…" writes nothing if the editor is closed unchanged, even when values were Mixed.
+- Shared fields with equal complex values show "Edit all…" (edits all together).
+- The header swatch is hidden (not shown disabled) in multi mode; bulk appearance stays out of scope.
+- Union "Used in" is not shown in multi mode; totals are.
 
 ### Phase 2 as built (differences from the plan below)
 

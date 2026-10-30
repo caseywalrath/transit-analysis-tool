@@ -1899,6 +1899,38 @@ body.present-mode #attr-dock { display: none !important; }
 .ad-link:hover { text-decoration: underline; }
 .ad-footer { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
 
+/* Multi-selection: type chips, Mixed states, skip notes */
+.ad-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 8px; }
+.ad-chip {
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ad-chip:hover { color: var(--accent); border-color: var(--accent); }
+.ad-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+#attr-dock .fp-attr-input::placeholder { font-style: italic; }
+.ad-replace {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 3px 10px;
+  min-height: var(--ctl-height-sm);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ad-replace:hover { border-style: solid; }
+/* Mixed color: half-and-half swatch (data encoding, not chrome) */
+.ad-swatch-mixed { background: linear-gradient(135deg, #1a202c 50%, #ffffff 50%) !important; }
+.ad-bulk-note { font-size: var(--text-xs); color: var(--muted); margin: -2px 0 6px 86px; }
+
 /* Multi-selection member list */
 .ad-members { list-style: none; margin: 0; padding: 0; }
 .ad-member {

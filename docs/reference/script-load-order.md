@@ -32,7 +32,8 @@ selection.js         App.setSelection/selectFeature/getSelectedFeatures/…
 box-select.js        after selection.js; defines App.boxSelect, App.bulkFeatures
 features.js          feature panel; App.showContextMenu, App.buildColorPickerBody, App.collectDrawnFeatures
 feature-appearance.js needs App.buildColorPickerBody (features.js) inside handlers; App.openAppearancePopup, App.buildFeatureOverrideRows
-feature-attributes.js App.openAttrDock/closeAttrDock/syncAttrDock/isAttrDockOpen/getAttrDockFeature
+attr-bulk.js         window.AttrBulk (pure multi-select field rules; no App at load); before feature-attributes.js
+feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/closeAttrDock/syncAttrDock/isAttrDockOpen/getAttrDockFeature
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
 layers-panel.js      App.refreshLayersPanel
