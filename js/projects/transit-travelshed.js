@@ -439,7 +439,7 @@
   function emptyHint() {
     var nFeat = (App.routes || []).length + (App.lines || []).length;
     if (!nFeat) {
-      return { need: "Draw a route or line with service bands.", action: "Use the Route or Line tool, then set bands in its Attributes popup." };
+      return { need: "Draw a route or line with service bands.", action: "Use the Route or Line tool, then click it and set bands in the attributes panel." };
     }
     if (!_origin) {
       return { need: "Select an origin on the map.", action: "Click “Select Origin”, then click a starting point." };

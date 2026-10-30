@@ -1,7 +1,22 @@
 # Attributes Dock — Plan
 
 Replace the floating attributes popup (`#fp-attr-popup`) with a docked attributes panel on the
-left edge of the map that opens on a normal left click. Status: **Phases 1–3 done; Phase 4 planned.**
+left edge of the map that opens on a normal left click. Status: **All four phases done.** (Reference features in the dock remain a separate, later plan; see §9.)
+
+### Phase 4 as built
+
+- One disclosure caret everywhere (Layers rows, Features sections and groups, analysis-panel Inputs,
+  dock sections): the same ▾ glyph, size and color, right = closed, down = open. Layers carets used to
+  flip up when open; they now follow the same convention.
+- One section-heading style (xs, semibold, uppercase, muted) for dock sections, Features-panel
+  section headers and analysis-panel Inputs headers (the Inputs label was a size larger).
+- Dock header buttons and analysis-panel header buttons share one rule (28px, same icon size, hover,
+  focus ring).
+- Feature Settings rows use the dock's label column (xs, right-aligned, no wrap), so "Route buffer"
+  no longer wraps.
+- Raw-hex dark-mode overrides for Features section headers removed in favor of the `--muted` token.
+- User-facing text that pointed to the "Attributes popup" now says "attributes panel".
+- Not changed: native `<details>` disclosures (e.g. "Advanced Settings") keep the browser's ▶ marker.
 
 ### Phase 3 as built (differences from the plan below)
 

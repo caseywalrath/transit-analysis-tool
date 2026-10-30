@@ -462,7 +462,7 @@
         'Set up this Service' +
       '</button>' +
       '<p class="tiny u-muted">Changes here edit the Route/Line attributes directly ' +
-      '&mdash; the same fields as the per-feature Attributes popup.</p>';
+      '&mdash; the same fields as the attributes panel (click a feature).</p>';
     var btn = document.getElementById("tbSetupBtn");
     if (btn) btn.addEventListener("click", function () { openEditPopup(svc, btn); });
   }
@@ -714,7 +714,7 @@
     block.appendChild(hdr);
 
     // Service id — the pairing key. Reuses the shared autocomplete datalist
-    // created by the per-feature attributes popup (js/core/feature-attributes.js)
+    // created by the attributes dock (js/core/feature-attributes.js)
     // or Attribute Summary, whichever mounted first this session.
     var svcRow = document.createElement("div");
     svcRow.className = "fp-attr-row";

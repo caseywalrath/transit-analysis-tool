@@ -3,7 +3,7 @@
 // each one's value is the same across it. Pure: no App, DOM or map, so the
 // golden harness loads it alone (test/cases/attr-bulk.mjs). The attributes dock
 // (feature-attributes.js) renders the result and does the writing.
-// Detail: docs/reference/drawing-and-features.md, docs/attributes-dock-plan.md §5.
+// Detail: docs/reference/drawing-and-features.md, docs/archive/attributes-dock-plan.md §5.
 //
 // Rules (one set covers every type combination):
 //   R1 a field is shared when every selected feature's type has a field with

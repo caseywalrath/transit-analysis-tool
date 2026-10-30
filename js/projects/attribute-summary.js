@@ -858,7 +858,7 @@
       { label: "Avg Spd",   cls: "as-col-num", title: "Average speed (mph)" },
       { label: "RunT",      cls: "as-col-num", title: "Run time (minutes, one-way / loop)" },
       { label: "Bands",     cls: "as-col-narrow", title: "Time bands — Weekday · Saturday · Sunday counts" },
-      { label: "Net",       cls: "as-col-narrow", title: "Walk network role (Lines only — see the Walk network section of the Attributes popup)" },
+      { label: "Net",       cls: "as-col-narrow", title: "Walk network role (Lines only — see the Walk network section of the attributes panel)" },
       { label: "Buffer",    cls: "as-col-buffer", title: "Buffer radius (mi). Muted = the type default from Feature Settings; \u00d7 clears an override." },
       { label: "",          cls: "as-col-copy", title: "Copy attributes" }
     ]);

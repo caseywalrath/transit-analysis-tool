@@ -1252,7 +1252,8 @@
     var head = document.createElement("button");
     head.type = "button";
     head.className = "ad-section-head";
-    head.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="7,5 12,10 7,15"></polyline></svg>';
+    // Same ▾ caret as every other panel's disclosure (style.css .ad-caret).
+    head.innerHTML = '<span class="ad-caret" aria-hidden="true">&#9662;</span>';
     var lbl = document.createElement("span");
     lbl.textContent = label;
     head.appendChild(lbl);

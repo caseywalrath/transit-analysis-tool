@@ -136,7 +136,7 @@
     if (!hasAnyBand) {
       svc.warnings.push({
         level: "error",
-        msg: "No service bands with a headway defined. Add bands via the Attributes popup."
+        msg: "No service bands with a headway defined. Click the route and add bands in the attributes panel."
       });
     }
   }

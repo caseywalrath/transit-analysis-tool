@@ -530,14 +530,32 @@ button { cursor: pointer; }
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--muted);
   padding: 0 2px;
   flex-shrink: 0;
-  transition: transform 0.12s;
   min-width: 24px;
   min-height: 24px;
 }
-.lp-caret.open { transform: rotate(180deg); }
+/* One disclosure caret across every panel (Layers rows, Features sections and
+   groups, analysis-panel Inputs, attributes-dock sections): the same ▾ glyph,
+   size and color, pointing right when closed and down when open. Open state
+   is the .open class, except the two that follow their container's class. */
+.lp-caret,
+.fp-section-toggle,
+.fp-group-toggle,
+.ad-caret {
+  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-none);
+  transition: transform var(--ease-fast);
+  transform: rotate(-90deg);
+}
+.lp-caret.open,
+.fp-section-toggle.open,
+.fp-group-toggle.open,
+.ad-section:not(.ad-section-closed) .ad-caret,
+.module-inputs:not(.module-inputs-collapsed) > .module-inputs-header .module-inputs-caret {
+  transform: rotate(0deg);
+}
 /* Stands in for .lp-caret on layer rows with no style drawer (same 24px width)
    so every row's grip and name share one left edge. */
 .lp-caret-spacer {
@@ -776,17 +794,11 @@ button { cursor: pointer; }
   border: none;
   cursor: pointer;
   padding: 0 4px;
-  color: var(--muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-none);
   flex-shrink: 0;
   margin-left: auto;
-  transition: transform 0.15s;
-  transform: rotate(-90deg);
   min-width: 24px;
   min-height: 24px;
 }
-.fp-section-toggle.open { transform: rotate(0deg); }
 
 .fp-list { min-height: 4px; }
 
@@ -1613,17 +1625,22 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   align-items: center;
   gap: 6px;
 }
+/* Feature Settings rows use the same label column as the attributes dock's
+   field rows (.fp-attr-row / .fp-attr-label): xs, right-aligned, no wrap. */
 .fp-buffer-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 3px 4px;
 }
 .fp-buffer-label {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--muted);
-  flex: 1;
+  flex: 0 0 76px;
+  text-align: right;
+  white-space: nowrap;
 }
+.fp-buffer-row input { flex: 1; min-width: 0; }
 .fp-buffer-unit {
   font-size: var(--text-xs);
   color: var(--muted);
@@ -1784,35 +1801,8 @@ body.present-mode #attr-dock { display: none !important; }
   color: var(--muted);
 }
 .ad-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.ad-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--muted);
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  line-height: var(--leading-none);
-}
-.ad-btn svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform var(--ease-fast);
-}
-.ad-btn:hover { color: var(--accent); background: var(--surface-hover); }
-.ad-close { font-size: var(--text-xl); }
-.ad-close:hover { color: var(--danger); }
-.ad-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+/* .ad-btn size, color, hover and focus come from the shared panel header
+   button rules (with .module-popup-close / -collapse). */
 #attr-dock.ad-pinned .ad-pin { color: var(--accent); background: var(--accent-soft); }
 #attr-dock.ad-pinned .ad-pin svg { fill: currentColor; }
 .ad-body {
@@ -1860,6 +1850,18 @@ body.present-mode #attr-dock { display: none !important; }
 
 /* Collapsible body sections; open/closed is remembered per label */
 .ad-section + .ad-section { border-top: 1px solid var(--border); }
+/* Section headings share one type style across the dock, the Features panel
+   and analysis-panel Inputs headers. */
+.ad-section-head,
+.module-inputs-label,
+.fp-section-header,
+.fp-settings-header {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-md);
+  color: var(--muted);
+}
 .ad-section-head {
   display: flex;
   align-items: center;
@@ -1869,22 +1871,11 @@ body.present-mode #attr-dock { display: none !important; }
   border: none;
   background: transparent;
   cursor: pointer;
-  font: inherit;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-md);
-  color: var(--muted);
+  font-family: inherit;
   text-align: left;
 }
 .ad-section-head:hover { color: var(--text-primary); }
 .ad-section-head:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
-.ad-section-head svg {
-  width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2;
-  stroke-linecap: round; stroke-linejoin: round;
-  transform: rotate(90deg); transition: transform var(--ease-fast);
-}
-.ad-section-closed .ad-section-head svg { transform: rotate(0deg); }
 .ad-section-body { padding-bottom: 8px; }
 .ad-section-closed .ad-section-body { display: none; }
 .ad-empty { font-size: var(--text-sm); color: var(--muted); padding: 2px 0 4px; }
@@ -2009,7 +2000,7 @@ body.present-mode #app .maplibregl-ctrl-bottom-left { left: 0; }
   min-height: 22px;
 }
 /* Per-feature buffer radius control (App.buildBufferRadiusControl): used in the
-   Attributes popup's "Study area" section and the Attribute Summary Buffer
+   attributes dock's "Study area" section and the Attribute Summary Buffer
    column. Compact scrubber sizing, same as the Layers style drawers. */
 .fp-buffer-ctl {
   display: flex;
@@ -2291,16 +2282,10 @@ input.fp-attr-input[type="number"] {
   border: none;
   cursor: pointer;
   padding: 0 4px;
-  color: var(--muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-none);
   flex-shrink: 0;
-  transition: transform 0.15s;
-  transform: rotate(-90deg);
   min-width: 24px;
   min-height: 24px;
 }
-.fp-group-toggle.open { transform: rotate(0deg); }
 .fp-group-name {
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
@@ -2891,10 +2876,13 @@ body.present-mode .module-popup {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
 }
+/* Panel header icon buttons: analysis panels and the attributes dock share
+   size, color and hover (.ad-btn rules below only add dock specifics). */
 .module-popup-collapse,
-.module-popup-close {
-  width: 30px;
-  height: 30px;
+.module-popup-close,
+.ad-btn {
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   margin: 0;
   padding: 0;
@@ -2914,9 +2902,10 @@ body.present-mode .module-popup {
   margin-right: var(--space-1);
   color: var(--muted);
 }
-.module-popup-collapse svg {
-  width: 18px;
-  height: 18px;
+.module-popup-collapse svg,
+.ad-btn svg {
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -2924,16 +2913,19 @@ body.present-mode .module-popup {
   stroke-linejoin: round;
   transition: transform var(--ease-fast);
 }
-.module-popup-collapse:hover {
+.module-popup-collapse:hover,
+.ad-btn:hover {
   background: var(--surface-hover);
   color: var(--accent);
 }
-.module-popup-close:hover {
+.module-popup-close:hover,
+.ad-btn.ad-close:hover {
   background: var(--surface-hover);
   color: var(--danger);
 }
 .module-popup-collapse:focus-visible,
-.module-popup-close:focus-visible {
+.module-popup-close:focus-visible,
+.ad-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
@@ -3645,7 +3637,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 /* ---- Collapsible module inputs (App.renderModuleInputs) ----
    Emitted by the shared helper in app.js, not by any popup's markup. The
    header is a real <button> so it is keyboard-reachable and announces its
-   expanded state; the caret reuses .lp-caret from the Layers panel. */
+   expanded state; the caret is the shared .lp-caret (see the rule near the
+   top of this file for its open/closed rotation). */
 .module-inputs-header {
   display: flex;
   align-items: center;
@@ -3665,14 +3658,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
-.module-inputs-label {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-md);
-  color: var(--muted);
-  flex-shrink: 0;
-}
+/* Type for this label is the shared section-heading rule (.ad-section-head). */
+.module-inputs-label { flex-shrink: 0; }
 /* The "what was actually run" line. Truncates rather than wrapping — the
    header must stay one row tall so the collapsed panel is genuinely compact. */
 .module-inputs-summary {
@@ -3682,10 +3669,6 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* Caret: down (the .lp-caret glyph as-authored) = expanded, right = collapsed. */
-.module-inputs-collapsed > .module-inputs-header .module-inputs-caret {
-  transform: rotate(-90deg);
 }
 .module-inputs-collapsed > .module-inputs-body { display: none; }
 /* Collapsed, the settings column becomes a one-line bar ABOVE the results
@@ -5465,8 +5448,6 @@ body.dark-mode #fp-collapse-btn { background: #252535; }
 /* ---- Feature panel rows ---- */
 body.dark-mode .fp-item:hover { background: rgba(255,255,255,0.06); }
 body.dark-mode .fp-item.fp-selected { background: rgba(99,179,237,0.12); }
-body.dark-mode .fp-section-header { color: #9ca3af; }
-body.dark-mode .fp-settings-header { color: #9ca3af; }
 
 /* ---- Context menu ---- */
 body.dark-mode #fp-context-menu { border-color: #374151; }
