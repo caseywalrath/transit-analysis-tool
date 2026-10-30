@@ -1807,7 +1807,7 @@ body.present-mode #attr-dock { display: none !important; }
 #attr-dock.ad-pinned .ad-pin svg { fill: currentColor; }
 .ad-body {
   /* Bottom padding clears the fixed full-width #status strip. */
-  padding: 12px 14px 40px;
+  padding: 10px 14px 32px;
   overflow-y: auto;
   flex: 1;
 }
@@ -1867,7 +1867,7 @@ body.present-mode #attr-dock { display: none !important; }
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 10px 0 6px;
+  padding: 8px 0 4px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -1876,11 +1876,13 @@ body.present-mode #attr-dock { display: none !important; }
 }
 .ad-section-head:hover { color: var(--text-primary); }
 .ad-section-head:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
-.ad-section-body { padding-bottom: 8px; }
+.ad-section-body { padding-bottom: 4px; }
+/* Read-only info rows (Measurements, Details) sit tighter than field rows. */
+#attr-dock .fp-attr-row.ad-info-row { min-height: 18px; margin-bottom: 2px; }
 .ad-section-closed .ad-section-body { display: none; }
 .ad-empty { font-size: var(--text-sm); color: var(--muted); padding: 2px 0 4px; }
 .ad-usage { list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--text-primary); }
-.ad-usage li { padding: 2px 0; }
+.ad-usage li { padding: 1px 0; }
 .ad-usage-warn strong { color: var(--warn-text); }
 .ad-merged { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .ad-link {
@@ -1889,6 +1891,8 @@ body.present-mode #attr-dock { display: none !important; }
 }
 .ad-link:hover { text-decoration: underline; }
 .ad-footer { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
+/* Inside Details (single feature) the link is just the section's last line. */
+.ad-section-body > .ad-footer { border-top: none; padding-top: 2px; margin-top: 2px; }
 
 /* Multi-selection: type chips, Mixed states, skip notes */
 .ad-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 8px; }
@@ -2167,6 +2171,10 @@ input.fp-attr-input[type="number"] {
   letter-spacing: var(--tracking-md);
   color: var(--muted);
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .fp-svc-header,
 .fp-svc-band {
@@ -2175,6 +2183,9 @@ input.fp-attr-input[type="number"] {
   gap: 4px;
   align-items: center;
 }
+/* A day with no bands shows only its title and "+ Add time band", without
+   the FROM / TO / FREQUENCY headings (saves a row per empty day). */
+.fp-svc-section:has(> .fp-svc-bands:empty) > .fp-svc-header { display: none; }
 .fp-svc-header {
   font-size: var(--text-2xs);
   color: var(--muted);
@@ -2229,9 +2240,11 @@ input.fp-attr-input[type="number"] {
   border: 1px dashed var(--border);
   border-radius: 3px;
   color: var(--muted);
-  padding: 3px 8px;
+  padding: 2px 8px;
   cursor: pointer;
-  margin-top: 2px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
 }
 .fp-svc-add:hover { color: var(--accent); border-color: var(--accent); }
 .fp-svc-mirror {

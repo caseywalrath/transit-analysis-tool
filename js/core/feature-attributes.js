@@ -779,9 +779,12 @@
       section.className = "fp-svc-section";
       section.dataset.day = day.id;
 
+      // "+ Add time band" sits on the day's title line, not its own row.
       var title = document.createElement("div");
       title.className = "fp-svc-section-title";
-      title.textContent = day.label;
+      var titleText = document.createElement("span");
+      titleText.textContent = day.label;
+      title.appendChild(titleText);
       section.appendChild(title);
 
       var header = document.createElement("div");
@@ -806,7 +809,7 @@
         renderBands(day.id);
         saveAttrCache();
       });
-      section.appendChild(addBtn);
+      title.appendChild(addBtn);
 
       sectionEls[day.id] = { bandsEl: bandsEl, addBtn: addBtn, section: section };
       container.appendChild(section);
@@ -826,7 +829,7 @@
 
     var mirrorPreview = document.createElement("div");
     mirrorPreview.className = "fp-svc-mirror-preview";
-    sundaySection.insertBefore(mirrorPreview, sectionEls.sunday.addBtn);
+    sundaySection.insertBefore(mirrorPreview, sectionEls.sunday.bandsEl.nextSibling);
     sectionEls.sunday.mirrorPreview = mirrorPreview;
 
     mirrorCb.addEventListener("change", function () {
@@ -1311,8 +1314,12 @@
 
   /* ---- Info sections ---- */
 
+  // Read-only rows are tighter than editable field rows (no input box to fit).
   function infoRow(content, label, text) {
-    content.appendChild(buildRow(label, buildReadOnlyValue(text), null));
+    var row = buildRow(label, buildReadOnlyValue(text), null);
+    row.classList.add("ad-info-row");
+    content.appendChild(row);
+    return row;
   }
 
   function featureId(featureType, feature) {
@@ -1332,12 +1339,11 @@
       var lenMi = 0;
       try { if (g.coordinates.length >= 2) lenMi = turf.length(feature, { units: "miles" }); } catch (e) {}
       var m = addSection(body, "Measurements");
-      if (lenMi > 0) infoRow(m, "Length", fmtLength(lenMi));
       var wps = feature.properties.waypoints;
-      infoRow(m, featureType === "route" ? "Waypoints" : "Vertices",
-        String(featureType === "route" && Array.isArray(wps) ? wps.length : g.coordinates.length));
-      var cycleSpan = buildReadOnlyValue("—");
-      m.appendChild(buildRow("Cycle est.", cycleSpan, null));
+      var nPts = featureType === "route" && Array.isArray(wps) ? wps.length : g.coordinates.length;
+      infoRow(m, "Length", (lenMi > 0 ? fmtLength(lenMi) + " \u00B7 " : "") +
+        nPts + (featureType === "route" ? " waypoints" : " vertices"));
+      var cycleSpan = infoRow(m, "Cycle est.", "\u2014").querySelector(".fp-attr-unit");
       function refreshCycleEst() {
         var spd = parseFloat(attrs.avgSpeed);
         var rt  = parseFloat(attrs.runTime);
@@ -1360,9 +1366,9 @@
     if (featureType === "polygon" && g.coordinates[0] && g.coordinates[0].length >= 3) {
       var ring = g.coordinates[0];
       var p = addSection(body, "Measurements");
-      infoRow(p, "Perimeter", fmtLength(turf.length(turf.lineString(ring), { units: "miles" })));
       infoRow(p, "Area", fmtArea(turf.area(feature)));
-      infoRow(p, "Vertices", String(ring.length - 1));
+      infoRow(p, "Perimeter", fmtLength(turf.length(turf.lineString(ring), { units: "miles" })) +
+        " \u00B7 " + (ring.length - 1) + " vertices");
     }
   }
 
@@ -1400,7 +1406,7 @@
     var id = featureId(featureType, feature);
     if (id != null) infoRow(c, "Feature ID", (TYPE_LABELS[featureType] || featureType) + " " + id);
     var grp = attrs.group || attrs.labelGroup;
-    infoRow(c, "Group", grp || "—");
+    if (grp) infoRow(c, "Group", grp);
     if (feature.properties.hidden) infoRow(c, "Visibility", "Hidden on the map");
     if (App.merge && App.merge.hasHistory && App.merge.hasHistory(featureType, featureIndex)) {
       var d = App.merge.describeUnmerge(featureType, featureIndex);
@@ -1413,8 +1419,13 @@
       un.textContent = "Unmerge…";
       un.addEventListener("click", function () { App.merge.openUnmergeDialog(featureType, featureIndex); });
       wrap.appendChild(un);
-      c.appendChild(buildRow("Merge", wrap, null));
+      var mr = buildRow("Merge", wrap, null);
+      mr.classList.add("ad-info-row");
+      c.appendChild(mr);
     }
+    // The Attribute Summary link sits at the end of Details (not a separate
+    // footer) to keep a typical route's dock within one screen.
+    buildFooter(c);
   }
 
   function buildFooter(body) {
@@ -1540,7 +1551,6 @@
     buildMeasurements(body, featureType, feature, attrs);
     buildUsedIn(body, featureType, feature);
     buildDetails(body, featureType, featureIndex, feature, attrs);
-    buildFooter(body);
 
     // Label/textbox: sync attribute changes to marker appearance
     if (featureType === "label" || featureType === "textbox") {

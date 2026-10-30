@@ -230,7 +230,7 @@ async function clickAt(page, lng, lat) {
       ["Transit service", "Walk network", "Study area", "Service schedule", "Measurements", "Used in", "Details"].every((x) => secs.indexOf(x) >= 0), secs);
     check("footer links to Attribute Summary", (await page.locator("#attr-dock .ad-footer .ad-link").textContent()) === "Open in Attribute Summary");
     const meas = await page.evaluate(() => document.querySelector('#attr-dock .ad-section[data-section="Measurements"]').textContent);
-    check("Measurements shows length and vertices", /Length/.test(meas) && /Vertices\s*2/.test(meas), meas);
+    check("Measurements shows length and vertices", /Length/.test(meas) && /2 vertices/.test(meas), meas);
 
     await page.locator('#attr-dock .ad-section[data-section="Measurements"] .ad-section-head').click();
     await page.locator(".fp-item", { hasText: "Line A" }).first().click();
