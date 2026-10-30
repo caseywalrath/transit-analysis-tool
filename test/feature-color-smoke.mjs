@@ -191,9 +191,9 @@ async function main() {
     check("Routes preview is six rainbow segments while Automatic", /^rainbow:6:6$/.test(await previewStroke(page, "Routes")), await previewStroke(page, "Routes"));
 
     console.log("\n# Attributes pop-up swatch");
-    await page.evaluate(() => App.openAttrPopup("line", 1, App.lines[1]));
+    await page.evaluate(() => App.openAttrDock("line", 1, App.lines[1]));
     await page.waitForTimeout(200);
-    const sw = () => page.evaluate(() => { var m = document.querySelector(".fp-attr-popup-swatch").style.background.match(/\d+/g);
+    const sw = () => page.evaluate(() => { var m = document.querySelector(".ad-swatch").style.background.match(/\d+/g);
       return "#" + m.slice(0, 3).map((x) => ("0" + (+x).toString(16)).slice(-2)).join(""); });
     check("pop-up swatch = the line's real (rainbow) color", (await sw()) === (await mapColor(page, "line", 1)), await sw());
 

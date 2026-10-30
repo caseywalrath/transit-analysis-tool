@@ -114,11 +114,9 @@
     };
     points.push(feature);
     rebuildBuffers(bufferRadiusMiles);
-    // Follow an already-open attributes popup to the new point; never auto-open it.
-    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
-        typeof App.openAttrPopup === "function") {
-      App.openAttrPopup("point", points.length - 1, feature);
-    }
+    // Finishing a drawing is a gesture: select the new feature and show it in the dock.
+    if (typeof App.selectFeature === "function") App.selectFeature("point", points.length - 1);
+    if (typeof App.openAttrDock === "function") App.openAttrDock();
   }
 
   function addPointWithOpts(lon, lat, opts) {

@@ -1,0 +1,502 @@
+{
+  "route+line-share-transit-buffer-service": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": "NB",
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": 14,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "point+route-share-buffer-only": [
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "polygon+route-share-nothing-visible": [],
+  "points-hide-identity-stopId": [
+    {
+      "key": "associatedRoutes",
+      "label": "Routes",
+      "type": "routes",
+      "section": null,
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceAreaType",
+      "label": "Service area",
+      "type": "select",
+      "section": null,
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "labels-share-size-and-background": [
+    {
+      "key": "fontSize",
+      "label": "Size",
+      "type": "select",
+      "section": null,
+      "bulk": null,
+      "state": "same",
+      "value": "Large",
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bgColor",
+      "label": "Background",
+      "type": "color",
+      "section": null,
+      "bulk": null,
+      "state": "mixed",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "avgSpeed-unset-equals-default-14": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": 14,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "avgSpeed-mixed": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "mixed",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "avgSpeed-string-15-equals-number-15": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": "15",
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "service-schedule-deep-compare": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": 14,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "mixed",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "buffer-same-override": [
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "select",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceId",
+      "label": "Service",
+      "type": "text",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "avgSpeed",
+      "label": "Avg speed",
+      "type": "number",
+      "section": "Transit service",
+      "bulk": null,
+      "state": "same",
+      "value": 14,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": 0.5,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "service",
+      "label": "Service schedule",
+      "type": "service",
+      "section": "Service schedule",
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    }
+  ],
+  "buffer-skips-walkshed-points": [
+    {
+      "key": "associatedRoutes",
+      "label": "Routes",
+      "type": "routes",
+      "section": null,
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 3,
+      "total": 3
+    },
+    {
+      "key": "serviceAreaType",
+      "label": "Service area",
+      "type": "select",
+      "section": null,
+      "bulk": null,
+      "state": "mixed",
+      "value": null,
+      "eligible": 3,
+      "total": 3
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "same",
+      "value": 0.25,
+      "eligible": 2,
+      "total": 3
+    }
+  ],
+  "buffer-none-eligible": [
+    {
+      "key": "associatedRoutes",
+      "label": "Routes",
+      "type": "routes",
+      "section": null,
+      "bulk": "replace",
+      "state": "same",
+      "value": null,
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "serviceAreaType",
+      "label": "Service area",
+      "type": "select",
+      "section": null,
+      "bulk": null,
+      "state": "same",
+      "value": "walkshed",
+      "eligible": 2,
+      "total": 2
+    },
+    {
+      "key": "bufferRadius",
+      "label": "Buffer",
+      "type": "buffer-radius",
+      "section": "Study area",
+      "bulk": null,
+      "state": "none",
+      "value": null,
+      "eligible": 0,
+      "total": 2
+    }
+  ],
+  "empty-selection": [],
+  "type-counts": [
+    {
+      "type": "route",
+      "count": 3
+    },
+    {
+      "type": "line",
+      "count": 1
+    },
+    {
+      "type": "point",
+      "count": 1
+    }
+  ]
+}

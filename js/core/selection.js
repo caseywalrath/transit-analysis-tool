@@ -335,6 +335,12 @@
     return null;
   }
 
+  // An open attributes dock follows every selection change; selection never
+  // opens it (gestures do, via App.openAttrDock).
+  function syncDock() {
+    if (typeof App.syncAttrDock === "function") App.syncAttrDock();
+  }
+
   function selectFeature(type, index) {
     _multiSelected = [{ type: type, index: index }];
     _anchor = { type: type, index: index };
@@ -343,13 +349,7 @@
     updateHighlightSources();
     applyPanelHighlight();
     syncVertexEditing();
-    // Auto-update attributes popup if already open (switching features)
-    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-      var feat = getFeatureFromApp(type, index);
-      if (feat && typeof App.openAttrPopup === "function") {
-        App.openAttrPopup(type, index, feat);
-      }
-    }
+    syncDock();
   }
 
   function toggleMultiSelect(type, index) {
@@ -366,6 +366,7 @@
     updateHighlightSources();
     applyPanelHighlight();
     syncVertexEditing();
+    syncDock();
   }
 
   // Ordered list of currently visible, selectable panel rows (skips rows
@@ -411,6 +412,7 @@
     updateHighlightSources();
     applyPanelHighlight();
     syncVertexEditing();
+    syncDock();
   }
 
   function clearSelection() {
@@ -424,6 +426,7 @@
     if (typeof App.deactivateVertexEdit === "function") App.deactivateVertexEdit();
     if (typeof App.refreshSavedVertices  === "function") App.refreshSavedVertices();
     if (typeof App.refreshSavedWaypoints === "function") App.refreshSavedWaypoints();
+    syncDock();
   }
 
   // Replace the whole selection with a de-duplicated copy of list
@@ -445,6 +448,7 @@
     updateHighlightSources();
     applyPanelHighlight();
     syncVertexEditing();
+    syncDock();
   }
 
   // ---- Expose ----

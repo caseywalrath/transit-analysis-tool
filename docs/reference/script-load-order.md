@@ -32,7 +32,8 @@ selection.js         App.setSelection/selectFeature/getSelectedFeatures/…
 box-select.js        after selection.js; defines App.boxSelect, App.bulkFeatures
 features.js          feature panel; App.showContextMenu, App.buildColorPickerBody, App.collectDrawnFeatures
 feature-appearance.js needs App.buildColorPickerBody (features.js) inside handlers; App.openAppearancePopup, App.buildFeatureOverrideRows
-feature-attributes.js App.openAttrPopup/closeAttrPopup/isAttrPopupOpen/getAttrPopupFeature
+attr-bulk.js         window.AttrBulk (pure multi-select field rules; no App at load); before feature-attributes.js
+feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/closeAttrDock/syncAttrDock/isAttrDockOpen/getAttrDockFeature
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
 layers-panel.js      App.refreshLayersPanel
@@ -67,7 +68,7 @@ attribute-summary.js system module, opened via App.openAttributeSummary(); needs
 js/core/present-overlays.js  after modules; listens for `mat:present-mode-change`
 ```
 
-**Call-time cross-file names** (used inside functions, so only presence matters): feature arrays `App.points`/`App.lines`/`App.routes`/`App.polygons`; `App.setStatus`, `App.exitDrawMode`, `App.getSelectedFeatures`, `App.selectFeature`, `App.removePoint`, `App.rerenderForType`, `App.onFeatureDelete`, `App.nextFeatureId`, `App._nextColorSeq`, `App.featureRef`; appearance — `App.buildScrubber`, `App._openFpSlider`, `App.openColorPicker`, `App.updateFeatureColor`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, `App.sectionColors`, `App.featureSettings`, `App.layerStyles`, `App.closeAppearancePopup`, `App.isAppearancePopupOpen`; attributes — `App.closeAttrPopup`, `App.isAttrPopupOpen`, `App.getAttrPopupFeature`; network/buffers — `App.roadNetworkLoaded`, `App.computeWalkshed`, `App.fetchRouteGeometry`, `App.ensurePointWalksheds`, `App.refreshBuffers`, `App.buildAnalysisBuffer`, `App.readAnalysisBufferMiles`, `App.ANALYSIS_BUFFER_DEFAULT_MILES`; `App.renderCensusOverlay` (TPI, RF).
+**Call-time cross-file names** (used inside functions, so only presence matters): feature arrays `App.points`/`App.lines`/`App.routes`/`App.polygons`; `App.setStatus`, `App.exitDrawMode`, `App.getSelectedFeatures`, `App.selectFeature`, `App.removePoint`, `App.rerenderForType`, `App.onFeatureDelete`, `App.nextFeatureId`, `App._nextColorSeq`, `App.featureRef`; appearance — `App.buildScrubber`, `App._openFpSlider`, `App.openColorPicker`, `App.updateFeatureColor`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, `App.sectionColors`, `App.featureSettings`, `App.layerStyles`, `App.closeAppearancePopup`, `App.isAppearancePopupOpen`; attributes — `App.closeAttrDock`, `App.isAttrDockOpen`, `App.getAttrDockFeature`; network/buffers — `App.roadNetworkLoaded`, `App.computeWalkshed`, `App.fetchRouteGeometry`, `App.ensurePointWalksheds`, `App.refreshBuffers`, `App.buildAnalysisBuffer`, `App.readAnalysisBufferMiles`, `App.ANALYSIS_BUFFER_DEFAULT_MILES`; `App.renderCensusOverlay` (TPI, RF).
 
 **Active modules:** Feature Area Analysis (`buffer-summary`), Transit Propensity, FTA Small Starts, Ridership Forecasting, Corridor Scoring, Walkshed, Transit Travelshed, Transit Coverage, Route Costing, Trip Builder, Title VI, GTFS Feed Viewer. Attribute Summary is a **system module** (`system: true`, hidden from the Analysis menu).
 

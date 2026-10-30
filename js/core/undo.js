@@ -52,6 +52,8 @@
         if (typeof App.exitEditMode === "function") App.exitEditMode();
       }
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+      // The restore replaced the feature objects: rebuild an open dock from them.
+      if (typeof App.syncAttrDock === "function") App.syncAttrDock();
       App.cache.save();
     } finally {
       _restoring = false;

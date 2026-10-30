@@ -209,7 +209,7 @@ async function colorBox(page, clip, rgb) {
       await page.mouse.click(c[0], c[1] + off, { button: "right" });
       await page.waitForTimeout(150);
       const menu = await page.evaluate(() => { const m = document.getElementById("fp-context-menu"); return m ? m.textContent : ""; });
-      check("right-click opens the feature menu on the " + nm + " icon point", /Attributes/.test(menu) && (await sel(page)) === "point:" + i, { menu, sel: await sel(page) });
+      check("right-click opens the feature menu on the " + nm + " icon point", /Duplicate/.test(menu) && (await sel(page)) === "point:" + i, { menu, sel: await sel(page) });
     }
 
     // ---- Highlight ----
@@ -369,19 +369,19 @@ async function colorBox(page, clip, rgb) {
     await page.locator('.fp-tab-btn[data-fptab="features"]').click();
     await page.waitForTimeout(150);
 
-    // ---- Attributes popup header: swatch shares the title's row, left of it ----
-    await page.evaluate(() => App.openAttrPopup("point", 0, App.points[0]));
-    await page.locator("#fp-attr-popup .fp-attr-popup-swatch").waitFor({ state: "visible", timeout: 5000 });
+    // ---- Attributes dock header: swatch shares the title's row, left of it ----
+    await page.evaluate(() => App.openAttrDock("point", 0, App.points[0]));
+    await page.locator("#attr-dock .ad-swatch").waitFor({ state: "visible", timeout: 5000 });
     const hdr = await page.evaluate(() => {
       const r = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
-      return { sw: r("#fp-attr-popup .fp-attr-popup-swatch"), title: r("#fp-attr-popup .fp-attr-popup-title"), row: r("#fp-attr-popup .fp-attr-popup-title-row"),
-        inRow: !!document.querySelector("#fp-attr-popup .fp-attr-popup-title-row .fp-attr-popup-swatch") };
+      return { sw: r("#attr-dock .ad-swatch"), title: r("#attr-dock .ad-titles"), row: r("#attr-dock .ad-header"),
+        inRow: !!document.querySelector("#attr-dock .ad-header .ad-swatch") };
     });
     check("the Appearance swatch is in the title row, to the left of the title and vertically inside it",
       hdr.inRow && hdr.sw.r <= hdr.title.l && hdr.sw.t >= hdr.row.t - 0.5 && hdr.sw.b <= hdr.row.b + 0.5, hdr);
-    await page.evaluate(() => document.querySelector("#fp-attr-popup .fp-attr-popup-collapse").click());
-    check("the swatch stays visible while the popup is collapsed", await page.evaluate(() => document.querySelector("#fp-attr-popup .fp-attr-popup-swatch").getBoundingClientRect().width > 0));
-    await page.evaluate(() => App.closeAttrPopup());
+    await page.evaluate(() => document.querySelector("#attr-dock .ad-collapse").click());
+    check("the swatch stays visible while the dock is collapsed", await page.evaluate(() => document.querySelector("#attr-dock .ad-swatch").getBoundingClientRect().width > 0));
+    await page.evaluate(() => App.closeAttrDock());
 
     // ---- Duplicate ----
     const dup = await page.evaluate(() => { App.setFeaturePointIcon(3, "bus"); App.duplicatePoint(3); return App.points[App.points.length - 1].properties._pointIcon; });

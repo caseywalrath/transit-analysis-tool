@@ -1,12 +1,13 @@
 // js/core/feature-attributes.js
-// Per-feature attribute popup (floating, draggable singleton) plus ATTR_FIELDS and the
+// Attributes dock (left edge of the map, follows the selection) plus ATTR_FIELDS and the
 // shared editors. Schema is duplicated in js/projects/attribute-summary.js: change both together.
 // Detail: docs/reference/drawing-and-features.md
 // Exports:
-//   App.openAttrPopup(featureType, featureIndex, feature)
-//   App.closeAttrPopup()
-//   App.isAttrPopupOpen()
-//   App.getAttrPopupFeature()  → { featureType, featureIndex } | null
+//   App.openAttrDock([featureType, featureIndex, feature])  (no args = current selection)
+//   App.closeAttrDock([{keepSelection}])  (also clears the selection unless keepSelection)
+//   App.syncAttrDock()   (re-target an open dock to the selection; never opens it)
+//   App.isAttrDockOpen(), App.isAttrDockPinned(), App.attrDockInset()
+//   App.getAttrDockFeature()  → { featureType, featureIndex } | null
 
 (function () {
   var App = window.App = window.App || {};
@@ -28,7 +29,7 @@
   ];
 
   // Transit-service fields shared by routes and lines (a Line can be attributed
-  // as a transit pattern too). Tagged with a section so the popup renders a
+  // as a transit pattern too). Tagged with a section so the dock renders a
   // "Transit service" header before them.
   var TRANSIT_FIELDS = [
     { key: "group",     label: "Group",     type: "text",   placeholder: "e.g. Corridor A", groupPicker: true, hidden: true },
@@ -43,7 +44,10 @@
   // feature.properties._bufferRadius, NOT feature.properties.attributes — the
   // type "buffer-radius" is rendered by App.buildBufferRadiusControl, which
   // never touches `attributes`.
-  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area" };
+  // skipIf: multi-select editing leaves walkshed points out (their buffer is
+  // replaced by the walkshed; see js/core/attr-bulk.js R5).
+  var BUFFER_FIELD = { key: "bufferRadius", label: "Buffer", type: "buffer-radius", section: "Study area",
+                       skipIf: { attr: "serviceAreaType", equals: "walkshed" } };
 
   var ROUTE_FIELDS = TRANSIT_FIELDS.concat([BUFFER_FIELD]);
 
@@ -72,8 +76,10 @@
     line:  LINE_FIELDS,
     point: [
       { key: "group",            label: "Group",    type: "text", placeholder: "e.g. North Corridor", groupPicker: true, hidden: true },
-      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042" },
-      { key: "associatedRoutes", label: "Routes"                                                 },
+      // bulk: false = identity field, never edited across a multi-selection;
+      // bulk: "replace" = complex editor, seeded from the first feature when Mixed.
+      { key: "stopId",           label: "Stop ID",       type: "text", placeholder: "e.g. 1042", bulk: false },
+      { key: "associatedRoutes", label: "Routes", bulk: "replace"                                 },
       { key: "serviceAreaType",  label: "Service area", type: "select", section: "Study area",
         options: ["", "walkshed"],
         optionLabels: { "": "Circular buffer", "walkshed": "Walkshed" },
@@ -98,6 +104,7 @@
   };
 
   function saveAttrCache() {
+    if (_muteSave) return;
     if (App.undo && !App.undo.isRestoring()) App.undo.push();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
@@ -457,9 +464,7 @@
         });
         if (existingColor) {
           feature.properties.color = existingColor;
-          var rrEl = document.getElementById("routeBufferRadius");
-          var rr = rrEl ? parseFloat(rrEl.value) : 0.5; if (isNaN(rr)) rr = 0.5;
-          if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(rr);
+          rebuildBuffersForType("route");
         }
       } else {
         delete attrs[field.key];
@@ -774,9 +779,12 @@
       section.className = "fp-svc-section";
       section.dataset.day = day.id;
 
+      // "+ Add time band" sits on the day's title line, not its own row.
       var title = document.createElement("div");
       title.className = "fp-svc-section-title";
-      title.textContent = day.label;
+      var titleText = document.createElement("span");
+      titleText.textContent = day.label;
+      title.appendChild(titleText);
       section.appendChild(title);
 
       var header = document.createElement("div");
@@ -801,7 +809,7 @@
         renderBands(day.id);
         saveAttrCache();
       });
-      section.appendChild(addBtn);
+      title.appendChild(addBtn);
 
       sectionEls[day.id] = { bandsEl: bandsEl, addBtn: addBtn, section: section };
       container.appendChild(section);
@@ -821,7 +829,7 @@
 
     var mirrorPreview = document.createElement("div");
     mirrorPreview.className = "fp-svc-mirror-preview";
-    sundaySection.insertBefore(mirrorPreview, sectionEls.sunday.addBtn);
+    sundaySection.insertBefore(mirrorPreview, sectionEls.sunday.bandsEl.nextSibling);
     sectionEls.sunday.mirrorPreview = mirrorPreview;
 
     mirrorCb.addEventListener("change", function () {
@@ -1012,179 +1020,500 @@
     return span;
   }
 
-  /* ---- Floating popup singleton ---- */
+  /* ---- Attributes dock (singleton, left edge of the map) ---- */
+  //
+  // The dock shows the current selection: one feature's attributes, or a member
+  // list for a multi-selection. Gestures (map click, Features-list row click,
+  // finishing a drawing) OPEN it via App.openAttrDock; selection changes only
+  // RE-TARGET an already-open dock via App.syncAttrDock, so a programmatic
+  // selection never pops it open. Closing it clears the selection, keeping the
+  // two in step. Text boxes are the one exception: they are not selectable, so a
+  // text-box dock lives without a selection until something else is clicked.
 
-  var _popupEl     = null;   // DOM element, created once
-  var _currentType = null;   // featureType currently shown
-  var _currentIdx  = null;   // featureIndex currently shown
-  var _dragState   = null;   // { startX, startY, initLeft, initTop } while dragging
+  var _dockEl  = null;
+  var _cur     = null;   // { type, index, feature } shown, or { multi: true, list }
+  var _closing = false;  // re-entrance guard: closeAttrDock → clearSelection → syncAttrDock
 
-  function buildPopupEl() {
-    if (_popupEl) return;
+  var LS_PINNED    = "attrDock.pinned";
+  var LS_COLLAPSED = "attrDock.collapsed";
 
-    var el = document.createElement("div");
-    el.id = "fp-attr-popup";
+  function lsGet(key) {
+    try { return window.localStorage.getItem(key) === "1"; } catch (e) { return false; }
+  }
+  function lsSet(key, on) {
+    try { window.localStorage.setItem(key, on ? "1" : "0"); } catch (e) {}
+  }
+
+  function featureFor(type, index) {
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons,
+                label: App.labels, textbox: App.textBoxes }[type];
+    return (arr && arr[index]) || null;
+  }
+
+  var ICON_PIN = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6l-1 5 3 3H5l3-3z"></path><line x1="10" y1="11" x2="10" y2="17"></line></svg>';
+  var ICON_COLLAPSE = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="12,5 7,10 12,15"></polyline></svg>';
+
+  function buildDockEl() {
+    if (_dockEl) return;
+
+    var el = document.createElement("aside");
+    el.id = "attr-dock";
+    el.setAttribute("role", "complementary");
+    el.setAttribute("aria-label", "Feature attributes");
     el.style.display = "none";
-    el.style.left = "24px";
-    el.style.top  = "60px";
 
-    // Header
     var header = document.createElement("div");
-    header.className = "fp-attr-popup-header";
+    header.className = "ad-header";
+    var headRow = document.createElement("div");
+    headRow.className = "ad-head-row";
+    header.appendChild(headRow);
 
-    var titleRow = document.createElement("div");
-    titleRow.className = "fp-attr-popup-title-row";
+    var swatchSlot = document.createElement("div");
+    swatchSlot.className = "ad-swatch-slot";
+    headRow.appendChild(swatchSlot);
 
-    // The Appearance swatch sits at the left of the title row, ahead of the
-    // title (populatePopupBody fills it).
-    var controls = document.createElement("div");
-    controls.className = "fp-attr-popup-controls";
-    titleRow.appendChild(controls);
+    var titles = document.createElement("div");
+    titles.className = "ad-titles";
+    // The feature name, edited in place (read-only for a multi-selection).
+    var titleEl = document.createElement("input");
+    titleEl.type = "text";
+    titleEl.className = "ad-title";
+    titleEl.setAttribute("aria-label", "Name");
+    titleEl.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") titleEl.blur();
+      if (e.key === "Escape") { titleEl.value = titleEl.defaultValue; titleEl.blur(); e.stopPropagation(); }
+    });
+    var typeEl = document.createElement("div");
+    typeEl.className = "ad-type";
+    titles.appendChild(titleEl);
+    titles.appendChild(typeEl);
+    headRow.appendChild(titles);
 
-    var titleEl = document.createElement("span");
-    titleEl.className = "fp-attr-popup-title";
-    titleRow.appendChild(titleEl);
+    var actions = document.createElement("div");
+    actions.className = "ad-actions";
 
-    var headerActions = document.createElement("div");
-    headerActions.className = "fp-attr-popup-actions";
+    function iconBtn(cls, html, label) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-btn " + cls;
+      b.innerHTML = html;
+      b.setAttribute("aria-label", label);
+      b.title = label;
+      return b;
+    }
 
-    var collapseBtn = document.createElement("button");
-    collapseBtn.type = "button";
-    collapseBtn.className = "fp-attr-popup-collapse";
-    collapseBtn.setAttribute("aria-label", "Collapse attributes");
-    collapseBtn.setAttribute("aria-expanded", "true");
-    collapseBtn.title = "Collapse";
-    collapseBtn.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="5,12 10,7 15,12"></polyline></svg>';
+    var pinBtn = iconBtn("ad-pin", ICON_PIN, "Pin open");
+    pinBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setPinned(!el.classList.contains("ad-pinned"));
+    });
+    actions.appendChild(pinBtn);
+
+    var collapseBtn = iconBtn("ad-collapse", ICON_COLLAPSE, "Collapse attributes");
     collapseBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      setAttrPopupCollapsed(!_popupEl.classList.contains("fp-attr-popup-collapsed"));
+      setCollapsed(!el.classList.contains("ad-collapsed"));
     });
-    headerActions.appendChild(collapseBtn);
+    actions.appendChild(collapseBtn);
 
-    var closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "fp-attr-popup-close";
-    closeBtn.innerHTML = "&times;";
-    closeBtn.setAttribute("aria-label", "Close attributes");
-    closeBtn.title = "Close";
+    var closeBtn = iconBtn("ad-close", "&times;", "Close attributes");
     closeBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      closeAttrPopup();
+      closeAttrDock();
     });
-    headerActions.appendChild(closeBtn);
-    titleRow.appendChild(headerActions);
-    header.appendChild(titleRow);
+    actions.appendChild(closeBtn);
+    headRow.appendChild(actions);
 
+    // Feature actions (Zoom to, Duplicate, …), rebuilt per render.
+    var toolbar = document.createElement("div");
+    toolbar.className = "ad-toolbar";
+    header.appendChild(toolbar);
     el.appendChild(header);
 
-    // Body
     var body = document.createElement("div");
-    body.className = "fp-attr-popup-body";
+    body.className = "ad-body";
     el.appendChild(body);
 
-    document.body.appendChild(el);
-    _popupEl = el;
+    // Docked inside the map row so it overlays the map's left edge and never
+    // covers the toolbar or the Features panel.
+    var host = document.getElementById("main-content") || document.body;
+    host.appendChild(el);
+    _dockEl = el;
 
-    // ---- Drag support ----
-    header.addEventListener("mousedown", function (e) {
-      if (e.button !== 0) return;
-      if (e.target.closest(".fp-attr-popup-actions, .fp-attr-popup-controls")) return;
-      e.preventDefault();
-      var rect = el.getBoundingClientRect();
-      _dragState = {
-        startX:   e.clientX,
-        startY:   e.clientY,
-        initLeft: rect.left,
-        initTop:  rect.top
-      };
-      header.classList.add("dragging");
-    });
-
-    document.addEventListener("mousemove", function (e) {
-      if (!_dragState) return;
-      var dx = e.clientX - _dragState.startX;
-      var dy = e.clientY - _dragState.startY;
-      applyClampedPosition(_dragState.initLeft + dx, _dragState.initTop + dy);
-    });
-
-    document.addEventListener("mouseup", function () {
-      if (_dragState) {
-        _dragState = null;
-        var hdr = _popupEl && _popupEl.querySelector(".fp-attr-popup-header");
-        if (hdr) hdr.classList.remove("dragging");
-      }
-    });
-
-    // ---- Escape key ----
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && _popupEl && _popupEl.style.display !== "none") {
-        closeAttrPopup();
-      }
-    });
-
-    // ---- Window resize: keep popup within viewport ----
-    window.addEventListener("resize", function () {
-      if (_popupEl && _popupEl.style.display !== "none") {
-        var r = _popupEl.getBoundingClientRect();
-        applyClampedPosition(r.left, r.top);
-      }
-    });
+    setPinned(lsGet(LS_PINNED));
+    setCollapsed(lsGet(LS_COLLAPSED));
   }
 
-  function applyClampedPosition(left, top) {
-    if (!_popupEl) return;
-    var pw = _popupEl.offsetWidth  || 320;
-    var ph = _popupEl.offsetHeight || 200;
-    var minVisible = 40; // keep at least 40px of the popup visible on each side
-    left = Math.max(-(pw - minVisible), Math.min(left, window.innerWidth  - minVisible));
-    top  = Math.max(0,                  Math.min(top,  window.innerHeight - minVisible));
-    _popupEl.style.left = left + "px";
-    _popupEl.style.top  = top  + "px";
+  function setPinned(on) {
+    if (!_dockEl) return;
+    _dockEl.classList.toggle("ad-pinned", on);
+    var b = _dockEl.querySelector(".ad-pin");
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.title = on ? "Unpin (map clicks close the panel)" : "Pin open";
+    lsSet(LS_PINNED, on);
   }
 
-  function setAttrPopupCollapsed(collapsed) {
-    if (!_popupEl) return;
-    _popupEl.classList.toggle("fp-attr-popup-collapsed", collapsed);
-    var btn = _popupEl.querySelector(".fp-attr-popup-collapse");
-    if (!btn) return;
-    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    btn.setAttribute("aria-label", collapsed ? "Expand attributes" : "Collapse attributes");
-    btn.title = collapsed ? "Expand" : "Collapse";
+  function setCollapsed(on) {
+    if (!_dockEl) return;
+    _dockEl.classList.toggle("ad-collapsed", on);
+    var b = _dockEl.querySelector(".ad-collapse");
+    b.setAttribute("aria-expanded", on ? "false" : "true");
+    b.setAttribute("aria-label", on ? "Expand attributes" : "Collapse attributes");
+    b.title = on ? "Expand" : "Collapse";
+    lsSet(LS_COLLAPSED, on);
+    syncAppClasses();
   }
 
-  function populatePopupBody(featureType, featureIndex, feature) {
-    buildPopupEl();
+  // #app classes let CSS move left-edge map controls clear of the dock.
+  function syncAppClasses() {
+    var app = document.getElementById("app");
+    if (!app) return;
+    var open = isDockOpen();
+    app.classList.toggle("ad-open", open);
+    app.classList.toggle("ad-rail", open && !!_dockEl && _dockEl.classList.contains("ad-collapsed"));
+  }
 
-    // Update header title
-    _popupEl.querySelector(".fp-attr-popup-title").textContent =
-      (TYPE_LABELS[featureType] || featureType) + " Attributes";
+  function isDockOpen() { return !!(_dockEl && _dockEl.style.display !== "none"); }
 
-    // Update or create the Appearance swatch (left of the title).
-    var headerEl = _popupEl.querySelector(".fp-attr-popup-header");
-    var controlsEl = headerEl.querySelector(".fp-attr-popup-controls");
-    var existingSwatch = controlsEl.querySelector(".fp-attr-popup-swatch");
-    if (existingSwatch) existingSwatch.remove();
-    var featureColor = App.resolveFeatureColor(featureType, feature);
-    var hdrSwatch = document.createElement("button");
-    hdrSwatch.className = "fp-attr-popup-swatch";
-    hdrSwatch.style.background = featureColor;
-    hdrSwatch.setAttribute("aria-label", "Appearance");
-    hdrSwatch.title = "Appearance";
-    (function (sw, ft, fi, feat) {
-      sw.addEventListener("click", function (e) {
+  // A half-typed value commits on blur ("change"); blur before the body is
+  // replaced or hidden so closing the dock can never drop an edit.
+  function commitActiveEdit() {
+    var a = document.activeElement;
+    if (_dockEl && a && _dockEl.contains(a) && typeof a.blur === "function") a.blur();
+  }
+
+  function freshBody() {
+    // A new element per render: per-feature listeners on the body (cycle
+    // estimate, label sync) must not outlive the feature they were built for.
+    var old = _dockEl.querySelector(".ad-body");
+    var body = document.createElement("div");
+    body.className = "ad-body";
+    old.parentNode.replaceChild(body, old);
+    return body;
+  }
+
+  // Header: swatch, name, type line. onRename(newName) makes the name editable.
+  function setHeader(title, typeText, swatchColor, swatchFn, onRename) {
+    var titleEl = _dockEl.querySelector(".ad-title");
+    titleEl.value = title;
+    titleEl.defaultValue = title;
+    titleEl.readOnly = !onRename;
+    titleEl.title = onRename ? "Rename" : "";
+    titleEl.onchange = onRename ? function () { onRename(titleEl.value); titleEl.defaultValue = titleEl.value; } : null;
+    _dockEl.querySelector(".ad-type").textContent = typeText;
+    var slot = _dockEl.querySelector(".ad-swatch-slot");
+    slot.innerHTML = "";
+    if (!swatchColor) return;
+    var sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "ad-swatch";
+    sw.style.background = swatchColor;
+    sw.setAttribute("aria-label", "Appearance");
+    sw.title = "Appearance";
+    sw.addEventListener("click", function (e) {
+      e.stopPropagation();
+      swatchFn(sw);
+    });
+    slot.appendChild(sw);
+  }
+
+  // items: [{ label, action, cls?, title? }] → text buttons in the header toolbar.
+  function setToolbar(items) {
+    var bar = _dockEl.querySelector(".ad-toolbar");
+    bar.innerHTML = "";
+    items.forEach(function (it) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-tool" + (it.cls ? " " + it.cls : "");
+      b.textContent = it.label;
+      if (it.title) b.title = it.title;
+      b.addEventListener("click", function (e) {
         e.stopPropagation();
+        it.action(b);
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  /* ---- Collapsible sections (open/closed remembered per label) ---- */
+
+  var LS_SECTIONS = "attrDock.closedSections";
+  function closedSections() {
+    try { return JSON.parse(window.localStorage.getItem(LS_SECTIONS) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function rememberSection(label, closed) {
+    var m = closedSections();
+    if (closed) m[label] = true; else delete m[label];
+    try { window.localStorage.setItem(LS_SECTIONS, JSON.stringify(m)); } catch (e) {}
+  }
+
+  // Appends a section to body and returns its content element.
+  function addSection(body, label) {
+    var sec = document.createElement("section");
+    sec.className = "ad-section";
+    sec.setAttribute("data-section", label);
+    var head = document.createElement("button");
+    head.type = "button";
+    head.className = "ad-section-head";
+    // Same ▾ caret as every other panel's disclosure (style.css .ad-caret).
+    head.innerHTML = '<span class="ad-caret" aria-hidden="true">&#9662;</span>';
+    var lbl = document.createElement("span");
+    lbl.textContent = label;
+    head.appendChild(lbl);
+    var content = document.createElement("div");
+    content.className = "ad-section-body";
+    function setClosed(closed) {
+      sec.classList.toggle("ad-section-closed", closed);
+      head.setAttribute("aria-expanded", closed ? "false" : "true");
+    }
+    setClosed(!!closedSections()[label]);
+    head.addEventListener("click", function () {
+      var closed = !sec.classList.contains("ad-section-closed");
+      setClosed(closed);
+      rememberSection(label, closed);
+    });
+    sec.appendChild(head);
+    sec.appendChild(content);
+    body.appendChild(sec);
+    return content;
+  }
+
+  /* ---- Overlapping features under the last map click ---- */
+
+  // { anchor: {type,index}, others: [{type,index}] } set by editing.js just
+  // before it opens the dock; shown only while the dock shows the anchor.
+  var _overlaps = null;
+  App.setAttrDockOverlaps = function (anchor, others) {
+    _overlaps = (anchor && others && others.length) ? { anchor: anchor, others: others.slice() } : null;
+  };
+
+  function overlapItem(featureType, featureIndex) {
+    if (!_overlaps || _overlaps.anchor.type !== featureType || _overlaps.anchor.index !== featureIndex) return null;
+    var others = _overlaps.others.filter(function (o) { return featureFor(o.type, o.index); });
+    if (!others.length) return null;
+    return {
+      label: others.length + " more here ▾",
+      cls: "ad-tool-more",
+      title: "Other features under the click",
+      action: function (btn) {
+        var r = btn.getBoundingClientRect();
+        var all = [_overlaps.anchor].concat(others);
+        App.showContextMenu(r.left, r.bottom + 4, others.map(function (o) {
+          var f = featureFor(o.type, o.index);
+          return {
+            label: (f.properties.name || TYPE_LABELS[o.type]) + " · " + TYPE_LABELS[o.type],
+            action: function () {
+              App.setAttrDockOverlaps(o, all.filter(function (x) { return x !== o; }));
+              if (typeof App.selectFeature === "function") App.selectFeature(o.type, o.index);
+            }
+          };
+        }));
+      }
+    };
+  }
+
+  /* ---- Info sections ---- */
+
+  // Read-only rows are tighter than editable field rows (no input box to fit).
+  function infoRow(content, label, text) {
+    var row = buildRow(label, buildReadOnlyValue(text), null);
+    row.classList.add("ad-info-row");
+    content.appendChild(row);
+    return row;
+  }
+
+  function featureId(featureType, feature) {
+    var prop = App.FEATURE_ID_PROP && App.FEATURE_ID_PROP[featureType];
+    return prop ? feature.properties[prop] : null;
+  }
+
+  function buildMeasurements(body, featureType, feature, attrs) {
+    var g = feature.geometry;
+    if (!g || !g.coordinates) return;
+    if (featureType === "point") {
+      var c = addSection(body, "Measurements");
+      infoRow(c, "Location", g.coordinates[1].toFixed(5) + ", " + g.coordinates[0].toFixed(5));
+      return;
+    }
+    if (featureType === "route" || featureType === "line") {
+      var lenMi = 0;
+      try { if (g.coordinates.length >= 2) lenMi = turf.length(feature, { units: "miles" }); } catch (e) {}
+      var m = addSection(body, "Measurements");
+      var wps = feature.properties.waypoints;
+      var nPts = featureType === "route" && Array.isArray(wps) ? wps.length : g.coordinates.length;
+      infoRow(m, "Length", (lenMi > 0 ? fmtLength(lenMi) + " \u00B7 " : "") +
+        nPts + (featureType === "route" ? " waypoints" : " vertices"));
+      var cycleSpan = infoRow(m, "Cycle est.", "\u2014").querySelector(".fp-attr-unit");
+      function refreshCycleEst() {
+        var spd = parseFloat(attrs.avgSpeed);
+        var rt  = parseFloat(attrs.runTime);
+        var dir = attrs.direction || "Both";
+        var isLoop = (dir === "Loop" || dir === "CW" || dir === "CCW");
+        var isBoth = (dir === "Both");
+        var label  = isBoth ? "cycle" : isLoop ? "loop" : "one-way";
+        var parts  = [];
+        if (spd > 0 && lenMi > 0) {
+          var owMin  = lenMi / spd * 60;
+          parts.push(Math.round(isBoth ? owMin * 2 : owMin) + " min " + label + " · speed");
+        }
+        if (rt > 0) parts.push(rt + " min " + label + " · manual");
+        cycleSpan.textContent = parts.length ? parts.join("  ·  ") : "—";
+      }
+      refreshCycleEst();
+      body.addEventListener("change", refreshCycleEst);
+      return;
+    }
+    if (featureType === "polygon" && g.coordinates[0] && g.coordinates[0].length >= 3) {
+      var ring = g.coordinates[0];
+      var p = addSection(body, "Measurements");
+      infoRow(p, "Area", fmtArea(turf.area(feature)));
+      infoRow(p, "Perimeter", fmtLength(turf.length(turf.lineString(ring), { units: "miles" })) +
+        " \u00B7 " + (ring.length - 1) + " vertices");
+    }
+  }
+
+  function buildUsedIn(body, featureType, feature) {
+    var id = featureId(featureType, feature);
+    if (id == null || typeof App.describeFeatureUsage !== "function") return;
+    var uses = App.describeFeatureUsage(featureType, id);
+    var c = addSection(body, "Used in");
+    if (!uses.length) {
+      var none = document.createElement("div");
+      none.className = "ad-empty";
+      none.textContent = "Not used by any analysis";
+      c.appendChild(none);
+      return;
+    }
+    var ul = document.createElement("ul");
+    ul.className = "ad-usage";
+    uses.forEach(function (u) {
+      var li = document.createElement("li");
+      li.className = u.severity === "warn" ? "ad-usage-warn" : "";
+      var mod = document.createElement("strong");
+      mod.textContent = u.module;
+      li.appendChild(mod);
+      // Providers often repeat their module name at the start of the label.
+      var text = u.label;
+      if (u.module && text.indexOf(u.module) === 0) text = text.slice(u.module.length).replace(/^\s*[·:—-]\s*/, "");
+      if (text) li.appendChild(document.createTextNode((u.module ? " — " : "") + text));
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+  }
+
+  function buildDetails(body, featureType, featureIndex, feature, attrs) {
+    var c = addSection(body, "Details");
+    var id = featureId(featureType, feature);
+    if (id != null) infoRow(c, "Feature ID", (TYPE_LABELS[featureType] || featureType) + " " + id);
+    var grp = attrs.group || attrs.labelGroup;
+    if (grp) infoRow(c, "Group", grp);
+    if (feature.properties.hidden) infoRow(c, "Visibility", "Hidden on the map");
+    if (App.merge && App.merge.hasHistory && App.merge.hasHistory(featureType, featureIndex)) {
+      var d = App.merge.describeUnmerge(featureType, featureIndex);
+      var wrap = document.createElement("span");
+      wrap.className = "ad-merged";
+      wrap.appendChild(buildReadOnlyValue("Merged from " + (d.originals ? d.originals.length : "?") + " features"));
+      var un = document.createElement("button");
+      un.type = "button";
+      un.className = "ad-link";
+      un.textContent = "Unmerge…";
+      un.addEventListener("click", function () { App.merge.openUnmergeDialog(featureType, featureIndex); });
+      wrap.appendChild(un);
+      var mr = buildRow("Merge", wrap, null);
+      mr.classList.add("ad-info-row");
+      c.appendChild(mr);
+    }
+    // The Attribute Summary link sits at the end of Details (not a separate
+    // footer) to keep a typical route's dock within one screen.
+    buildFooter(c);
+  }
+
+  function buildFooter(body) {
+    var foot = document.createElement("div");
+    foot.className = "ad-footer";
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "ad-link";
+    b.textContent = "Open in Attribute Summary";
+    b.addEventListener("click", function () {
+      if (typeof App.openAttributeSummary === "function") App.openAttributeSummary();
+    });
+    foot.appendChild(b);
+    body.appendChild(foot);
+  }
+
+  var DUPLICATE_FNS = { point: "duplicatePoint", line: "duplicateLine", route: "duplicateRoute",
+                        polygon: "duplicatePolygon", label: "duplicateLabel" };
+
+  function singleToolbar(featureType, featureIndex, feature) {
+    var items = [];
+    var drawn = !!(App.FEATURE_ID_PROP && App.FEATURE_ID_PROP[featureType]);
+    if (drawn && App.bulkFeatures) {
+      items.push({ label: "Zoom to", action: function () {
+        App.bulkFeatures.zoomTo([{ type: featureType, index: featureIndex }]);
+      } });
+    }
+    var dup = App[DUPLICATE_FNS[featureType]];
+    if (typeof dup === "function") {
+      items.push({ label: "Duplicate", action: function () {
+        if (featureType === "label" && App.undo && !App.undo.isRestoring()) App.undo.push();
+        dup(featureIndex);
+      } });
+    }
+    if (drawn && App.bulkFeatures) {
+      var hidden = !!feature.properties.hidden;
+      items.push({ label: hidden ? "Show" : "Hide", action: function () {
+        App.bulkFeatures.setHidden([{ type: featureType, index: featureIndex }], !hidden);
+        renderSingle(featureType, featureIndex, feature);
+      } });
+    }
+    if (drawn && typeof App.deleteFeature === "function") {
+      items.push({ label: "Delete", cls: "ad-tool-danger", action: function () {
+        App.deleteFeature(featureType, featureIndex);
+      } });
+    }
+    var more = overlapItem(featureType, featureIndex);
+    if (more) items.push(more);
+    return items;
+  }
+
+  function renameFeature(featureType, featureIndex, feature, name) {
+    feature.properties.name = name;
+    // Keep the feature row's fp-name display in sync
+    var items = document.querySelectorAll(".fp-item");
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      if (el.dataset.featureType === featureType &&
+          parseInt(el.dataset.featureIndex, 10) === featureIndex) {
+        var rowName = el.querySelector(".fp-name");
+        if (rowName) rowName.textContent = name;
+        break;
+      }
+    }
+    // For labels, name IS the displayed map text — update the marker
+    if (featureType === "label" && typeof App.updateLabelAppearance === "function") {
+      App.updateLabelAppearance(featureIndex);
+    }
+    saveAttrCache();
+  }
+
+  function renderSingle(featureType, featureIndex, feature) {
+    if (_overlaps && (_overlaps.anchor.type !== featureType || _overlaps.anchor.index !== featureIndex)) _overlaps = null;
+    setHeader(feature.properties.name || "",
+      TYPE_LABELS[featureType] || featureType,
+      App.resolveFeatureColor(featureType, feature),
+      function (sw) {
         if (typeof App.openAppearancePopup === "function") {
-          App.openAppearancePopup(sw, ft, fi, {
-            onChange: function () { sw.style.background = App.resolveFeatureColor(ft, feat); }
+          App.openAppearancePopup(sw, featureType, featureIndex, {
+            onChange: function () { sw.style.background = App.resolveFeatureColor(featureType, feature); }
           });
         }
-      });
-    })(hdrSwatch, featureType, featureIndex, feature);
-    controlsEl.appendChild(hdrSwatch);
+      },
+      function (name) { renameFeature(featureType, featureIndex, feature, name); });
+    _dockEl.querySelector(".ad-title").placeholder = TYPE_LABELS[featureType] || featureType;
+    setToolbar(singleToolbar(featureType, featureIndex, feature));
 
-    // Clear and rebuild body
-    var body = _popupEl.querySelector(".fp-attr-popup-body");
-    body.innerHTML = "";
+    var body = freshBody();
 
     // Lazy-init attributes
     if (!feature.properties.attributes) feature.properties.attributes = {};
@@ -1201,105 +1530,27 @@
     });
     if (seededDefault) saveAttrCache();
 
-    // Name row (always present)
-    var nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.className = "fp-attr-input";
-    nameInput.value = feature.properties.name || "";
-    nameInput.addEventListener("change", function () {
-      feature.properties.name = nameInput.value;
-      // Keep the feature row's fp-name display in sync
-      var items = document.querySelectorAll(".fp-item");
-      for (var i = 0; i < items.length; i++) {
-        var el = items[i];
-        if (el.dataset.featureType === featureType &&
-            parseInt(el.dataset.featureIndex, 10) === featureIndex) {
-          var rowName = el.querySelector(".fp-name");
-          if (rowName) rowName.textContent = nameInput.value;
-          break;
-        }
-      }
-      // For labels, name IS the displayed map text — update the marker
-      if (featureType === "label" && typeof App.updateLabelAppearance === "function") {
-        App.updateLabelAppearance(featureIndex);
-      }
-      saveAttrCache();
-    });
-    nameInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") nameInput.blur();
-    });
-    body.appendChild(buildRow("Name", nameInput, null));
-
-    // A field with a new `section` value gets a header row before it.
-    var fields = ATTR_FIELDS[featureType] || [];
-    var lastSection = null;
-    fields.forEach(function (field) {
+    // Fields without a `section` go in a leading "Attributes" section.
+    var current = null, currentLabel = null;
+    typeFields.forEach(function (field) {
       if (field.hidden) return;
-      if (field.section && field.section !== lastSection) {
-        var sectionHeader = document.createElement("div");
-        sectionHeader.className = "fp-attr-section";
-        sectionHeader.textContent = field.section;
-        body.appendChild(sectionHeader);
-        lastSection = field.section;
+      var label = field.section || "Attributes";
+      if (label !== currentLabel) {
+        current = addSection(body, label);
+        currentLabel = label;
       }
       var result = buildFieldInput(field, attrs, feature, featureType);
-      body.appendChild(buildRow(field.label, result.el, result.unit));
+      current.appendChild(buildRow(field.label, result.el, result.unit));
     });
 
-    // Service schedule (routes and lines only) — full-width, below regular fields
+    // Service schedule (routes and lines only) — full-width
     if (featureType === "route" || featureType === "line") {
-      body.appendChild(buildServiceSchedule(attrs));
+      addSection(body, "Service schedule").appendChild(buildServiceSchedule(attrs));
     }
 
-    // Computed measurements + cycle estimate (routes and lines only)
-    if (featureType === "route" || featureType === "line") {
-      var _rcLenMi = 0;
-      try {
-        if (feature.geometry && feature.geometry.coordinates &&
-            feature.geometry.coordinates.length >= 2)
-          _rcLenMi = turf.length(feature, { units: "miles" });
-      } catch (e) {}
-      if (_rcLenMi > 0) {
-        body.appendChild(buildRow("Length", buildReadOnlyValue(fmtLength(_rcLenMi)), null));
-      }
-
-      var cycleSpan = buildReadOnlyValue("—");
-      body.appendChild(buildRow("Cycle est.", cycleSpan, null));
-
-      (function (span, len) {
-        function refreshCycleEst() {
-          var spd = parseFloat(attrs.avgSpeed);
-          var rt  = parseFloat(attrs.runTime);
-          var dir = attrs.direction || "Both";
-          var isLoop = (dir === "Loop" || dir === "CW" || dir === "CCW");
-          var isBoth = (dir === "Both");
-          var label  = isBoth ? "cycle" : isLoop ? "loop" : "one-way";
-          var parts  = [];
-          if (spd > 0 && len > 0) {
-            var owMin  = len / spd * 60;
-            var cycMin = isBoth ? owMin * 2 : owMin;
-            parts.push(Math.round(cycMin) + " min " + label + " · speed");
-          }
-          if (rt > 0) {
-            parts.push(rt + " min " + label + " · manual");
-          }
-          span.textContent = parts.length ? parts.join("  ·  ") : "—";
-        }
-        refreshCycleEst();
-        body.addEventListener("change", refreshCycleEst);
-      })(cycleSpan, _rcLenMi);
-    }
-
-    if (featureType === "polygon" &&
-        feature.geometry && feature.geometry.coordinates &&
-        feature.geometry.coordinates[0] &&
-        feature.geometry.coordinates[0].length >= 3) {
-      var ring    = feature.geometry.coordinates[0];
-      var perimMi = turf.length(turf.lineString(ring), { units: "miles" });
-      var areaSqM = turf.area(feature);
-      body.appendChild(buildRow("Perimeter", buildReadOnlyValue(fmtLength(perimMi)), null));
-      body.appendChild(buildRow("Area",      buildReadOnlyValue(fmtArea(areaSqM)),   null));
-    }
+    buildMeasurements(body, featureType, feature, attrs);
+    buildUsedIn(body, featureType, feature);
+    buildDetails(body, featureType, featureIndex, feature, attrs);
 
     // Label/textbox: sync attribute changes to marker appearance
     if (featureType === "label" || featureType === "textbox") {
@@ -1312,42 +1563,359 @@
       });
     }
 
-    _currentType = featureType;
-    _currentIdx  = featureIndex;
+    _cur = { type: featureType, index: featureIndex, feature: feature };
+  }
+
+  /* ---- Multi-selection: shared-field editing (rules in js/core/attr-bulk.js) ---- */
+
+  // The service schedule is not an ATTR_FIELDS row (it renders full-width), so
+  // multi mode adds it as a pseudo-field for routes and lines.
+  var SERVICE_PSEUDO = { key: "service", label: "Service schedule", type: "service", bulk: "replace", section: "Service schedule" };
+  function bulkFieldsByType() {
+    var out = {};
+    Object.keys(ATTR_FIELDS).forEach(function (t) {
+      out[t] = (t === "route" || t === "line") ? ATTR_FIELDS[t].concat([SERVICE_PSEUDO]) : ATTR_FIELDS[t];
+    });
+    return out;
+  }
+  function fieldDef(type, key) {
+    var list = bulkFieldsByType()[type] || [];
+    for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
+    return null;
+  }
+
+  // Inner saveAttrCache() calls are muted while a seeded "Replace all…" editor
+  // is open: they edit a scratch copy, and the one real undo step is taken
+  // when the copy is applied.
+  var _muteSave = false;
+
+  // Write value to every eligible item as ONE undo step, run each distinct
+  // field onChange once, then save / refresh / re-render the dock.
+  function bulkWrite(items, key, value) {
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    var hooks = [], types = {};
+    items.forEach(function (it) {
+      var field = fieldDef(it.type, key);
+      if (!field || !window.AttrBulk.eligible(field, it.feature)) return;
+      var p = it.feature.properties;
+      types[it.type] = true;
+      if (field.type === "buffer-radius") {
+        if (value === null) delete p._bufferRadius; else p._bufferRadius = value;
+      } else {
+        if (!p.attributes) p.attributes = {};
+        var v = (value && typeof value === "object") ? JSON.parse(JSON.stringify(value)) : value;
+        if (v === null || v === "") delete p.attributes[key]; else p.attributes[key] = v;
+        // Labels mirror their style attributes onto properties for the marker.
+        if (it.type === "label" || it.type === "textbox") {
+          if (key === "fontSize") p.fontSize = v;
+          if (key === "bgColor") { p.bgColor = v; p.color = v; }
+          if (key === "textColor") p.textColor = v;
+          var upd = it.type === "label" ? App.updateLabelAppearance : App.updateTextBoxAppearance;
+          if (typeof upd === "function") upd(it.index);
+        }
+      }
+      if (typeof field.onChange === "function" && hooks.indexOf(field.onChange) < 0) hooks.push(field.onChange);
+    });
+    if (key === "bufferRadius") Object.keys(types).forEach(rebuildBuffersForType);
+    hooks.forEach(function (fn) { try { fn(items[0].feature.properties.attributes || {}); } catch (e) {} });
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+    if (typeof App.notifyProject === "function") App.notifyProject();
+    syncAttrDock();
+  }
+
+  // One editor row for a shared field. a = an AttrBulk.analyze entry.
+  function buildBulkRow(a, items, field) {
+    var mixed = a.state === "mixed";
+    var none = a.state === "none";
+    var el, unit = field.unit || null;
+    function commit(v) { bulkWrite(items, a.key, v); }
+
+    if (a.bulk === "replace") {
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "ad-replace";
+      el.textContent = mixed ? "Mixed · Replace all…" : "Edit all…";
+      el.title = mixed ? "Opens with the first selected feature's values; saving copies them to all" : "";
+      el.addEventListener("click", function () { openReplaceEditor(a, items, el); });
+    } else if (a.type === "select") {
+      el = document.createElement("select");
+      el.className = "fp-attr-input";
+      if (mixed) {
+        var m = document.createElement("option");
+        m.value = "\u0000mixed"; m.textContent = "Mixed"; m.disabled = true; m.selected = true;
+        el.appendChild(m);
+      }
+      (field.options || []).forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt;
+        o.textContent = (field.optionLabels && (opt in field.optionLabels)) ? field.optionLabels[opt] : (opt === "" ? "—" : opt);
+        if (!mixed && (opt === "" ? (a.value === null || a.value === "") : a.value === opt)) o.selected = true;
+        el.appendChild(o);
+      });
+      el.addEventListener("change", function () { commit(el.value === "" ? null : el.value); });
+    } else if (a.type === "color") {
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "fp-attr-color-swatch" + (mixed ? " ad-swatch-mixed" : "");
+      if (!mixed) el.style.background = a.value || (a.key === "textColor" ? "#ffffff" : "#1a202c");
+      el.title = mixed ? "Mixed" : field.label;
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (typeof App.openColorPicker === "function") {
+          App.openColorPicker(el, a.value || "#1a202c", function (c) { commit(c); });
+        }
+      });
+    } else if (a.type === "buffer-radius") {
+      el = document.createElement("input");
+      el.type = "number";
+      el.min = "0"; el.step = "0.125";
+      el.className = "fp-attr-input";
+      el.placeholder = mixed ? "Mixed" : "Default";
+      el.title = "Empty = the type's default radius";
+      if (!mixed && a.value !== null) el.value = a.value;
+      unit = "mi";
+      el.addEventListener("change", function () {
+        var v = el.value === "" ? null : parseFloat(el.value);
+        commit(v === null || isNaN(v) ? null : Math.max(0, v));
+      });
+    } else {
+      el = document.createElement("input");
+      el.type = a.type === "number" ? "number" : "text";
+      el.className = "fp-attr-input";
+      if (a.type === "number") { el.min = "0"; el.step = "1"; }
+      el.placeholder = mixed ? "Mixed" : (field.placeholder || "");
+      if (!mixed && a.value !== null) el.value = a.value;
+      if (a.key === "serviceId") el.setAttribute("list", "fp-service-datalist");
+      el.addEventListener("change", function () {
+        if (a.type === "number") commit(el.value === "" ? null : parseFloat(el.value));
+        else commit(el.value.trim() === "" ? null : el.value.trim());
+      });
+    }
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter" && el.blur) el.blur(); });
+    if (none) { el.disabled = true; el.title = "Not editable for these features"; }
+
+    var row = buildRow(a.label, el, unit);
+    if (!none && a.eligible < a.total) {
+      var note = document.createElement("div");
+      note.className = "ad-bulk-note";
+      var skipped = a.total - a.eligible;
+      note.textContent = "Skips " + skipped + (skipped === 1 ? " feature" : " features") +
+        (a.key === "bufferRadius" ? " with a walkshed" : "");
+      var wrap = document.createElement("div");
+      wrap.appendChild(row);
+      wrap.appendChild(note);
+      return wrap;
+    }
+    return row;
+  }
+
+  // R6: edit a scratch copy seeded from the first eligible feature; on close,
+  // copy it to every eligible feature if anything changed.
+  function openReplaceEditor(a, items, anchor) {
+    var seedItem = null;
+    for (var i = 0; i < items.length; i++) {
+      if (window.AttrBulk.eligible(fieldDef(items[i].type, a.key), items[i].feature)) { seedItem = items[i]; break; }
+    }
+    if (!seedItem) return;
+    var seedAttrs = JSON.parse(JSON.stringify(seedItem.feature.properties.attributes || {}));
+    var before = JSON.stringify(seedAttrs[a.key] === undefined ? null : seedAttrs[a.key]);
+    _muteSave = true;
+    // Closing the editor unchanged writes nothing, even when values were Mixed.
+    function done() {
+      _muteSave = false;
+      var after = seedAttrs[a.key] === undefined ? null : seedAttrs[a.key];
+      if (JSON.stringify(after) !== before) bulkWrite(items, a.key, after);
+    }
+    if (a.key === "service") {
+      App.openTimeBandsPopup({ properties: { name: items.length + " features", attributes: seedAttrs } }, anchor, done);
+    } else {
+      App.openRoutePickerPopup(seedAttrs, anchor, done);
+    }
+  }
+
+  function renderMulti(list) {
+    _overlaps = null;
+    setHeader(list.length + " features selected", "Selection", null, null, null);
+    var usable = App.bulkFeatures ? App.bulkFeatures.usable(list) : [];
+    setToolbar(usable.length && App.bulkFeatures
+      ? App.bulkFeatures.groupMenuItems(usable).map(function (it) {
+          return { label: it.label, action: it.action, cls: /^Delete/.test(it.label) ? "ad-tool-danger" : "" };
+        })
+      : []);
+    var body = freshBody();
+
+    var items = [];
+    list.forEach(function (s) {
+      var f = featureFor(s.type, s.index);
+      if (f) items.push({ type: s.type, index: s.index, feature: f });
+    });
+
+    // Type chips: click one to narrow the selection to that type.
+    var counts = window.AttrBulk.typeCounts(items);
+    if (counts.length > 1) {
+      var chips = document.createElement("div");
+      chips.className = "ad-chips";
+      counts.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "ad-chip";
+        b.textContent = c.count + " " + (TYPE_LABELS[c.type] || c.type) + (c.count === 1 ? "" : "s");
+        b.title = "Select only these";
+        b.addEventListener("click", function () {
+          var only = list.filter(function (s) { return s.type === c.type; });
+          if (typeof App.setSelection === "function") App.setSelection(only);
+        });
+        chips.appendChild(b);
+      });
+      body.appendChild(chips);
+    }
+
+    var shared = window.AttrBulk.analyze(bulkFieldsByType(), items);
+    if (!shared.length) {
+      var hint = document.createElement("div");
+      hint.className = "ad-empty";
+      hint.textContent = counts.length > 1
+        ? "These feature types share no attributes. Pick a type above to edit its fields."
+        : "No attributes to edit together.";
+      body.appendChild(hint);
+    }
+    var current = null, currentLabel = null;
+    shared.forEach(function (a) {
+      var label = a.section || "Attributes";
+      if (label !== currentLabel) { current = addSection(body, label); currentLabel = label; }
+      current.appendChild(buildBulkRow(a, items, fieldDef(items[0].type, a.key)));
+    });
+
+    // Totals
+    var lenMi = 0, areaM2 = 0;
+    items.forEach(function (it) {
+      try {
+        if (it.type === "line" || it.type === "route") lenMi += turf.length(it.feature, { units: "miles" });
+        if (it.type === "polygon") areaM2 += turf.area(it.feature);
+      } catch (e) {}
+    });
+    if (lenMi > 0 || areaM2 > 0) {
+      var m = addSection(body, "Measurements");
+      if (lenMi > 0) infoRow(m, "Total length", fmtLength(lenMi));
+      if (areaM2 > 0) infoRow(m, "Total area", fmtArea(areaM2));
+    }
+
+    var ms = addSection(body, "Selection");
+    var ul = document.createElement("ul");
+    ul.className = "ad-members";
+    items.forEach(function (s) {
+      var f = s.feature;
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-member";
+      var dot = document.createElement("span");
+      dot.className = "ad-member-dot";
+      try { dot.style.background = App.resolveFeatureColor(s.type, f); } catch (e) {}
+      var nm = document.createElement("span");
+      nm.className = "ad-member-name";
+      nm.textContent = f.properties.name || (TYPE_LABELS[s.type] || s.type);
+      var ty = document.createElement("span");
+      ty.className = "ad-member-type";
+      ty.textContent = TYPE_LABELS[s.type] || s.type;
+      b.appendChild(dot); b.appendChild(nm); b.appendChild(ty);
+      b.addEventListener("click", function () {
+        if (typeof App.selectFeature === "function") App.selectFeature(s.type, s.index);
+      });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    ms.appendChild(ul);
+    buildFooter(body);
+    _cur = { multi: true, list: list.slice() };
+  }
+
+  function show() {
+    _dockEl.style.display = "";
+    syncAppClasses();
   }
 
   /* ---- Public API ---- */
 
-  App.openAttrPopup = function (featureType, featureIndex, feature) {
-    buildPopupEl();
-
-    // Toggle: clicking gear on the same feature closes the popup
-    if (_popupEl.style.display !== "none" &&
-        _currentType === featureType && _currentIdx === featureIndex) {
-      closeAttrPopup();
-      return;
+  // Gesture entry point. With a target, shows that feature; without one, shows
+  // the current selection.
+  function openAttrDock(featureType, featureIndex, feature) {
+    buildDockEl();
+    commitActiveEdit();
+    if (featureType) {
+      feature = feature || featureFor(featureType, featureIndex);
+      if (!feature) return;
+      renderSingle(featureType, featureIndex, feature);
+    } else {
+      var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+      if (!sel.length) return;
+      if (sel.length === 1) {
+        var f = featureFor(sel[0].type, sel[0].index);
+        if (!f) return;
+        renderSingle(sel[0].type, sel[0].index, f);
+      } else {
+        renderMulti(sel);
+      }
     }
-
-    var wasOpen = (_popupEl.style.display !== "none");
-    populatePopupBody(featureType, featureIndex, feature);
-
-    // Only reset position when opening fresh (preserve dragged position when switching features)
-    if (!wasOpen) {
-      setAttrPopupCollapsed(false);
-      _popupEl.style.left = "24px";
-      _popupEl.style.top  = "60px";
-    }
-    _popupEl.style.display = "";
-  };
-
-  function closeAttrPopup() {
-    if (_popupEl) _popupEl.style.display = "none";
-    _currentType = null;
-    _currentIdx  = null;
+    show();
   }
 
-  App.closeAttrPopup    = closeAttrPopup;
-  // { key: defaultValue } for the fields the popup seeds into blank attributes
+  // opts.keepSelection: hide only (used when the selection already emptied).
+  function closeAttrDock(opts) {
+    if (!_dockEl || _closing) return;
+    _closing = true;
+    try {
+      commitActiveEdit();
+      _dockEl.style.display = "none";
+      _cur = null;
+      syncAppClasses();
+      if (!(opts && opts.keepSelection) && typeof App.clearSelection === "function") App.clearSelection();
+    } finally {
+      _closing = false;
+    }
+  }
+
+  // Follow the selection while open. Re-renders only when the shown feature
+  // actually changed (index, or the object itself after an undo restore), so a
+  // field being typed into is not rebuilt underneath the user.
+  function syncAttrDock() {
+    if (!isDockOpen() || _closing) return;
+    var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+    if (!sel.length) {
+      if (_cur && _cur.type === "textbox" && featureFor("textbox", _cur.index) === _cur.feature) return;
+      closeAttrDock({ keepSelection: true });
+      return;
+    }
+    if (sel.length === 1) {
+      var s = sel[0];
+      var f = featureFor(s.type, s.index);
+      if (!f) { closeAttrDock({ keepSelection: true }); return; }
+      if (_cur && !_cur.multi && _cur.type === s.type && _cur.index === s.index && _cur.feature === f) return;
+      commitActiveEdit();
+      renderSingle(s.type, s.index, f);
+      return;
+    }
+    commitActiveEdit();
+    renderMulti(sel);
+  }
+
+  App.openAttrDock   = openAttrDock;
+  App.closeAttrDock  = closeAttrDock;
+  App.syncAttrDock   = syncAttrDock;
+  App.isAttrDockOpen = isDockOpen;
+  App.isAttrDockPinned = function () { return !!(_dockEl && _dockEl.classList.contains("ad-pinned")); };
+  // The single feature shown → { featureType, featureIndex }, else null.
+  App.getAttrDockFeature = function () {
+    if (!isDockOpen() || !_cur || _cur.multi) return null;
+    return { featureType: _cur.type, featureIndex: _cur.index };
+  };
+  // Width the dock currently covers on the map (0 when closed), for fit padding.
+  App.attrDockInset = function () {
+    return isDockOpen() ? _dockEl.getBoundingClientRect().width : 0;
+  };
+
+  // { key: defaultValue } for the fields the dock seeds into blank attributes
   // when it opens (used by Unmerge's "edited since merging" check).
   App.getAttrFieldDefaults = function (featureType) {
     var out = {};
@@ -1356,19 +1924,12 @@
     });
     return out;
   };
-  App.isAttrPopupOpen   = function () { return !!(_popupEl && _popupEl.style.display !== "none"); };
-  // Re-read the header swatch after a color change made elsewhere (e.g. a
-  // type-wide color set in the Layers tab).
-  App.refreshAttrPopupColor = function () {
-    if (!App.isAttrPopupOpen() || !_popupEl) return;
-    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
-    var feat = arr && arr[_currentIdx];
-    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
-    if (feat && sw) sw.style.background = App.resolveFeatureColor(_currentType, feat);
-  };
-  App.getAttrPopupFeature = function () {
-    if (!App.isAttrPopupOpen()) return null;
-    return { featureType: _currentType, featureIndex: _currentIdx };
+  // Re-read the header swatch after a color change made elsewhere (the
+  // Appearance popover, a type-wide color set in the Layers tab).
+  App.refreshAttrDockSwatch = function () {
+    if (!isDockOpen() || !_cur || _cur.multi) return;
+    var sw = _dockEl.querySelector(".ad-swatch");
+    if (sw) sw.style.background = App.resolveFeatureColor(_cur.type, _cur.feature);
   };
 
   /* ---- Mini-popup singleton (used by Time Bands and Route Picker pills) ---- */
@@ -1424,9 +1985,14 @@
     document.addEventListener("mouseup", function () {
       if (_miniDrag) { _miniDrag = null; header.classList.remove("dragging"); }
     });
+    // Capture phase + stopPropagation: one Escape closes only this topmost
+    // layer, never the attributes dock or analysis panel underneath as well.
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && _miniEl && _miniEl.style.display !== "none") closeMiniPopup();
-    });
+      if (e.key === "Escape" && _miniEl && _miniEl.style.display !== "none") {
+        closeMiniPopup();
+        e.stopPropagation();
+      }
+    }, true);
   }
 
   function openMiniPopup(opts) {
@@ -1470,7 +2036,7 @@
   /* ---- Public exports for the Attribute Summary module ---- */
 
   // Open the time-bands editor for a route/line feature in the mini-popup.
-  // The same buildServiceSchedule UI used inside the per-feature attribute popup
+  // The same buildServiceSchedule UI used inside the attributes dock
   // is mounted here (Weekday / Saturday / Sunday with Mirror Saturday checkbox).
   App.openTimeBandsPopup = function (feature, anchor, onChange) {
     if (!feature || !feature.properties) return;
@@ -1515,17 +2081,6 @@
     if (!feature || !feature.properties) return null;
     if (!feature.properties.attributes) feature.properties.attributes = {};
     return buildServiceSchedule(feature.properties.attributes);
-  };
-
-  // Re-sync the header swatch with the shown feature's resolved color (used by
-  // the Appearance popover after a color change made elsewhere).
-  App.refreshAttrPopupSwatch = function () {
-    if (!_popupEl || _currentType == null || _currentIdx == null) return;
-    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
-    if (!sw) return;
-    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
-    var feat = arr && arr[_currentIdx];
-    if (feat) sw.style.background = App.resolveFeatureColor(_currentType, feat);
   };
 
   // Build the `N routes` pill for a point feature. Returns the button DOM.

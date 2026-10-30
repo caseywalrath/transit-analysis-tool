@@ -37,10 +37,6 @@
       var isHidden = !!feature.properties.hidden;
       App.showContextMenu(e.clientX, e.clientY, [
         {
-          label: "Attributes",
-          action: function () { App.openAttrPopup("label", idx, feature); }
-        },
-        {
           label: "Duplicate",
           action: function () {
             if (App.undo && !App.undo.isRestoring()) App.undo.push();
@@ -71,6 +67,20 @@
     var marker = new maplibregl.Marker({ element: el, draggable: true })
       .setLngLat(coords)
       .addTo(App.map);
+
+    // A plain click selects the label and opens the dock; the click that
+    // ends a drag does not.
+    var dragged = false;
+    marker.on("dragstart", function () { dragged = true; });
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (dragged) { dragged = false; return; }
+      if (App.drawMode) return;
+      var i = App.labels.indexOf(feature);
+      if (i < 0) return;
+      if (typeof App.selectFeature === "function") App.selectFeature("label", i);
+      if (typeof App.openAttrDock === "function") App.openAttrDock();
+    });
 
     marker.on("dragend", function () {
       if (App.undo && !App.undo.isRestoring()) App.undo.push();
@@ -110,7 +120,8 @@
     var marker = _createMarker(feature, labels.length - 1);
     _markers.push(marker);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-    if (typeof App.openAttrPopup === "function") App.openAttrPopup("label", labels.length - 1, feature);
+    if (typeof App.selectFeature === "function") App.selectFeature("label", labels.length - 1);
+    if (typeof App.openAttrDock === "function") App.openAttrDock();
   }
 
   function removeLabel(index) {
@@ -214,7 +225,21 @@
           .setLngLat(labels[k].geometry.coordinates);
         // Wire dragend even for hidden markers (in case they become visible later)
         (function (feat) {
-          marker.on("dragend", function () {
+          // A plain click selects the label and opens the dock; the click that
+    // ends a drag does not.
+    var dragged = false;
+    marker.on("dragstart", function () { dragged = true; });
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (dragged) { dragged = false; return; }
+      if (App.drawMode) return;
+      var i = App.labels.indexOf(feature);
+      if (i < 0) return;
+      if (typeof App.selectFeature === "function") App.selectFeature("label", i);
+      if (typeof App.openAttrDock === "function") App.openAttrDock();
+    });
+
+    marker.on("dragend", function () {
             var lngLat = marker.getLngLat();
             feat.geometry.coordinates = [lngLat.lng, lngLat.lat];
             if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();

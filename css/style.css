@@ -55,6 +55,8 @@
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.22);
 
   /* ---- Layout ---- */
+  --ad-width: 320px; /* left-edge attributes dock */
+  --ad-rail: 32px;   /* collapsed dock rail: room for one 26px button */
   --fp-width: 250px;  /* right-hand Features/Layers panel; the module popup's right gutter derives from it */
 
   /* ---- Motion ---- */
@@ -528,14 +530,32 @@ button { cursor: pointer; }
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--muted);
   padding: 0 2px;
   flex-shrink: 0;
-  transition: transform 0.12s;
   min-width: 24px;
   min-height: 24px;
 }
-.lp-caret.open { transform: rotate(180deg); }
+/* One disclosure caret across every panel (Layers rows, Features sections and
+   groups, analysis-panel Inputs, attributes-dock sections): the same ▾ glyph,
+   size and color, pointing right when closed and down when open. Open state
+   is the .open class, except the two that follow their container's class. */
+.lp-caret,
+.fp-section-toggle,
+.fp-group-toggle,
+.ad-caret {
+  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-none);
+  transition: transform var(--ease-fast);
+  transform: rotate(-90deg);
+}
+.lp-caret.open,
+.fp-section-toggle.open,
+.fp-group-toggle.open,
+.ad-section:not(.ad-section-closed) .ad-caret,
+.module-inputs:not(.module-inputs-collapsed) > .module-inputs-header .module-inputs-caret {
+  transform: rotate(0deg);
+}
 /* Stands in for .lp-caret on layer rows with no style drawer (same 24px width)
    so every row's grip and name share one left edge. */
 .lp-caret-spacer {
@@ -774,17 +794,11 @@ button { cursor: pointer; }
   border: none;
   cursor: pointer;
   padding: 0 4px;
-  color: var(--muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-none);
   flex-shrink: 0;
   margin-left: auto;
-  transition: transform 0.15s;
-  transform: rotate(-90deg);
   min-width: 24px;
   min-height: 24px;
 }
-.fp-section-toggle.open { transform: rotate(0deg); }
 
 .fp-list { min-height: 4px; }
 
@@ -913,7 +927,6 @@ body.dark-mode .map-textbox-resize {
 body.present-mode #toolbar { display: none; }
 body.present-mode #sidebar-wrap { display: none; }
 body.present-mode #feature-panel { display: none; }
-body.present-mode #fp-attr-popup { display: none; }
 
 #pm-controls {
   display: none;
@@ -1612,17 +1625,22 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   align-items: center;
   gap: 6px;
 }
+/* Feature Settings rows use the same label column as the attributes dock's
+   field rows (.fp-attr-row / .fp-attr-label): xs, right-aligned, no wrap. */
 .fp-buffer-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 3px 4px;
 }
 .fp-buffer-label {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--muted);
-  flex: 1;
+  flex: 0 0 76px;
+  text-align: right;
+  white-space: nowrap;
 }
+.fp-buffer-row input { flex: 1; min-width: 0; }
 .fp-buffer-unit {
   font-size: var(--text-xs);
   color: var(--muted);
@@ -1707,124 +1725,238 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
 }
 .ui-hover-chip:focus-visible { opacity: 1; pointer-events: auto; }
 
-/* Gear / attributes button (shows on row hover, same pattern as fp-del-btn) */
-.fp-gear-btn {
-  right: 24px;
-}
-.fp-item:hover .fp-gear-btn { opacity: 0.92; pointer-events: auto; }
-.fp-gear-btn:hover { opacity: 1 !important; color: var(--accent); }
-
-/* Floating attributes popup */
-#fp-attr-popup {
-  position: fixed;
-  z-index: 9000;
-  width: 320px;
-  background: var(--surface);
-  border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+/* ---- Attributes dock (left edge of the map; js/core/feature-attributes.js) ----
+   Same family as the Features panel: flush edge, --bg, 1px border, no shadow.
+   It overlays the map (never resizes it) and sits below .module-popup (5000)
+   and the body-level popovers, so a wide analysis panel floats over it. */
+#main-content { position: relative; }
+#attr-dock {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 900;
+  width: var(--ad-width);
+  box-sizing: border-box;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
   overflow: hidden;
-  border: 1px solid var(--border);
 }
-.fp-attr-popup-header {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 8px 14px;
+body.present-mode #attr-dock { display: none !important; }
+.ad-header {
+  padding: 10px 8px 8px 12px;
   border-bottom: 1px solid var(--border);
-  cursor: grab;
-  user-select: none;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
-.fp-attr-popup-header.dragging { cursor: grabbing; }
-.fp-attr-popup-title-row {
+.ad-head-row {
   display: flex;
   align-items: center;
-  min-height: 30px;
+  gap: var(--space-2);
+  min-height: 34px;
 }
-.fp-attr-popup-title {
+.ad-swatch-slot { display: flex; flex-shrink: 0; }
+.ad-swatch-slot:empty { display: none; }
+.ad-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0,0,0,0.28);
+  cursor: pointer;
+  padding: 0;
+}
+.ad-swatch:hover { border-color: rgba(0,0,0,0.55); }
+.ad-titles { flex: 1; min-width: 0; }
+/* The name input reads as a title until hovered or focused. */
+.ad-title {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 1px -5px;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-overflow: ellipsis;
+}
+.ad-title:not([readonly]):hover { border-color: var(--border); }
+.ad-title:not([readonly]):focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ad-title[readonly] { cursor: default; }
+.ad-type {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-md);
-  color: var(--text-primary);
-  margin-right: auto;
-}
-.fp-attr-popup-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.fp-attr-popup-collapse,
-.fp-attr-popup-close {
-  background: transparent;
-  border: none;
-  cursor: pointer;
   color: var(--muted);
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  line-height: var(--leading-none);
-  margin: 0;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
 }
-.fp-attr-popup-collapse svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform var(--ease-fast);
-}
-.fp-attr-popup-collapse:hover {
-  color: var(--accent);
-  background: var(--surface-hover);
-}
-.fp-attr-popup-close {
-  font-size: var(--text-xl);
-}
-.fp-attr-popup-close:hover { color: var(--danger); background: var(--surface-hover); }
-.fp-attr-popup-collapse:focus-visible,
-.fp-attr-popup-close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-.fp-attr-popup-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-right: var(--space-2);
-}
-.fp-attr-popup-body {
-  padding: 12px 14px 14px;
+.ad-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+/* .ad-btn size, color, hover and focus come from the shared panel header
+   button rules (with .module-popup-close / -collapse). */
+#attr-dock.ad-pinned .ad-pin { color: var(--accent); background: var(--accent-soft); }
+#attr-dock.ad-pinned .ad-pin svg { fill: currentColor; }
+.ad-body {
+  /* Bottom padding clears the fixed full-width #status strip. */
+  padding: 10px 14px 32px;
   overflow-y: auto;
   flex: 1;
 }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-body { display: none; }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-collapse svg { transform: rotate(180deg); }
-/* Slightly larger inputs inside the popup */
-#fp-attr-popup .fp-attr-label {
+#attr-dock .fp-attr-label { font-size: var(--text-xs); flex: 0 0 80px; }
+#attr-dock .fp-attr-input,
+#attr-dock .fp-attr-check-label { font-size: var(--text-sm); }
+#attr-dock .fp-attr-unit { font-size: var(--text-xs); }
+
+/* Collapsed: a rail with the swatch and the expand / close buttons stacked. */
+#attr-dock.ad-collapsed { width: var(--ad-rail); }
+#attr-dock.ad-collapsed .ad-header { padding: 8px 0; border-bottom: none; }
+#attr-dock.ad-collapsed .ad-head-row { flex-direction: column; gap: var(--space-2); }
+#attr-dock.ad-collapsed .ad-toolbar { display: none; }
+#attr-dock.ad-collapsed .ad-header .ad-swatch-slot { order: 2; }
+#attr-dock.ad-collapsed .ad-actions { flex-direction: column; order: 1; }
+#attr-dock.ad-collapsed .ad-titles,
+#attr-dock.ad-collapsed .ad-pin,
+#attr-dock.ad-collapsed .ad-body { display: none; }
+#attr-dock.ad-collapsed .ad-collapse svg { transform: rotate(180deg); }
+
+/* Header toolbar: compact text actions */
+.ad-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ad-toolbar:empty { display: none; }
+.ad-tool {
+  font: inherit;
   font-size: var(--text-xs);
-  flex: 0 0 80px;
+  font-weight: var(--weight-semibold);
+  padding: 3px 8px;
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
 }
-#fp-attr-popup .fp-attr-input {
-  font-size: var(--text-sm);
-}
-#fp-attr-popup .fp-attr-check-label {
-  font-size: var(--text-sm);
-}
-#fp-attr-popup .fp-attr-unit {
+.ad-tool:hover { color: var(--accent); border-color: var(--accent); }
+.ad-tool-danger:hover { color: var(--danger); border-color: var(--danger); }
+.ad-tool-more { margin-left: auto; color: var(--accent); }
+.ad-tool:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Collapsible body sections; open/closed is remembered per label */
+.ad-section + .ad-section { border-top: 1px solid var(--border); }
+/* Section headings share one type style across the dock, the Features panel
+   and analysis-panel Inputs headers. */
+.ad-section-head,
+.module-inputs-label,
+.fp-section-header,
+.fp-settings-header {
   font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-md);
+  color: var(--muted);
 }
+.ad-section-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 0 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.ad-section-head:hover { color: var(--text-primary); }
+.ad-section-head:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+.ad-section-body { padding-bottom: 4px; }
+/* Read-only info rows (Measurements, Details) sit tighter than field rows. */
+#attr-dock .fp-attr-row.ad-info-row { min-height: 18px; margin-bottom: 2px; }
+.ad-section-closed .ad-section-body { display: none; }
+.ad-empty { font-size: var(--text-sm); color: var(--muted); padding: 2px 0 4px; }
+.ad-usage { list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--text-primary); }
+.ad-usage li { padding: 1px 0; }
+.ad-usage-warn strong { color: var(--warn-text); }
+.ad-merged { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ad-link {
+  border: none; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--text-sm); color: var(--accent);
+}
+.ad-link:hover { text-decoration: underline; }
+.ad-footer { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
+/* Inside Details (single feature) the link is just the section's last line. */
+.ad-section-body > .ad-footer { border-top: none; padding-top: 2px; margin-top: 2px; }
+
+/* Multi-selection: type chips, Mixed states, skip notes */
+.ad-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 8px; }
+.ad-chip {
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ad-chip:hover { color: var(--accent); border-color: var(--accent); }
+.ad-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+#attr-dock .fp-attr-input::placeholder { font-style: italic; }
+.ad-replace {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 3px 10px;
+  min-height: var(--ctl-height-sm);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ad-replace:hover { border-style: solid; }
+/* Mixed color: half-and-half swatch (data encoding, not chrome) */
+.ad-swatch-mixed { background: linear-gradient(135deg, #1a202c 50%, #ffffff 50%) !important; }
+.ad-bulk-note { font-size: var(--text-xs); color: var(--muted); margin: -2px 0 6px 86px; }
+
+/* Multi-selection member list */
+.ad-members { list-style: none; margin: 0; padding: 0; }
+.ad-member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.ad-member:hover { background: var(--surface-hover); }
+.ad-member-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.ad-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-member-type { font-size: var(--text-xs); color: var(--muted); }
+
+/* Keep bottom-left map controls (scale bar, north arrow) clear of the dock. */
+#app.ad-open .maplibregl-ctrl-bottom-left { left: var(--ad-width); }
+#app.ad-open.ad-rail .maplibregl-ctrl-bottom-left { left: var(--ad-rail); }
+/* --ad-inset: how much of the map's left edge the dock covers. Bottom-left
+   floating widgets (analysis legends) start from it (popup.js). */
+#app.ad-open { --ad-inset: var(--ad-width); }
+#app.ad-open.ad-rail { --ad-inset: var(--ad-rail); }
+body.present-mode #app .maplibregl-ctrl-bottom-left { left: 0; }
+
 .fp-attr-confirm {
   font-size: var(--text-sm);
   padding: 2px 0 7px 0;
@@ -1872,7 +2004,7 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   min-height: 22px;
 }
 /* Per-feature buffer radius control (App.buildBufferRadiusControl): used in the
-   Attributes popup's "Study area" section and the Attribute Summary Buffer
+   attributes dock's "Study area" section and the Attribute Summary Buffer
    column. Compact scrubber sizing, same as the Layers style drawers. */
 .fp-buffer-ctl {
   display: flex;
@@ -2039,6 +2171,10 @@ input.fp-attr-input[type="number"] {
   letter-spacing: var(--tracking-md);
   color: var(--muted);
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .fp-svc-header,
 .fp-svc-band {
@@ -2047,6 +2183,9 @@ input.fp-attr-input[type="number"] {
   gap: 4px;
   align-items: center;
 }
+/* A day with no bands shows only its title and "+ Add time band", without
+   the FROM / TO / FREQUENCY headings (saves a row per empty day). */
+.fp-svc-section:has(> .fp-svc-bands:empty) > .fp-svc-header { display: none; }
 .fp-svc-header {
   font-size: var(--text-2xs);
   color: var(--muted);
@@ -2101,9 +2240,11 @@ input.fp-attr-input[type="number"] {
   border: 1px dashed var(--border);
   border-radius: 3px;
   color: var(--muted);
-  padding: 3px 8px;
+  padding: 2px 8px;
   cursor: pointer;
-  margin-top: 2px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
 }
 .fp-svc-add:hover { color: var(--accent); border-color: var(--accent); }
 .fp-svc-mirror {
@@ -2154,16 +2295,10 @@ input.fp-attr-input[type="number"] {
   border: none;
   cursor: pointer;
   padding: 0 4px;
-  color: var(--muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-none);
   flex-shrink: 0;
-  transition: transform 0.15s;
-  transform: rotate(-90deg);
   min-width: 24px;
   min-height: 24px;
 }
-.fp-group-toggle.open { transform: rotate(0deg); }
 .fp-group-name {
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
@@ -2176,18 +2311,15 @@ input.fp-attr-input[type="number"] {
 .fp-pattern { padding-left: 0; }
 .fp-group-body .fp-pattern { padding-left: 16px; }
 
-/* Feature visibility toggle — overlay chip, same reasoning as .fp-gear-btn /
-   .fp-del-btn above. Sits left of the gear icon on rows (which have no gear
-   icon, groups just use the same right offset as .fp-del-btn plus one
-   icon-width). */
-.fp-item > .fp-visibility-btn { right: 48px; }
+/* Feature visibility toggle — overlay chip, same reasoning as .fp-del-btn.
+   Sits one icon-width left of the delete button on rows and group headers. */
+.fp-item > .fp-visibility-btn { right: 24px; }
 .fp-group-header > .fp-visibility-btn { right: 24px; }
 .fp-item:hover .fp-visibility-btn,
 .fp-group-header:hover .fp-visibility-btn { opacity: 0.92; pointer-events: auto; }
 .fp-visibility-btn:hover { opacity: 1 !important; pointer-events: auto; }
 .fp-visibility-btn:focus-visible,
 .fp-dup-btn:focus-visible,
-.fp-gear-btn:focus-visible,
 .fp-del-btn:focus-visible { opacity: 1; pointer-events: auto; }
 /* Muted "off" color only — no permanent opacity/pointer-events override,
    so a hidden feature's eye stays hover-only just like Settings/Delete.
@@ -2205,7 +2337,7 @@ input.fp-attr-input[type="number"] {
 .fp-item:hover > .fp-del-btn,
 .fp-group-header:hover .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 .fp-del-btn:hover { opacity: 1 !important; color: var(--danger); }
-.fp-item:focus-within .fp-gear-btn,
+.fp-item:focus-within .fp-visibility-btn,
 .fp-item:focus-within > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 
 /* Row-level delete confirmation strip */
@@ -2757,10 +2889,13 @@ body.present-mode .module-popup {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
 }
+/* Panel header icon buttons: analysis panels and the attributes dock share
+   size, color and hover (.ad-btn rules below only add dock specifics). */
 .module-popup-collapse,
-.module-popup-close {
-  width: 30px;
-  height: 30px;
+.module-popup-close,
+.ad-btn {
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   margin: 0;
   padding: 0;
@@ -2780,9 +2915,10 @@ body.present-mode .module-popup {
   margin-right: var(--space-1);
   color: var(--muted);
 }
-.module-popup-collapse svg {
-  width: 18px;
-  height: 18px;
+.module-popup-collapse svg,
+.ad-btn svg {
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -2790,16 +2926,19 @@ body.present-mode .module-popup {
   stroke-linejoin: round;
   transition: transform var(--ease-fast);
 }
-.module-popup-collapse:hover {
+.module-popup-collapse:hover,
+.ad-btn:hover {
   background: var(--surface-hover);
   color: var(--accent);
 }
-.module-popup-close:hover {
+.module-popup-close:hover,
+.ad-btn.ad-close:hover {
   background: var(--surface-hover);
   color: var(--danger);
 }
 .module-popup-collapse:focus-visible,
-.module-popup-close:focus-visible {
+.module-popup-close:focus-visible,
+.ad-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
@@ -3511,7 +3650,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 /* ---- Collapsible module inputs (App.renderModuleInputs) ----
    Emitted by the shared helper in app.js, not by any popup's markup. The
    header is a real <button> so it is keyboard-reachable and announces its
-   expanded state; the caret reuses .lp-caret from the Layers panel. */
+   expanded state; the caret is the shared .lp-caret (see the rule near the
+   top of this file for its open/closed rotation). */
 .module-inputs-header {
   display: flex;
   align-items: center;
@@ -3531,14 +3671,8 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
-.module-inputs-label {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-md);
-  color: var(--muted);
-  flex-shrink: 0;
-}
+/* Type for this label is the shared section-heading rule (.ad-section-head). */
+.module-inputs-label { flex-shrink: 0; }
 /* The "what was actually run" line. Truncates rather than wrapping — the
    header must stay one row tall so the collapsed panel is genuinely compact. */
 .module-inputs-summary {
@@ -3548,10 +3682,6 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* Caret: down (the .lp-caret glyph as-authored) = expanded, right = collapsed. */
-.module-inputs-collapsed > .module-inputs-header .module-inputs-caret {
-  transform: rotate(-90deg);
 }
 .module-inputs-collapsed > .module-inputs-body { display: none; }
 /* Collapsed, the settings column becomes a one-line bar ABOVE the results
@@ -3724,7 +3854,7 @@ label.tiny:not(:has(input)) {
 .rf-number-input-sm,
 .module-popup-body .rf-number-input-sm,
 .fp-attr-input,
-#fp-attr-popup .fp-attr-input,
+#attr-dock .fp-attr-input,
 .as-input,
 .module-popup-body .as-input,
 .fp-buffer-row input[type="number"],
@@ -3752,7 +3882,7 @@ label.tiny:not(:has(input)) {
 .rf-number-input-sm:focus,
 .module-popup-body .rf-number-input-sm:focus,
 .fp-attr-input:focus,
-#fp-attr-popup .fp-attr-input:focus,
+#attr-dock .fp-attr-input:focus,
 .as-input:focus,
 .module-popup-body .as-input:focus,
 .fp-buffer-row input[type="number"]:focus,
@@ -3778,7 +3908,7 @@ label.tiny:not(:has(input)) {
    the compact tier's padding shorthand overrides the comfortable chevron
    rule's padding-right, which would otherwise let text run under the glyph. */
 select.fp-attr-input,
-#fp-attr-popup select.fp-attr-input,
+#attr-dock select.fp-attr-input,
 .module-popup-body .as-input.as-select,
 #fp-mini-popup select {
   appearance: none;
@@ -5030,22 +5160,6 @@ select.fp-attr-input,
   display: block;
 }
 
-/* ---- Color swatch in attribute popup header ---- */
-.fp-attr-popup-swatch {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.28);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  margin-right: 2px;
-}
-.fp-attr-popup-swatch:hover {
-  border-color: rgba(0,0,0,0.55);
-}
-
 /* ---- Feature Settings section (collapsible, pinned to bottom) ---- */
 .fp-settings-header {
   cursor: pointer;
@@ -5347,8 +5461,6 @@ body.dark-mode #fp-collapse-btn { background: #252535; }
 /* ---- Feature panel rows ---- */
 body.dark-mode .fp-item:hover { background: rgba(255,255,255,0.06); }
 body.dark-mode .fp-item.fp-selected { background: rgba(99,179,237,0.12); }
-body.dark-mode .fp-section-header { color: #9ca3af; }
-body.dark-mode .fp-settings-header { color: #9ca3af; }
 
 /* ---- Context menu ---- */
 body.dark-mode #fp-context-menu { border-color: #374151; }

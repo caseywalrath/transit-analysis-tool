@@ -253,11 +253,9 @@
     renderPolygonLayers();
     App.setStatus("Polygon " + idx + " saved (" + nVertices + " vertices)");
     if (typeof App.exitDrawMode === "function") App.exitDrawMode();
-    // Follow an already-open attributes popup to the new polygon; never auto-open it.
-    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen() &&
-        typeof App.openAttrPopup === "function") {
-      App.openAttrPopup("polygon", polygons.length - 1, feature);
-    }
+    // Finishing a drawing is a gesture: select the new feature and show it in the dock.
+    if (typeof App.selectFeature === "function") App.selectFeature("polygon", polygons.length - 1);
+    if (typeof App.openAttrDock === "function") App.openAttrDock();
   }
 
   function cancelPolygonDrawing() {

@@ -199,7 +199,7 @@ async function redFraction(page, pngBuf) {
       await page.mouse.click(p[0], p[1], { button: "right" });
       await page.waitForTimeout(150);
       const menu = await page.evaluate(() => { const m = document.getElementById("fp-context-menu"); return m ? m.textContent : ""; });
-      check("right-click opens the feature menu on " + k, /Attributes/.test(menu) && /Duplicate/.test(menu),
+      check("right-click opens the feature menu on " + k, !/Attributes/.test(menu) && /Duplicate/.test(menu),
         { menu, sel: await selection(page) });
       check("right-click targets " + k, (await selection(page)) === t + ":" + i, await selection(page));
     }

@@ -8,7 +8,7 @@
 //  - App.buildFeatureOverrideRows(type, feature, opts): the override rows, shared
 //    by the popover and the Layers-tab per-feature drawer so the "muted default
 //    until overridden, x clears" cascade lives in one place. Buffer radius is
-//    NOT here (it is geometry: App.buildBufferRadiusControl in the Attributes popup).
+//    NOT here (it is geometry: App.buildBufferRadiusControl in the attributes dock).
 //
 // Features are remembered by stable { type, id } ref and resolved on every
 // read/write, so an undo/redo (which replaces the feature objects), a merge or
@@ -357,7 +357,7 @@
   // Refresh the other surfaces that show this feature's color.
   function refreshColorSurfaces() {
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-    if (typeof App.refreshAttrPopupSwatch === "function") App.refreshAttrPopupSwatch();
+    if (typeof App.refreshAttrDockSwatch === "function") App.refreshAttrDockSwatch();
   }
 
   function setColor(hex) {

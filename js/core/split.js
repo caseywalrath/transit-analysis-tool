@@ -802,7 +802,7 @@
       oppRes.type = opp.type;
     }
 
-    if (typeof App.closeAttrPopup === "function" && typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) App.closeAttrPopup();
+    if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     if (typeof App.rerenderForType === "function") {
       App.rerenderForType(type);
       if (opp && opp.type !== type) App.rerenderForType(opp.type);

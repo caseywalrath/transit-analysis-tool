@@ -506,19 +506,41 @@ async function captureTheme(browser, theme, port) {
     await sleep(TAB_SETTLE_MS);
   }
 
-  // ---- Per-feature attribute popup ----
+  // ---- Attributes dock ----
   try {
     await page.evaluate(() => {
-      window.App.openAttrPopup("route", 0, window.App.routes[0]);
+      window.App.openAttrDock("route", 0, window.App.routes[0]);
     });
-    await shootLocator(page, "#fp-attr-popup", join(OUT_DIR, theme + "_attr-popup.png"), theme + "_attr-popup");
-    await page.locator(".fp-attr-popup-collapse").click();
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock.png"), theme + "_attr-dock");
+    await page.locator(".ad-collapse").click();
     await sleep(TAB_SETTLE_MS);
-    await shootLocator(page, "#fp-attr-popup", join(OUT_DIR, theme + "_attr-popup-collapsed.png"), theme + "_attr-popup-collapsed");
-    await page.locator(".fp-attr-popup-collapse").click();
-    await page.evaluate(() => window.App.closeAttrPopup());
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-collapsed.png"), theme + "_attr-dock-collapsed");
+    await page.locator(".ad-collapse").click();
+    await page.evaluate(() => window.App.closeAttrDock());
   } catch (e) {
-    record(theme + "_attr-popup", "fail", e.message);
+    record(theme + "_attr-dock", "fail", e.message);
+  }
+
+  // ---- Attributes dock: multi-selection (shared fields, Mixed values) ----
+  try {
+    await page.evaluate(() => {
+      var App = window.App;
+      var list = [];
+      for (var i = 0; i < Math.min(2, App.routes.length); i++) list.push({ type: "route", index: i });
+      if (App.points.length) list.push({ type: "point", index: 0 });
+      App.setSelection(list);
+      App.openAttrDock();
+    });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-multi.png"), theme + "_attr-dock-multi");
+    await page.evaluate(() => {
+      window.App.setSelection([{ type: "route", index: 0 }, { type: "route", index: 1 }]);
+    });
+    await sleep(TAB_SETTLE_MS);
+    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-multi-routes.png"), theme + "_attr-dock-multi-routes");
+    await page.evaluate(() => window.App.closeAttrDock());
+  } catch (e) {
+    record(theme + "_attr-dock-multi", "fail", e.message);
   }
 
   // ---- Shared Appearance popover (docs/archive/feature-appearance-plan.md Phase 1) ----
