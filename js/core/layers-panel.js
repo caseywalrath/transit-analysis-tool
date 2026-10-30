@@ -344,7 +344,7 @@
   // App.buildFeatureOverrideRows (js/core/feature-appearance.js) — the same
   // builder the Appearance popover uses, so the cascade logic lives once.
   // Per-feature buffer radius is NOT here: it is study-area geometry, edited
-  // from the Attributes popup / Attribute Summary (App.buildBufferRadiusControl).
+  // from the Attributes dock / Attribute Summary (App.buildBufferRadiusControl).
   function buildFeatureOverrideDrawer(it) {
     var body = document.createElement("div");
     body.className = "lp-style-drawer lp-style-drawer-feature";
@@ -1105,7 +1105,8 @@
         } });
       }
       opts.push({ label: "Edit attributes…", action: function () {
-        if (typeof App.openAttrPopup === "function") App.openAttrPopup(it.type, it.index, it.feature);
+        if (typeof App.selectFeature === "function") App.selectFeature(it.type, it.index);
+        if (typeof App.openAttrDock === "function") App.openAttrDock();
       } });
       opts.push({ label: "Delete", action: function () {
         if (typeof App.deleteFeature === "function") App.deleteFeature(it.type, it.index);

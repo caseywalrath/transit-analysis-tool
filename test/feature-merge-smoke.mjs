@@ -876,9 +876,9 @@ async function main() {
       await App.merge.run("line", [0, 1, 2], 1);
       var l = App.lines[0];
       var before = l.properties.attributes ? l.properties.attributes.avgSpeed : undefined;
-      App.openAttrPopup("line", 0, l);
+      App.openAttrDock("line", 0, l);
       var r = { before: before, speed: l.properties.attributes.avgSpeed, edited: App.merge.describeUnmerge("line", 0).edited };
-      App.closeAttrPopup();
+      App.closeAttrDock();
       return r;
     });
     check("opening the attributes popup (which seeds avgSpeed) does not count as an edit",
@@ -958,7 +958,7 @@ async function main() {
     };
     const mergedMid = await page.evaluate(() => { var c = App.lines[0].geometry.coordinates; return [(c[0][0] + c[1][0]) / 2, (c[0][1] + c[1][1]) / 2]; }); // mid-segment, not a vertex
     let mm = await mapMenu(mergedMid);
-    check("map right-click menu: Unmerge… appears for the merged line", mm.some((t) => t.trim() === "Unmerge…") && mm.some((t) => /Attributes/.test(t)), mm);
+    check("map right-click menu: Unmerge… appears for the merged line", mm.some((t) => t.trim() === "Unmerge…") && mm.some((t) => t.trim() === "Duplicate"), mm);
     mm = await mapMenu([-104.495, 38.50]);
     check("map right-click menu: no Unmerge… for a line without history", mm.length > 0 && !mm.some((t) => /Unmerge/.test(t)), mm);
 
@@ -1054,10 +1054,10 @@ async function main() {
         out[id] = src ? JSON.stringify(src.serialize().data).indexOf("_mergedFrom") : "no source";
       });
       var f = App.lines[0];
-      App.openAttrPopup("line", 0, f);
+      App.openAttrDock("line", 0, f);
       await new Promise((r) => setTimeout(r, 200));
-      out.attrPopup = (document.getElementById("fp-attr-popup") || { textContent: "" }).textContent.indexOf("rigin") + "/" + (document.getElementById("fp-attr-popup") || { innerHTML: "" }).innerHTML.indexOf("_mergedFrom");
-      App.closeAttrPopup();
+      out.attrPopup = (document.getElementById("attr-dock") || { textContent: "" }).textContent.indexOf("rigin") + "/" + (document.getElementById("attr-dock") || { innerHTML: "" }).innerHTML.indexOf("_mergedFrom");
+      App.closeAttrDock();
       App.duplicateLine(0);
       out.dup = App.lines[App.lines.length - 1].properties._mergedFrom === undefined;
       out.dupOrigHasHist = !!App.lines[0].properties._mergedFrom;

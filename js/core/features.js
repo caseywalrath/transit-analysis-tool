@@ -51,20 +51,6 @@
     label:   '<svg width="11" height="11" viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8l-4 4z" fill="currentColor"/></svg>'
   };
 
-  var GEAR_SVG =
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="12" cy="12" r="3"/>' +
-    '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06' +
-    'a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4' +
-    'a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15' +
-    'a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82' +
-    'l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3' +
-    'a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83' +
-    'l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09' +
-    'a1.65 1.65 0 0 0-1.51 1z"/>' +
-    '</svg>';
-
   var COPY_SVG =
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
@@ -425,7 +411,7 @@
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     refreshFeaturePanel();
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
-    if (typeof App.refreshAttrPopupColor === "function") App.refreshAttrPopupColor();
+    if (typeof App.refreshAttrDockSwatch === "function") App.refreshAttrDockSwatch();
   };
 
   /* ---- Default color helper ---- */
@@ -563,7 +549,7 @@
     // its mousedown, so it cannot close it. (A click listener added after a
     // setTimeout could miss a fast outside click and leave the menu open.)
     function onDown(e) { if (!menu.contains(e.target)) closeContextMenu(menu); }
-    function onKey(e) { if (e.key === "Escape") closeContextMenu(menu); }
+    function onKey(e) { if (e.key === "Escape") { closeContextMenu(menu); e.stopPropagation(); } }
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("keydown", onKey, true);
     menu._unlisten = function () {
@@ -584,11 +570,13 @@
     var feature = getFeatureByTypeIndex(featureType, featureIndex);
     if (!feature || !feature.geometry) return;
     var geom = feature.geometry;
+    // Center in the map area the attributes dock leaves visible.
+    var inset = typeof App.attrDockInset === "function" ? App.attrDockInset() : 0;
     if (geom.type === "Point") {
-      App.map.flyTo({ center: geom.coordinates, zoom: Math.max(App.map.getZoom(), 14), duration: 500 });
+      App.map.flyTo({ center: geom.coordinates, zoom: Math.max(App.map.getZoom(), 14), offset: [inset / 2, 0], duration: 500 });
     } else {
       var bbox = turf.bbox(feature);
-      App.map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 80, duration: 500 });
+      App.map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: { top: 80, bottom: 80, right: 80, left: 80 + inset }, duration: 500 });
     }
   }
 
@@ -837,19 +825,6 @@
       })(featureIndex);
     }
 
-    // Gear/attributes button
-    var gearBtn = document.createElement("button");
-    gearBtn.className = "fp-gear-btn ui-hover-chip";
-    gearBtn.title = "Edit attributes";
-    gearBtn.setAttribute("aria-label", "Edit feature attributes");
-    gearBtn.innerHTML = GEAR_SVG;
-    (function (ft, fi, feat) {
-      gearBtn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        if (typeof App.openAttrPopup === "function") App.openAttrPopup(ft, fi, feat);
-      });
-    })(featureType, featureIndex, feature);
-
     var trashBtn = document.createElement("button");
     trashBtn.className = "fp-del-btn ui-hover-chip";
     trashBtn.title = "Delete feature";
@@ -875,6 +850,8 @@
       } else {
         if (typeof App.selectFeature === "function") App.selectFeature(featureType, featureIndex);
       }
+      // A row click is a gesture: open the dock on the resulting selection.
+      if (typeof App.openAttrDock === "function") App.openAttrDock();
     });
 
     div.addEventListener("contextmenu", function (e) {
@@ -887,13 +864,10 @@
       var selected = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
       if (!selected.length) return;
       var options = [];
-      // Single-select: offer Attributes
+      // Single-select: per-feature items
       if (selected.length === 1 && selected[0].type === featureType && selected[0].index === featureIndex) {
         (function (ft, fi, feat) {
           options.push({ label: "Go To Feature", action: function () { goToFeature(ft, fi); } });
-          options.push({ label: "Attributes", action: function () {
-            if (typeof App.openAttrPopup === "function") App.openAttrPopup(ft, fi, feat);
-          }});
           var dupFn = { point: App.duplicatePoint, line: App.duplicateLine,
                         route: App.duplicateRoute, polygon: App.duplicatePolygon,
                         label: App.duplicateLabel }[ft];
@@ -950,9 +924,9 @@
       if (options.length) showContextMenu(e.clientX, e.clientY, options);
     });
 
-    // DOM order: [type-icon] [name] [dup?] [eye] [gear] [trash]
-    // eye/gear/trash are all position:absolute overlay chips (see .fp-item
-    // > .fp-visibility-btn / .fp-gear-btn / .fp-del-btn in style.css) so none
+    // DOM order: [type-icon] [name] [dup?] [eye] [trash]
+    // eye/trash are position:absolute overlay chips (see .fp-item
+    // > .fp-visibility-btn / .fp-del-btn in style.css) so neither
     // of them reserve flow space — the type icon and name get the full row
     // width until hover reveals the cluster on the right.
     div.appendChild(typeIcon);
@@ -960,7 +934,6 @@
     if (netChip) div.appendChild(netChip);
     if (dupBtn) div.appendChild(dupBtn);
     div.appendChild(eyeBtn);
-    div.appendChild(gearBtn);
     div.appendChild(trashBtn);
     return div;
   }
@@ -1310,13 +1283,11 @@
   }
 
   // Single-feature delete shared by the Features list and the Layers panel so
-  // both close a matching attributes popup, push undo (inside the remove fn)
+  // both close the attributes dock, push undo (inside the remove fn)
   // and run the post-delete refresh the same way.
   App.deleteFeature = function (ft, idx) {
-    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-      var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
-      if (pf && pf.featureType === ft && pf.featureIndex === idx) App.closeAttrPopup();
-    }
+    // Deleting shifts indices; the dock never outlives a delete.
+    if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     var fn = getRemoveFnForType(ft);
     if (fn) fn(idx);
     if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();

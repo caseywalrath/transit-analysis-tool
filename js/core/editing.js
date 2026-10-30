@@ -226,8 +226,8 @@
       var nearest = turf.nearestPointOnLine(line, clickPt);
       var idx = nearest.properties.index + 1;
       line.geometry.coordinates.splice(idx, 0, [lng, lat]);
-      var r = parseFloat(document.getElementById("lineBufferRadius").value) || 0.5;
-      App.rebuildLineBuffers(r);
+      // The old #lineBufferRadius input is gone: rebuild at the type default.
+      App.rebuildBuffersForType("line");
       App.renderLineLayers();
       showEditVertices("line", featureIndex);
       App.cache.save();
@@ -287,8 +287,8 @@
       }
       if (App.undo && !App.undo.isRestoring()) App.undo.push();
       line.geometry.coordinates.splice(vertexIdx, 1);
-      var r = parseFloat(document.getElementById("lineBufferRadius").value) || 0.5;
-      App.rebuildLineBuffers(r);
+      // The old #lineBufferRadius input is gone: rebuild at the type default.
+      App.rebuildBuffersForType("line");
       App.renderLineLayers();
       showEditVertices("line", featureIndex);
       App.cache.save();
@@ -704,119 +704,76 @@
       }
     });
 
-    // ---- Click: enter/exit vertex edit mode, or insert vertex ----
+    // ---- Click: select + open the attributes dock, or insert vertex ----
+    //
+    // First click on a feature selects it (Line/Route/Polygon also show vertex
+    // handles) and opens the dock; a second click on the selected Line/Route, or
+    // on the selected Polygon's outline, inserts a vertex. A Polygon interior or
+    // Point second click is a no-op. Buffers count as empty map: clicking empty
+    // map or a buffer clears the selection and closes the dock, unless pinned.
+    function dockOpen() {
+      return typeof App.isAttrDockOpen === "function" && App.isAttrDockOpen();
+    }
+    function openDock() {
+      if (typeof App.openAttrDock === "function") App.openAttrDock();
+    }
+    function selectAndOpen(type, index) {
+      if (type === "point") {
+        if (typeof App.selectFeature === "function") App.selectFeature("point", index);
+      } else {
+        if (editState) exitEditMode();
+        enterVertexEditMode(type, index);
+      }
+      openDock();
+    }
+    function emptyMapClick() {
+      if (typeof App.isAttrDockPinned === "function" && App.isAttrDockPinned() && dockOpen()) return;
+      if (editState) exitEditMode();
+      else if (typeof App.clearSelection === "function") App.clearSelection();
+      // A text-box dock has no selection behind it, so close it explicitly.
+      if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
+    }
+
+    // Drawn feature under the click, by priority: points, then lines/routes,
+    // then polygons. hit.outline marks a polygon-outline hit.
+    function featureAt(point) {
+      var pointHits = safeQuery(point, App.pointLayerIds());
+      if (pointHits.length > 0) {
+        var pi = findPointIndex(pointHits[0]);
+        if (pi >= 0) return { type: "point", index: pi };
+      }
+      var hits = safeQuery(point, App.lineStyleLayerIds().concat(["polygons-outlines-layer", "polygons-fill"]));
+      for (var i = 0; i < hits.length; i++) {
+        var h = hits[i], lid = h.layer.id, t = App.lineStyleLayerType(lid);
+        if (t === "line")  { var li = findLineIndex(h);  if (li >= 0) return { type: "line",  index: li }; }
+        if (t === "route") { var ri = findRouteIndex(h); if (ri >= 0) return { type: "route", index: ri }; }
+        if (lid === "polygons-outlines-layer" || lid === "polygons-fill") {
+          var gi = findPolygonIndex(h);
+          if (gi >= 0) return { type: "polygon", index: gi, outline: lid === "polygons-outlines-layer" };
+        }
+      }
+      return null;
+    }
+
     map.on("click", function (e) {
       if (App.drawMode) return;
+      // Label / text-box markers handle their own clicks.
+      var tgt = e.originalEvent && e.originalEvent.target;
+      if (tgt && tgt.closest && tgt.closest(".maplibregl-marker")) return;
 
-      // If in vertex-edit mode
-      if (editState && editState.type === "vertex-edit") {
-        // Handle click on edit handles is done by mousedown; skip here
-        var editHits = safeQuery(e.point, [EDIT_LAYER]);
-        if (editHits.length > 0) return;
+      // Vertex handles are handled on mousedown.
+      if (editState && editState.type === "vertex-edit" && safeQuery(e.point, [EDIT_LAYER]).length > 0) return;
 
-        // Check if click is on a line/route/polygon (same or different feature)
-        var featureHits = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill", "polygons-outlines-layer"]));
-        if (featureHits.length > 0) {
-          var hit = featureHits[0];
-          var layerId = hit.layer.id;
+      var hit = featureAt(e.point);
+      if (!hit) { emptyMapClick(); return; }
 
-          if (App.lineStyleLayerType(layerId) === "line") {
-            var lineIdx = findLineIndex(hit);
-            if (lineIdx >= 0) {
-              if (lineIdx === editState.featureIndex && editState.featureType === "line") {
-                insertVertex("line", lineIdx, e.lngLat);
-              } else {
-                exitEditMode();
-                enterVertexEditMode("line", lineIdx);
-              }
-              return;
-            }
-          } else if (App.lineStyleLayerType(layerId) === "route") {
-            var routeIdx = findRouteIndex(hit);
-            if (routeIdx >= 0) {
-              if (routeIdx === editState.featureIndex && editState.featureType === "route") {
-                insertVertex("route", routeIdx, e.lngLat);
-              } else {
-                exitEditMode();
-                enterVertexEditMode("route", routeIdx);
-              }
-              return;
-            }
-          } else if (layerId === "polygons-outlines-layer") {
-            // Click on polygon outline → insert vertex
-            var polyIdxOut = findPolygonIndex(hit);
-            if (polyIdxOut >= 0) {
-              if (polyIdxOut === editState.featureIndex && editState.featureType === "polygon") {
-                insertVertex("polygon", polyIdxOut, e.lngLat);
-              } else {
-                exitEditMode();
-                enterVertexEditMode("polygon", polyIdxOut);
-              }
-              return;
-            }
-          } else if (layerId === "polygons-fill") {
-            var polyIdxFill = findPolygonIndex(hit);
-            if (polyIdxFill >= 0) {
-              if (polyIdxFill !== editState.featureIndex || editState.featureType !== "polygon") {
-                // Different polygon → switch
-                exitEditMode();
-                enterVertexEditMode("polygon", polyIdxFill);
-              }
-              // Same polygon interior → no-op (already in edit mode)
-              return;
-            }
-          }
-        }
+      var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+      var isSoleSelection = sel.length === 1 && sel[0].type === hit.type && sel[0].index === hit.index;
+      if (!isSoleSelection || !dockOpen()) { selectAndOpen(hit.type, hit.index); return; }
 
-        // Click on empty area → exit edit mode
-        exitEditMode();
-        return;
-      }
-
-      // Not in edit mode: point click → select; line/route/polygon click → enter vertex edit mode
-      var pointHits = safeQuery(e.point, App.pointLayerIds());
-      if (pointHits.length > 0) {
-        var sIdx = findPointIndex(pointHits[0]);
-        if (sIdx >= 0 && typeof App.selectFeature === "function") App.selectFeature("point", sIdx);
-        return;
-      }
-
-      var linePolyHits = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
-      if (linePolyHits.length === 0) {
-        // Check buffer areas — clicking a buffer locks the associated feature
-        var bufHits = safeQuery(e.point, ["buffers-fill", "line-buffers-fill", "route-buffers-fill"]);
-        if (bufHits.length > 0) {
-          var bh = bufHits[0];
-          var bhLid = bh.layer.id;
-          var bhProps = bh.properties || {};
-          if (bhLid === "buffers-fill" && bhProps.pointIdx != null) {
-            var bsi = findPointIndexByProp(bhProps.pointIdx);
-            if (bsi >= 0 && typeof App.selectFeature === "function") App.selectFeature("point", bsi);
-          } else if (bhLid === "line-buffers-fill" && bhProps.lineIdx != null) {
-            var bli = findLineIndexByProp(bhProps.lineIdx);
-            if (bli >= 0 && typeof App.selectFeature === "function") App.selectFeature("line", bli);
-          } else if (bhLid === "route-buffers-fill" && bhProps.routeIdx != null) {
-            var bri = findRouteIndexByProp(bhProps.routeIdx);
-            if (bri >= 0 && typeof App.selectFeature === "function") App.selectFeature("route", bri);
-          }
-          return;
-        }
-        // Click on truly empty area — clear selection
-        if (typeof App.clearSelection === "function") App.clearSelection();
-        return;
-      }
-
-      var hit2 = linePolyHits[0];
-      var layerId2 = hit2.layer.id;
-      if (App.lineStyleLayerType(layerId2) === "line") {
-        var lineIdx2 = findLineIndex(hit2);
-        if (lineIdx2 >= 0) enterVertexEditMode("line", lineIdx2);
-      } else if (App.lineStyleLayerType(layerId2) === "route") {
-        var routeIdx2 = findRouteIndex(hit2);
-        if (routeIdx2 >= 0) enterVertexEditMode("route", routeIdx2);
-      } else if (layerId2 === "polygons-fill") {
-        var polyIdx2 = findPolygonIndex(hit2);
-        if (polyIdx2 >= 0) enterVertexEditMode("polygon", polyIdx2);
+      // Second click on the already-selected feature.
+      if (hit.type === "line" || hit.type === "route" || (hit.type === "polygon" && hit.outline)) {
+        insertVertex(hit.type, hit.index, e.lngLat);
       }
     });
 
@@ -879,9 +836,6 @@
       if (typeof App.showContextMenu === "function") {
         var isHidden = !!feature.properties.hidden;
         var menuItems = [
-            { label: "Attributes", action: function () {
-                if (typeof App.openAttrPopup === "function") App.openAttrPopup(featureType, featureIndex, feature);
-            }},
             { label: "Duplicate", action: function () {
                 var dupFns = { point: App.duplicatePoint, line: App.duplicateLine, route: App.duplicateRoute, polygon: App.duplicatePolygon };
                 var fn = dupFns[featureType];
@@ -908,10 +862,8 @@
                 if (typeof App.notifyProject === "function") App.notifyProject();
             }},
             { label: "Delete", action: function () {
-                if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-                  var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
-                  if (pf && pf.featureType === featureType && pf.featureIndex === featureIndex) App.closeAttrPopup();
-                }
+                // Deleting shifts indices; the dock never outlives a delete.
+                if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
                 var removeFns = { point: App.removePoint, line: App.removeLine, route: App.removeRoute, polygon: App.removePolygon };
                 var fn = removeFns[featureType];
                 if (typeof fn === "function") fn(featureIndex);

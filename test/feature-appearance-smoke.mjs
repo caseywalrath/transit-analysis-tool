@@ -151,14 +151,14 @@ async function main() {
     await page.keyboard.press("Escape");
     check("Escape closes it", !(await popOpen(page)));
 
-    await page.evaluate(() => App.openAttrPopup("line", 1, App.lines[1]));
+    await page.evaluate(() => App.openAttrDock("line", 1, App.lines[1]));
     await page.waitForTimeout(200);
-    await page.click(".fp-attr-popup-swatch");
+    await page.click(".ad-swatch");
     check("Attributes header swatch opens it", await popOpen(page) && /Line 2/.test(await popTitle(page)), await popTitle(page));
-    check("Attributes popup no longer has the override icon strip", await page.evaluate(() => !document.querySelector("#fp-attr-popup .fp-attr-overrides")));
+    check("Attributes popup no longer has the override icon strip", await page.evaluate(() => !document.querySelector("#attr-dock .fp-attr-overrides")));
     check("App.buildOverrideIcons is retired", await page.evaluate(() => typeof App.buildOverrideIcons === "undefined"));
     await page.keyboard.press("Escape");
-    await page.evaluate(() => App.closeAttrPopup());
+    await page.evaluate(() => App.closeAttrDock());
 
     await page.click('.fp-tab-btn[data-fptab="layers"]');
     await page.waitForTimeout(300);
@@ -413,11 +413,11 @@ async function main() {
     const counters = () => page.evaluate(() => ({ pushes: window.__p2pushes, notifies: window.__notifies, rebuilds: window.__rebuilds }));
     const resetCounters = () => page.evaluate(() => { window.__p2pushes = 0; window.__notifies = 0; window.__rebuilds = 0; });
     const area0 = () => page.evaluate(() => App.buffers[0] ? turf.area(App.buffers[0]) : 0);
-    const ATTR = "#fp-attr-popup";
+    const ATTR = "#attr-dock";
     const bufCtl = () => page.locator(ATTR + " .fp-buffer-ctl");
     const sections = () => page.evaluate((a) => Array.prototype.map.call(document.querySelectorAll(a + " .fp-attr-section"), (x) => x.textContent), ATTR);
 
-    await page.evaluate(() => App.openAttrPopup("point", 0, App.points[0]));
+    await page.evaluate(() => App.openAttrDock("point", 0, App.points[0]));
     await page.waitForTimeout(200);
     check("point popup has a Study area section", (await sections()).indexOf("Study area") >= 0, await sections());
     check("Buffer control shows the type default, muted (inherited)", await page.evaluate((a) => {
@@ -469,7 +469,7 @@ async function main() {
 
     // Walkshed point: disabled with a note
     console.log("\n# Phase 2: walkshed disables the control");
-    await page.evaluate(() => { App.closeAttrPopup(); App.openAttrPopup("point", 0, App.points[0]); });
+    await page.evaluate(() => { App.closeAttrDock(); App.openAttrDock("point", 0, App.points[0]); });
     await page.waitForTimeout(200);
     check("enabled for a circular-buffer point; note hidden", await page.evaluate((a) => {
       var c = document.querySelector(a + " .fp-buffer-ctl");
@@ -490,7 +490,7 @@ async function main() {
     // Lines and routes
     console.log("\n# Phase 2: lines and routes");
     for (const [t, i] of [["line", 0], ["route", 0]]) {
-      await page.evaluate(([t, i]) => { App.closeAttrPopup(); App.openAttrPopup(t, i, ({ line: App.lines, route: App.routes })[t][i]); }, [t, i]);
+      await page.evaluate(([t, i]) => { App.closeAttrDock(); App.openAttrDock(t, i, ({ line: App.lines, route: App.routes })[t][i]); }, [t, i]);
       await page.waitForTimeout(200);
       const secs = await sections();
       check(t + " popup: Study area section with a Buffer control", secs.indexOf("Study area") >= 0 && (await bufCtl().count()) === 1, secs);
@@ -503,7 +503,7 @@ async function main() {
       const ba = await page.evaluate((t) => { var b = ({ line: App.lineBuffers, route: App.routeBuffers })[t][0]; return b ? turf.area(b) : 0; }, t);
       check(t + ": buffer rebuilt (non-empty)", ba > 0, ba);
     }
-    await page.evaluate(() => App.closeAttrPopup());
+    await page.evaluate(() => App.closeAttrDock());
 
     // Attribute Summary
     console.log("\n# Phase 2: Attribute Summary Buffer column");

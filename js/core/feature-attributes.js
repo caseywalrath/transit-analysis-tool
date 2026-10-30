@@ -1,12 +1,13 @@
 // js/core/feature-attributes.js
-// Per-feature attribute popup (floating, draggable singleton) plus ATTR_FIELDS and the
+// Attributes dock (left edge of the map, follows the selection) plus ATTR_FIELDS and the
 // shared editors. Schema is duplicated in js/projects/attribute-summary.js: change both together.
 // Detail: docs/reference/drawing-and-features.md
 // Exports:
-//   App.openAttrPopup(featureType, featureIndex, feature)
-//   App.closeAttrPopup()
-//   App.isAttrPopupOpen()
-//   App.getAttrPopupFeature()  → { featureType, featureIndex } | null
+//   App.openAttrDock([featureType, featureIndex, feature])  (no args = current selection)
+//   App.closeAttrDock([{keepSelection}])  (also clears the selection unless keepSelection)
+//   App.syncAttrDock()   (re-target an open dock to the selection; never opens it)
+//   App.isAttrDockOpen(), App.isAttrDockPinned(), App.attrDockInset()
+//   App.getAttrDockFeature()  → { featureType, featureIndex } | null
 
 (function () {
   var App = window.App = window.App || {};
@@ -28,7 +29,7 @@
   ];
 
   // Transit-service fields shared by routes and lines (a Line can be attributed
-  // as a transit pattern too). Tagged with a section so the popup renders a
+  // as a transit pattern too). Tagged with a section so the dock renders a
   // "Transit service" header before them.
   var TRANSIT_FIELDS = [
     { key: "group",     label: "Group",     type: "text",   placeholder: "e.g. Corridor A", groupPicker: true, hidden: true },
@@ -457,9 +458,7 @@
         });
         if (existingColor) {
           feature.properties.color = existingColor;
-          var rrEl = document.getElementById("routeBufferRadius");
-          var rr = rrEl ? parseFloat(rrEl.value) : 0.5; if (isNaN(rr)) rr = 0.5;
-          if (typeof App.rebuildRouteBuffers === "function") App.rebuildRouteBuffers(rr);
+          rebuildBuffersForType("route");
         }
       } else {
         delete attrs[field.key];
@@ -1012,179 +1011,195 @@
     return span;
   }
 
-  /* ---- Floating popup singleton ---- */
+  /* ---- Attributes dock (singleton, left edge of the map) ---- */
+  //
+  // The dock shows the current selection: one feature's attributes, or a member
+  // list for a multi-selection. Gestures (map click, Features-list row click,
+  // finishing a drawing) OPEN it via App.openAttrDock; selection changes only
+  // RE-TARGET an already-open dock via App.syncAttrDock, so a programmatic
+  // selection never pops it open. Closing it clears the selection, keeping the
+  // two in step. Text boxes are the one exception: they are not selectable, so a
+  // text-box dock lives without a selection until something else is clicked.
 
-  var _popupEl     = null;   // DOM element, created once
-  var _currentType = null;   // featureType currently shown
-  var _currentIdx  = null;   // featureIndex currently shown
-  var _dragState   = null;   // { startX, startY, initLeft, initTop } while dragging
+  var _dockEl  = null;
+  var _cur     = null;   // { type, index, feature } shown, or { multi: true, list }
+  var _closing = false;  // re-entrance guard: closeAttrDock → clearSelection → syncAttrDock
 
-  function buildPopupEl() {
-    if (_popupEl) return;
+  var LS_PINNED    = "attrDock.pinned";
+  var LS_COLLAPSED = "attrDock.collapsed";
 
-    var el = document.createElement("div");
-    el.id = "fp-attr-popup";
+  function lsGet(key) {
+    try { return window.localStorage.getItem(key) === "1"; } catch (e) { return false; }
+  }
+  function lsSet(key, on) {
+    try { window.localStorage.setItem(key, on ? "1" : "0"); } catch (e) {}
+  }
+
+  function featureFor(type, index) {
+    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons,
+                label: App.labels, textbox: App.textBoxes }[type];
+    return (arr && arr[index]) || null;
+  }
+
+  var ICON_PIN = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6l-1 5 3 3H5l3-3z"></path><line x1="10" y1="11" x2="10" y2="17"></line></svg>';
+  var ICON_COLLAPSE = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="12,5 7,10 12,15"></polyline></svg>';
+
+  function buildDockEl() {
+    if (_dockEl) return;
+
+    var el = document.createElement("aside");
+    el.id = "attr-dock";
+    el.setAttribute("role", "complementary");
+    el.setAttribute("aria-label", "Feature attributes");
     el.style.display = "none";
-    el.style.left = "24px";
-    el.style.top  = "60px";
 
-    // Header
     var header = document.createElement("div");
-    header.className = "fp-attr-popup-header";
+    header.className = "ad-header";
 
-    var titleRow = document.createElement("div");
-    titleRow.className = "fp-attr-popup-title-row";
+    var swatchSlot = document.createElement("div");
+    swatchSlot.className = "ad-swatch-slot";
+    header.appendChild(swatchSlot);
 
-    // The Appearance swatch sits at the left of the title row, ahead of the
-    // title (populatePopupBody fills it).
-    var controls = document.createElement("div");
-    controls.className = "fp-attr-popup-controls";
-    titleRow.appendChild(controls);
+    var titles = document.createElement("div");
+    titles.className = "ad-titles";
+    var titleEl = document.createElement("div");
+    titleEl.className = "ad-title";
+    var typeEl = document.createElement("div");
+    typeEl.className = "ad-type";
+    titles.appendChild(titleEl);
+    titles.appendChild(typeEl);
+    header.appendChild(titles);
 
-    var titleEl = document.createElement("span");
-    titleEl.className = "fp-attr-popup-title";
-    titleRow.appendChild(titleEl);
+    var actions = document.createElement("div");
+    actions.className = "ad-actions";
 
-    var headerActions = document.createElement("div");
-    headerActions.className = "fp-attr-popup-actions";
+    function iconBtn(cls, html, label) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-btn " + cls;
+      b.innerHTML = html;
+      b.setAttribute("aria-label", label);
+      b.title = label;
+      return b;
+    }
 
-    var collapseBtn = document.createElement("button");
-    collapseBtn.type = "button";
-    collapseBtn.className = "fp-attr-popup-collapse";
-    collapseBtn.setAttribute("aria-label", "Collapse attributes");
-    collapseBtn.setAttribute("aria-expanded", "true");
-    collapseBtn.title = "Collapse";
-    collapseBtn.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="5,12 10,7 15,12"></polyline></svg>';
+    var pinBtn = iconBtn("ad-pin", ICON_PIN, "Pin open");
+    pinBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setPinned(!el.classList.contains("ad-pinned"));
+    });
+    actions.appendChild(pinBtn);
+
+    var collapseBtn = iconBtn("ad-collapse", ICON_COLLAPSE, "Collapse attributes");
     collapseBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      setAttrPopupCollapsed(!_popupEl.classList.contains("fp-attr-popup-collapsed"));
+      setCollapsed(!el.classList.contains("ad-collapsed"));
     });
-    headerActions.appendChild(collapseBtn);
+    actions.appendChild(collapseBtn);
 
-    var closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "fp-attr-popup-close";
-    closeBtn.innerHTML = "&times;";
-    closeBtn.setAttribute("aria-label", "Close attributes");
-    closeBtn.title = "Close";
+    var closeBtn = iconBtn("ad-close", "&times;", "Close attributes");
     closeBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      closeAttrPopup();
+      closeAttrDock();
     });
-    headerActions.appendChild(closeBtn);
-    titleRow.appendChild(headerActions);
-    header.appendChild(titleRow);
-
+    actions.appendChild(closeBtn);
+    header.appendChild(actions);
     el.appendChild(header);
 
-    // Body
     var body = document.createElement("div");
-    body.className = "fp-attr-popup-body";
+    body.className = "ad-body";
     el.appendChild(body);
 
-    document.body.appendChild(el);
-    _popupEl = el;
+    // Docked inside the map row so it overlays the map's left edge and never
+    // covers the toolbar or the Features panel.
+    var host = document.getElementById("main-content") || document.body;
+    host.appendChild(el);
+    _dockEl = el;
 
-    // ---- Drag support ----
-    header.addEventListener("mousedown", function (e) {
-      if (e.button !== 0) return;
-      if (e.target.closest(".fp-attr-popup-actions, .fp-attr-popup-controls")) return;
-      e.preventDefault();
-      var rect = el.getBoundingClientRect();
-      _dragState = {
-        startX:   e.clientX,
-        startY:   e.clientY,
-        initLeft: rect.left,
-        initTop:  rect.top
-      };
-      header.classList.add("dragging");
-    });
-
-    document.addEventListener("mousemove", function (e) {
-      if (!_dragState) return;
-      var dx = e.clientX - _dragState.startX;
-      var dy = e.clientY - _dragState.startY;
-      applyClampedPosition(_dragState.initLeft + dx, _dragState.initTop + dy);
-    });
-
-    document.addEventListener("mouseup", function () {
-      if (_dragState) {
-        _dragState = null;
-        var hdr = _popupEl && _popupEl.querySelector(".fp-attr-popup-header");
-        if (hdr) hdr.classList.remove("dragging");
-      }
-    });
-
-    // ---- Escape key ----
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && _popupEl && _popupEl.style.display !== "none") {
-        closeAttrPopup();
-      }
-    });
-
-    // ---- Window resize: keep popup within viewport ----
-    window.addEventListener("resize", function () {
-      if (_popupEl && _popupEl.style.display !== "none") {
-        var r = _popupEl.getBoundingClientRect();
-        applyClampedPosition(r.left, r.top);
-      }
-    });
+    setPinned(lsGet(LS_PINNED));
+    setCollapsed(lsGet(LS_COLLAPSED));
   }
 
-  function applyClampedPosition(left, top) {
-    if (!_popupEl) return;
-    var pw = _popupEl.offsetWidth  || 320;
-    var ph = _popupEl.offsetHeight || 200;
-    var minVisible = 40; // keep at least 40px of the popup visible on each side
-    left = Math.max(-(pw - minVisible), Math.min(left, window.innerWidth  - minVisible));
-    top  = Math.max(0,                  Math.min(top,  window.innerHeight - minVisible));
-    _popupEl.style.left = left + "px";
-    _popupEl.style.top  = top  + "px";
+  function setPinned(on) {
+    if (!_dockEl) return;
+    _dockEl.classList.toggle("ad-pinned", on);
+    var b = _dockEl.querySelector(".ad-pin");
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.title = on ? "Unpin (map clicks close the panel)" : "Pin open";
+    lsSet(LS_PINNED, on);
   }
 
-  function setAttrPopupCollapsed(collapsed) {
-    if (!_popupEl) return;
-    _popupEl.classList.toggle("fp-attr-popup-collapsed", collapsed);
-    var btn = _popupEl.querySelector(".fp-attr-popup-collapse");
-    if (!btn) return;
-    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    btn.setAttribute("aria-label", collapsed ? "Expand attributes" : "Collapse attributes");
-    btn.title = collapsed ? "Expand" : "Collapse";
+  function setCollapsed(on) {
+    if (!_dockEl) return;
+    _dockEl.classList.toggle("ad-collapsed", on);
+    var b = _dockEl.querySelector(".ad-collapse");
+    b.setAttribute("aria-expanded", on ? "false" : "true");
+    b.setAttribute("aria-label", on ? "Expand attributes" : "Collapse attributes");
+    b.title = on ? "Expand" : "Collapse";
+    lsSet(LS_COLLAPSED, on);
+    syncAppClasses();
   }
 
-  function populatePopupBody(featureType, featureIndex, feature) {
-    buildPopupEl();
+  // #app classes let CSS move left-edge map controls clear of the dock.
+  function syncAppClasses() {
+    var app = document.getElementById("app");
+    if (!app) return;
+    var open = isDockOpen();
+    app.classList.toggle("ad-open", open);
+    app.classList.toggle("ad-rail", open && !!_dockEl && _dockEl.classList.contains("ad-collapsed"));
+  }
 
-    // Update header title
-    _popupEl.querySelector(".fp-attr-popup-title").textContent =
-      (TYPE_LABELS[featureType] || featureType) + " Attributes";
+  function isDockOpen() { return !!(_dockEl && _dockEl.style.display !== "none"); }
 
-    // Update or create the Appearance swatch (left of the title).
-    var headerEl = _popupEl.querySelector(".fp-attr-popup-header");
-    var controlsEl = headerEl.querySelector(".fp-attr-popup-controls");
-    var existingSwatch = controlsEl.querySelector(".fp-attr-popup-swatch");
-    if (existingSwatch) existingSwatch.remove();
-    var featureColor = App.resolveFeatureColor(featureType, feature);
-    var hdrSwatch = document.createElement("button");
-    hdrSwatch.className = "fp-attr-popup-swatch";
-    hdrSwatch.style.background = featureColor;
-    hdrSwatch.setAttribute("aria-label", "Appearance");
-    hdrSwatch.title = "Appearance";
-    (function (sw, ft, fi, feat) {
-      sw.addEventListener("click", function (e) {
-        e.stopPropagation();
+  // A half-typed value commits on blur ("change"); blur before the body is
+  // replaced or hidden so closing the dock can never drop an edit.
+  function commitActiveEdit() {
+    var a = document.activeElement;
+    if (_dockEl && a && _dockEl.contains(a) && typeof a.blur === "function") a.blur();
+  }
+
+  function freshBody() {
+    // A new element per render: per-feature listeners on the body (cycle
+    // estimate, label sync) must not outlive the feature they were built for.
+    var old = _dockEl.querySelector(".ad-body");
+    var body = document.createElement("div");
+    body.className = "ad-body";
+    old.parentNode.replaceChild(body, old);
+    return body;
+  }
+
+  function setHeader(title, typeText, swatchColor, swatchFn) {
+    _dockEl.querySelector(".ad-title").textContent = title;
+    _dockEl.querySelector(".ad-type").textContent = typeText;
+    var slot = _dockEl.querySelector(".ad-swatch-slot");
+    slot.innerHTML = "";
+    if (!swatchColor) return;
+    var sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "ad-swatch";
+    sw.style.background = swatchColor;
+    sw.setAttribute("aria-label", "Appearance");
+    sw.title = "Appearance";
+    sw.addEventListener("click", function (e) {
+      e.stopPropagation();
+      swatchFn(sw);
+    });
+    slot.appendChild(sw);
+  }
+
+  function renderSingle(featureType, featureIndex, feature) {
+    setHeader(feature.properties.name || (TYPE_LABELS[featureType] || featureType),
+      TYPE_LABELS[featureType] || featureType,
+      App.resolveFeatureColor(featureType, feature),
+      function (sw) {
         if (typeof App.openAppearancePopup === "function") {
-          App.openAppearancePopup(sw, ft, fi, {
-            onChange: function () { sw.style.background = App.resolveFeatureColor(ft, feat); }
+          App.openAppearancePopup(sw, featureType, featureIndex, {
+            onChange: function () { sw.style.background = App.resolveFeatureColor(featureType, feature); }
           });
         }
       });
-    })(hdrSwatch, featureType, featureIndex, feature);
-    controlsEl.appendChild(hdrSwatch);
 
-    // Clear and rebuild body
-    var body = _popupEl.querySelector(".fp-attr-popup-body");
-    body.innerHTML = "";
+    var body = freshBody();
 
     // Lazy-init attributes
     if (!feature.properties.attributes) feature.properties.attributes = {};
@@ -1208,6 +1223,7 @@
     nameInput.value = feature.properties.name || "";
     nameInput.addEventListener("change", function () {
       feature.properties.name = nameInput.value;
+      _dockEl.querySelector(".ad-title").textContent = nameInput.value || (TYPE_LABELS[featureType] || featureType);
       // Keep the feature row's fp-name display in sync
       var items = document.querySelectorAll(".fp-item");
       for (var i = 0; i < items.length; i++) {
@@ -1231,9 +1247,8 @@
     body.appendChild(buildRow("Name", nameInput, null));
 
     // A field with a new `section` value gets a header row before it.
-    var fields = ATTR_FIELDS[featureType] || [];
     var lastSection = null;
-    fields.forEach(function (field) {
+    typeFields.forEach(function (field) {
       if (field.hidden) return;
       if (field.section && field.section !== lastSection) {
         var sectionHeader = document.createElement("div");
@@ -1312,42 +1327,128 @@
       });
     }
 
-    _currentType = featureType;
-    _currentIdx  = featureIndex;
+    _cur = { type: featureType, index: featureIndex, feature: feature };
+  }
+
+  // Multi-selection: a member list (shared-field editing is a later step).
+  // Clicking a member narrows the selection to it.
+  function renderMulti(list) {
+    setHeader(list.length + " features selected", "Selection", null, null);
+    var body = freshBody();
+    var ul = document.createElement("ul");
+    ul.className = "ad-members";
+    list.forEach(function (s) {
+      var f = featureFor(s.type, s.index);
+      if (!f) return;
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-member";
+      var dot = document.createElement("span");
+      dot.className = "ad-member-dot";
+      try { dot.style.background = App.resolveFeatureColor(s.type, f); } catch (e) {}
+      var nm = document.createElement("span");
+      nm.className = "ad-member-name";
+      nm.textContent = f.properties.name || (TYPE_LABELS[s.type] || s.type);
+      var ty = document.createElement("span");
+      ty.className = "ad-member-type";
+      ty.textContent = TYPE_LABELS[s.type] || s.type;
+      b.appendChild(dot); b.appendChild(nm); b.appendChild(ty);
+      b.addEventListener("click", function () {
+        if (typeof App.selectFeature === "function") App.selectFeature(s.type, s.index);
+      });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    body.appendChild(ul);
+    _cur = { multi: true, list: list.slice() };
+  }
+
+  function show() {
+    _dockEl.style.display = "";
+    syncAppClasses();
   }
 
   /* ---- Public API ---- */
 
-  App.openAttrPopup = function (featureType, featureIndex, feature) {
-    buildPopupEl();
-
-    // Toggle: clicking gear on the same feature closes the popup
-    if (_popupEl.style.display !== "none" &&
-        _currentType === featureType && _currentIdx === featureIndex) {
-      closeAttrPopup();
-      return;
+  // Gesture entry point. With a target, shows that feature; without one, shows
+  // the current selection.
+  function openAttrDock(featureType, featureIndex, feature) {
+    buildDockEl();
+    commitActiveEdit();
+    if (featureType) {
+      feature = feature || featureFor(featureType, featureIndex);
+      if (!feature) return;
+      renderSingle(featureType, featureIndex, feature);
+    } else {
+      var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+      if (!sel.length) return;
+      if (sel.length === 1) {
+        var f = featureFor(sel[0].type, sel[0].index);
+        if (!f) return;
+        renderSingle(sel[0].type, sel[0].index, f);
+      } else {
+        renderMulti(sel);
+      }
     }
-
-    var wasOpen = (_popupEl.style.display !== "none");
-    populatePopupBody(featureType, featureIndex, feature);
-
-    // Only reset position when opening fresh (preserve dragged position when switching features)
-    if (!wasOpen) {
-      setAttrPopupCollapsed(false);
-      _popupEl.style.left = "24px";
-      _popupEl.style.top  = "60px";
-    }
-    _popupEl.style.display = "";
-  };
-
-  function closeAttrPopup() {
-    if (_popupEl) _popupEl.style.display = "none";
-    _currentType = null;
-    _currentIdx  = null;
+    show();
   }
 
-  App.closeAttrPopup    = closeAttrPopup;
-  // { key: defaultValue } for the fields the popup seeds into blank attributes
+  // opts.keepSelection: hide only (used when the selection already emptied).
+  function closeAttrDock(opts) {
+    if (!_dockEl || _closing) return;
+    _closing = true;
+    try {
+      commitActiveEdit();
+      _dockEl.style.display = "none";
+      _cur = null;
+      syncAppClasses();
+      if (!(opts && opts.keepSelection) && typeof App.clearSelection === "function") App.clearSelection();
+    } finally {
+      _closing = false;
+    }
+  }
+
+  // Follow the selection while open. Re-renders only when the shown feature
+  // actually changed (index, or the object itself after an undo restore), so a
+  // field being typed into is not rebuilt underneath the user.
+  function syncAttrDock() {
+    if (!isDockOpen() || _closing) return;
+    var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+    if (!sel.length) {
+      if (_cur && _cur.type === "textbox" && featureFor("textbox", _cur.index) === _cur.feature) return;
+      closeAttrDock({ keepSelection: true });
+      return;
+    }
+    if (sel.length === 1) {
+      var s = sel[0];
+      var f = featureFor(s.type, s.index);
+      if (!f) { closeAttrDock({ keepSelection: true }); return; }
+      if (_cur && !_cur.multi && _cur.type === s.type && _cur.index === s.index && _cur.feature === f) return;
+      commitActiveEdit();
+      renderSingle(s.type, s.index, f);
+      return;
+    }
+    commitActiveEdit();
+    renderMulti(sel);
+  }
+
+  App.openAttrDock   = openAttrDock;
+  App.closeAttrDock  = closeAttrDock;
+  App.syncAttrDock   = syncAttrDock;
+  App.isAttrDockOpen = isDockOpen;
+  App.isAttrDockPinned = function () { return !!(_dockEl && _dockEl.classList.contains("ad-pinned")); };
+  // The single feature shown → { featureType, featureIndex }, else null.
+  App.getAttrDockFeature = function () {
+    if (!isDockOpen() || !_cur || _cur.multi) return null;
+    return { featureType: _cur.type, featureIndex: _cur.index };
+  };
+  // Width the dock currently covers on the map (0 when closed), for fit padding.
+  App.attrDockInset = function () {
+    return isDockOpen() ? _dockEl.getBoundingClientRect().width : 0;
+  };
+
+  // { key: defaultValue } for the fields the dock seeds into blank attributes
   // when it opens (used by Unmerge's "edited since merging" check).
   App.getAttrFieldDefaults = function (featureType) {
     var out = {};
@@ -1356,19 +1457,12 @@
     });
     return out;
   };
-  App.isAttrPopupOpen   = function () { return !!(_popupEl && _popupEl.style.display !== "none"); };
-  // Re-read the header swatch after a color change made elsewhere (e.g. a
-  // type-wide color set in the Layers tab).
-  App.refreshAttrPopupColor = function () {
-    if (!App.isAttrPopupOpen() || !_popupEl) return;
-    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
-    var feat = arr && arr[_currentIdx];
-    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
-    if (feat && sw) sw.style.background = App.resolveFeatureColor(_currentType, feat);
-  };
-  App.getAttrPopupFeature = function () {
-    if (!App.isAttrPopupOpen()) return null;
-    return { featureType: _currentType, featureIndex: _currentIdx };
+  // Re-read the header swatch after a color change made elsewhere (the
+  // Appearance popover, a type-wide color set in the Layers tab).
+  App.refreshAttrDockSwatch = function () {
+    if (!isDockOpen() || !_cur || _cur.multi) return;
+    var sw = _dockEl.querySelector(".ad-swatch");
+    if (sw) sw.style.background = App.resolveFeatureColor(_cur.type, _cur.feature);
   };
 
   /* ---- Mini-popup singleton (used by Time Bands and Route Picker pills) ---- */
@@ -1424,9 +1518,14 @@
     document.addEventListener("mouseup", function () {
       if (_miniDrag) { _miniDrag = null; header.classList.remove("dragging"); }
     });
+    // Capture phase + stopPropagation: one Escape closes only this topmost
+    // layer, never the attributes dock or analysis panel underneath as well.
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && _miniEl && _miniEl.style.display !== "none") closeMiniPopup();
-    });
+      if (e.key === "Escape" && _miniEl && _miniEl.style.display !== "none") {
+        closeMiniPopup();
+        e.stopPropagation();
+      }
+    }, true);
   }
 
   function openMiniPopup(opts) {
@@ -1470,7 +1569,7 @@
   /* ---- Public exports for the Attribute Summary module ---- */
 
   // Open the time-bands editor for a route/line feature in the mini-popup.
-  // The same buildServiceSchedule UI used inside the per-feature attribute popup
+  // The same buildServiceSchedule UI used inside the attributes dock
   // is mounted here (Weekday / Saturday / Sunday with Mirror Saturday checkbox).
   App.openTimeBandsPopup = function (feature, anchor, onChange) {
     if (!feature || !feature.properties) return;
@@ -1515,17 +1614,6 @@
     if (!feature || !feature.properties) return null;
     if (!feature.properties.attributes) feature.properties.attributes = {};
     return buildServiceSchedule(feature.properties.attributes);
-  };
-
-  // Re-sync the header swatch with the shown feature's resolved color (used by
-  // the Appearance popover after a color change made elsewhere).
-  App.refreshAttrPopupSwatch = function () {
-    if (!_popupEl || _currentType == null || _currentIdx == null) return;
-    var sw = _popupEl.querySelector(".fp-attr-popup-swatch");
-    if (!sw) return;
-    var arr = { point: App.points, line: App.lines, route: App.routes, polygon: App.polygons }[_currentType];
-    var feat = arr && arr[_currentIdx];
-    if (feat) sw.style.background = App.resolveFeatureColor(_currentType, feat);
   };
 
   // Build the `N routes` pill for a point feature. Returns the button DOM.

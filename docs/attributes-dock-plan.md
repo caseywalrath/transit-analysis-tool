@@ -1,7 +1,22 @@
 # Attributes Dock — Plan
 
 Replace the floating attributes popup (`#fp-attr-popup`) with a docked attributes panel on the
-left edge of the map that opens on a normal left click. Status: **planned, not started.**
+left edge of the map that opens on a normal left click. Status: **Phase 1 done; Phases 2–4 planned.**
+
+### Phase 1 as built (differences from the plan below)
+
+- Picking a draw tool clears the selection, so an open dock closes when drawing starts; finishing the
+  drawing reopens it on the new feature. Clicks while drawing never open it.
+- The collapsed rail is 32px (`--ad-rail`), not 24px, so one 26px header button fits.
+- A 2+ selection already shows a member list (click one to narrow to it); shared-field editing is still Phase 3.
+- Clicking the selected feature while the dock is closed opens it rather than adding a vertex
+  ("first click" is always the one that shows attributes).
+- The old popup API was renamed outright (`openAttrDock` etc.), with no aliases kept.
+- Default-positioned bottom-left floating widgets (analysis legends) start from `--ad-inset`; the
+  fixed `#status` strip overlays the dock bottom like it does the Features panel, so `.ad-body` has
+  extra bottom padding.
+- Fixed while here: inserting/deleting a Line vertex read the removed `#lineBufferRadius` input and
+  threw; it now rebuilds at the type default.
 
 ## 1. Decisions (agreed)
 

@@ -55,6 +55,8 @@
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.22);
 
   /* ---- Layout ---- */
+  --ad-width: 320px; /* left-edge attributes dock */
+  --ad-rail: 32px;   /* collapsed dock rail: room for one 26px button */
   --fp-width: 250px;  /* right-hand Features/Layers panel; the module popup's right gutter derives from it */
 
   /* ---- Motion ---- */
@@ -913,7 +915,6 @@ body.dark-mode .map-textbox-resize {
 body.present-mode #toolbar { display: none; }
 body.present-mode #sidebar-wrap { display: none; }
 body.present-mode #feature-panel { display: none; }
-body.present-mode #fp-attr-popup { display: none; }
 
 #pm-controls {
   display: none;
@@ -1707,58 +1708,65 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
 }
 .ui-hover-chip:focus-visible { opacity: 1; pointer-events: auto; }
 
-/* Gear / attributes button (shows on row hover, same pattern as fp-del-btn) */
-.fp-gear-btn {
-  right: 24px;
-}
-.fp-item:hover .fp-gear-btn { opacity: 0.92; pointer-events: auto; }
-.fp-gear-btn:hover { opacity: 1 !important; color: var(--accent); }
-
-/* Floating attributes popup */
-#fp-attr-popup {
-  position: fixed;
-  z-index: 9000;
-  width: 320px;
-  background: var(--surface);
-  border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+/* ---- Attributes dock (left edge of the map; js/core/feature-attributes.js) ----
+   Same family as the Features panel: flush edge, --bg, 1px border, no shadow.
+   It overlays the map (never resizes it) and sits below .module-popup (5000)
+   and the body-level popovers, so a wide analysis panel floats over it. */
+#main-content { position: relative; }
+#attr-dock {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 900;
+  width: var(--ad-width);
+  box-sizing: border-box;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
   overflow: hidden;
-  border: 1px solid var(--border);
 }
-.fp-attr-popup-header {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
-  cursor: grab;
-  user-select: none;
-  flex-shrink: 0;
-}
-.fp-attr-popup-header.dragging { cursor: grabbing; }
-.fp-attr-popup-title-row {
+body.present-mode #attr-dock { display: none !important; }
+.ad-header {
   display: flex;
   align-items: center;
-  min-height: 30px;
+  gap: var(--space-2);
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 52px;
+  box-sizing: border-box;
 }
-.fp-attr-popup-title {
+.ad-swatch-slot { display: flex; flex-shrink: 0; }
+.ad-swatch-slot:empty { display: none; }
+.ad-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0,0,0,0.28);
+  cursor: pointer;
+  padding: 0;
+}
+.ad-swatch:hover { border-color: rgba(0,0,0,0.55); }
+.ad-titles { flex: 1; min-width: 0; }
+.ad-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-type {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-md);
-  color: var(--text-primary);
-  margin-right: auto;
+  color: var(--muted);
 }
-.fp-attr-popup-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.fp-attr-popup-collapse,
-.fp-attr-popup-close {
+.ad-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.ad-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -1766,65 +1774,86 @@ body.dark-mode #osm-poi-popup { border-color: #444; }
   width: 26px;
   height: 26px;
   padding: 0;
-  line-height: var(--leading-none);
   margin: 0;
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
+  line-height: var(--leading-none);
 }
-.fp-attr-popup-collapse svg {
-  width: 17px;
-  height: 17px;
+.ad-btn svg {
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition: transform var(--ease-fast);
 }
-.fp-attr-popup-collapse:hover {
-  color: var(--accent);
-  background: var(--surface-hover);
-}
-.fp-attr-popup-close {
-  font-size: var(--text-xl);
-}
-.fp-attr-popup-close:hover { color: var(--danger); background: var(--surface-hover); }
-.fp-attr-popup-collapse:focus-visible,
-.fp-attr-popup-close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-.fp-attr-popup-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-right: var(--space-2);
-}
-.fp-attr-popup-body {
-  padding: 12px 14px 14px;
+.ad-btn:hover { color: var(--accent); background: var(--surface-hover); }
+.ad-close { font-size: var(--text-xl); }
+.ad-close:hover { color: var(--danger); }
+.ad-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+#attr-dock.ad-pinned .ad-pin { color: var(--accent); background: var(--accent-soft); }
+#attr-dock.ad-pinned .ad-pin svg { fill: currentColor; }
+.ad-body {
+  /* Bottom padding clears the fixed full-width #status strip. */
+  padding: 12px 14px 40px;
   overflow-y: auto;
   flex: 1;
 }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-body { display: none; }
-#fp-attr-popup.fp-attr-popup-collapsed .fp-attr-popup-collapse svg { transform: rotate(180deg); }
-/* Slightly larger inputs inside the popup */
-#fp-attr-popup .fp-attr-label {
-  font-size: var(--text-xs);
-  flex: 0 0 80px;
+#attr-dock .fp-attr-label { font-size: var(--text-xs); flex: 0 0 80px; }
+#attr-dock .fp-attr-input,
+#attr-dock .fp-attr-check-label { font-size: var(--text-sm); }
+#attr-dock .fp-attr-unit { font-size: var(--text-xs); }
+
+/* Collapsed: a rail with the swatch and the expand / close buttons stacked. */
+#attr-dock.ad-collapsed { width: var(--ad-rail); }
+#attr-dock.ad-collapsed .ad-header {
+  flex-direction: column;
+  padding: 8px 0;
+  border-bottom: none;
+  gap: var(--space-2);
 }
-#fp-attr-popup .fp-attr-input {
+#attr-dock.ad-collapsed .ad-header .ad-swatch-slot { order: 2; }
+#attr-dock.ad-collapsed .ad-actions { flex-direction: column; order: 1; }
+#attr-dock.ad-collapsed .ad-titles,
+#attr-dock.ad-collapsed .ad-pin,
+#attr-dock.ad-collapsed .ad-body { display: none; }
+#attr-dock.ad-collapsed .ad-collapse svg { transform: rotate(180deg); }
+
+/* Multi-selection member list */
+.ad-members { list-style: none; margin: 0; padding: 0; }
+.ad-member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
   font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
 }
-#fp-attr-popup .fp-attr-check-label {
-  font-size: var(--text-sm);
-}
-#fp-attr-popup .fp-attr-unit {
-  font-size: var(--text-xs);
-}
+.ad-member:hover { background: var(--surface-hover); }
+.ad-member-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.ad-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-member-type { font-size: var(--text-xs); color: var(--muted); }
+
+/* Keep bottom-left map controls (scale bar, north arrow) clear of the dock. */
+#app.ad-open .maplibregl-ctrl-bottom-left { left: var(--ad-width); }
+#app.ad-open.ad-rail .maplibregl-ctrl-bottom-left { left: var(--ad-rail); }
+/* --ad-inset: how much of the map's left edge the dock covers. Bottom-left
+   floating widgets (analysis legends) start from it (popup.js). */
+#app.ad-open { --ad-inset: var(--ad-width); }
+#app.ad-open.ad-rail { --ad-inset: var(--ad-rail); }
+body.present-mode #app .maplibregl-ctrl-bottom-left { left: 0; }
+
 .fp-attr-confirm {
   font-size: var(--text-sm);
   padding: 2px 0 7px 0;
@@ -2176,18 +2205,15 @@ input.fp-attr-input[type="number"] {
 .fp-pattern { padding-left: 0; }
 .fp-group-body .fp-pattern { padding-left: 16px; }
 
-/* Feature visibility toggle — overlay chip, same reasoning as .fp-gear-btn /
-   .fp-del-btn above. Sits left of the gear icon on rows (which have no gear
-   icon, groups just use the same right offset as .fp-del-btn plus one
-   icon-width). */
-.fp-item > .fp-visibility-btn { right: 48px; }
+/* Feature visibility toggle — overlay chip, same reasoning as .fp-del-btn.
+   Sits one icon-width left of the delete button on rows and group headers. */
+.fp-item > .fp-visibility-btn { right: 24px; }
 .fp-group-header > .fp-visibility-btn { right: 24px; }
 .fp-item:hover .fp-visibility-btn,
 .fp-group-header:hover .fp-visibility-btn { opacity: 0.92; pointer-events: auto; }
 .fp-visibility-btn:hover { opacity: 1 !important; pointer-events: auto; }
 .fp-visibility-btn:focus-visible,
 .fp-dup-btn:focus-visible,
-.fp-gear-btn:focus-visible,
 .fp-del-btn:focus-visible { opacity: 1; pointer-events: auto; }
 /* Muted "off" color only — no permanent opacity/pointer-events override,
    so a hidden feature's eye stays hover-only just like Settings/Delete.
@@ -2205,7 +2231,7 @@ input.fp-attr-input[type="number"] {
 .fp-item:hover > .fp-del-btn,
 .fp-group-header:hover .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 .fp-del-btn:hover { opacity: 1 !important; color: var(--danger); }
-.fp-item:focus-within .fp-gear-btn,
+.fp-item:focus-within .fp-visibility-btn,
 .fp-item:focus-within > .fp-del-btn { opacity: 0.92; pointer-events: auto; }
 
 /* Row-level delete confirmation strip */
@@ -3724,7 +3750,7 @@ label.tiny:not(:has(input)) {
 .rf-number-input-sm,
 .module-popup-body .rf-number-input-sm,
 .fp-attr-input,
-#fp-attr-popup .fp-attr-input,
+#attr-dock .fp-attr-input,
 .as-input,
 .module-popup-body .as-input,
 .fp-buffer-row input[type="number"],
@@ -3752,7 +3778,7 @@ label.tiny:not(:has(input)) {
 .rf-number-input-sm:focus,
 .module-popup-body .rf-number-input-sm:focus,
 .fp-attr-input:focus,
-#fp-attr-popup .fp-attr-input:focus,
+#attr-dock .fp-attr-input:focus,
 .as-input:focus,
 .module-popup-body .as-input:focus,
 .fp-buffer-row input[type="number"]:focus,
@@ -3778,7 +3804,7 @@ label.tiny:not(:has(input)) {
    the compact tier's padding shorthand overrides the comfortable chevron
    rule's padding-right, which would otherwise let text run under the glyph. */
 select.fp-attr-input,
-#fp-attr-popup select.fp-attr-input,
+#attr-dock select.fp-attr-input,
 .module-popup-body .as-input.as-select,
 #fp-mini-popup select {
   appearance: none;
@@ -5028,22 +5054,6 @@ select.fp-attr-input,
   width: 11px;
   height: 11px;
   display: block;
-}
-
-/* ---- Color swatch in attribute popup header ---- */
-.fp-attr-popup-swatch {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.28);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  margin-right: 2px;
-}
-.fp-attr-popup-swatch:hover {
-  border-color: rgba(0,0,0,0.55);
 }
 
 /* ---- Feature Settings section (collapsible, pinned to bottom) ---- */

@@ -35,7 +35,8 @@ Project onboarding for Claude Code sessions. Read this first.
   - `displayInChecklist: true` → its own checkbox.
   - `group: "GROUP_X"` → shown only inside group X's checkbox (mutually exclusive with `displayInChecklist`); labels in `GROUP_INFO`.
   - `denominator: "<code>"` → percent against that variable; `"$group"` → against the sum of the group's members; omit for no percent column.
-- **Feature attribute changes must update BOTH the per-feature popup and Attribute Summary.** The schema is duplicated in `js/core/feature-attributes.js` (`ATTR_FIELDS`, the `#fp-attr-popup`) and `js/projects/attribute-summary.js` (`renderPoints` / `renderLineLike` / `renderPolygons` / `renderMarkers`). Any add/remove/rename/type change of a `feature.properties.attributes.*` field, or a direct `feature.properties.*` field shown in the UI, changes both files in the same commit. Adding or removing a column also changes the matching grid template in `css/style.css` (`.as-grid-points` / `-routelike` / `-polygons` / `-marker`): header and data rows share it. A multi-row editor (Time Bands, Route Picker) is a shared helper in `feature-attributes.js` (`App.buildXBadge` + `App.openXPopup`), never a second copy.
+- **Feature attribute changes must update BOTH the attributes dock and Attribute Summary.** The schema is duplicated in `js/core/feature-attributes.js` (`ATTR_FIELDS`, the `#attr-dock`) and `js/projects/attribute-summary.js` (`renderPoints` / `renderLineLike` / `renderPolygons` / `renderMarkers`). Any add/remove/rename/type change of a `feature.properties.attributes.*` field, or a direct `feature.properties.*` field shown in the UI, changes both files in the same commit. Adding or removing a column also changes the matching grid template in `css/style.css` (`.as-grid-points` / `-routelike` / `-polygons` / `-marker`): header and data rows share it. A multi-row editor (Time Bands, Route Picker) is a shared helper in `feature-attributes.js` (`App.buildXBadge` + `App.openXPopup`), never a second copy.
+- **The attributes dock follows the selection; only gestures open it.** `#attr-dock` (`js/core/feature-attributes.js`) re-targets via `App.syncAttrDock()` on every selection change and closes on an empty selection; user gestures (map/list click, finishing a drawing) call `App.openAttrDock()`. Never call `openAttrDock` from a programmatic selection, and close it (`App.closeAttrDock({keepSelection: true})`) before any delete, since deletes shift indices. A new popover drawn above the dock must stop Escape in the capture phase. Test: `test/browser/attr-dock.test.mjs`.
 - **Drawn Points render in two layers — never use `points-layer` literally for hit-testing or paint.** `properties._pointIcon` (cascade: per-point > `App.featureSettings.pointIcon` > `"dot"`) is stamped as `resolvedIcon`; Dot is the original circle layer `points-layer`, every other icon is the symbol layer `points-icon-layer` right above it. Use `App.pointLayerIds()` / `App.isPointLayerId(id)`; any code that builds point GeoJSON itself (drag previews, highlight sources) must call `App.stampPointIcon(props, feature, color)` or the icon turns into a dot. Write the icon only through `App.setFeaturePointIcon` / `App.setTypePointIcon`. Adding an icon is a one-entry edit in `js/core/point-icons.js` (`ICONS`, plus a `GLYPHS` path for a new symbol); bump nothing else. The only allowed bare `"points-layer"` literals are the `firstUserLayer()` insert-below anchors. Test: `test/browser/point-icons.test.mjs`.
 - **Drawn Lines/Routes render in three style layers — never use `lines-layer`/`routes-layer` literally for hit-testing or paint.** `properties._lineStyle` (`"dashed"`/`"dotted"`, anything else = solid) splits each source into `lines-layer` (solid) + `-dashed` + `-dotted`, because MapLibre's `line-dasharray` cannot be a data expression. Use `App.lineStyleLayerIds(type?)`, `App.lineStyleLayerType(layerId)`, `App.addLineStyleLayers(map, type, sourceId, paint)` and `App.setFeatureLineStyle(type, index, style)`. The only allowed bare literals are the `firstUserLayer()` insert-below anchors in `gtfs.js`/`walk-audit.js`/`network-connectors.js` (the solid layer is always lowest). Test: `test/browser/line-style.test.mjs`.
 
@@ -65,7 +66,7 @@ One line per file. Detail (behavior, invariants, public API) lives in the refere
 
 ```
 index.html                  App shell: toolbar, map, Features/Layers panel, module-panel container, script tags   [core-app]
-css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-)   [core-app]
+css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-)   [core-app]
 css/sidebar-v2.css          Dormant legacy sidebar styles   [core-app]
 js/app.js                   Startup, module registry, toolbar menus, keyboard shortcuts, renderModuleState/renderModuleInputs   [core-app]
 js/core/
@@ -93,7 +94,7 @@ js/core/
   box-select.js             Box select tool + App.bulkFeatures group actions   [drawing-and-features]
   features.js               Features panel list, sorting, context menu, color picker   [drawing-and-features]
   feature-appearance.js     Shared Appearance popover + override rows   [drawing-and-features]
-  feature-attributes.js     Floating attributes popup, ATTR_FIELDS, shared editors   [drawing-and-features]
+  feature-attributes.js     Attributes dock (left edge, follows selection), ATTR_FIELDS, shared editors   [drawing-and-features]
   merge.js / split.js       Feature Merge/Unmerge and Split   [drawing-and-features]
   layers-panel.js           Layers tab: drawn/analysis/reference bands, style drawers, GTFS browser   [layers-and-styling]
   census.js / lodes.js      TIGERweb + ACS fetch/aggregation; LODES employment   [core-app]
@@ -223,12 +224,14 @@ Remove all module `<script>` tags from `index.html`. The toolbar Analysis menu w
 ```
 +--------------------------------------------------------------------------------+
 | Toolbar: workflow | draw tools/actions | view controls | location search       |
-+-------------------------------------------------------------+------------------+
-|                    Live map (flex)                          | Feature/Layers   |
-|                                                            | panel (250px)    |
-|                    Floating analysis panel docks right over the map             |
-+-------------------------------------------------------------+------------------+
++------------+------------------------------------------------+------------------+
+| Attributes |              Live map (flex)                   | Feature/Layers   |
+| dock       |                                                | panel (250px)    |
+| (320px)    |    Floating analysis panel docks right over the map               |
++------------+------------------------------------------------+------------------+
 ```
+
+The attributes dock (`#attr-dock`, `--ad-width`) overlays the map's left edge only while open; it never resizes the map.
 
 The right panel's width is the `--fp-width` custom property in `:root` (`css/style.css`, currently 250px). `#feature-panel` uses it directly and `.module-popup`'s right gutter is `calc(var(--fp-width) + 25px)`, so change the variable, never the individual rules. The map controls (zoom, basemap switcher), floating legends and the panel's collapse tab are all positioned relative to `#map` or the panel itself, so they follow the width automatically; the collapsed (24px) and present-mode rules deliberately stay explicit.
 

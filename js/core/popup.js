@@ -294,7 +294,8 @@
       var pos = options.position || "bottom-left";
       if (pos === "bottom-left") {
         widget.style.bottom = "36px";
-        widget.style.left = "10px";
+        // Clear of the attributes dock when it is open (--ad-inset, style.css).
+        widget.style.left = "calc(var(--ad-inset, 0px) + 10px)";
       } else if (pos === "bottom-right") {
         widget.style.bottom = "36px";
         widget.style.right = "10px";

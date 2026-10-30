@@ -357,7 +357,7 @@
   // Refresh the other surfaces that show this feature's color.
   function refreshColorSurfaces() {
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
-    if (typeof App.refreshAttrPopupSwatch === "function") App.refreshAttrPopupSwatch();
+    if (typeof App.refreshAttrDockSwatch === "function") App.refreshAttrDockSwatch();
   }
 
   function setColor(hex) {

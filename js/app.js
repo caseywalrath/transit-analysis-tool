@@ -901,6 +901,13 @@
         App.setStatus("Ready");
         return;
       }
+      // One Escape closes one layer: the attributes dock sits above the
+      // analysis panel. Popovers over the dock stop the event themselves.
+      // While drawing, Escape belongs to the draw tool.
+      if (e.key === "Escape" && !App.drawMode && App.isAttrDockOpen && App.isAttrDockOpen()) {
+        App.closeAttrDock();
+        return;
+      }
       if (e.key === "Escape" && App.popup.isOpen()) {
         App.popup.close();
       }
@@ -940,7 +947,7 @@
         if (App.drawMode === "box-select" && App.boxSelect && App.boxSelect.currentTarget &&
             App.boxSelect.currentTarget() !== "features") return;
         // Analysis panels are non-modal: only a key pressed inside one is ignored.
-        if (e.target && e.target.closest && e.target.closest("#module-popup, #fp-attr-popup, #fp-mini-popup")) return;
+        if (e.target && e.target.closest && e.target.closest("#module-popup, #attr-dock, #fp-mini-popup")) return;
         if (App.merge && App.merge.isDialogOpen && App.merge.isDialogOpen()) return;
         if (App.bulkFeatures && typeof App.getSelectedFeatures === "function") {
           var bsel = App.bulkFeatures.usable(App.getSelectedFeatures());

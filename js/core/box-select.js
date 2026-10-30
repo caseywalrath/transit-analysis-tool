@@ -427,6 +427,8 @@
     var next = combine(hits, op);
     if (typeof App.setSelection === "function") App.setSelection(next);
     var n = next.length;
+    // A box or Shift-click selection is a gesture: show the result in the dock.
+    if (n && typeof App.openAttrDock === "function") App.openAttrDock();
     App.setStatus(wasClick && !hits.length && op === "replace"
       ? "Selection cleared"
       : (n ? "Selected " + n + (n === 1 ? " feature" : " features") : "Nothing selected"));
@@ -643,10 +645,8 @@
   function remove(list) {
     list = usable(list);
     if (!list.length) return;
-    if (typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) {
-      var pf = typeof App.getAttrPopupFeature === "function" ? App.getAttrPopupFeature() : null;
-      if (pf && list.some(function (s) { return s.type === pf.featureType && s.index === pf.featureIndex; })) App.closeAttrPopup();
-    }
+    // Deleting shifts indices; the dock never outlives a delete.
+    if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     var text = describe(list);
     var pointIds = list.filter(function (s) { return s.type === "point"; })
       .map(function (s) { return featureOf(s).properties.pointIdx; });
@@ -669,10 +669,12 @@
     if (!list.length || !App.map || typeof turf === "undefined") return;
     var fc = { type: "FeatureCollection", features: list.map(featureOf) };
     var b = turf.bbox(fc);
+    // Center in the map area the attributes dock leaves visible.
+    var inset = typeof App.attrDockInset === "function" ? App.attrDockInset() : 0;
     if (b[0] === b[2] && b[1] === b[3]) {
-      App.map.flyTo({ center: [b[0], b[1]], zoom: Math.max(App.map.getZoom(), 14), duration: 500 });
+      App.map.flyTo({ center: [b[0], b[1]], zoom: Math.max(App.map.getZoom(), 14), offset: [inset / 2, 0], duration: 500 });
     } else {
-      App.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, duration: 500 });
+      App.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 80, right: 80, left: 80 + inset }, duration: 500 });
     }
   }
 

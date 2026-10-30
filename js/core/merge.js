@@ -1094,7 +1094,7 @@
     var survivorType = plan.survivor.type;
     var newIndex = arrayFor(survivorType).indexOf(survivorFeat); // removed features may have sat before it
 
-    if (typeof App.closeAttrPopup === "function" && typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) App.closeAttrPopup();
+    if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
 
     // Re-render every type that lost or gained a feature.
     var touched = [survivorType];
@@ -1222,7 +1222,7 @@
     });
 
     if (typeof App.ensureFeatureIds === "function") App.ensureFeatureIds();
-    if (typeof App.closeAttrPopup === "function" && typeof App.isAttrPopupOpen === "function" && App.isAttrPopupOpen()) App.closeAttrPopup();
+    if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     rerenderTouched(touched, []);
     if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
     if (typeof App.selectFeature === "function") App.selectFeature(type, survivorIdx);

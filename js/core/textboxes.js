@@ -44,6 +44,18 @@
     ta.addEventListener("mousedown",   function (e) { e.stopPropagation(); });
     ta.addEventListener("click",       function (e) { e.stopPropagation(); });
 
+    // Text boxes are not selectable, so focusing one clears the selection and
+    // shows the text box in the dock (Size / Background / Text color).
+    ta.addEventListener("focus", function () {
+      if (App.drawMode) return;
+      var i = textBoxes.indexOf(feature);
+      if (i < 0) return;
+      var cur = typeof App.getAttrDockFeature === "function" ? App.getAttrDockFeature() : null;
+      if (cur && cur.featureType === "textbox" && cur.featureIndex === i) return;
+      if (typeof App.clearSelection === "function") App.clearSelection();
+      if (typeof App.openAttrDock === "function") App.openAttrDock("textbox", i, feature);
+    });
+
     ta.addEventListener("input", function () {
       feature.properties.text = ta.value;
       if (App.cache && typeof App.cache.save === "function") App.cache.save();
@@ -74,10 +86,6 @@
       if (idx < 0 || typeof App.showContextMenu !== "function") return;
       var isHidden = !!feature.properties.hidden;
       App.showContextMenu(e.clientX, e.clientY, [
-        {
-          label: "Attributes",
-          action: function () { App.openAttrPopup("textbox", idx, feature); }
-        },
         {
           label: "Duplicate",
           action: function () {
