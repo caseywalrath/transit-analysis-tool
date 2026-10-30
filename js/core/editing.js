@@ -734,25 +734,34 @@
       if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     }
 
-    // Drawn feature under the click, by priority: points, then lines/routes,
-    // then polygons. hit.outline marks a polygon-outline hit.
-    function featureAt(point) {
-      var pointHits = safeQuery(point, App.pointLayerIds());
-      if (pointHits.length > 0) {
-        var pi = findPointIndex(pointHits[0]);
-        if (pi >= 0) return { type: "point", index: pi };
+    // Drawn features under the click, by priority: points, then lines/routes,
+    // then polygons; distinct, first = the one the click acts on. outline marks
+    // a polygon-outline hit.
+    function featuresAt(point) {
+      var out = [], seen = {};
+      function add(type, index, extra) {
+        if (index < 0) return;
+        var k = type + ":" + index;
+        if (seen[k]) { if (extra) seen[k].outline = true; return; }
+        var h = { type: type, index: index };
+        if (extra) h.outline = true;
+        seen[k] = h;
+        out.push(h);
       }
+      safeQuery(point, App.pointLayerIds()).forEach(function (h) { add("point", findPointIndex(h)); });
       var hits = safeQuery(point, App.lineStyleLayerIds().concat(["polygons-outlines-layer", "polygons-fill"]));
-      for (var i = 0; i < hits.length; i++) {
-        var h = hits[i], lid = h.layer.id, t = App.lineStyleLayerType(lid);
-        if (t === "line")  { var li = findLineIndex(h);  if (li >= 0) return { type: "line",  index: li }; }
-        if (t === "route") { var ri = findRouteIndex(h); if (ri >= 0) return { type: "route", index: ri }; }
+      hits.forEach(function (h) {
+        var t = App.lineStyleLayerType(h.layer.id);
+        if (t === "line")  add("line",  findLineIndex(h));
+        if (t === "route") add("route", findRouteIndex(h));
+      });
+      hits.forEach(function (h) {
+        var lid = h.layer.id;
         if (lid === "polygons-outlines-layer" || lid === "polygons-fill") {
-          var gi = findPolygonIndex(h);
-          if (gi >= 0) return { type: "polygon", index: gi, outline: lid === "polygons-outlines-layer" };
+          add("polygon", findPolygonIndex(h), lid === "polygons-outlines-layer");
         }
-      }
-      return null;
+      });
+      return out;
     }
 
     map.on("click", function (e) {
@@ -764,12 +773,20 @@
       // Vertex handles are handled on mousedown.
       if (editState && editState.type === "vertex-edit" && safeQuery(e.point, [EDIT_LAYER]).length > 0) return;
 
-      var hit = featureAt(e.point);
+      var all = featuresAt(e.point);
+      var hit = all[0];
       if (!hit) { emptyMapClick(); return; }
 
       var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
       var isSoleSelection = sel.length === 1 && sel[0].type === hit.type && sel[0].index === hit.index;
-      if (!isSoleSelection || !dockOpen()) { selectAndOpen(hit.type, hit.index); return; }
+      if (!isSoleSelection || !dockOpen()) {
+        if (typeof App.setAttrDockOverlaps === "function") {
+          App.setAttrDockOverlaps({ type: hit.type, index: hit.index },
+            all.slice(1).map(function (o) { return { type: o.type, index: o.index }; }));
+        }
+        selectAndOpen(hit.type, hit.index);
+        return;
+      }
 
       // Second click on the already-selected feature.
       if (hit.type === "line" || hit.type === "route" || (hit.type === "polygon" && hit.outline)) {

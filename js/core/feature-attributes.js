@@ -1055,20 +1055,30 @@
 
     var header = document.createElement("div");
     header.className = "ad-header";
+    var headRow = document.createElement("div");
+    headRow.className = "ad-head-row";
+    header.appendChild(headRow);
 
     var swatchSlot = document.createElement("div");
     swatchSlot.className = "ad-swatch-slot";
-    header.appendChild(swatchSlot);
+    headRow.appendChild(swatchSlot);
 
     var titles = document.createElement("div");
     titles.className = "ad-titles";
-    var titleEl = document.createElement("div");
+    // The feature name, edited in place (read-only for a multi-selection).
+    var titleEl = document.createElement("input");
+    titleEl.type = "text";
     titleEl.className = "ad-title";
+    titleEl.setAttribute("aria-label", "Name");
+    titleEl.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") titleEl.blur();
+      if (e.key === "Escape") { titleEl.value = titleEl.defaultValue; titleEl.blur(); e.stopPropagation(); }
+    });
     var typeEl = document.createElement("div");
     typeEl.className = "ad-type";
     titles.appendChild(titleEl);
     titles.appendChild(typeEl);
-    header.appendChild(titles);
+    headRow.appendChild(titles);
 
     var actions = document.createElement("div");
     actions.className = "ad-actions";
@@ -1103,7 +1113,12 @@
       closeAttrDock();
     });
     actions.appendChild(closeBtn);
-    header.appendChild(actions);
+    headRow.appendChild(actions);
+
+    // Feature actions (Zoom to, Duplicate, …), rebuilt per render.
+    var toolbar = document.createElement("div");
+    toolbar.className = "ad-toolbar";
+    header.appendChild(toolbar);
     el.appendChild(header);
 
     var body = document.createElement("div");
@@ -1168,8 +1183,14 @@
     return body;
   }
 
-  function setHeader(title, typeText, swatchColor, swatchFn) {
-    _dockEl.querySelector(".ad-title").textContent = title;
+  // Header: swatch, name, type line. onRename(newName) makes the name editable.
+  function setHeader(title, typeText, swatchColor, swatchFn, onRename) {
+    var titleEl = _dockEl.querySelector(".ad-title");
+    titleEl.value = title;
+    titleEl.defaultValue = title;
+    titleEl.readOnly = !onRename;
+    titleEl.title = onRename ? "Rename" : "";
+    titleEl.onchange = onRename ? function () { onRename(titleEl.value); titleEl.defaultValue = titleEl.value; } : null;
     _dockEl.querySelector(".ad-type").textContent = typeText;
     var slot = _dockEl.querySelector(".ad-swatch-slot");
     slot.innerHTML = "";
@@ -1187,8 +1208,280 @@
     slot.appendChild(sw);
   }
 
+  // items: [{ label, action, cls?, title? }] → text buttons in the header toolbar.
+  function setToolbar(items) {
+    var bar = _dockEl.querySelector(".ad-toolbar");
+    bar.innerHTML = "";
+    items.forEach(function (it) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ad-tool" + (it.cls ? " " + it.cls : "");
+      b.textContent = it.label;
+      if (it.title) b.title = it.title;
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        it.action(b);
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  /* ---- Collapsible sections (open/closed remembered per label) ---- */
+
+  var LS_SECTIONS = "attrDock.closedSections";
+  function closedSections() {
+    try { return JSON.parse(window.localStorage.getItem(LS_SECTIONS) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function rememberSection(label, closed) {
+    var m = closedSections();
+    if (closed) m[label] = true; else delete m[label];
+    try { window.localStorage.setItem(LS_SECTIONS, JSON.stringify(m)); } catch (e) {}
+  }
+
+  // Appends a section to body and returns its content element.
+  function addSection(body, label) {
+    var sec = document.createElement("section");
+    sec.className = "ad-section";
+    sec.setAttribute("data-section", label);
+    var head = document.createElement("button");
+    head.type = "button";
+    head.className = "ad-section-head";
+    head.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="7,5 12,10 7,15"></polyline></svg>';
+    var lbl = document.createElement("span");
+    lbl.textContent = label;
+    head.appendChild(lbl);
+    var content = document.createElement("div");
+    content.className = "ad-section-body";
+    function setClosed(closed) {
+      sec.classList.toggle("ad-section-closed", closed);
+      head.setAttribute("aria-expanded", closed ? "false" : "true");
+    }
+    setClosed(!!closedSections()[label]);
+    head.addEventListener("click", function () {
+      var closed = !sec.classList.contains("ad-section-closed");
+      setClosed(closed);
+      rememberSection(label, closed);
+    });
+    sec.appendChild(head);
+    sec.appendChild(content);
+    body.appendChild(sec);
+    return content;
+  }
+
+  /* ---- Overlapping features under the last map click ---- */
+
+  // { anchor: {type,index}, others: [{type,index}] } set by editing.js just
+  // before it opens the dock; shown only while the dock shows the anchor.
+  var _overlaps = null;
+  App.setAttrDockOverlaps = function (anchor, others) {
+    _overlaps = (anchor && others && others.length) ? { anchor: anchor, others: others.slice() } : null;
+  };
+
+  function overlapItem(featureType, featureIndex) {
+    if (!_overlaps || _overlaps.anchor.type !== featureType || _overlaps.anchor.index !== featureIndex) return null;
+    var others = _overlaps.others.filter(function (o) { return featureFor(o.type, o.index); });
+    if (!others.length) return null;
+    return {
+      label: others.length + " more here ▾",
+      cls: "ad-tool-more",
+      title: "Other features under the click",
+      action: function (btn) {
+        var r = btn.getBoundingClientRect();
+        var all = [_overlaps.anchor].concat(others);
+        App.showContextMenu(r.left, r.bottom + 4, others.map(function (o) {
+          var f = featureFor(o.type, o.index);
+          return {
+            label: (f.properties.name || TYPE_LABELS[o.type]) + " · " + TYPE_LABELS[o.type],
+            action: function () {
+              App.setAttrDockOverlaps(o, all.filter(function (x) { return x !== o; }));
+              if (typeof App.selectFeature === "function") App.selectFeature(o.type, o.index);
+            }
+          };
+        }));
+      }
+    };
+  }
+
+  /* ---- Info sections ---- */
+
+  function infoRow(content, label, text) {
+    content.appendChild(buildRow(label, buildReadOnlyValue(text), null));
+  }
+
+  function featureId(featureType, feature) {
+    var prop = App.FEATURE_ID_PROP && App.FEATURE_ID_PROP[featureType];
+    return prop ? feature.properties[prop] : null;
+  }
+
+  function buildMeasurements(body, featureType, feature, attrs) {
+    var g = feature.geometry;
+    if (!g || !g.coordinates) return;
+    if (featureType === "point") {
+      var c = addSection(body, "Measurements");
+      infoRow(c, "Location", g.coordinates[1].toFixed(5) + ", " + g.coordinates[0].toFixed(5));
+      return;
+    }
+    if (featureType === "route" || featureType === "line") {
+      var lenMi = 0;
+      try { if (g.coordinates.length >= 2) lenMi = turf.length(feature, { units: "miles" }); } catch (e) {}
+      var m = addSection(body, "Measurements");
+      if (lenMi > 0) infoRow(m, "Length", fmtLength(lenMi));
+      var wps = feature.properties.waypoints;
+      infoRow(m, featureType === "route" ? "Waypoints" : "Vertices",
+        String(featureType === "route" && Array.isArray(wps) ? wps.length : g.coordinates.length));
+      var cycleSpan = buildReadOnlyValue("—");
+      m.appendChild(buildRow("Cycle est.", cycleSpan, null));
+      function refreshCycleEst() {
+        var spd = parseFloat(attrs.avgSpeed);
+        var rt  = parseFloat(attrs.runTime);
+        var dir = attrs.direction || "Both";
+        var isLoop = (dir === "Loop" || dir === "CW" || dir === "CCW");
+        var isBoth = (dir === "Both");
+        var label  = isBoth ? "cycle" : isLoop ? "loop" : "one-way";
+        var parts  = [];
+        if (spd > 0 && lenMi > 0) {
+          var owMin  = lenMi / spd * 60;
+          parts.push(Math.round(isBoth ? owMin * 2 : owMin) + " min " + label + " · speed");
+        }
+        if (rt > 0) parts.push(rt + " min " + label + " · manual");
+        cycleSpan.textContent = parts.length ? parts.join("  ·  ") : "—";
+      }
+      refreshCycleEst();
+      body.addEventListener("change", refreshCycleEst);
+      return;
+    }
+    if (featureType === "polygon" && g.coordinates[0] && g.coordinates[0].length >= 3) {
+      var ring = g.coordinates[0];
+      var p = addSection(body, "Measurements");
+      infoRow(p, "Perimeter", fmtLength(turf.length(turf.lineString(ring), { units: "miles" })));
+      infoRow(p, "Area", fmtArea(turf.area(feature)));
+      infoRow(p, "Vertices", String(ring.length - 1));
+    }
+  }
+
+  function buildUsedIn(body, featureType, feature) {
+    var id = featureId(featureType, feature);
+    if (id == null || typeof App.describeFeatureUsage !== "function") return;
+    var uses = App.describeFeatureUsage(featureType, id);
+    var c = addSection(body, "Used in");
+    if (!uses.length) {
+      var none = document.createElement("div");
+      none.className = "ad-empty";
+      none.textContent = "Not used by any analysis";
+      c.appendChild(none);
+      return;
+    }
+    var ul = document.createElement("ul");
+    ul.className = "ad-usage";
+    uses.forEach(function (u) {
+      var li = document.createElement("li");
+      li.className = u.severity === "warn" ? "ad-usage-warn" : "";
+      var mod = document.createElement("strong");
+      mod.textContent = u.module;
+      li.appendChild(mod);
+      // Providers often repeat their module name at the start of the label.
+      var text = u.label;
+      if (u.module && text.indexOf(u.module) === 0) text = text.slice(u.module.length).replace(/^\s*[·:—-]\s*/, "");
+      if (text) li.appendChild(document.createTextNode((u.module ? " — " : "") + text));
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+  }
+
+  function buildDetails(body, featureType, featureIndex, feature, attrs) {
+    var c = addSection(body, "Details");
+    var id = featureId(featureType, feature);
+    if (id != null) infoRow(c, "Feature ID", (TYPE_LABELS[featureType] || featureType) + " " + id);
+    var grp = attrs.group || attrs.labelGroup;
+    infoRow(c, "Group", grp || "—");
+    if (feature.properties.hidden) infoRow(c, "Visibility", "Hidden on the map");
+    if (App.merge && App.merge.hasHistory && App.merge.hasHistory(featureType, featureIndex)) {
+      var d = App.merge.describeUnmerge(featureType, featureIndex);
+      var wrap = document.createElement("span");
+      wrap.className = "ad-merged";
+      wrap.appendChild(buildReadOnlyValue("Merged from " + (d.originals ? d.originals.length : "?") + " features"));
+      var un = document.createElement("button");
+      un.type = "button";
+      un.className = "ad-link";
+      un.textContent = "Unmerge…";
+      un.addEventListener("click", function () { App.merge.openUnmergeDialog(featureType, featureIndex); });
+      wrap.appendChild(un);
+      c.appendChild(buildRow("Merge", wrap, null));
+    }
+  }
+
+  function buildFooter(body) {
+    var foot = document.createElement("div");
+    foot.className = "ad-footer";
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "ad-link";
+    b.textContent = "Open in Attribute Summary";
+    b.addEventListener("click", function () {
+      if (typeof App.openAttributeSummary === "function") App.openAttributeSummary();
+    });
+    foot.appendChild(b);
+    body.appendChild(foot);
+  }
+
+  var DUPLICATE_FNS = { point: "duplicatePoint", line: "duplicateLine", route: "duplicateRoute",
+                        polygon: "duplicatePolygon", label: "duplicateLabel" };
+
+  function singleToolbar(featureType, featureIndex, feature) {
+    var items = [];
+    var drawn = !!(App.FEATURE_ID_PROP && App.FEATURE_ID_PROP[featureType]);
+    if (drawn && App.bulkFeatures) {
+      items.push({ label: "Zoom to", action: function () {
+        App.bulkFeatures.zoomTo([{ type: featureType, index: featureIndex }]);
+      } });
+    }
+    var dup = App[DUPLICATE_FNS[featureType]];
+    if (typeof dup === "function") {
+      items.push({ label: "Duplicate", action: function () {
+        if (featureType === "label" && App.undo && !App.undo.isRestoring()) App.undo.push();
+        dup(featureIndex);
+      } });
+    }
+    if (drawn && App.bulkFeatures) {
+      var hidden = !!feature.properties.hidden;
+      items.push({ label: hidden ? "Show" : "Hide", action: function () {
+        App.bulkFeatures.setHidden([{ type: featureType, index: featureIndex }], !hidden);
+        renderSingle(featureType, featureIndex, feature);
+      } });
+    }
+    if (drawn && typeof App.deleteFeature === "function") {
+      items.push({ label: "Delete", cls: "ad-tool-danger", action: function () {
+        App.deleteFeature(featureType, featureIndex);
+      } });
+    }
+    var more = overlapItem(featureType, featureIndex);
+    if (more) items.push(more);
+    return items;
+  }
+
+  function renameFeature(featureType, featureIndex, feature, name) {
+    feature.properties.name = name;
+    // Keep the feature row's fp-name display in sync
+    var items = document.querySelectorAll(".fp-item");
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      if (el.dataset.featureType === featureType &&
+          parseInt(el.dataset.featureIndex, 10) === featureIndex) {
+        var rowName = el.querySelector(".fp-name");
+        if (rowName) rowName.textContent = name;
+        break;
+      }
+    }
+    // For labels, name IS the displayed map text — update the marker
+    if (featureType === "label" && typeof App.updateLabelAppearance === "function") {
+      App.updateLabelAppearance(featureIndex);
+    }
+    saveAttrCache();
+  }
+
   function renderSingle(featureType, featureIndex, feature) {
-    setHeader(feature.properties.name || (TYPE_LABELS[featureType] || featureType),
+    if (_overlaps && (_overlaps.anchor.type !== featureType || _overlaps.anchor.index !== featureIndex)) _overlaps = null;
+    setHeader(feature.properties.name || "",
       TYPE_LABELS[featureType] || featureType,
       App.resolveFeatureColor(featureType, feature),
       function (sw) {
@@ -1197,7 +1490,10 @@
             onChange: function () { sw.style.background = App.resolveFeatureColor(featureType, feature); }
           });
         }
-      });
+      },
+      function (name) { renameFeature(featureType, featureIndex, feature, name); });
+    _dockEl.querySelector(".ad-title").placeholder = TYPE_LABELS[featureType] || featureType;
+    setToolbar(singleToolbar(featureType, featureIndex, feature));
 
     var body = freshBody();
 
@@ -1216,105 +1512,28 @@
     });
     if (seededDefault) saveAttrCache();
 
-    // Name row (always present)
-    var nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.className = "fp-attr-input";
-    nameInput.value = feature.properties.name || "";
-    nameInput.addEventListener("change", function () {
-      feature.properties.name = nameInput.value;
-      _dockEl.querySelector(".ad-title").textContent = nameInput.value || (TYPE_LABELS[featureType] || featureType);
-      // Keep the feature row's fp-name display in sync
-      var items = document.querySelectorAll(".fp-item");
-      for (var i = 0; i < items.length; i++) {
-        var el = items[i];
-        if (el.dataset.featureType === featureType &&
-            parseInt(el.dataset.featureIndex, 10) === featureIndex) {
-          var rowName = el.querySelector(".fp-name");
-          if (rowName) rowName.textContent = nameInput.value;
-          break;
-        }
-      }
-      // For labels, name IS the displayed map text — update the marker
-      if (featureType === "label" && typeof App.updateLabelAppearance === "function") {
-        App.updateLabelAppearance(featureIndex);
-      }
-      saveAttrCache();
-    });
-    nameInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") nameInput.blur();
-    });
-    body.appendChild(buildRow("Name", nameInput, null));
-
-    // A field with a new `section` value gets a header row before it.
-    var lastSection = null;
+    // Fields without a `section` go in a leading "Attributes" section.
+    var current = null, currentLabel = null;
     typeFields.forEach(function (field) {
       if (field.hidden) return;
-      if (field.section && field.section !== lastSection) {
-        var sectionHeader = document.createElement("div");
-        sectionHeader.className = "fp-attr-section";
-        sectionHeader.textContent = field.section;
-        body.appendChild(sectionHeader);
-        lastSection = field.section;
+      var label = field.section || "Attributes";
+      if (label !== currentLabel) {
+        current = addSection(body, label);
+        currentLabel = label;
       }
       var result = buildFieldInput(field, attrs, feature, featureType);
-      body.appendChild(buildRow(field.label, result.el, result.unit));
+      current.appendChild(buildRow(field.label, result.el, result.unit));
     });
 
-    // Service schedule (routes and lines only) — full-width, below regular fields
+    // Service schedule (routes and lines only) — full-width
     if (featureType === "route" || featureType === "line") {
-      body.appendChild(buildServiceSchedule(attrs));
+      addSection(body, "Service schedule").appendChild(buildServiceSchedule(attrs));
     }
 
-    // Computed measurements + cycle estimate (routes and lines only)
-    if (featureType === "route" || featureType === "line") {
-      var _rcLenMi = 0;
-      try {
-        if (feature.geometry && feature.geometry.coordinates &&
-            feature.geometry.coordinates.length >= 2)
-          _rcLenMi = turf.length(feature, { units: "miles" });
-      } catch (e) {}
-      if (_rcLenMi > 0) {
-        body.appendChild(buildRow("Length", buildReadOnlyValue(fmtLength(_rcLenMi)), null));
-      }
-
-      var cycleSpan = buildReadOnlyValue("—");
-      body.appendChild(buildRow("Cycle est.", cycleSpan, null));
-
-      (function (span, len) {
-        function refreshCycleEst() {
-          var spd = parseFloat(attrs.avgSpeed);
-          var rt  = parseFloat(attrs.runTime);
-          var dir = attrs.direction || "Both";
-          var isLoop = (dir === "Loop" || dir === "CW" || dir === "CCW");
-          var isBoth = (dir === "Both");
-          var label  = isBoth ? "cycle" : isLoop ? "loop" : "one-way";
-          var parts  = [];
-          if (spd > 0 && len > 0) {
-            var owMin  = len / spd * 60;
-            var cycMin = isBoth ? owMin * 2 : owMin;
-            parts.push(Math.round(cycMin) + " min " + label + " · speed");
-          }
-          if (rt > 0) {
-            parts.push(rt + " min " + label + " · manual");
-          }
-          span.textContent = parts.length ? parts.join("  ·  ") : "—";
-        }
-        refreshCycleEst();
-        body.addEventListener("change", refreshCycleEst);
-      })(cycleSpan, _rcLenMi);
-    }
-
-    if (featureType === "polygon" &&
-        feature.geometry && feature.geometry.coordinates &&
-        feature.geometry.coordinates[0] &&
-        feature.geometry.coordinates[0].length >= 3) {
-      var ring    = feature.geometry.coordinates[0];
-      var perimMi = turf.length(turf.lineString(ring), { units: "miles" });
-      var areaSqM = turf.area(feature);
-      body.appendChild(buildRow("Perimeter", buildReadOnlyValue(fmtLength(perimMi)), null));
-      body.appendChild(buildRow("Area",      buildReadOnlyValue(fmtArea(areaSqM)),   null));
-    }
+    buildMeasurements(body, featureType, feature, attrs);
+    buildUsedIn(body, featureType, feature);
+    buildDetails(body, featureType, featureIndex, feature, attrs);
+    buildFooter(body);
 
     // Label/textbox: sync attribute changes to marker appearance
     if (featureType === "label" || featureType === "textbox") {
@@ -1330,10 +1549,17 @@
     _cur = { type: featureType, index: featureIndex, feature: feature };
   }
 
-  // Multi-selection: a member list (shared-field editing is a later step).
-  // Clicking a member narrows the selection to it.
+  // Multi-selection: group actions plus a member list (shared-field editing is
+  // a later step). Clicking a member narrows the selection to it.
   function renderMulti(list) {
-    setHeader(list.length + " features selected", "Selection", null, null);
+    _overlaps = null;
+    setHeader(list.length + " features selected", "Selection", null, null, null);
+    var usable = App.bulkFeatures ? App.bulkFeatures.usable(list) : [];
+    setToolbar(usable.length && App.bulkFeatures
+      ? App.bulkFeatures.groupMenuItems(usable).map(function (it) {
+          return { label: it.label, action: it.action, cls: /^Delete/.test(it.label) ? "ad-tool-danger" : "" };
+        })
+      : []);
     var body = freshBody();
     var ul = document.createElement("ul");
     ul.className = "ad-members";

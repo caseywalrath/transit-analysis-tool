@@ -38,7 +38,10 @@ async function loadFixture(page) {
     st.routes = []; st.polygons = []; st.labels = [];
     st.points = [
       { type: "Feature", properties: { name: "Stop A", pointIdx: 1, color: "", attributes: {} },
-        geometry: { type: "Point", coordinates: [LNG + 0.012, LAT + 0.004] } }
+        geometry: { type: "Point", coordinates: [LNG + 0.012, LAT + 0.004] } },
+      // Sits on Line B, for the overlap picker.
+      { type: "Feature", properties: { name: "Stop B", pointIdx: 2, color: "", attributes: {} },
+        geometry: { type: "Point", coordinates: [LNG - 0.004, LAT - 0.002] } }
     ];
     st.lines = [
       { type: "Feature", properties: { name: "Line A", lineIdx: 1, color: "", attributes: {} },
@@ -62,7 +65,7 @@ const px = (page, lng, lat) => page.evaluate(([lng, lat]) => {
 const dock = (page) => page.evaluate(() => {
   var el = document.getElementById("attr-dock");
   var open = !!el && el.style.display !== "none";
-  return { open, title: open ? el.querySelector(".ad-title").textContent : "",
+  return { open, title: open ? el.querySelector(".ad-title").value : "",
     sel: App.getSelectedFeatures().map((s) => s.type + ":" + s.index).join(",") };
 });
 
@@ -189,7 +192,7 @@ async function clickAt(page, lng, lat) {
     await page.locator(".fp-item", { hasText: "Line A" }).first().click({ modifiers: ["Control"] });
     await settle(page);
     const multi = await page.evaluate(() => ({
-      title: document.querySelector("#attr-dock .ad-title").textContent,
+      title: document.querySelector("#attr-dock .ad-title").value,
       members: Array.from(document.querySelectorAll("#attr-dock .ad-member-name")).map((x) => x.textContent).sort()
     }));
     check("a multi-selection shows a member list", multi.title === "2 features selected" && multi.members.join(",") === "Line A,Line B", multi);
@@ -207,6 +210,51 @@ async function clickAt(page, lng, lat) {
     await settle(page);
     d = await dock(page);
     check("undo does not reopen a stale dock", !d.open, d);
+
+    // ---- Header toolbar, overlap picker, sections ----
+    const tools = () => page.evaluate(() => Array.from(document.querySelectorAll("#attr-dock .ad-tool")).map((b) => b.textContent));
+    const sections = () => page.evaluate(() => Array.from(document.querySelectorAll("#attr-dock .ad-section")).map((x) => x.getAttribute("data-section")));
+    await clickAt(page, LNG - 0.004, LAT - 0.002);
+    d = await dock(page);
+    let t = await tools();
+    check("a click on a point over a line shows the point with \"1 more here\"", d.title === "Stop B" && t.indexOf("1 more here \u25BE") >= 0, { d, t });
+    await page.locator("#attr-dock .ad-tool-more").click();
+    await page.locator("#fp-context-menu button", { hasText: "Line B" }).click();
+    await settle(page);
+    d = await dock(page);
+    check("picking from \"more here\" switches to the line under the point", d.title === "Line B" && d.sel === "line:1", d);
+    t = await tools();
+    check("single-feature toolbar: Zoom to, Duplicate, Hide, Delete", ["Zoom to", "Duplicate", "Hide", "Delete"].every((x) => t.indexOf(x) >= 0), t);
+    const secs = await sections();
+    check("line sections: Transit service, Study area, Walk network, Service schedule, Measurements, Used in, Details",
+      ["Transit service", "Walk network", "Study area", "Service schedule", "Measurements", "Used in", "Details"].every((x) => secs.indexOf(x) >= 0), secs);
+    check("footer links to Attribute Summary", (await page.locator("#attr-dock .ad-footer .ad-link").textContent()) === "Open in Attribute Summary");
+    const meas = await page.evaluate(() => document.querySelector('#attr-dock .ad-section[data-section="Measurements"]').textContent);
+    check("Measurements shows length and vertices", /Length/.test(meas) && /Vertices\s*2/.test(meas), meas);
+
+    await page.locator('#attr-dock .ad-section[data-section="Measurements"] .ad-section-head').click();
+    await page.locator(".fp-item", { hasText: "Line A" }).first().click();
+    await settle(page);
+    const closedOnA = await page.evaluate(() => document.querySelector('#attr-dock .ad-section[data-section="Measurements"]').classList.contains("ad-section-closed"));
+    check("a collapsed section stays collapsed on the next feature", closedOnA);
+    await page.locator('#attr-dock .ad-section[data-section="Measurements"] .ad-section-head').click();
+
+    await page.locator("#attr-dock .ad-tool", { hasText: /^Hide$/ }).click();
+    await settle(page);
+    const hid = { hidden: await page.evaluate(() => !!App.lines[0].properties.hidden), t: await tools() };
+    check("Hide hides the feature and the button becomes Show", hid.hidden && hid.t.indexOf("Show") >= 0, hid);
+    await page.locator("#attr-dock .ad-tool", { hasText: /^Show$/ }).click();
+    await settle(page);
+    check("Show brings it back", !(await page.evaluate(() => !!App.lines[0].properties.hidden)));
+
+    await page.fill("#attr-dock .ad-title", "Renamed A");
+    await page.keyboard.press("Enter");
+    await settle(page);
+    const ren = await page.evaluate(() => ({ name: App.lines[0].properties.name,
+      row: Array.from(document.querySelectorAll(".fp-item .fp-name")).some((x) => (x.value || x.textContent) === "Renamed A") }));
+    check("renaming in the header renames the feature and its Features row", ren.name === "Renamed A" && ren.row, ren);
+    await page.keyboard.press("Escape");
+    await settle(page);
 
     // ---- Collapse + present mode ----
     await clickAt(page, LNG + 0.012, LAT + 0.004);

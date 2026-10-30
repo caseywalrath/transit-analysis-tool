@@ -1,7 +1,15 @@
 # Attributes Dock — Plan
 
 Replace the floating attributes popup (`#fp-attr-popup`) with a docked attributes panel on the
-left edge of the map that opens on a normal left click. Status: **Phase 1 done; Phases 2–4 planned.**
+left edge of the map that opens on a normal left click. Status: **Phases 1–2 done; Phases 3–4 planned.**
+
+### Phase 2 as built (differences from the plan below)
+
+- The header toolbar uses short text buttons (Zoom to · Duplicate · Hide · Delete), not icons, for clarity.
+  Header Delete does not ask for confirmation (Undo restores it), same as the old map-menu Delete.
+- "Date added" is not shown in Details: features carry no creation time. Details shows the feature ID instead.
+- The Name row moved out of the body into the header input.
+- Measurements adds point location and vertex/waypoint counts; "Cycle est." moved there from the field list.
 
 ### Phase 1 as built (differences from the plan below)
 
