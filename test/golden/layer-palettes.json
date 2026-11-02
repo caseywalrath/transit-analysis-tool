@@ -1,13 +1,13 @@
 {
   "rampColors/blues-n3-forward": [
-    "#afb2bb",
+    "#a1b7c4",
     "#6baed6",
     "#08519c"
   ],
   "rampColors/blues-n3-reversed": [
     "#08519c",
     "#6baed6",
-    "#afb2bb"
+    "#a1b7c4"
   ],
   "rampColors/blues-n4-forward": [
     "#afb2bb",
@@ -267,7 +267,7 @@
     }
   ],
   "rampColors/gnbu-n3": [
-    "#b4baae",
+    "#a7cda9",
     "#7bccc4",
     "#0868ac"
   ]

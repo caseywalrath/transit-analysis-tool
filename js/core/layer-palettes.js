@@ -65,14 +65,30 @@
 
   // Same sampling as js/core/choropleth.js's pickRampColors(), plus the
   // ensureVisible() floor above (the choropleth twin deliberately omits it).
+  // Low-saturation (pastel/near-white): darkening it would only make it dull.
+  // A vivid light color (Cividis' yellow) clamps fine and is left alone.
+  function pale(c) {
+    var mx = Math.max(c.r, c.g, c.b);
+    return mx > 0 && (mx - Math.min(c.r, c.g, c.b)) / mx < 0.5;
+  }
+
   function pickRampColors(colors5, n) {
     if (n >= colors5.length) return colors5.slice(0, n);
-    if (n === 1) return [ensureVisible(colors5[Math.floor((colors5.length - 1) / 2)])];
-    var out = [];
-    for (var i = 0; i < n; i++) {
-      out.push(ensureVisible(colors5[Math.round(i * (colors5.length - 1) / (n - 1))]));
+    var idx = [];
+    if (n === 1) idx = [Math.floor((colors5.length - 1) / 2)];
+    else for (var i = 0; i < n; i++) idx.push(Math.round(i * (colors5.length - 1) / (n - 1)));
+    // A near-white extreme has almost no saturation, so ensureVisible's
+    // uniform darkening turns it GREY (Blues' #eff3ff -> #afb2bb). Step such
+    // an extreme one entry inward first, so the clamp starts from a hued color;
+    // skipped when that entry is already another pick (n = 4).
+    if (n > 1) {
+      [[0, 1], [n - 1, colors5.length - 2]].forEach(function (e) {
+        var c = hexToRgb(colors5[idx[e[0]]]);
+        var inward = e[0] === 0 ? idx[0] + 1 : idx[n - 1] - 1;
+        if (c && (c.r + c.g + c.b) / 3 > LIGHTNESS_CEILING && pale(c) && idx.indexOf(inward) === -1) idx[e[0]] = inward;
+      });
     }
-    return out;
+    return idx.map(function (k) { return ensureVisible(colors5[k]); });
   }
 
   // allow: array of family names, or null/absent for everything. Returns
