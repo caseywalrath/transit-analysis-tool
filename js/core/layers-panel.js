@@ -96,7 +96,8 @@
     { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
     { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed", styleKey: "transit-travelshed",
-      layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-line", op: "line-opacity" }] },
+      layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-glow", op: "line-opacity" },
+               { id: "ts-travelshed-line", op: "line-opacity" }] },
     // Entries only render when the layer is actually on the map (see
     // entryPresent), so listing them all is safe.
     { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage", styleKey: "transit-coverage",
@@ -105,6 +106,7 @@
                { id: "transit-coverage-area-layer", op: "line-opacity" }] },
     { id: "walkshed-fill", label: "Walkshed", moduleId: "walkshed", styleKey: "walkshed",
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
+               { id: "walkshed-glow", op: "line-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
     { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
       clear: function () { if (typeof App.clearWalkshedStreets === "function") App.clearWalkshedStreets(); },
@@ -691,7 +693,73 @@
         body.appendChild(fRow);
       }
 
-      if (ov.palette || ov.reverse != null || ov.flatten) {
+      // Outline / soft edge / band fade — display-only options for layers whose
+      // spec sets styleOptions (Walkshed, Transit Travelshed). Resolved by
+      // App.resolveShedStyle; null always means today's default.
+      if (spec.styleOptions) {
+        var mkRow = function (label) {
+          var row = document.createElement("div");
+          row.className = "lp-style-row";
+          var lab = document.createElement("span");
+          lab.className = "lp-style-label";
+          lab.textContent = label;
+          row.appendChild(lab);
+          var wrap = document.createElement("div");
+          wrap.className = "lp-style-control";
+          row.appendChild(wrap);
+          body.appendChild(row);
+          return wrap;
+        };
+        var mkSelect = function (wrap, options, current, aria, small, onPick) {
+          var s2 = document.createElement("select");
+          s2.className = "lp-basemap-select" + (small ? " lp-select-sm" : "");
+          s2.setAttribute("aria-label", aria + " for " + spec.label);
+          options.forEach(function (o) {
+            var op = document.createElement("option");
+            op.value = o[0];
+            op.textContent = o[1];
+            s2.appendChild(op);
+          });
+          s2.value = current;
+          s2.addEventListener("click", function (e) { e.stopPropagation(); });
+          s2.addEventListener("change", function () { onPick(s2.value); rerender(); });
+          wrap.appendChild(s2);
+          return s2;
+        };
+        var mkCheck = function (label, checked, title, key) {
+          var wrap = mkRow(label);
+          var c = document.createElement("input");
+          c.type = "checkbox";
+          c.checked = checked;
+          c.title = title;
+          c.setAttribute("aria-label", label + " for " + spec.label);
+          c.addEventListener("click", function (e) { e.stopPropagation(); });
+          c.addEventListener("change", function () {
+            var patch = {};
+            patch[key] = c.checked || null;
+            App.setLayerStyle(styleKey, patch);
+            rerender();
+          });
+          wrap.appendChild(c);
+        };
+        var shed = App.resolveShedStyle(styleKey);
+        mkSelect(mkRow("Outline"), [["bands", "Per band"], ["tiers", "Band edges merged"],
+          ["outer", "Outer edge only"], ["none", "None"]], shed.outline, "Outline",
+          false, function (v) { App.setLayerStyle(styleKey, { outline: v === "bands" ? null : v }); });
+        var lineWrap = mkRow("Line");
+        var wSel = mkSelect(lineWrap, [["", "Auto"], ["thin", "Thin"], ["normal", "Normal"], ["bold", "Bold"]],
+          ov.outlineWeight || "", "Outline weight", true,
+          function (v) { App.setLayerStyle(styleKey, { outlineWeight: v || null }); });
+        var tSel = mkSelect(lineWrap, [["match", "Match"], ["dark", "Darker"], ["white", "White"]],
+          shed.tone, "Outline tone", true,
+          function (v) { App.setLayerStyle(styleKey, { outlineTone: v === "match" ? null : v }); });
+        if (shed.outline === "none") { wSel.disabled = true; tSel.disabled = true; }
+        mkCheck("Soft edge", !!ov.softEdge, "Blurred glow along the outline.", "softEdge");
+        mkCheck("Fade outer bands", !!ov.bandFade, "Make longer-time bands progressively more transparent.", "bandFade");
+      }
+
+      if (ov.palette || ov.reverse != null || ov.flatten || ov.outline || ov.outlineWeight ||
+          ov.outlineTone || ov.softEdge || ov.bandFade) {
         var resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "lp-style-reset";

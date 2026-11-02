@@ -18,6 +18,7 @@
   // (diverging). Callers reverse via rampColors(..., reverse). Seven of these
   // (blues, greens, heat, viridis, gray, rdbu, quality) are duplicated
   // byte-for-byte in js/core/choropleth.js's RAMPS — change both together.
+  // The gnbu/purples/ylgnbu presets below are NOT in RAMPS (isochrone-only).
   var PALETTES = {
     blues:   { label: "Blues",        family: "sequential", colors5: ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"] },
     greens:  { label: "Greens",       family: "sequential", colors5: ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"] },
@@ -28,6 +29,9 @@
     magma:   { label: "Magma",        family: "sequential", colors5: ["#000004", "#51127c", "#b73779", "#fb8761", "#fcfdbf"] },
     cividis: { label: "Cividis",      family: "sequential", colors5: ["#00204d", "#414d6b", "#7c7b78", "#bcaf6f", "#ffea46"] },
     gray:    { label: "Grayscale",    family: "sequential", colors5: ["#f7f7f7", "#cccccc", "#969696", "#636363", "#252525"] },
+    gnbu:    { label: "Green–Blue",  family: "sequential", colors5: ["#f0f9e8", "#bae4bc", "#7bccc4", "#43a2ca", "#0868ac"] },
+    purples: { label: "Purples",      family: "sequential", colors5: ["#f2f0f7", "#cbc9e2", "#9e9ac8", "#756bb1", "#54278f"] },
+    ylgnbu:  { label: "Yellow–Blue", family: "sequential", colors5: ["#ffffcc", "#a1dab4", "#41b6c4", "#2c7fb8", "#253494"] },
     rdbu:    { label: "Red–Blue",   family: "diverging",  colors5: ["#ca0020", "#f4a582", "#f7f7f7", "#92c5de", "#0571b0"] },
     quality: { label: "Red–Green",  family: "diverging",  colors5: ["#C53030", "#C05621", "#D69E2E", "#68A357", "#276749"] }
   };
@@ -167,6 +171,23 @@
     return "rgba(" + c.r + ", " + c.g + ", " + c.b + ", " + a + ")";
   }
 
+  // "rgba(r,g,b,a)" (no spaces) for #rgb/#rrggbb; any other input is returned
+  // unchanged so a color that is already rgba()/named passes through.
+  function withAlpha(hex, a) {
+    var c = hexToRgb(hex);
+    if (!c) return hex;
+    return "rgba(" + c.r + "," + c.g + "," + c.b + "," + a + ")";
+  }
+
+  // Mixes toward black by amount (0 = unchanged, 1 = black) -> "#rrggbb".
+  // Unparseable input is returned unchanged.
+  function shade(hex, amount) {
+    var c = hexToRgb(hex);
+    if (!c) return hex;
+    var k = 1 - Math.max(0, Math.min(1, amount));
+    return rgbToHex({ r: c.r * k, g: c.g * k, b: c.b * k });
+  }
+
   // "sequential" | "diverging" | null for an unknown id.
   function familyOf(paletteId) {
     var pal = PALETTES[paletteId];
@@ -196,7 +217,9 @@
       // renderWalkshedLayers): the FILL shows only the shortest-time band at
       // a spot, unioned across all points; per-point outlines stay in full.
       // Generic drawer flag; off by default.
-      flattenOption: true
+      flattenOption: true,
+      // Outline mode/weight/tone, soft edge and band fade (App.resolveShedStyle).
+      styleOptions: true
     },
     "walkshed-seg": {
       label: "Walkshed streets", kind: "solid",
@@ -205,7 +228,8 @@
     "transit-travelshed": {
       label: "Transit Travelshed", kind: "ramp", n: 3, prop: "band",
       allow: ["sequential"], reverseDefault: true,
-      defaultColors: ["#1d4ed8", "#3b82f6", "#93c5fd"]
+      defaultColors: ["#1d4ed8", "#3b82f6", "#93c5fd"],
+      styleOptions: true
     },
     "tpi": {
       label: "Transit Propensity", kind: "ramp", n: 5,
@@ -265,6 +289,8 @@
     rampColors: rampColors,
     gradientColors: gradientColors,
     rgba: rgba,
+    withAlpha: withAlpha,
+    shade: shade,
     matchExpr: matchExpr,
     familyOf: familyOf,
     allows: allows,
@@ -348,11 +374,19 @@
       colors: (patch.colors !== undefined) ? patch.colors : cur.colors,
       // Overlap flattening (spec.flattenOption layers only): display-only
       // boolean persisted with the rest of App.layerStyles.
-      flatten: (patch.flatten !== undefined) ? patch.flatten : cur.flatten
+      flatten: (patch.flatten !== undefined) ? patch.flatten : cur.flatten,
+      // styleOptions layers (spec.styleOptions): display-only; null/absent
+      // always means today's default.
+      outline: (patch.outline !== undefined) ? patch.outline : cur.outline,
+      outlineWeight: (patch.outlineWeight !== undefined) ? patch.outlineWeight : cur.outlineWeight,
+      outlineTone: (patch.outlineTone !== undefined) ? patch.outlineTone : cur.outlineTone,
+      softEdge: (patch.softEdge !== undefined) ? patch.softEdge : cur.softEdge,
+      bandFade: (patch.bandFade !== undefined) ? patch.bandFade : cur.bandFade
     };
     var anyClassColor = !!(next.colors && next.colors.some(function (c) { return !!c; }));
     var isEmpty = !next.palette && next.reverse == null && !next.color &&
-      !next.from && !next.to && !anyClassColor && !next.flatten;
+      !next.from && !next.to && !anyClassColor && !next.flatten &&
+      !next.outline && !next.outlineWeight && !next.outlineTone && !next.softEdge && !next.bandFade;
     if (isEmpty) {
       delete App.layerStyles[styleKey];
     } else {
@@ -360,6 +394,22 @@
     }
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     App.repaintStyledLayers();
+  };
+
+  // Effective outline/fill options for a styleOptions layer. widthPx null =
+  // "use the module's existing width rule" so defaults stay byte-identical.
+  var OUTLINE_PX = { thin: 1, normal: 2, bold: 3 };
+  App.resolveShedStyle = function (styleKey) {
+    var ov = (App.layerStyles && App.layerStyles[styleKey]) || {};
+    var outline = (["bands", "tiers", "outer", "none"].indexOf(ov.outline) !== -1) ? ov.outline : "bands";
+    var tone = (["match", "dark", "white"].indexOf(ov.outlineTone) !== -1) ? ov.outlineTone : "match";
+    return {
+      outline: outline,
+      widthPx: OUTLINE_PX[ov.outlineWeight] || null,
+      tone: tone,
+      softEdge: !!ov.softEdge,
+      bandFade: !!ov.bandFade
+    };
   };
 
   // Sets (or, with a null/empty color, clears) one class of a categorical

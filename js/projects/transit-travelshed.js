@@ -723,16 +723,71 @@
   var TS_SOURCE     = "ts-travelshed";
   var TS_FILL_LAYER = "ts-travelshed-fill";
   var TS_LINE_LAYER = "ts-travelshed-line";
+  // The outline has its own source so outline modes can change its data.
+  var TS_LINE_SRC   = "ts-travelshed-line-src";
+  // Soft-edge glow under the outline; exists only while "Soft edge" is on.
+  var TS_GLOW_LAYER = "ts-travelshed-glow";
+  var TS_FADE_ALPHA = [1, 0.6, 0.35];
+  var _lastRings = [];   // rings from the last render, to rebuild outline geometry on a style change
 
   // 3-class Blues, innermost (band 0 = shortest budget) darkest. Resolved through
   // the layer color cascade; a missing layer-palettes.js degrades to the
   // hardcoded colors rather than throwing.
-  function tsColorExpr() {
+  function shedStyle() {
+    return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("transit-travelshed")
+      : { outline: "bands", widthPx: null, tone: "match", softEdge: false, bandFade: false };
+  }
+  // kind: "fill" (band fade) | "line" (outline tone) | other = plain.
+  function tsColorExpr(kind) {
     if (typeof window.LayerPalette === "undefined") {
       return ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
     }
+    var LP = window.LayerPalette;
     var colors = App.resolveLayerColors("transit-travelshed") || ["#1d4ed8", "#3b82f6", "#93c5fd"];
-    return window.LayerPalette.matchExpr("band", colors);
+    var st = shedStyle();
+    if (kind === "fill" && st.bandFade) {
+      // Alpha baked into the color so it multiplies with the opacity slider.
+      colors = colors.map(function (c, i) { return LP.withAlpha(c, TS_FADE_ALPHA[Math.min(i, TS_FADE_ALPHA.length - 1)]); });
+    } else if (kind === "line") {
+      if (st.tone === "dark") colors = colors.map(function (c) { return LP.shade(c, 0.35); });
+      else if (st.tone === "white") return "#ffffff";
+    }
+    return LP.matchExpr("band", colors);
+  }
+
+  // Outline geometry by mode. A travelshed has one origin set, so "bands" and
+  // "tiers" are the same ring set; "outer" dissolves it; "none" is empty (the
+  // Layers panel owns visibility).
+  function outlineFeatures(rings, features) {
+    var mode = shedStyle().outline;
+    if (mode === "none") return [];
+    if (mode === "outer") {
+      var polys = rings.filter(function (r) { return r.ring; }).map(function (r) { return r.ring; });
+      var u = polys.length ? App.foldAnalysisUnion(polys) : null;
+      if (!u) return [];
+      var maxBand = 0, maxMin = 0;
+      rings.forEach(function (r) { if (r.ring && r.band >= maxBand) { maxBand = r.band; maxMin = r.budgetMin; } });
+      return [{ type: "Feature", properties: { band: maxBand, budgetMin: maxMin }, geometry: u.geometry }];
+    }
+    return features;
+  }
+
+  function syncTravelshedGlow() {
+    var map = App.map;
+    if (!map || !map.getLayer(TS_LINE_LAYER)) return;
+    var on = shedStyle().softEdge, has = !!map.getLayer(TS_GLOW_LAYER);
+    if (on && !has) {
+      var vis = map.getLayoutProperty(TS_FILL_LAYER, "visibility") !== "none";
+      map.addLayer({
+        id: TS_GLOW_LAYER, type: "line", source: TS_LINE_SRC,
+        layout: { "line-join": "round", "visibility": vis ? "visible" : "none" },
+        paint: { "line-color": tsColorExpr(), "line-width": 10, "line-blur": 8, "line-opacity": 0.35 }
+      }, TS_LINE_LAYER);
+    } else if (on && has) {
+      map.setPaintProperty(TS_GLOW_LAYER, "line-color", tsColorExpr());
+    } else if (!on && has) {
+      map.removeLayer(TS_GLOW_LAYER);
+    }
   }
 
   // Re-applies paint properties from the current cascade without re-running
@@ -742,37 +797,56 @@
     fillTravelshedLegendColors();
     var map = App.map;
     if (!map || !map.getLayer(TS_FILL_LAYER)) return;
-    var expr = tsColorExpr();
-    map.setPaintProperty(TS_FILL_LAYER, "fill-color", expr);
-    map.setPaintProperty(TS_LINE_LAYER, "line-color", expr);
+    var st = shedStyle();
+    map.setPaintProperty(TS_FILL_LAYER, "fill-color", tsColorExpr("fill"));
+    map.setPaintProperty(TS_LINE_LAYER, "line-color", tsColorExpr("line"));
+    map.setPaintProperty(TS_LINE_LAYER, "line-width", st.widthPx || 1.5);
+    syncTravelshedGlow();
   }
   if (typeof App.registerLayerRepainter === "function") {
-    App.registerLayerRepainter("transit-travelshed", repaintTravelshedLayers);
+    App.registerLayerRepainter("transit-travelshed", function () {
+      // An outline-mode change is a geometry change, not just paint.
+      if (_lastRings.length && App.map && App.map.getSource(TS_LINE_SRC)) {
+        App.map.getSource(TS_LINE_SRC).setData({ type: "FeatureCollection",
+          features: outlineFeatures(_lastRings, ringFeatures(_lastRings)) });
+      }
+      repaintTravelshedLayers();
+    });
   }
 
-  function renderTravelshedLayers(rings) {
-    var map = App.map;
-    if (!map) return;
+  function ringFeatures(rings) {
     var features = [];
     rings.forEach(function (r) {
       if (!r.ring) return;
       features.push({ type: "Feature", properties: { band: r.band, budgetMin: r.budgetMin }, geometry: r.ring.geometry });
     });
+    return features;
+  }
+
+  function renderTravelshedLayers(rings) {
+    var map = App.map;
+    if (!map) return;
+    _lastRings = rings;
+    var features = ringFeatures(rings);
     var fc = { type: "FeatureCollection", features: features };
+    var lineFc = { type: "FeatureCollection", features: outlineFeatures(rings, features) };
 
     if (!map.getSource(TS_SOURCE)) {
       map.addSource(TS_SOURCE, { type: "geojson", data: fc });
       map.addLayer({
         id: TS_FILL_LAYER, type: "fill", source: TS_SOURCE,
-        paint: { "fill-color": tsColorExpr(), "fill-opacity": 0.35 }
+        paint: { "fill-color": tsColorExpr("fill"), "fill-opacity": 0.35 }
       });
+      map.addSource(TS_LINE_SRC, { type: "geojson", data: lineFc });
       map.addLayer({
-        id: TS_LINE_LAYER, type: "line", source: TS_SOURCE,
+        id: TS_LINE_LAYER, type: "line", source: TS_LINE_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": tsColorExpr(), "line-width": 1.5, "line-opacity": 0.9 }
+        paint: { "line-color": tsColorExpr("line"), "line-width": shedStyle().widthPx || 1.5, "line-opacity": 0.9 }
       });
+      syncTravelshedGlow();
     } else {
       map.getSource(TS_SOURCE).setData(fc);
+      if (map.getSource(TS_LINE_SRC)) map.getSource(TS_LINE_SRC).setData(lineFc);
       repaintTravelshedLayers(); // pick up a palette changed while results were on screen
     }
   }
@@ -780,8 +854,11 @@
   function clearTravelshedLayers() {
     var map = App.map;
     if (!map) return;
+    _lastRings = [];
+    if (map.getLayer(TS_GLOW_LAYER)) map.removeLayer(TS_GLOW_LAYER);
     if (map.getLayer(TS_LINE_LAYER)) map.removeLayer(TS_LINE_LAYER);
     if (map.getLayer(TS_FILL_LAYER)) map.removeLayer(TS_FILL_LAYER);
+    if (map.getSource(TS_LINE_SRC))  map.removeSource(TS_LINE_SRC);
     if (map.getSource(TS_SOURCE))    map.removeSource(TS_SOURCE);
   }
 
@@ -793,7 +870,9 @@
       ["#1d4ed8", "#3b82f6", "#93c5fd"];
     for (var i = 0; i < 3; i++) {
       var sw = document.getElementById("tsLegendSw" + i);
-      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+      var c = colors[i] || colors[colors.length - 1];
+      if (sw) sw.style.background = (shedStyle().bandFade && window.LayerPalette)
+        ? window.LayerPalette.withAlpha(c, TS_FADE_ALPHA[i]) : c;
     }
   }
 

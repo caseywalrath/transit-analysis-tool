@@ -29,3 +29,7 @@ Origin block (`#tsPickOriginBtn`/`#tsOriginLabel`/`#tsClearOriginBtn`), `#tsBudg
 ## transit-travelshed-legend.html
 
 3 rows (`#tsLegendRow0/1/2`, `#tsLegendLabel0/1/2`, `.tpi-legend-*`); the module fills "≤ N min" labels and hides unused rows after mount.
+
+## Style options
+
+Same display-only options as Walkshed (`App.resolveShedStyle("transit-travelshed")`; see `layers-and-styling.md`). The outline layer `ts-travelshed-line` now has its own source `ts-travelshed-line-src` so the outline mode can change its data: `bands` and `tiers` are the same ring set (one origin), `outer` dissolves the rings, `none` is empty. The repainter re-sets that source from the last rendered rings (`_lastRings`), so a style change never recomputes. Soft edge adds `ts-travelshed-glow` (below the line, listed in the Layers entry); `clearTravelshedLayers` removes it and the extra source.

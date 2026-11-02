@@ -39,6 +39,11 @@
   // price of not special-casing layer creation on the toggle.
   var WS_LINE_SRC  = "walkshed-line-src";
   var WS_LINE_LAYER = "walkshed-line";
+  // Soft-edge glow: a blurred wide line under walkshed-line, same source. Only
+  // exists while the "Soft edge" style option is on; listed in the Layers entry
+  // so the eye / opacity / remove actions cover it.
+  var WS_GLOW_LAYER = "walkshed-glow";
+  var WS_FADE_ALPHA = [1, 0.6, 0.35]; // per bandIdx, outermost most transparent
   var WS_SEG_SRC   = "walkshed-seg-src";
   var WS_SEG_LAYER = "walkshed-seg";
 
@@ -299,12 +304,27 @@
   // walkable". Resolved through the layer color cascade; a missing
   // layer-palettes.js degrades to the hardcoded colors rather than throwing.
   var WS_SEG_DEFAULT_COLOR = "#16a34a";
-  function bandColorExpr() {
+  // kind: "fill" (band fade applies) | "line" (outline tone applies) | other = plain.
+  function bandColorExpr(kind) {
     if (typeof window.LayerPalette === "undefined") {
       return ["match", ["get", "bandIdx"], 0, "#1e40af", 1, "#3b82f6", "#93c5fd"];
     }
     var colors = App.resolveLayerColors("walkshed") || ["#1e40af", "#3b82f6", "#93c5fd"];
-    return window.LayerPalette.matchExpr("bandIdx", colors);
+    var st = shedStyle();
+    var LP = window.LayerPalette;
+    if (kind === "fill" && st.bandFade) {
+      // Alpha is baked into the color (not fill-opacity) so it multiplies with
+      // the Layers panel opacity slider instead of fighting it.
+      colors = colors.map(function (c, i) { return LP.withAlpha(c, WS_FADE_ALPHA[Math.min(i, WS_FADE_ALPHA.length - 1)]); });
+    } else if (kind === "line") {
+      if (st.tone === "dark") colors = colors.map(function (c) { return LP.shade(c, 0.35); });
+      else if (st.tone === "white") return "#ffffff";
+    }
+    return LP.matchExpr("bandIdx", colors);
+  }
+  function shedStyle() {
+    return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("walkshed")
+      : { outline: "bands", widthPx: null, tone: "match", softEdge: false, bandFade: false };
   }
   function segColor() {
     if (typeof App.resolveLayerColors !== "function") return WS_SEG_DEFAULT_COLOR;
@@ -319,7 +339,11 @@
   var WS_OUTLINE_NORMAL   = { width: 2,   opacity: 0.9  };
   var WS_OUTLINE_FLATTENED = { width: 1,  opacity: 0.12 };
   function outlineStyle() {
-    return flattenEnabled() ? WS_OUTLINE_FLATTENED : WS_OUTLINE_NORMAL;
+    var st = shedStyle();
+    // The faint flattened style only suits per-band outlines (mostly interior
+    // to the merged fill); tiers/outer outlines are real edges.
+    var base = (flattenEnabled() && st.outline === "bands") ? WS_OUTLINE_FLATTENED : WS_OUTLINE_NORMAL;
+    return { width: st.widthPx || base.width, opacity: base.opacity };
   }
 
   // Re-applies paint properties from the current cascade without re-running
@@ -328,14 +352,35 @@
   function repaintWalkshedLayers() {
     var map = App.map;
     if (!map || !map.getLayer(WS_FILL_LAYER)) return;
-    var expr = bandColorExpr();
     var outline = outlineStyle();
-    map.setPaintProperty(WS_FILL_LAYER, "fill-color", expr);
-    map.setPaintProperty(WS_LINE_LAYER, "line-color", expr);
+    map.setPaintProperty(WS_FILL_LAYER, "fill-color", bandColorExpr("fill"));
+    map.setPaintProperty(WS_LINE_LAYER, "line-color", bandColorExpr("line"));
     map.setPaintProperty(WS_LINE_LAYER, "line-width", outline.width);
     map.setPaintProperty(WS_LINE_LAYER, "line-opacity", outline.opacity);
     if (map.getLayer(WS_SEG_LAYER)) {
       map.setPaintProperty(WS_SEG_LAYER, "line-color", segColor());
+    }
+    syncGlowLayer();
+  }
+
+  // Adds/removes the soft-edge glow. It only ever exists while softEdge is on,
+  // and follows the fill's visibility (the Layers eye) when created.
+  function syncGlowLayer() {
+    var map = App.map;
+    if (!map || !map.getLayer(WS_LINE_LAYER)) return;
+    var on = shedStyle().softEdge;
+    var has = !!map.getLayer(WS_GLOW_LAYER);
+    if (on && !has) {
+      var fillVisible = map.getLayoutProperty(WS_FILL_LAYER, "visibility") !== "none";
+      map.addLayer({
+        id: WS_GLOW_LAYER, type: "line", source: WS_LINE_SRC,
+        layout: { "line-join": "round", "visibility": fillVisible ? "visible" : "none" },
+        paint: { "line-color": bandColorExpr(), "line-width": 10, "line-blur": 8, "line-opacity": 0.35 }
+      }, WS_LINE_LAYER);
+    } else if (on && has) {
+      map.setPaintProperty(WS_GLOW_LAYER, "line-color", bandColorExpr());
+    } else if (!on && has) {
+      map.removeLayer(WS_GLOW_LAYER);
     }
   }
   if (typeof App.registerLayerRepainter === "function") {
@@ -363,11 +408,13 @@
   function fillWalkshedLegend(budgets) {
     var colors = (App.resolveLayerColors && App.resolveLayerColors("walkshed")) ||
       ["#1e40af", "#3b82f6", "#93c5fd"];
+    var fade = shedStyle().bandFade;
     for (var i = 0; i < 3; i++) {
       var row = document.getElementById("wsLegendRow" + i);
       var label = document.getElementById("wsLegendLabel" + i);
       var sw = document.getElementById("wsLegendSw" + i);
-      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+      var swColor = colors[i] || colors[colors.length - 1];
+      if (sw) sw.style.background = fade && window.LayerPalette ? window.LayerPalette.withAlpha(swColor, WS_FADE_ALPHA[i]) : swColor;
       if (!row) continue;
       if (i < budgets.length) {
         row.style.display = "";
@@ -424,7 +471,9 @@
   // band index. Only reshapes the FILL — renderWalkshedLayers always draws
   // the un-flattened per-point outlines separately, so an overlap an area
   // hides is still visible as a preserved band boundary.
-  function buildFlattenedFillFeatures(entries) {
+  // Per-tier unions across every point: [{minutes, tierIdx, union}] ascending
+  // by minutes. Shared by the flattened fill and the "tiers" outline mode.
+  function buildTierUnions(entries) {
     var byMinutes = {}; // minutes -> polygon[]
     entries.forEach(function (e) {
       if (!e || e.failed) return;
@@ -435,11 +484,19 @@
       });
     });
     var tiers = Object.keys(byMinutes).map(Number).sort(function (a, b) { return a - b; });
-    var features = [];
-    var smallerUnion = null; // union of every tier already processed (<= current)
+    var out = [];
     tiers.forEach(function (minutes, tierIdx) {
       var tierUnion = App.foldAnalysisUnion(byMinutes[minutes]);
-      if (!tierUnion) return;
+      if (tierUnion) out.push({ minutes: minutes, tierIdx: tierIdx, union: tierUnion });
+    });
+    return out;
+  }
+
+  function buildFlattenedFillFeatures(entries) {
+    var features = [];
+    var smallerUnion = null; // union of every tier already processed (<= current)
+    buildTierUnions(entries).forEach(function (t) {
+      var minutes = t.minutes, tierIdx = t.tierIdx, tierUnion = t.union;
       var ringPoly = tierUnion;
       if (smallerUnion) {
         try {
@@ -455,6 +512,35 @@
       smallerUnion = smallerUnion ? App.foldAnalysisUnion([smallerUnion, tierUnion]) : tierUnion;
     });
     return features;
+  }
+
+  // Outline geometry by mode. "bands" is the per-point ring set unchanged;
+  // "none" is empty rather than hiding the layer (the Layers panel owns
+  // visibility).
+  function outlineFeaturesFor(mode, perBand, entries) {
+    if (mode === "none") return [];
+    if (mode === "tiers") {
+      return buildTierUnions(entries).map(function (t) {
+        return { type: "Feature", properties: { minutes: t.minutes, bandIdx: t.tierIdx }, geometry: t.union.geometry };
+      });
+    }
+    if (mode === "outer") {
+      var polys = [], maxIdx = 0, maxMin = 0;
+      entries.forEach(function (e) {
+        if (!e || e.failed) return;
+        var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+        for (var i = bands.length - 1; i >= 0; i--) {
+          if (!bands[i].polygon) continue;
+          polys.push(bands[i].polygon);
+          if (i > maxIdx) maxIdx = i;
+          if (bands[i].minutes > maxMin) maxMin = bands[i].minutes;
+          break;
+        }
+      });
+      var u = polys.length ? App.foldAnalysisUnion(polys) : null;
+      return u ? [{ type: "Feature", properties: { minutes: maxMin, bandIdx: maxIdx }, geometry: u.geometry }] : [];
+    }
+    return perBand;
   }
 
   function renderWalkshedLayers(entries) {
@@ -494,14 +580,14 @@
 
     var fillFeatures = flattenEnabled() ? buildFlattenedFillFeatures(entries) : outlineFeatures;
     var fillFc = { type: "FeatureCollection", features: fillFeatures };
-    var lineFc = { type: "FeatureCollection", features: outlineFeatures };
+    var lineFc = { type: "FeatureCollection", features: outlineFeaturesFor(shedStyle().outline, outlineFeatures, entries) };
     var segFc  = { type: "FeatureCollection", features: segFeatures };
 
     if (!map.getSource(WS_FILL_SRC)) {
       map.addSource(WS_FILL_SRC, { type: "geojson", data: fillFc });
       map.addLayer({
         id: WS_FILL_LAYER, type: "fill", source: WS_FILL_SRC,
-        paint: { "fill-color": bandColorExpr(), "fill-opacity": 0.30 }
+        paint: { "fill-color": bandColorExpr("fill"), "fill-opacity": 0.30 }
       });
     } else {
       map.getSource(WS_FILL_SRC).setData(fillFc);
@@ -513,7 +599,7 @@
       map.addLayer({
         id: WS_LINE_LAYER, type: "line", source: WS_LINE_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": bandColorExpr(), "line-width": initialOutline.width, "line-opacity": initialOutline.opacity }
+        paint: { "line-color": bandColorExpr("line"), "line-width": initialOutline.width, "line-opacity": initialOutline.opacity }
       });
     } else {
       map.getSource(WS_LINE_SRC).setData(lineFc);
@@ -544,7 +630,7 @@
   function clearWalkshedLayers() {
     var map = App.map;
     if (!map) return;
-    [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
+    [WS_SEG_LAYER, WS_GLOW_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
