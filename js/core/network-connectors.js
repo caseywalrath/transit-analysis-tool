@@ -32,11 +32,15 @@
 
   // Boundary shape for walk polygons, shared by Walkshed and Transit Travelshed
   // like the crossing delays. method "classic" = the original concave hull;
-  // "smoothed" = hull + WalkShape.refine. Units are the honest ones (acres, ft);
+  // "smoothed" = hull + WalkShape.refine; "contour" = travel-time grid traced
+  // at each budget (WalkShape.contour), whose edge rounding reuses offStreetFt
+  // (330 ft rounding is what removes the per-street-end scallops; a separate
+  // rounding field would invite them back). Units are the honest ones (acres, ft);
   // the engine gets km via App.walkShapeFor(). A FRESH session defaults to
   // "smoothed"; cache.js sets "classic" for a restored session that predates
   // this field so old studies keep their exact polygons.
-  var WALK_SHAPE_DEFAULT = { method: "smoothed", holeAcres: 10, roundFt: 150 };
+  var WALK_SHAPE_DEFAULT = { method: "smoothed", holeAcres: 10, roundFt: 150, gridFt: 80, offStreetFt: 330 };
+  var SHAPE_METHODS = ["classic", "smoothed", "contour"];
   App.walkShapeDefaults = function () { return JSON.parse(JSON.stringify(WALK_SHAPE_DEFAULT)); };
   if (!App.networkSettings.walkShape) App.networkSettings.walkShape = App.walkShapeDefaults();
 
@@ -44,15 +48,20 @@
   // App.computeWalkshed / App.polygonizeNodeSet.
   App.walkShapeFor = function () {
     var ws = App.networkSettings.walkShape || {};
-    return { method: ws.method === "smoothed" ? "smoothed" : "classic",
-             holeAcres: +ws.holeAcres || 0, roundKm: (+ws.roundFt || 0) * 0.0003048 };
+    var method = SHAPE_METHODS.indexOf(ws.method) !== -1 ? ws.method : "classic";
+    var offKm = (+ws.offStreetFt || 330) * 0.0003048;
+    return { method: method, holeAcres: +ws.holeAcres || 0,
+             roundKm: method === "contour" ? offKm : (+ws.roundFt || 0) * 0.0003048,
+             gridKm: (+ws.gridFt || 80) * 0.0003048, offStreetKm: offKm };
   };
 
   // Cache-key suffix. EMPTY for classic so classic keys stay byte-identical to
   // pre-shape sessions (no spurious stale on upgrade).
   App.walkShapeSignature = function () {
     var ws = App.networkSettings.walkShape || {};
-    return ws.method === "smoothed" ? "|smoothed:" + (+ws.holeAcres || 0) + ":" + (+ws.roundFt || 0) : "";
+    if (ws.method === "smoothed") return "|smoothed:" + (+ws.holeAcres || 0) + ":" + (+ws.roundFt || 0);
+    if (ws.method === "contour") return "|contour:" + (+ws.holeAcres || 0) + ":" + (+ws.gridFt || 80) + ":" + (+ws.offStreetFt || 330);
+    return "";
   };
 
   // Modules register a callback so a shape change marks BOTH stale, whichever
@@ -61,7 +70,9 @@
   App.onWalkShapeChange = function (fn) { _shapeListeners.push(fn); };
   App.setWalkShape = function (patch) {
     var ws = App.networkSettings.walkShape = Object.assign({}, App.networkSettings.walkShape || App.walkShapeDefaults());
-    if (patch.method === "classic" || patch.method === "smoothed") ws.method = patch.method;
+    if (SHAPE_METHODS.indexOf(patch.method) !== -1) ws.method = patch.method;
+    if (patch.gridFt != null && +patch.gridFt >= 30 && +patch.gridFt <= 500) ws.gridFt = +patch.gridFt;
+    if (patch.offStreetFt != null && +patch.offStreetFt > 0) ws.offStreetFt = +patch.offStreetFt;
     if (patch.holeAcres != null && +patch.holeAcres >= 0) ws.holeAcres = +patch.holeAcres;
     if (patch.roundFt != null && +patch.roundFt >= 0) ws.roundFt = +patch.roundFt;
     if (App.cache && App.cache.save) App.cache.save();
@@ -83,6 +94,9 @@
     if (m) m.value = ws.method;
     if (h) h.value = ws.holeAcres;
     if (r) r.value = ws.roundFt;
+    var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (gEl) gEl.value = ws.gridFt;
+    if (oEl) oEl.value = ws.offStreetFt;
     Array.prototype.forEach.call(document.querySelectorAll('[data-shape-for="' + pfx + '"][data-shape-method]'), function (el) {
       el.style.display = el.getAttribute("data-shape-method").split(" ").indexOf(ws.method) !== -1 ? "" : "none";
     });
@@ -94,6 +108,9 @@
     if (m) m.addEventListener("change", function () { App.setWalkShape({ method: m.value }); App.syncWalkShapeInputs(pfx); });
     if (h) h.addEventListener("change", function () { App.setWalkShape({ holeAcres: h.value }); });
     if (r) r.addEventListener("change", function () { App.setWalkShape({ roundFt: r.value }); });
+    var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (gEl) gEl.addEventListener("change", function () { App.setWalkShape({ gridFt: gEl.value }); App.syncWalkShapeInputs(pfx); });
+    if (oEl) oEl.addEventListener("change", function () { App.setWalkShape({ offStreetFt: oEl.value }); });
     var b = document.getElementById(pfx + "ShapeInfoBtn"), t = document.getElementById(pfx + "ShapeInfoText");
     if (b && t) b.addEventListener("click", function (e) { e.preventDefault(); t.style.display = (t.style.display === "none") ? "" : "none"; });
   };

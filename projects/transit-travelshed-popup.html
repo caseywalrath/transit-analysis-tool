@@ -42,10 +42,15 @@
         <select id="tsShapeMethod" class="rf-select">
           <option value="smoothed">Smoothed</option>
           <option value="classic">Classic hull</option>
+          <option value="contour">Contour</option>
         </select>
         <div id="tsShapeInfoText" class="tiny rf-info-box" style="display:none;margin-top:6px;">
           <p><strong>Smoothed:</strong> fills small gaps and rounds the edge; recommended.</p>
-          <p><strong>Classic hull:</strong> the original method; tune Hull detail. Shared with Walkshed.</p>
+          <p><strong>Classic hull:</strong> the original method; tune Hull detail.</p>
+          <p><strong>Contour:</strong> traces walk time everywhere near the streets, so the edge runs partway down
+            the last block. The most realistic edge; areas come out larger than the hull methods and it is slower
+            to calculate.</p>
+          <p>Shared with Walkshed.</p>
         </div>
       </div>
 
@@ -127,7 +132,7 @@
         </p>
         </div>
 
-        <div class="form-field u-mt-2" data-shape-for="ts" data-shape-method="smoothed">
+        <div class="form-field u-mt-2" data-shape-for="ts" data-shape-method="smoothed contour">
           <label class="tiny">Fill holes smaller than (acres)</label>
           <input type="number" id="tsHoleAcres" class="rf-number-input" min="0" max="1000" step="1" value="10">
         </div>
@@ -138,6 +143,19 @@
         <p class="tiny u-mt-1 u-muted" data-shape-for="ts" data-shape-method="smoothed">
           Smoothed shape only: interior gaps below the size limit are filled (a lake stays), and notches
           narrower than about twice the rounding distance are closed. Shared with Walkshed.
+        </p>
+        <div class="form-field u-mt-2" data-shape-for="ts" data-shape-method="contour">
+          <label class="tiny">Grid detail (ft)</label>
+          <input type="number" id="tsGridFt" class="rf-number-input" min="30" max="500" step="10" value="80">
+        </div>
+        <div class="form-field u-mt-2" data-shape-for="ts" data-shape-method="contour">
+          <label class="tiny">Off-street reach (ft)</label>
+          <input type="number" id="tsOffStreetFt" class="rf-number-input" min="50" max="2000" step="10" value="330">
+        </div>
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ts" data-shape-method="contour">
+          Contour shape only: how far beyond a street the area may extend (also the edge-rounding distance), and the
+          spacing of the travel-time grid. A smaller grid is sharper but slower; very large areas coarsen it
+          automatically. Shared with Walkshed.
         </p>
         <div class="form-field u-mt-2">
           <label class="tiny">Connector snap tolerance (ft)</label>

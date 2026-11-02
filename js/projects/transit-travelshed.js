@@ -932,6 +932,11 @@
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
       "</p>" +
+      // Contour grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
+      ((result.contourGridKm && result.contourGridAskedKm && result.contourGridKm > result.contourGridAskedKm * 1.001)
+        ? '<p class="tiny" id="tsGridNote" style="margin-top:2px;color:var(--muted);">Grid coarsened to ' +
+          Math.round(result.contourGridKm * FT_PER_KM) + " ft for this size.</p>"
+        : "") +
       connectionReportHTML() +
       coverageReportHTML();
   }
@@ -1229,7 +1234,25 @@
       var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "classic" };
       var polys = [];
       var clustersSinceYield = 0;
-      for (var bi = 0; bi < budgets.length; bi++) {
+      var contourGridKm = null;
+      if (shapeOpt.method === "contour" && window.WalkShape && window.WalkShape.contour && App.contourSamples) {
+        // One travel-time surface from the engine's per-node arrival minutes
+        // (already the fastest path, with access/egress walk caps applied).
+        // Only segments with BOTH ends reached are sampled: extending past a
+        // node that sits at a walk cap would walk beyond the cap. Disjoint
+        // clusters stay disjoint because grid points beyond offStreetKm of
+        // every sample are unreachable.
+        var cRes = window.WalkShape.contour(
+          App.contourSamples(engineResult.nodeTimes, maxBudgetMin, shapeOpt.gridKm, walkMinPerKm, false),
+          budgets,
+          { gridKm: shapeOpt.gridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
+            holeAcres: shapeOpt.holeAcres, roundKm: shapeOpt.roundKm });
+        contourGridKm = cRes.gridKmUsed;
+        budgets.forEach(function (B, k) {
+          polys.push({ budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length });
+        });
+      }
+      for (var bi = 0; contourGridKm == null && bi < budgets.length; bi++) {
         var B = budgets[bi];
         var clusterPolys = [];
 
@@ -1304,7 +1327,9 @@
         resolved: resolved,
         offNetworkStopCount: offNetworkStopCount,
         floodStats: floodStats,
-        computeMs: Date.now() - t0
+        computeMs: Date.now() - t0,
+        contourGridKm: contourGridKm,               // null unless the Contour shape ran
+        contourGridAskedKm: shapeOpt.gridKm || null
       };
       _stale = false;
 

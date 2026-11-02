@@ -215,7 +215,8 @@
       reachableCount:    bands[0].nodeCount,
       area:              bands[0].area,   // m²
       bands:             bands,           // ascending, one entry per active budget
-      computeMs:         res.computeMs,
+      computeMs:         res.computeMs + (res.shapeMs || 0), // contour tracing is the slow part, so count it
+      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // contour only; > requested = coarsened
       minutes:           bands[0].minutes,
       name:              pf.properties.name,
       pointIdx:          pIdx,
@@ -647,6 +648,17 @@
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
+  // Muted line when a Contour run had to coarsen its grid to stay within the
+  // cell cap (very large budgets). Reports the coarsest grid any point used.
+  function gridNoteHtml() {
+    var asked = (App.walkShapeFor ? App.walkShapeFor() : {}).gridKm || 0;
+    var used = 0;
+    _lastEntries.forEach(function (e) { if (e && !e.failed && e.gridKmUsed > used) used = e.gridKmUsed; });
+    if (!(used > asked * 1.001)) return "";
+    return '<p class="tiny u-muted u-mt-1" id="wsGridNote">Grid coarsened to ' +
+      Math.round(used * FT_PER_KM) + " ft for this size.</p>";
+  }
+
   // ---- "Previous shape" comparison ----
 
   function shapeRunSig() {
@@ -654,8 +666,8 @@
       "|edge:" + _settings.maxEdge;
   }
   function shapeLabel() {
-    return (App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method === "smoothed")
-      ? "Smoothed" : "Classic hull";
+    var m = App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method;
+    return m === "smoothed" ? "Smoothed" : m === "contour" ? "Contour" : "Classic hull";
   }
 
   // Each point's largest-band polygon, as outline features.
@@ -843,7 +855,7 @@
     host.innerHTML =
       '<table class="ws-table"><thead><tr>' +
       "<th>Point</th><th>Band</th><th>Walkshed area</th><th>Nodes</th><th>Time</th>" +
-      "</tr></thead><tbody>" + rows + "</tbody></table>";
+      "</tr></thead><tbody>" + rows + "</tbody></table>" + gridNoteHtml();
 
     renderConnectionReport();
     renderCoverageReport();

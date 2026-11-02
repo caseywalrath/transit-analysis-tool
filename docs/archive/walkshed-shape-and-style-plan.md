@@ -1,6 +1,14 @@
 # Walkshed Shape & Style Plan
 
-Status: **proposed**. Covers the Walkshed module (`js/projects/walkshed.js`) and,
+Status: **done — all three phases shipped; archived.** Deviations from the text below, decided during the
+work: Smoothed densifies hull edges before Chaikin smoothing (without it a rectangle lost ~16% of its area);
+Contour finishes each band with the Smoothed-style rounding at the off-street reach distance (330 ft) instead of
+one Chaikin pass, because extra passes do not remove the per-street-end scallops (spike mock-ups showed 150 ft
+reach turns every block into a hole and 1–6 passes look identical); Transit Travelshed's contour samples only
+segments with both ends reached, so the walk caps hold. Current behavior lives in `docs/reference/road-network.md`
+and the walkshed / transit-travelshed module docs.
+
+Original status: proposed. Covers the Walkshed module (`js/projects/walkshed.js`) and,
 because both modules share one polygon builder, Transit Travelshed
 (`js/projects/transit-travelshed.js`).
 
