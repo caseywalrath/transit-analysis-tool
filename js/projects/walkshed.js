@@ -131,7 +131,7 @@
     var crossMajor = (App.networkSettings && App.networkSettings.crossingMajorSec) || 0;
     var crossMinor = (App.networkSettings && App.networkSettings.crossingMinorSec) || 0;
     return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|") +
-      (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : ""); // "" for classic: key unchanged
+      (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : ""); // "" for simplified: key unchanged
   }
 
   // Builds { major, minor } crossing-penalty km values from the global
@@ -216,7 +216,8 @@
       area:              bands[0].area,   // m²
       bands:             bands,           // ascending, one entry per active budget
       computeMs:         res.computeMs + (res.shapeMs || 0), // contour tracing is the slow part, so count it
-      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // contour only; > requested = coarsened
+      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // contour only; > planned = hit the cell cap
+      gridKmPlanned:     res.gridKmPlanned != null ? res.gridKmPlanned : null,
       minutes:           bands[0].minutes,
       name:              pf.properties.name,
       pointIdx:          pIdx,
@@ -651,10 +652,15 @@
   // Muted line when a Contour run had to coarsen its grid to stay within the
   // cell cap (very large budgets). Reports the coarsest grid any point used.
   function gridNoteHtml() {
-    var asked = (App.walkShapeFor ? App.walkShapeFor() : {}).gridKm || 0;
-    var used = 0;
-    _lastEntries.forEach(function (e) { if (e && !e.failed && e.gridKmUsed > used) used = e.gridKmUsed; });
-    if (!(used > asked * 1.001)) return "";
+    // Only cell-cap coarsening is reported; the planned per-budget scaling is
+    // routine and documented, not a surprise worth a line.
+    var used = 0, capped = false;
+    _lastEntries.forEach(function (e) {
+      if (!e || e.failed || !e.gridKmUsed) return;
+      if (e.gridKmUsed > used) used = e.gridKmUsed;
+      if (e.gridKmPlanned && e.gridKmUsed > e.gridKmPlanned * 1.001) capped = true;
+    });
+    if (!capped) return "";
     return '<p class="tiny u-muted u-mt-1" id="wsGridNote">Grid coarsened to ' +
       Math.round(used * FT_PER_KM) + " ft for this size.</p>";
   }
@@ -667,7 +673,7 @@
   }
   function shapeLabel() {
     var m = App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method;
-    return m === "smoothed" ? "Smoothed" : m === "contour" ? "Contour" : "Classic hull";
+    return m === "smoothed" ? "Smoothed" : m === "contour" ? "Contour" : "Simplified";
   }
 
   // Each point's largest-band polygon, as outline features.
@@ -1021,11 +1027,30 @@
     setStatus("Calculating walksheds…", "running");
     var sigBefore = walkshedSignature();
 
-    // Yield once so the "Calculating…" pill paints before the (blocking) flood.
-    setTimeout(function () {
+    // One point per tick, yielding between points, so the page stays responsive
+    // and the status shows progress on many-point runs (Contour is the slow case).
+    var entries = [];
+    function computeNext(i) {
       try {
-        var entries = [];
-        targets.forEach(function (pf) { entries.push(computeForPoint(pf)); });
+        if (i < targets.length) {
+          entries.push(computeForPoint(targets[i]));
+          if (targets.length > 1 && i + 1 < targets.length) {
+            setStatus("Calculating walksheds\u2026 " + (i + 1) + " of " + targets.length + " done", "running");
+          }
+          setTimeout(function () { computeNext(i + 1); }, 0);
+          return;
+        }
+      } catch (err) {
+        _running = false;
+        setStatus("Walkshed calculation failed: " + (err && err.message ? err.message : err), "error");
+        return;
+      }
+      finishRun();
+    }
+    setTimeout(function () { computeNext(0); }, 20);
+
+    function finishRun() {
+      try {
         var prevEntries = _lastEntries, prevSig = _lastRunSig, prevLabel = _lastRunLabel;
         _lastEntries = entries;
         _lastRunSig = shapeRunSig();
@@ -1080,7 +1105,7 @@
       } finally {
         _running = false;
       }
-    }, 20);
+    }
   }
 
   // Flag the successfully-computed target points as walkshed study areas and

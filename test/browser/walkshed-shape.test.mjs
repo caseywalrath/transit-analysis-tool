@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // test/browser/walkshed-shape.test.mjs
 //
-// Boundary-shape ("Classic hull" vs "Smoothed") behavior: WalkShape.refine via
+// Boundary-shape ("Simplified" vs "Smoothed") behavior: WalkShape.refine via
 // App.polygonizeNodeSet, session migration (a restored session lacking
-// networkWalkShape must come back "classic" with an UNCHANGED walkshed cache
+// networkWalkShape must come back "simplified" with an UNCHANGED walkshed cache
 // key), stale marking on a method change, and the "previous shape" comparison
 // overlay in Walkshed.
 //
@@ -92,27 +92,27 @@ function check(name, pass, detail) {
       const cases = { small: (i, j) => i === 20 && j === 20, lake: (i, j) => i >= 14 && i <= 24 && j >= 14 && j <= 24 };
       for (const k in cases) {
         const c = grid(cases[k]);
-        const classic = App.polygonizeNodeSet(c, 0.15);
-        const classic2 = App.polygonizeNodeSet(c, 0.15, { method: "classic" });
+        const simplified = App.polygonizeNodeSet(c, 0.15);
+        const simplified2 = App.polygonizeNodeSet(c, 0.15, { method: "simplified" });
         const t0 = performance.now();
         const sm = App.polygonizeNodeSet(c, 0.15, shape);
         const ms = performance.now() - t0;
         out[k] = {
-          classicIdentical: JSON.stringify(classic) === JSON.stringify(classic2),
-          classicHoles: holes(classic).length, smoothHoles: holes(sm).length,
-          areaRatio: turf.area(sm) / turf.area(classic), verts: verts(sm), ms,
+          simplifiedIdentical: JSON.stringify(simplified) === JSON.stringify(simplified2),
+          simplifiedHoles: holes(simplified).length, smoothHoles: holes(sm).length,
+          areaRatio: turf.area(sm) / turf.area(simplified), verts: verts(sm), ms,
           kinks: turf.kinks(sm).features.length
         };
       }
       return out;
     });
-    check("classic shape argument is byte-identical to no shape (both grids)",
-      eng.small.classicIdentical && eng.lake.classicIdentical, JSON.stringify(eng));
-    check("classic hull has the holes (small 5-acre gap and lake)", eng.small.classicHoles === 1 && eng.lake.classicHoles === 1);
+    check("simplified shape argument is byte-identical to no shape (both grids)",
+      eng.small.simplifiedIdentical && eng.lake.simplifiedIdentical, JSON.stringify(eng));
+    check("simplified hull has the holes (small 5-acre gap and lake)", eng.small.simplifiedHoles === 1 && eng.lake.simplifiedHoles === 1);
     check("smoothed fills the small hole", eng.small.smoothHoles === 0, JSON.stringify(eng.small));
     check("smoothed keeps the lake hole", eng.lake.smoothHoles === 1, JSON.stringify(eng.lake));
     check("smoothed has no self-intersections", eng.small.kinks === 0 && eng.lake.kinks === 0);
-    check("smoothed area within +/-12% of classic",
+    check("smoothed area within +/-12% of simplified",
       [eng.small, eng.lake].every((e) => Math.abs(e.areaRatio - 1) <= 0.12),
       eng.small.areaRatio.toFixed(3) + " / " + eng.lake.areaRatio.toFixed(3));
     check("smoothed vertex count under 5,000", eng.small.verts < 5000 && eng.lake.verts < 5000);
@@ -131,14 +131,14 @@ function check(name, pass, detail) {
     await page.evaluate(() => App.openModulePopup("walkshed"));
     await page.locator("#module-popup").waitFor({ state: "visible", timeout: 10000 });
 
-    // computeWalkshed without a shape equals classic shape, deep-equal
+    // computeWalkshed without a shape equals simplified shape, deep-equal
     const same = await page.evaluate(() => {
       const c = [-104.995 + 0.005 * 6.4, 39.735 + 0.005 * 6];
       const a = App.computeWalkshed(c, 1.25, { maxEdge: 0.3, budgetsKm: [0.6, 1.25] });
-      const b = App.computeWalkshed(c, 1.25, { maxEdge: 0.3, budgetsKm: [0.6, 1.25], shape: { method: "classic" } });
+      const b = App.computeWalkshed(c, 1.25, { maxEdge: 0.3, budgetsKm: [0.6, 1.25], shape: { method: "simplified" } });
       return JSON.stringify(a.polygons.map((p) => p.polygon)) === JSON.stringify(b.polygons.map((p) => p.polygon));
     });
-    check("computeWalkshed: no shape and classic shape give identical polygons", same);
+    check("computeWalkshed: no shape and simplified shape give identical polygons", same);
 
     // ---- UI: the selector exists and drives App.networkSettings ----
     const ui = await page.evaluate(() => ({
@@ -147,7 +147,7 @@ function check(name, pass, detail) {
     }));
     check("Walkshed panel shows Smoothed selected by default", ui.method === "smoothed", JSON.stringify(ui));
 
-    // ---- Run with Smoothed first, then switch to Classic: comparison overlay ----
+    // ---- Run with Smoothed first, then switch to Simplified: comparison overlay ----
     const run = async () => {
       if (!(await page.locator("#wsComputeBtn").isVisible())) await page.locator(".module-inputs-header").first().click();
       await page.evaluate(() => { window.__ran = 0; const s = App.map.getSource("walkshed-src"); const o = s.setData.bind(s); s.setData = (d) => { window.__ran++; return o(d); }; });
@@ -166,10 +166,10 @@ function check(name, pass, detail) {
 
     // Method change marks Walkshed stale (and fires the shared listener list).
     await page.evaluate(() => { window.__shapeFired = 0; App.onWalkShapeChange(() => { window.__shapeFired++; }); });
-    await page.evaluate(() => App.setWalkShape({ method: "classic" }));
+    await page.evaluate(() => App.setWalkShape({ method: "simplified" }));
     check("method change notifies both modules' listeners", (await page.evaluate(() => window.__shapeFired)) === 1);
     check("method change marks Walkshed stale", await page.evaluate(() => !!document.querySelector("#wsStatus.rf-status-stale")));
-    check("settings key suffix is empty for classic", await page.evaluate(() => App.walkShapeSignature() === ""));
+    check("settings key suffix is empty for simplified", await page.evaluate(() => App.walkShapeSignature() === ""));
 
     await run();
     const cmp = await page.evaluate(() => ({
@@ -180,7 +180,7 @@ function check(name, pass, detail) {
       label: document.getElementById("wsPrevShapeLabel").textContent,
       note: document.getElementById("wsPrevShapeNote").textContent
     }));
-    check("Smoothed -> Classic run draws the previous-shape line, one feature per point",
+    check("Smoothed -> Simplified run draws the previous-shape line, one feature per point",
       cmp.layer && cmp.feats === 2 && JSON.stringify(cmp.dash) === "[2,2]", JSON.stringify(cmp));
     check("comparison checkbox and area note are visible",
       cmp.shown && cmp.label === "Show previous shape (Smoothed)" &&
@@ -193,13 +193,13 @@ function check(name, pass, detail) {
     check("re-running with the same shape clears the comparison",
       await page.evaluate(() => !App.map.getLayer("walkshed-prev-line") && document.getElementById("wsPrevShape").style.display === "none"));
 
-    // Back to Smoothed via the panel select -> comparison against Classic.
+    // Back to Smoothed via the panel select -> comparison against Simplified.
     if (!(await page.locator("#wsShapeMethod").isVisible())) await page.locator(".module-inputs-header").first().click();
     await page.locator("#wsShapeMethod").selectOption("smoothed");
     await run();
-    check("Classic -> Smoothed run shows the comparison again",
+    check("Simplified -> Smoothed run shows the comparison again",
       await page.evaluate(() => !!App.map.getLayer("walkshed-prev-line") &&
-        document.getElementById("wsPrevShapeLabel").textContent === "Show previous shape (Classic hull)"));
+        document.getElementById("wsPrevShapeLabel").textContent === "Show previous shape (Simplified)"));
     await page.locator("#wsPrevShapeToggle").uncheck();
     check("unchecking hides the dashed line",
       (await page.evaluate(() => App.map.getLayoutProperty("walkshed-prev-line", "visibility"))) === "none");
@@ -221,7 +221,7 @@ function check(name, pass, detail) {
     // ---- Persistence + migration ----
     await page.evaluate(() => App.setWalkShape({ holeAcres: 12, roundFt: 200 }));
     await page.waitForFunction(() => Object.keys(localStorage).some((k) => (localStorage.getItem(k) || "").includes('"holeAcres":12')), { timeout: 5000 });
-    await page.evaluate(() => { App.networkSettings.walkShape = { method: "classic", holeAcres: 1, roundFt: 1 }; App.cache.restore(); });
+    await page.evaluate(() => { App.networkSettings.walkShape = { method: "simplified", holeAcres: 1, roundFt: 1 }; App.cache.restore(); });
     check("saved shape settings restore", await page.evaluate(() =>
       App.networkSettings.walkShape.method === "smoothed" && App.networkSettings.walkShape.holeAcres === 12 && App.networkSettings.walkShape.roundFt === 200));
     // Strip the field to emulate a session saved before this feature.
@@ -233,8 +233,8 @@ function check(name, pass, detail) {
       App.networkSettings.walkShape = { method: "smoothed", holeAcres: 10, roundFt: 150 };
       App.cache.restore();
     });
-    check("a restored session lacking networkWalkShape comes back classic",
-      await page.evaluate(() => App.networkSettings.walkShape.method === "classic" && App.walkShapeSignature() === ""));
+    check("a restored session lacking networkWalkShape comes back simplified",
+      await page.evaluate(() => App.networkSettings.walkShape.method === "simplified" && App.walkShapeSignature() === ""));
 
     // ---- Clear results removes the overlay too ----
     // Different parameters than the last run (same method) also count as a change.

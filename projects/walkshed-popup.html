@@ -32,12 +32,12 @@
         </label>
         <select id="wsShapeMethod" class="rf-select">
           <option value="smoothed">Smoothed</option>
-          <option value="classic">Classic hull</option>
+          <option value="simplified">Simplified</option>
           <option value="contour">Contour</option>
         </select>
         <div id="wsShapeInfoText" class="tiny rf-info-box" style="display:none;margin-top:6px;">
           <p><strong>Smoothed:</strong> fills small gaps and rounds the edge; recommended.</p>
-          <p><strong>Classic hull:</strong> the original method; tune Hull detail.</p>
+          <p><strong>Simplified:</strong> a concave hull around the reached intersections; fastest. Tune Hull detail.</p>
           <p><strong>Contour:</strong> traces walk time everywhere near the streets, so the edge runs partway down
             the last block. The most realistic edge; areas come out larger than the hull methods and it is slower
             to calculate.</p>
@@ -49,11 +49,11 @@
 
       <details class="u-mt-3 data-input-group" data-input-group="advanced">
         <summary class="tiny u-muted ws-advanced-summary">Advanced Settings</summary>
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="classic smoothed">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="simplified smoothed">
           <label class="tiny">Hull detail — max edge (ft)</label>
           <input type="number" id="wsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
         </div>
-        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="classic smoothed">
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="simplified smoothed">
           Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
         </p>
 

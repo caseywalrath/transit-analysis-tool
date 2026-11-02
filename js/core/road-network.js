@@ -1019,7 +1019,7 @@
   // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
   // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
   // `shape` (optional {method, holeAcres, roundKm}): method "smoothed" runs the
-  // hull through WalkShape.refine; absent/"classic" returns the hull exactly as
+  // hull through WalkShape.refine; absent/"simplified" returns the hull exactly as
   // before (byte-identical).
   function refineHull(hull, shape) {
     if (hull && shape && shape.method === "smoothed" && window.WalkShape) {
@@ -1222,13 +1222,16 @@
       var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
       var cBudgets = (options.budgetsKm && options.budgetsKm.length) ? options.budgetsKm.slice() : [];
       if (cBudgets.indexOf(budgetKm) === -1) cBudgets.push(budgetKm);
+      // 1.25 km = 15 min at the default 3.1 mph walk speed.
+      var cGridKm = window.WalkShape.scaledGridKm(shape.gridKm, Math.max.apply(null, cBudgets) / 1.25);
       var cRes = window.WalkShape.contour(
-        contourSamples(distMap, budgetKm, shape.gridKm, 1, true), cBudgets,
-        { gridKm: shape.gridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
+        contourSamples(distMap, budgetKm, cGridKm * window.WalkShape.SAMPLE_STEP_CELLS, 1, true), cBudgets,
+        { gridKm: cGridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
           holeAcres: shape.holeAcres, roundKm: shape.roundKm });
       contourBands = {};
       cBudgets.forEach(function (b, k) { contourBands[b] = cRes.bands[k]; });
       gridKmUsed = cRes.gridKmUsed;
+      var gridKmPlanned = cRes.gridKmPlanned;
       shapeMs = Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - tc0);
     }
     function bandPolygon(b, bandCoords) {
@@ -1247,7 +1250,7 @@
       floodMs: flood.floodMs
     };
 
-    if (gridKmUsed != null) { result.gridKmUsed = gridKmUsed; result.shapeMs = shapeMs; }
+    if (gridKmUsed != null) { result.gridKmUsed = gridKmUsed; result.gridKmPlanned = gridKmPlanned; result.shapeMs = shapeMs; }
 
     if (options.budgetsKm && options.budgetsKm.length) {
       var polygons = [];

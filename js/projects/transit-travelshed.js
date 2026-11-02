@@ -1231,10 +1231,10 @@
       // are large and overlap heavily, but the union is still correct.
       var walkMinPerKm = 60 / walkSpeedKmh;
       var originNodeKeys = Object.keys(originCost);
-      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "classic" };
+      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "simplified" };
       var polys = [];
       var clustersSinceYield = 0;
-      var contourGridKm = null;
+      var contourGridKm = null, contourGridPlannedKm = null;
       if (shapeOpt.method === "contour" && window.WalkShape && window.WalkShape.contour && App.contourSamples) {
         // One travel-time surface from the engine's per-node arrival minutes
         // (already the fastest path, with access/egress walk caps applied).
@@ -1242,12 +1242,14 @@
         // node that sits at a walk cap would walk beyond the cap. Disjoint
         // clusters stay disjoint because grid points beyond offStreetKm of
         // every sample are unreachable.
+        var tsGridKm = window.WalkShape.scaledGridKm(shapeOpt.gridKm, maxBudgetMin / 15);
         var cRes = window.WalkShape.contour(
-          App.contourSamples(engineResult.nodeTimes, maxBudgetMin, shapeOpt.gridKm, walkMinPerKm, false),
+          App.contourSamples(engineResult.nodeTimes, maxBudgetMin, tsGridKm * window.WalkShape.SAMPLE_STEP_CELLS, walkMinPerKm, false),
           budgets,
-          { gridKm: shapeOpt.gridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
+          { gridKm: tsGridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
             holeAcres: shapeOpt.holeAcres, roundKm: shapeOpt.roundKm });
         contourGridKm = cRes.gridKmUsed;
+        contourGridPlannedKm = cRes.gridKmPlanned;
         budgets.forEach(function (B, k) {
           polys.push({ budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length });
         });
@@ -1329,7 +1331,7 @@
         floodStats: floodStats,
         computeMs: Date.now() - t0,
         contourGridKm: contourGridKm,               // null unless the Contour shape ran
-        contourGridAskedKm: shapeOpt.gridKm || null
+        contourGridAskedKm: contourGridPlannedKm
       };
       _stale = false;
 

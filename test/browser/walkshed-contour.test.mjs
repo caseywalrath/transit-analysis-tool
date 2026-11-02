@@ -71,7 +71,7 @@ function check(name, pass, detail) {
       const t0 = performance.now();
       const c = App.computeWalkshed(origin, 2.5, { maxEdge: 0.3, budgetsKm: budgets, shape });
       const ms = performance.now() - t0;
-      const classic = App.computeWalkshed(origin, 2.5, { maxEdge: 0.3, budgetsKm: budgets });
+      const simplified = App.computeWalkshed(origin, 2.5, { maxEdge: 0.3, budgetsKm: budgets });
       const [inner, outer] = c.polygons.map((p) => p.polygon);
       let leak = null;
       try { const dd = turf.difference(inner, outer); leak = dd ? turf.area(dd) / turf.area(inner) : 0; } catch (e) { leak = "err " + e.message; }
@@ -87,15 +87,15 @@ function check(name, pass, detail) {
       const lakeC = [LNG0 + 15.5 * D, LAT0 + 19.5 * D], gapC = [LNG0 + 19 * D, LAT0 + 11 * D];
       return {
         ms, kinds: c.polygons.map((p) => p.polygon && p.polygon.geometry.type),
-        nodeCounts: c.polygons.map((p) => p.nodeCount), classicNodeCounts: classic.polygons.map((p) => p.nodeCount),
-        areas: c.polygons.map((p) => turf.area(p.polygon)), classicAreas: classic.polygons.map((p) => turf.area(p.polygon)),
+        nodeCounts: c.polygons.map((p) => p.nodeCount), simplifiedNodeCounts: simplified.polygons.map((p) => p.nodeCount),
+        areas: c.polygons.map((p) => turf.area(p.polygon)), simplifiedAreas: simplified.polygons.map((p) => turf.area(p.polygon)),
         leak, holes: holesOf(outer), kinks: [inner, outer].map((f) => turf.kinks(f).features.length),
-        far, limit: 2.5 + shape.offStreetKm, gridKmUsed: c.gridKmUsed, gridKm: shape.gridKm,
+        far, limit: 2.5 + shape.offStreetKm, gridKmUsed: c.gridKmUsed, gridKmPlanned: c.gridKmPlanned, gridKm: shape.gridKm,
         lakeOut: !turf.booleanPointInPolygon(lakeC, outer), gapIn: turf.booleanPointInPolygon(gapC, outer)
       };
     }, { LAT0, LNG0, D });
     check("contour bands are polygons", eng.kinds.every((k) => k === "Polygon" || k === "MultiPolygon"), JSON.stringify(eng.kinds));
-    check("node counts match the hull path (same flood)", JSON.stringify(eng.nodeCounts) === JSON.stringify(eng.classicNodeCounts));
+    check("node counts match the hull path (same flood)", JSON.stringify(eng.nodeCounts) === JSON.stringify(eng.simplifiedNodeCounts));
     check("nesting: 15-min band lies within the 30-min band (< 0.5% outside)",
       typeof eng.leak === "number" && eng.leak < 0.005, String(eng.leak));
     check("barrier: the lake stays a hole", eng.lakeOut && eng.holes.some((a) => a > 50), JSON.stringify(eng.holes.map(Math.round)));
@@ -103,10 +103,18 @@ function check(name, pass, detail) {
     check("no self-intersections", eng.kinks.every((k) => k === 0));
     check("off-street limit: no vertex beyond budget + reach from the origin",
       eng.far <= eng.limit, eng.far.toFixed(3) + " km <= " + eng.limit.toFixed(3));
-    check("partial edges: contour area >= classic area - 5% for each band",
-      eng.areas.every((a, k) => a >= eng.classicAreas[k] * 0.95),
-      eng.areas.map((a, k) => (a / eng.classicAreas[k]).toFixed(3)).join(" / "));
-    check("default 80 ft grid is not coarsened here", Math.abs(eng.gridKmUsed - eng.gridKm) < 1e-9);
+    check("partial edges: contour area >= simplified area - 5% for each band",
+      eng.areas.every((a, k) => a >= eng.simplifiedAreas[k] * 0.95),
+      eng.areas.map((a, k) => (a / eng.simplifiedAreas[k]).toFixed(3)).join(" / "));
+    check("30-min grid scales to 80 ft x sqrt(2) and is not cell-capped",
+      Math.abs(eng.gridKmPlanned - eng.gridKm * Math.SQRT2) < 1e-9 && Math.abs(eng.gridKmUsed - eng.gridKmPlanned) < 1e-9,
+      Math.round(eng.gridKmPlanned * 3280.84) + " ft planned, " + Math.round(eng.gridKmUsed * 3280.84) + " ft used");
+    const cap = await page.evaluate(() => {
+      const s = []; for (let i = 0; i < 40; i++) for (let j = 0; j < 40; j++) s.push([-105 + j * 0.002, 39.7 + i * 0.002, 0]);
+      const r = WalkShape.contour(s, [1], { gridKm: 0.004, offStreetKm: 0.1, costPerKm: 1, holeAcres: 10, roundKm: 0.1 });
+      return { used: r.gridKmUsed, planned: r.gridKmPlanned };
+    });
+    check("cell cap: a too-fine grid coarsens (gridKmUsed > gridKmPlanned)", cap.used > cap.planned * 1.2, JSON.stringify(cap));
     check("speed: under 600 ms per point", eng.ms < 600, Math.round(eng.ms) + " ms");
 
     // ---- Transit Travelshed path: minute costs, both-ends-only samples, two disjoint clusters ----
@@ -152,19 +160,29 @@ function check(name, pass, detail) {
       fields.grid && fields.off && fields.holes && !fields.hull && !fields.round, JSON.stringify(fields));
     check("contour cache-key signature", fields.sig === "|contour:10:80:330", fields.sig);
 
-    // A tiny grid on the 30-min budget exceeds the 250k-cell cap and coarsens.
-    await page.locator("#wsGridFt").fill("30");
-    await page.locator("#wsGridFt").dispatchEvent("change");
+    // Three points: the run computes one point per tick and reports progress.
+    await page.evaluate(() => {
+      App.addPoint(-105.02 + 0.002 * 12.3, 39.712 + 0.002 * 14.6);
+      App.addPoint(-105.02 + 0.002 * 18.3, 39.712 + 0.002 * 14.6);
+      window.__wsStatuses = [];
+      const el = document.getElementById("wsStatus");
+      new MutationObserver(() => window.__wsStatuses.push(el.textContent.trim())).observe(el, { childList: true, subtree: true, characterData: true });
+    });
     await page.locator("#wsMinutes").fill("15");
     await page.locator("#wsMinutes2").fill("30");
     await page.locator("#wsMinutes3").fill("");
+    await page.evaluate(() => App.notifyProject());
+    await page.waitForFunction(() => document.querySelectorAll("#wsPointList input[type=checkbox]:checked").length === 3, { timeout: 10000 });
     await page.locator("#wsComputeBtn").click();
     await page.waitForFunction(() => (document.getElementById("wsStatus") || {}).textContent.includes("Calculated"), { timeout: 30000 });
-    const note = await page.evaluate(() => (document.getElementById("wsGridNote") || {}).textContent || "");
-    check("forced 30 ft grid coarsens and the results say so", /^Grid coarsened to \d+ ft for this size\.$/.test(note), note);
+    const statuses = await page.evaluate(() => window.__wsStatuses);
+    check("multi-point run shows per-point progress", statuses.some((t) => /1 of 3 done/.test(t)) && statuses.some((t) => /2 of 3 done/.test(t)),
+      JSON.stringify(statuses.filter((t) => /of \d+ done/.test(t))));
+    check("budget-scaled grid alone does not show the 'coarsened' note",
+      await page.evaluate(() => !document.getElementById("wsGridNote")));
     check("module run produced contour bands", await page.evaluate(() => {
       const s = App.map.getSource("walkshed-src");
-      return !!(s && s._data && s._data.features.length === 2);
+      return !!(s && s._data && s._data.features.length === 6); // 3 points x 2 bands
     }));
 
     // ---- Transit Travelshed module, end to end: one route with all-day 10-min service ----
@@ -179,9 +197,9 @@ function check(name, pass, detail) {
       st.points = [];
       st.moduleState = st.moduleState || {};
       st.moduleState["transit-travelshed"] = { v: 2, origin: [LNG0 + 3 * D, row + 0.3 * D], budgets: [15, 30, null] };
-      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "classic" });
+      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "simplified" });
       App.cache.applyState(st);
-      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "classic" });
+      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "simplified" });
     }, { LAT0, LNG0, D });
     await page.evaluate(() => App.openModulePopup("transit-travelshed"));
     await page.locator("#tsRunBtn").waitFor({ state: "visible", timeout: 10000 });
@@ -194,7 +212,7 @@ function check(name, pass, detail) {
       await page.waitForFunction(() => !document.querySelector("#tsStatus.rf-status-running"), { timeout: 60000 });
       return page.evaluate(() => App.map.getSource("ts-travelshed")._data.features.map((f) => ({ band: f.properties.band, area: turf.area(f), type: f.geometry.type })));
     };
-    const tsClassic = await runTs();
+    const tsSimplified = await runTs();
     await page.evaluate(() => App.setWalkShape({ method: "contour" }));
     check("Transit Travelshed: shape change marks it stale",
       await page.evaluate(() => !!document.querySelector("#tsStatus.rf-status-stale")));
@@ -209,11 +227,11 @@ function check(name, pass, detail) {
       tsContour.length === 2 && tsContour.every((b) => b.area > 0), JSON.stringify(tsContour.map((b) => Math.round(b.area / 4046.86))));
     check("Transit Travelshed contour bands are nested (rings barely overlap)",
       typeof tsNest === "number" && tsNest < 0.005, String(tsNest));
-    check("Transit Travelshed contour is in the same range as Classic (0.8x-1.6x total area)", (() => {
+    check("Transit Travelshed contour is in the same range as Simplified (0.8x-1.6x total area)", (() => {
       const sum = (a) => a.reduce((t, b) => t + b.area, 0);
-      const r = sum(tsContour) / sum(tsClassic);
+      const r = sum(tsContour) / sum(tsSimplified);
       return r > 0.8 && r < 1.6;
-    })(), (tsContour.reduce((t, b) => t + b.area, 0) / tsClassic.reduce((t, b) => t + b.area, 0)).toFixed(3));
+    })(), (tsContour.reduce((t, b) => t + b.area, 0) / tsSimplified.reduce((t, b) => t + b.area, 0)).toFixed(3));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {

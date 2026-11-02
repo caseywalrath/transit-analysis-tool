@@ -31,16 +31,16 @@
   if (App.networkSettings.excludedWayIds == null) App.networkSettings.excludedWayIds = [];
 
   // Boundary shape for walk polygons, shared by Walkshed and Transit Travelshed
-  // like the crossing delays. method "classic" = the original concave hull;
+  // like the crossing delays. method "simplified" = the original concave hull;
   // "smoothed" = hull + WalkShape.refine; "contour" = travel-time grid traced
   // at each budget (WalkShape.contour), whose edge rounding reuses offStreetFt
   // (330 ft rounding is what removes the per-street-end scallops; a separate
   // rounding field would invite them back). Units are the honest ones (acres, ft);
   // the engine gets km via App.walkShapeFor(). A FRESH session defaults to
-  // "smoothed"; cache.js sets "classic" for a restored session that predates
+  // "smoothed"; cache.js sets "simplified" for a restored session that predates
   // this field so old studies keep their exact polygons.
   var WALK_SHAPE_DEFAULT = { method: "smoothed", holeAcres: 10, roundFt: 150, gridFt: 80, offStreetFt: 330 };
-  var SHAPE_METHODS = ["classic", "smoothed", "contour"];
+  var SHAPE_METHODS = ["simplified", "smoothed", "contour"];
   App.walkShapeDefaults = function () { return JSON.parse(JSON.stringify(WALK_SHAPE_DEFAULT)); };
   if (!App.networkSettings.walkShape) App.networkSettings.walkShape = App.walkShapeDefaults();
 
@@ -48,14 +48,14 @@
   // App.computeWalkshed / App.polygonizeNodeSet.
   App.walkShapeFor = function () {
     var ws = App.networkSettings.walkShape || {};
-    var method = SHAPE_METHODS.indexOf(ws.method) !== -1 ? ws.method : "classic";
+    var method = SHAPE_METHODS.indexOf(ws.method) !== -1 ? ws.method : "simplified";
     var offKm = (+ws.offStreetFt || 330) * 0.0003048;
     return { method: method, holeAcres: +ws.holeAcres || 0,
              roundKm: method === "contour" ? offKm : (+ws.roundFt || 0) * 0.0003048,
              gridKm: (+ws.gridFt || 80) * 0.0003048, offStreetKm: offKm };
   };
 
-  // Cache-key suffix. EMPTY for classic so classic keys stay byte-identical to
+  // Cache-key suffix. EMPTY for simplified so simplified keys stay byte-identical to
   // pre-shape sessions (no spurious stale on upgrade).
   App.walkShapeSignature = function () {
     var ws = App.networkSettings.walkShape || {};
@@ -83,7 +83,7 @@
 
   // Shared popup wiring for the Boundary-shape controls (ids <pfx>ShapeMethod,
   // <pfx>HoleAcres, <pfx>RoundFt, <pfx>ShapeInfoBtn/Text; fields tagged
-  // data-shape-method="classic smoothed"). Keeps Walkshed and Transit Travelshed
+  // data-shape-method="simplified smoothed"). Keeps Walkshed and Transit Travelshed
   // on one implementation. sync* reads App.networkSettings.walkShape into the
   // inputs and shows only the selected method's fields.
   App.syncWalkShapeInputs = function (pfx) {

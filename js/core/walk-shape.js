@@ -141,7 +141,7 @@
   // roundKm), then clipped to the next larger band so bands stay nested.
   function contour(samples, budgets, opts) {
     opts = opts || {};
-    var out = { bands: budgets.map(function () { return null; }), gridKmUsed: opts.gridKm };
+    var out = { bands: budgets.map(function () { return null; }), gridKmUsed: opts.gridKm, gridKmPlanned: opts.gridKm };
     if (!samples || !samples.length || !budgets.length || typeof turf === "undefined") return out;
     var gridKm = opts.gridKm > 0 ? opts.gridKm : 0.025;
     var reach = opts.offStreetKm > 0 ? opts.offStreetKm : 0.1;
@@ -202,10 +202,30 @@
       feats[g].properties.t = best;
     }
 
+    // ONE isobands pass for every budget: it returns one annulus per interval
+    // ([-1,b1], [b1,b2], ...), and each band is the running union of those.
+    // Separate per-budget passes each re-scanned the whole grid.
+    var sortedB = budgets.slice().sort(function (a, b) { return a - b; });
+    var cumulative = {};
+    try {
+      var bandsFc = turf.isobands(grid, [-1].concat(sortedB), { zProperty: "t" });
+      var running = null;
+      sortedB.forEach(function (b, k) {
+        var piece = bandsFc && bandsFc.features && bandsFc.features[k];
+        if (isAreal(piece)) {
+          if (!running) running = piece;
+          else {
+            try { running = turf.union(running, piece) || running; }
+            catch (e) { /* keep the smaller band rather than lose it */ }
+          }
+        }
+        cumulative[b] = running;
+      });
+    } catch (e) { /* every band stays null */ }
+
     var raw = budgets.map(function (b) {
       try {
-        var fc = turf.isobands(grid, [-1, b], { zProperty: "t" });
-        var f0 = fc && fc.features && fc.features[0];
+        var f0 = cumulative[b];
         if (!isAreal(f0)) return null;
         // Drop specks, merge into one (Multi)Polygon, fix ring winding.
         var polys = (f0.geometry.type === "Polygon") ? [f0.geometry.coordinates] : f0.geometry.coordinates;
@@ -237,5 +257,18 @@
     return out;
   }
 
-  window.WalkShape = { refine: refine, fillHoles: fillHoles, contour: contour };
+  // Grid spacing grows with the square root of the walk size: 15 min (ratio 1)
+  // keeps the set grid, 30 min ~1.4x, 60 min 2x. Bigger shapes are viewed
+  // farther out and the 330 ft edge rounding hides finer detail, while cell
+  // count (the cost) grows with area. ratio = maxBudget / the 15-min budget.
+  function scaledGridKm(gridKm, ratio) {
+    return gridKm * Math.max(1, Math.sqrt(ratio > 0 ? ratio : 1));
+  }
+
+  // Street samples every 2 grid cells: each sample already reaches offStreetKm
+  // in every direction, so denser samples only add lookups, not shape.
+  var SAMPLE_STEP_CELLS = 2;
+
+  window.WalkShape = { refine: refine, fillHoles: fillHoles, contour: contour,
+    scaledGridKm: scaledGridKm, SAMPLE_STEP_CELLS: SAMPLE_STEP_CELLS };
 })();
