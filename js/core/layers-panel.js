@@ -96,8 +96,7 @@
     { id: "rf-choropleth-fill", label: "Ridership Forecast", moduleId: "ridership-forecasting", styleKey: "rf",
       layers: [{ id: "rf-choropleth-fill", op: "fill-opacity" }, { id: "rf-choropleth-line", op: "line-opacity" }, { id: "rf-corridor-cdi-layer", op: "line-opacity" }] },
     { id: "ts-travelshed-fill", label: "Transit Travelshed", moduleId: "transit-travelshed", styleKey: "transit-travelshed",
-      layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-glow", op: "line-opacity" },
-               { id: "ts-travelshed-line", op: "line-opacity" }] },
+      layers: [{ id: "ts-travelshed-fill", op: "fill-opacity" }, { id: "ts-travelshed-line", op: "line-opacity" }] },
     // Entries only render when the layer is actually on the map (see
     // entryPresent), so listing them all is safe.
     { id: "transit-coverage-coverage-layer", label: "Transit Coverage", moduleId: "transit-coverage", styleKey: "transit-coverage",
@@ -106,7 +105,6 @@
                { id: "transit-coverage-area-layer", op: "line-opacity" }] },
     { id: "walkshed-fill", label: "Walkshed", moduleId: "walkshed", styleKey: "walkshed",
       layers: [{ id: "walkshed-fill", op: "fill-opacity" },
-               { id: "walkshed-glow", op: "line-opacity" },
                { id: "walkshed-line", op: "line-opacity" }] },
     { id: "walkshed-seg", label: "Walkshed — reachable streets", moduleId: "walkshed", styleKey: "walkshed-seg",
       clear: function () { if (typeof App.clearWalkshedStreets === "function") App.clearWalkshedStreets(); },
@@ -693,7 +691,7 @@
         body.appendChild(fRow);
       }
 
-      // Outline / soft edge / band fade — display-only options for layers whose
+      // Band outlines / band fade — display-only options for layers whose
       // spec sets styleOptions (Walkshed, Transit Travelshed). Resolved by
       // App.resolveShedStyle; null always means today's default.
       if (spec.styleOptions) {
@@ -742,17 +740,15 @@
             rerender();
           });
           wrap.appendChild(c);
-          return c;
         };
         // Checkboxes first, then the outline's line selects last, so the
-        // selects never sit sandwiched between toggles. Soft edge and Line only
-        // act on the outline, so they are disabled while outlines are off.
+        // selects never sit sandwiched between toggles. Line only acts on the
+        // outline, so it is disabled while outlines are off.
         var shed = App.resolveShedStyle(styleKey);
         var outlinesOn = shed.outline === "merged";
         mkCheck("Fade outer bands", !!ov.bandFade, "Make longer-time bands progressively more transparent.", "bandFade");
         mkCheck("Band outlines", outlinesOn,
           "Draw one outline per time band, merged across points.", "outline", "merged");
-        var glowCb = mkCheck("Soft edge", !!ov.softEdge, "Blurred glow along the band outlines.", "softEdge");
         var lineWrap = mkRow("Line");
         var wSel = mkSelect(lineWrap, [["", "Auto"], ["thin", "Thin"], ["normal", "Normal"], ["bold", "Bold"]],
           ov.outlineWeight || "", "Outline weight", true,
@@ -760,11 +756,11 @@
         var tSel = mkSelect(lineWrap, [["match", "Match"], ["dark", "Darker"], ["white", "White"]],
           shed.tone, "Outline tone", true,
           function (v) { App.setLayerStyle(styleKey, { outlineTone: v === "match" ? null : v }); });
-        if (!outlinesOn) { wSel.disabled = true; tSel.disabled = true; glowCb.disabled = true; }
+        if (!outlinesOn) { wSel.disabled = true; tSel.disabled = true; }
       }
 
       if (ov.palette || ov.reverse != null || ov.flatten || ov.outline || ov.outlineWeight ||
-          ov.outlineTone || ov.softEdge || ov.bandFade) {
+          ov.outlineTone || ov.bandFade) {
         var resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "lp-style-reset";

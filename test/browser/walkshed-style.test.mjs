@@ -3,7 +3,7 @@
 //
 // Behavior test for the display-only style options on Walkshed and Transit
 // Travelshed layers (App.resolveShedStyle; Layers-panel drawer): outline mode,
-// weight, tone, soft edge and band fade. Defaults must be byte-identical to
+// weight, tone and band fade. Defaults must be byte-identical to
 // the pre-option rendering, so the first checks pin today's numbers.
 //
 // USAGE: NODE_PATH=/opt/node-tools/node_modules node test/browser/walkshed-style.test.mjs
@@ -102,7 +102,6 @@ function check(name, pass, detail) {
       (await lineFeatures()).length === 0 && await page.evaluate(() => !!App.map.getLayer("walkshed-line")));
     check("default: line width 2, opacity 0.9", (await lp("line-width")) === 2 && (await lp("line-opacity")) === 0.9);
     check("default: fill color is the plain band match expression", !JSON.stringify(defFill).includes("rgba("));
-    check("default: no glow layer", await page.evaluate(() => !App.map.getLayer("walkshed-glow")));
     check("default: no style entry in layerStyles", await page.evaluate(() => !App.layerStyles.walkshed));
 
     // ---- Band outlines on: one merged outline per time band ----
@@ -135,36 +134,13 @@ function check(name, pass, detail) {
     await style({ bandFade: null });
     check("band fade off: fill-color restored", JSON.stringify(await fp("fill-color")) === JSON.stringify(defFill));
 
-    // ---- Soft edge ----
-    await style({ softEdge: true });
-    const glowVis = () => page.evaluate(() => App.map.getLayer("walkshed-glow") ? App.map.getLayoutProperty("walkshed-glow", "visibility") : "absent");
-    check("soft edge: glow layer exists and is visible", (await glowVis()) === "visible");
-    check("soft edge: glow sits below the outline layer", await page.evaluate(() => {
-      const ids = App.map.getStyle().layers.map((l) => l.id);
-      return ids.indexOf("walkshed-fill") < ids.indexOf("walkshed-glow") && ids.indexOf("walkshed-glow") < ids.indexOf("walkshed-line");
-    }));
-    await page.locator('.fp-tab-btn[data-fptab="layers"]').click();
-    await page.locator('#fp-tab-layers button[aria-label="More actions for Walkshed"]').first()
-      .waitFor({ state: "visible", timeout: 10000 });
-    // The Layers-panel eye must cover the glow (it is a sub-layer of the entry).
-    const eye = (label) => page.evaluate((l) => {
-      const b = document.querySelector('#fp-tab-layers button[aria-label="' + l + ' Walkshed"]');
-      if (!b) return false;
-      b.click();
-      return true;
-    }, label);
-    check("eye off hides the glow too",
-      (await eye("Hide")) && (await glowVis()) === "none" &&
-      await page.evaluate(() => App.map.getLayoutProperty("walkshed-fill", "visibility") === "none"));
-    await style({ bandFade: true }); // a repaint while hidden must not re-show the glow
-    check("repaint while hidden keeps the glow hidden", (await glowVis()) === "none");
-    await style({ bandFade: null });
-    check("eye on shows the glow again", (await eye("Show")) && (await glowVis()) === "visible");
-    await style({ softEdge: null });
-    check("soft edge off: glow layer removed", (await glowVis()) === "absent");
+    // Soft edge was removed: no glow layer is ever created.
+    await style({ outline: "merged" });
+    check("no glow layer exists (soft edge removed)", await page.evaluate(() => !App.map.getLayer("walkshed-glow")));
+    await style({ outline: null });
 
     // ---- Persistence ----
-    await style({ outline: "merged", softEdge: true, bandFade: true, outlineWeight: "thin", outlineTone: "dark" });
+    await style({ outline: "merged", bandFade: true, outlineWeight: "thin", outlineTone: "dark" });
     const saved = await page.evaluate(() => JSON.parse(JSON.stringify(App.layerStyles.walkshed)));
     // Autosave is debounced: wait until localStorage holds the new style.
     await page.waitForFunction(() => {
@@ -174,19 +150,18 @@ function check(name, pass, detail) {
     await page.evaluate(() => { App.layerStyles = {}; App.cache.restore(); });
     const restoredStyle = await page.evaluate(() => JSON.stringify(App.layerStyles.walkshed));
     check("style keys persisted in layerStyles", JSON.stringify(saved) === restoredStyle &&
-      saved.outline === "merged" && saved.softEdge === true && saved.bandFade === true &&
+      saved.outline === "merged" && saved.bandFade === true &&
       saved.outlineWeight === "thin" && saved.outlineTone === "dark", restoredStyle);
-    await style({ outline: null, softEdge: null, bandFade: null, outlineWeight: null, outlineTone: null });
+    await style({ outline: null, bandFade: null, outlineWeight: null, outlineTone: null });
     check("clearing every option removes the layerStyles entry", await page.evaluate(() => !App.layerStyles.walkshed));
 
-    // ---- Clear removes glow ----
-    await style({ softEdge: true });
+    // ---- Clear removes the layers ----
     if (!(await page.locator("#wsClearResults").isVisible())) {
       await page.locator(".module-inputs-header").first().click();
     }
     await page.locator("#wsClearResults").click();
     await page.waitForFunction(() => !App.map.getLayer("walkshed-line"), { timeout: 5000 });
-    check("Clear results removes walkshed-glow", await page.evaluate(() => !App.map.getLayer("walkshed-glow")));
+    check("Clear results removes the walkshed layers", await page.evaluate(() => !App.map.getLayer("walkshed-fill") && !App.map.getLayer("walkshed-line")));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {

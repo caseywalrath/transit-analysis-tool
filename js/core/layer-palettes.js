@@ -234,7 +234,7 @@
       // a spot, unioned across all points; per-point outlines stay in full.
       // Generic drawer flag; off by default.
       flattenOption: true,
-      // Outline mode/weight/tone, soft edge and band fade (App.resolveShedStyle).
+      // Band outlines (weight/tone) and band fade (App.resolveShedStyle).
       styleOptions: true
     },
     "walkshed-seg": {
@@ -396,13 +396,12 @@
       outline: (patch.outline !== undefined) ? patch.outline : cur.outline,
       outlineWeight: (patch.outlineWeight !== undefined) ? patch.outlineWeight : cur.outlineWeight,
       outlineTone: (patch.outlineTone !== undefined) ? patch.outlineTone : cur.outlineTone,
-      softEdge: (patch.softEdge !== undefined) ? patch.softEdge : cur.softEdge,
       bandFade: (patch.bandFade !== undefined) ? patch.bandFade : cur.bandFade
     };
     var anyClassColor = !!(next.colors && next.colors.some(function (c) { return !!c; }));
     var isEmpty = !next.palette && next.reverse == null && !next.color &&
       !next.from && !next.to && !anyClassColor && !next.flatten &&
-      !next.outline && !next.outlineWeight && !next.outlineTone && !next.softEdge && !next.bandFade;
+      !next.outline && !next.outlineWeight && !next.outlineTone && !next.bandFade;
     if (isEmpty) {
       delete App.layerStyles[styleKey];
     } else {
@@ -425,7 +424,6 @@
       outline: outline,
       widthPx: OUTLINE_PX[ov.outlineWeight] || null,
       tone: tone,
-      softEdge: !!ov.softEdge,
       bandFade: !!ov.bandFade
     };
   };

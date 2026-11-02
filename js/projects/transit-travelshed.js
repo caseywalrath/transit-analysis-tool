@@ -726,8 +726,6 @@
   var TS_LINE_LAYER = "ts-travelshed-line";
   // The outline has its own source so outline modes can change its data.
   var TS_LINE_SRC   = "ts-travelshed-line-src";
-  // Soft-edge glow under the outline; exists only while "Soft edge" is on.
-  var TS_GLOW_LAYER = "ts-travelshed-glow";
   var TS_FADE_ALPHA = [1, 0.6, 0.35];
   var _lastRings = [];   // rings from the last render, to rebuild outline geometry on a style change
 
@@ -736,7 +734,7 @@
   // hardcoded colors rather than throwing.
   function shedStyle() {
     return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("transit-travelshed")
-      : { outline: "none", widthPx: null, tone: "match", softEdge: false, bandFade: false };
+      : { outline: "none", widthPx: null, tone: "match", bandFade: false };
   }
   // kind: "fill" (band fade) | "line" (outline tone) | other = plain.
   function tsColorExpr(kind) {
@@ -763,24 +761,6 @@
     return shedStyle().outline === "merged" ? features : [];
   }
 
-  function syncTravelshedGlow() {
-    var map = App.map;
-    if (!map || !map.getLayer(TS_LINE_LAYER)) return;
-    var on = shedStyle().softEdge, has = !!map.getLayer(TS_GLOW_LAYER);
-    if (on && !has) {
-      var vis = map.getLayoutProperty(TS_FILL_LAYER, "visibility") !== "none";
-      map.addLayer({
-        id: TS_GLOW_LAYER, type: "line", source: TS_LINE_SRC,
-        layout: { "line-join": "round", "visibility": vis ? "visible" : "none" },
-        paint: { "line-color": tsColorExpr(), "line-width": 10, "line-blur": 8, "line-opacity": 0.35 }
-      }, TS_LINE_LAYER);
-    } else if (on && has) {
-      map.setPaintProperty(TS_GLOW_LAYER, "line-color", tsColorExpr());
-    } else if (!on && has) {
-      map.removeLayer(TS_GLOW_LAYER);
-    }
-  }
-
   // Re-applies paint properties from the current cascade without re-running
   // the analysis, so a palette change is instant. No-op when the layers
   // aren't currently on the map.
@@ -792,7 +772,6 @@
     map.setPaintProperty(TS_FILL_LAYER, "fill-color", tsColorExpr("fill"));
     map.setPaintProperty(TS_LINE_LAYER, "line-color", tsColorExpr("line"));
     map.setPaintProperty(TS_LINE_LAYER, "line-width", st.widthPx || 1.5);
-    syncTravelshedGlow();
   }
   if (typeof App.registerLayerRepainter === "function") {
     App.registerLayerRepainter("transit-travelshed", function () {
@@ -834,7 +813,6 @@
         layout: { "line-join": "round" },
         paint: { "line-color": tsColorExpr("line"), "line-width": shedStyle().widthPx || 1.5, "line-opacity": 0.9 }
       });
-      syncTravelshedGlow();
     } else {
       map.getSource(TS_SOURCE).setData(fc);
       if (map.getSource(TS_LINE_SRC)) map.getSource(TS_LINE_SRC).setData(lineFc);
@@ -846,7 +824,6 @@
     var map = App.map;
     if (!map) return;
     _lastRings = [];
-    if (map.getLayer(TS_GLOW_LAYER)) map.removeLayer(TS_GLOW_LAYER);
     if (map.getLayer(TS_LINE_LAYER)) map.removeLayer(TS_LINE_LAYER);
     if (map.getLayer(TS_FILL_LAYER)) map.removeLayer(TS_FILL_LAYER);
     if (map.getSource(TS_LINE_SRC))  map.removeSource(TS_LINE_SRC);

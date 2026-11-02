@@ -42,10 +42,6 @@
   // outlines are off), which is never the same set the fill paints.
   var WS_LINE_SRC  = "walkshed-line-src";
   var WS_LINE_LAYER = "walkshed-line";
-  // Soft-edge glow: a blurred wide line under walkshed-line, same source. Only
-  // exists while the "Soft edge" style option is on; listed in the Layers entry
-  // so the eye / opacity / remove actions cover it.
-  var WS_GLOW_LAYER = "walkshed-glow";
   // Transient comparison overlay; deliberately NOT in the Layers panel.
   var WS_PREV_SRC   = "walkshed-prev-src";
   var WS_PREV_LAYER = "walkshed-prev-line";
@@ -334,7 +330,7 @@
   }
   function shedStyle() {
     return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("walkshed")
-      : { outline: "none", widthPx: null, tone: "match", softEdge: false, bandFade: false };
+      : { outline: "none", widthPx: null, tone: "match", bandFade: false };
   }
   function segColor() {
     if (typeof App.resolveLayerColors !== "function") return WS_SEG_DEFAULT_COLOR;
@@ -363,29 +359,8 @@
     if (map.getLayer(WS_SEG_LAYER)) {
       map.setPaintProperty(WS_SEG_LAYER, "line-color", segColor());
     }
-    syncGlowLayer();
   }
 
-  // Adds/removes the soft-edge glow. It only ever exists while softEdge is on,
-  // and follows the fill's visibility (the Layers eye) when created.
-  function syncGlowLayer() {
-    var map = App.map;
-    if (!map || !map.getLayer(WS_LINE_LAYER)) return;
-    var on = shedStyle().softEdge;
-    var has = !!map.getLayer(WS_GLOW_LAYER);
-    if (on && !has) {
-      var fillVisible = map.getLayoutProperty(WS_FILL_LAYER, "visibility") !== "none";
-      map.addLayer({
-        id: WS_GLOW_LAYER, type: "line", source: WS_LINE_SRC,
-        layout: { "line-join": "round", "visibility": fillVisible ? "visible" : "none" },
-        paint: { "line-color": bandColorExpr(), "line-width": 10, "line-blur": 8, "line-opacity": 0.35 }
-      }, WS_LINE_LAYER);
-    } else if (on && has) {
-      map.setPaintProperty(WS_GLOW_LAYER, "line-color", bandColorExpr());
-    } else if (!on && has) {
-      map.removeLayer(WS_GLOW_LAYER);
-    }
-  }
   if (typeof App.registerLayerRepainter === "function") {
     var refreshWalkshedPaintAndLegend = function () {
       // A palette/reverse toggle only needs paint; "Flatten overlaps"
@@ -611,7 +586,7 @@
     var map = App.map;
     if (!map) return;
     clearPrevShape();
-    [WS_SEG_LAYER, WS_GLOW_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
+    [WS_SEG_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
