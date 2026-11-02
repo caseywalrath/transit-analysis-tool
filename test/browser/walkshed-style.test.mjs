@@ -96,28 +96,22 @@ function check(name, pass, detail) {
     const fp = (prop) => page.evaluate((p) => App.map.getPaintProperty("walkshed-fill", p), prop);
     const style = (patch) => page.evaluate((p) => App.setLayerStyle("walkshed", p), patch);
 
-    // ---- Defaults ----
+    // ---- Defaults: band outlines off ----
     const defFill = await fp("fill-color");
-    const defLineColor = await lp("line-color");
-    check("default: outline has one feature per point per band", (await lineFeatures()).length === 4);
+    check("default: outlines off (line layer present, 0 features)",
+      (await lineFeatures()).length === 0 && await page.evaluate(() => !!App.map.getLayer("walkshed-line")));
     check("default: line width 2, opacity 0.9", (await lp("line-width")) === 2 && (await lp("line-opacity")) === 0.9);
-    check("default: fill color is the plain band match expression",
-      JSON.stringify(defFill) === JSON.stringify(defLineColor) && !JSON.stringify(defFill).includes("rgba("));
+    check("default: fill color is the plain band match expression", !JSON.stringify(defFill).includes("rgba("));
     check("default: no glow layer", await page.evaluate(() => !App.map.getLayer("walkshed-glow")));
     check("default: no style entry in layerStyles", await page.evaluate(() => !App.layerStyles.walkshed));
 
-    // ---- Outline modes ----
-    await style({ outline: "none" });
-    check("outline none: 0 features, layer still present",
-      (await lineFeatures()).length === 0 && await page.evaluate(() => !!App.map.getLayer("walkshed-line")));
-    await style({ outline: "outer" });
-    check("outline outer: 1 feature", (await lineFeatures()).length === 1);
-    await style({ outline: "tiers" });
+    // ---- Band outlines on: one merged outline per time band ----
+    await style({ outline: "merged" });
     const tiers = await lineFeatures();
-    check("outline tiers: one feature per distinct minutes tier",
+    check("outlines on: one feature per distinct minutes tier",
       tiers.length === 2 && JSON.stringify(tiers.map((f) => f.properties.minutes).sort((a, b) => a - b)) === "[15,30]");
-    await style({ outline: null });
-    check("outline bands: back to default count", (await lineFeatures()).length === 4);
+    check("outlines on: line color matches the fill colors (tone Match)",
+      JSON.stringify(await lp("line-color")) === JSON.stringify(defFill));
 
     // ---- Weight and tone ----
     await style({ outlineWeight: "bold" });
@@ -131,6 +125,8 @@ function check(name, pass, detail) {
     const dark = JSON.stringify(await lp("line-color"));
     check("tone dark: line colors differ from fill colors", dark !== JSON.stringify(await fp("fill-color")));
     await style({ outlineTone: null });
+    await style({ outline: null });
+    check("outlines off again: 0 features", (await lineFeatures()).length === 0);
 
     // ---- Band fade ----
     await style({ bandFade: true });
@@ -168,7 +164,7 @@ function check(name, pass, detail) {
     check("soft edge off: glow layer removed", (await glowVis()) === "absent");
 
     // ---- Persistence ----
-    await style({ outline: "outer", softEdge: true, bandFade: true, outlineWeight: "thin", outlineTone: "dark" });
+    await style({ outline: "merged", softEdge: true, bandFade: true, outlineWeight: "thin", outlineTone: "dark" });
     const saved = await page.evaluate(() => JSON.parse(JSON.stringify(App.layerStyles.walkshed)));
     // Autosave is debounced: wait until localStorage holds the new style.
     await page.waitForFunction(() => {
@@ -178,7 +174,7 @@ function check(name, pass, detail) {
     await page.evaluate(() => { App.layerStyles = {}; App.cache.restore(); });
     const restoredStyle = await page.evaluate(() => JSON.stringify(App.layerStyles.walkshed));
     check("style keys persisted in layerStyles", JSON.stringify(saved) === restoredStyle &&
-      saved.outline === "outer" && saved.softEdge === true && saved.bandFade === true &&
+      saved.outline === "merged" && saved.softEdge === true && saved.bandFade === true &&
       saved.outlineWeight === "thin" && saved.outlineTone === "dark", restoredStyle);
     await style({ outline: null, softEdge: null, bandFade: null, outlineWeight: null, outlineTone: null });
     check("clearing every option removes the layerStyles entry", await page.evaluate(() => !App.layerStyles.walkshed));

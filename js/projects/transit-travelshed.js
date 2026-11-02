@@ -736,7 +736,7 @@
   // hardcoded colors rather than throwing.
   function shedStyle() {
     return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("transit-travelshed")
-      : { outline: "bands", widthPx: null, tone: "match", softEdge: false, bandFade: false };
+      : { outline: "none", widthPx: null, tone: "match", softEdge: false, bandFade: false };
   }
   // kind: "fill" (band fade) | "line" (outline tone) | other = plain.
   function tsColorExpr(kind) {
@@ -756,21 +756,11 @@
     return LP.matchExpr("band", colors);
   }
 
-  // Outline geometry by mode. A travelshed has one origin set, so "bands" and
-  // "tiers" are the same ring set; "outer" dissolves it; "none" is empty (the
-  // Layers panel owns visibility).
+  // Outline geometry: "merged" draws every band ring's edges (one origin set,
+  // so the rings already are the merged per-band boundaries); otherwise empty
+  // (the Layers panel owns visibility).
   function outlineFeatures(rings, features) {
-    var mode = shedStyle().outline;
-    if (mode === "none") return [];
-    if (mode === "outer") {
-      var polys = rings.filter(function (r) { return r.ring; }).map(function (r) { return r.ring; });
-      var u = polys.length ? App.foldAnalysisUnion(polys) : null;
-      if (!u) return [];
-      var maxBand = 0, maxMin = 0;
-      rings.forEach(function (r) { if (r.ring && r.band >= maxBand) { maxBand = r.band; maxMin = r.budgetMin; } });
-      return [{ type: "Feature", properties: { band: maxBand, budgetMin: maxMin }, geometry: u.geometry }];
-    }
-    return features;
+    return shedStyle().outline === "merged" ? features : [];
   }
 
   function syncTravelshedGlow() {
@@ -806,7 +796,7 @@
   }
   if (typeof App.registerLayerRepainter === "function") {
     App.registerLayerRepainter("transit-travelshed", function () {
-      // An outline-mode change is a geometry change, not just paint.
+      // Turning outlines on/off is a geometry change, not just paint.
       if (_lastRings.length && App.map && App.map.getSource(TS_LINE_SRC)) {
         App.map.getSource(TS_LINE_SRC).setData({ type: "FeatureCollection",
           features: outlineFeatures(_lastRings, ringFeatures(_lastRings)) });
@@ -932,7 +922,7 @@
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
       "</p>" +
-      // Contour grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
+      // Standard-shape grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
       ((result.contourGridKm && result.contourGridAskedKm && result.contourGridKm > result.contourGridAskedKm * 1.001)
         ? '<p class="tiny" id="tsGridNote" style="margin-top:2px;color:var(--muted);">Grid coarsened to ' +
           Math.round(result.contourGridKm * FT_PER_KM) + " ft for this size.</p>"
@@ -1231,11 +1221,11 @@
       // are large and overlap heavily, but the union is still correct.
       var walkMinPerKm = 60 / walkSpeedKmh;
       var originNodeKeys = Object.keys(originCost);
-      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "simplified" };
+      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "simplified", holeAcres: 0 };
       var polys = [];
       var clustersSinceYield = 0;
       var contourGridKm = null, contourGridPlannedKm = null;
-      if (shapeOpt.method === "contour" && window.WalkShape && window.WalkShape.contour && App.contourSamples) {
+      if (shapeOpt.method === "standard" && window.WalkShape && window.WalkShape.contour && App.contourSamples) {
         // One travel-time surface from the engine's per-node arrival minutes
         // (already the fastest path, with access/egress walk caps applied).
         // Only segments with BOTH ends reached are sampled: extending past a
@@ -1294,7 +1284,7 @@
 
         var bandPolygon = App.foldAnalysisUnion(clusterPolys); // null-safe union, null for an empty array
         // The union of rounded clusters can leave small enclosed gaps: fill them.
-        if (bandPolygon && shapeOpt.method === "smoothed" && window.WalkShape) {
+        if (bandPolygon && shapeOpt.method === "simplified" && shapeOpt.holeAcres > 0 && window.WalkShape) {
           bandPolygon = window.WalkShape.fillHoles(bandPolygon, shapeOpt.holeAcres);
         }
         polys.push({ budgetMin: B, polygon: bandPolygon, nodeCount: bandSets[bi].nodeKeys.length });
@@ -1330,7 +1320,7 @@
         offNetworkStopCount: offNetworkStopCount,
         floodStats: floodStats,
         computeMs: Date.now() - t0,
-        contourGridKm: contourGridKm,               // null unless the Contour shape ran
+        contourGridKm: contourGridKm,               // null unless the Standard shape ran
         contourGridAskedKm: contourGridPlannedKm
       };
       _stale = false;

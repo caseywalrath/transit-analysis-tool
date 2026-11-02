@@ -342,15 +342,11 @@
     if (App.networkSettings && state.networkCrossingMinorSec != null) {
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
     }
-    // Boundary shape. A session saved before this field existed restores as
-    // "simplified" (NOT the fresh-session "smoothed" default) so old studies keep
-    // their exact polygons and numbers.
+    // Boundary shape (absent or unknown method -> the defaults; see network-connectors.js).
     if (App.networkSettings) {
       var wsd = (typeof App.walkShapeDefaults === "function") ? App.walkShapeDefaults() : {};
       var wss = (state.networkWalkShape && typeof state.networkWalkShape === "object") ? state.networkWalkShape : null;
-      App.networkSettings.walkShape = wss
-        ? Object.assign(wsd, wss)
-        : Object.assign(wsd, { method: "simplified" });
+      App.networkSettings.walkShape = wss ? Object.assign(wsd, wss) : wsd;
     }
     // 3a-3b. Restore user-excluded streets (additive field — absent on an
     // old session leaves the exclusion set empty). Goes through the sanctioned write path

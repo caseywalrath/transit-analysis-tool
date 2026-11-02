@@ -1015,19 +1015,6 @@
     return dist;
   }
 
-  // Walkshed polygon from reachable node coordinates: concave hull with an
-  // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
-  // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
-  // `shape` (optional {method, holeAcres, roundKm}): method "smoothed" runs the
-  // hull through WalkShape.refine; absent/"simplified" returns the hull exactly as
-  // before (byte-identical).
-  function refineHull(hull, shape) {
-    if (hull && shape && shape.method === "smoothed" && window.WalkShape) {
-      return window.WalkShape.refine(hull, { holeAcres: shape.holeAcres, roundKm: shape.roundKm });
-    }
-    return hull;
-  }
-
   // Contour samples [[lng, lat, cost]] from a per-node cost map (Map or plain
   // object, nodeKey -> cost). Every reached node is a sample; segments whose
   // ends are reached get a sample every stepKm, costing
@@ -1067,6 +1054,20 @@
       }
     }
     return out;
+  }
+
+  // Walkshed polygon from reachable node coordinates: concave hull with an
+  // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
+  // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
+  // `shape` (optional {method, holeAcres, ...}): method "simplified" fills
+  // interior holes under holeAcres (a block missing its streets; a lake stays).
+  // Absent shape returns the bare hull. "standard" never reaches here (it is
+  // traced from a travel-time grid in computeWalkshed).
+  function refineHull(hull, shape) {
+    if (hull && shape && shape.holeAcres > 0 && window.WalkShape) {
+      return window.WalkShape.fillHoles(hull, shape.holeAcres);
+    }
+    return hull;
   }
 
   function buildWalkshedPolygon(coords, maxEdgeKm, shape) {
@@ -1214,11 +1215,11 @@
     if (distMap.has(snap.segStartKey)) segFeatures.push(turf.lineString([snap.coord, snap.segStartCoord]));
     if (distMap.has(snap.segEndKey)) segFeatures.push(turf.lineString([snap.coord, snap.segEndCoord]));
 
-    // Contour shape replaces the hull entirely: one travel-time surface traced
+    // The "standard" (contour) shape replaces the hull entirely: one travel-time surface traced
     // at every budget (bands come out in exactly the hull path's shape).
     var shape = options.shape;
     var contourBands = null, gridKmUsed = null, shapeMs = null;
-    if (shape && shape.method === "contour" && window.WalkShape && window.WalkShape.contour) {
+    if (shape && shape.method === "standard" && window.WalkShape && window.WalkShape.contour) {
       var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
       var cBudgets = (options.budgetsKm && options.budgetsKm.length) ? options.budgetsKm.slice() : [];
       if (cBudgets.indexOf(budgetKm) === -1) cBudgets.push(budgetKm);

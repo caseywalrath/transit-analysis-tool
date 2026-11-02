@@ -37,13 +37,9 @@
 
   var WS_FILL_SRC  = "walkshed-src";
   var WS_FILL_LAYER = "walkshed-fill";
-  // The line layer gets its OWN source (WS_LINE_SRC) rather than sharing
-  // WS_FILL_SRC, because "flatten overlaps" (see buildFlattenedFillFeatures
-  // below) only reshapes what the FILL paints — the outline always draws
-  // every point's own band boundaries in full, flattened or not, so an
-  // overlap stays visible even when the fill hides it. When flattening is
-  // off the two sources hold identical features; the duplication is the
-  // price of not special-casing layer creation on the toggle.
+  // The line layer gets its OWN source (WS_LINE_SRC): it holds the "Band
+  // outlines" geometry (one merged boundary per time band, or nothing when
+  // outlines are off), which is never the same set the fill paints.
   var WS_LINE_SRC  = "walkshed-line-src";
   var WS_LINE_LAYER = "walkshed-line";
   // Soft-edge glow: a blurred wide line under walkshed-line, same source. Only
@@ -215,8 +211,8 @@
       reachableCount:    bands[0].nodeCount,
       area:              bands[0].area,   // m²
       bands:             bands,           // ascending, one entry per active budget
-      computeMs:         res.computeMs + (res.shapeMs || 0), // contour tracing is the slow part, so count it
-      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // contour only; > planned = hit the cell cap
+      computeMs:         res.computeMs + (res.shapeMs || 0), // Standard-shape tracing is the slow part, so count it
+      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // Standard shape only; > planned = hit the cell cap
       gridKmPlanned:     res.gridKmPlanned != null ? res.gridKmPlanned : null,
       minutes:           bands[0].minutes,
       name:              pf.properties.name,
@@ -338,7 +334,7 @@
   }
   function shedStyle() {
     return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("walkshed")
-      : { outline: "bands", widthPx: null, tone: "match", softEdge: false, bandFade: false };
+      : { outline: "none", widthPx: null, tone: "match", softEdge: false, bandFade: false };
   }
   function segColor() {
     if (typeof App.resolveLayerColors !== "function") return WS_SEG_DEFAULT_COLOR;
@@ -346,18 +342,11 @@
     return (colors && colors[0]) || WS_SEG_DEFAULT_COLOR;
   }
 
-  // Outline weight/opacity for the walkshed-line layer. With flatten on, most
-  // per-point band boundaries sit INSIDE the merged fill rather than on its
-  // edge, so at full weight they read as clutter. Nearly invisible but still
-  // there: an overlap can still be confirmed without competing with the fill.
-  var WS_OUTLINE_NORMAL   = { width: 2,   opacity: 0.9  };
-  var WS_OUTLINE_FLATTENED = { width: 1,  opacity: 0.12 };
+  // Outline weight/opacity for the walkshed-line layer (only drawn when "Band
+  // outlines" is on; the outlines are real band edges, so full weight).
+  var WS_OUTLINE_NORMAL = { width: 2, opacity: 0.9 };
   function outlineStyle() {
-    var st = shedStyle();
-    // The faint flattened style only suits per-band outlines (mostly interior
-    // to the merged fill); tiers/outer outlines are real edges.
-    var base = (flattenEnabled() && st.outline === "bands") ? WS_OUTLINE_FLATTENED : WS_OUTLINE_NORMAL;
-    return { width: st.widthPx || base.width, opacity: base.opacity };
+    return { width: shedStyle().widthPx || WS_OUTLINE_NORMAL.width, opacity: WS_OUTLINE_NORMAL.opacity };
   }
 
   // Re-applies paint properties from the current cascade without re-running
@@ -482,11 +471,9 @@
   // 30/45-min area from Point B wherever they overlap. bandIdx on the
   // returned features is the tier's rank (0 = smallest minutes value, same
   // meaning bandColorExpr() already gives bandIdx), not any one point's own
-  // band index. Only reshapes the FILL — renderWalkshedLayers always draws
-  // the un-flattened per-point outlines separately, so an overlap an area
-  // hides is still visible as a preserved band boundary.
+  // band index. Only reshapes the FILL.
   // Per-tier unions across every point: [{minutes, tierIdx, union}] ascending
-  // by minutes. Shared by the flattened fill and the "tiers" outline mode.
+  // by minutes. Shared by the flattened fill and the "Band outlines" geometry.
   function buildTierUnions(entries) {
     var byMinutes = {}; // minutes -> polygon[]
     entries.forEach(function (e) {
@@ -528,39 +515,20 @@
     return features;
   }
 
-  // Outline geometry by mode. "bands" is the per-point ring set unchanged;
-  // "none" is empty rather than hiding the layer (the Layers panel owns
-  // visibility).
-  function outlineFeaturesFor(mode, perBand, entries) {
-    if (mode === "none") return [];
-    if (mode === "tiers") {
-      return buildTierUnions(entries).map(function (t) {
-        return { type: "Feature", properties: { minutes: t.minutes, bandIdx: t.tierIdx }, geometry: t.union.geometry };
-      });
-    }
-    if (mode === "outer") {
-      var polys = [], maxIdx = 0, maxMin = 0;
-      entries.forEach(function (e) {
-        if (!e || e.failed) return;
-        var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
-        for (var i = bands.length - 1; i >= 0; i--) {
-          if (!bands[i].polygon) continue;
-          polys.push(bands[i].polygon);
-          if (i > maxIdx) maxIdx = i;
-          if (bands[i].minutes > maxMin) maxMin = bands[i].minutes;
-          break;
-        }
-      });
-      var u = polys.length ? App.foldAnalysisUnion(polys) : null;
-      return u ? [{ type: "Feature", properties: { minutes: maxMin, bandIdx: maxIdx }, geometry: u.geometry }] : [];
-    }
-    return perBand;
+  // Outline geometry: "merged" = one boundary per distinct minutes tier,
+  // unioned across points (the same tier unions flatten uses); otherwise an
+  // empty collection. Visibility stays owned by the Layers panel.
+  function outlineFeaturesFor(mode, entries) {
+    if (mode !== "merged") return [];
+    return buildTierUnions(entries).map(function (t) {
+      return { type: "Feature", properties: { minutes: t.minutes, bandIdx: t.tierIdx }, geometry: t.union.geometry };
+    });
   }
 
   function renderWalkshedLayers(entries) {
     var map = App.map;
     if (!map) return;
-    var outlineFeatures = [], segFeatures = [];
+    var ringFeatures = [], segFeatures = [];
     entries.forEach(function (e) {
       if (!e || e.failed) return;
       var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
@@ -569,8 +537,6 @@
       // innermost band stays solid; a turf.difference failure or null result
       // falls back to the un-differenced polygon for that band rather than
       // dropping it. Same approach as transit-travelshed.js's ring builder.
-      // This per-point set always feeds the OUTLINE layer (below), flattened
-      // fill or not — see buildFlattenedFillFeatures's comment.
       for (var bi = bands.length - 1; bi >= 0; bi--) {
         var band = bands[bi];
         if (!band.polygon) continue;
@@ -581,7 +547,7 @@
             if (diffed) ringPoly = diffed;
           } catch (err) { /* fall back to the un-differenced polygon for this band */ }
         }
-        outlineFeatures.push({
+        ringFeatures.push({
           type: "Feature",
           properties: { pointIdx: e.pointIdx, name: e.name, minutes: band.minutes, bandIdx: bi },
           geometry: ringPoly.geometry
@@ -592,9 +558,9 @@
       }
     });
 
-    var fillFeatures = flattenEnabled() ? buildFlattenedFillFeatures(entries) : outlineFeatures;
+    var fillFeatures = flattenEnabled() ? buildFlattenedFillFeatures(entries) : ringFeatures;
     var fillFc = { type: "FeatureCollection", features: fillFeatures };
-    var lineFc = { type: "FeatureCollection", features: outlineFeaturesFor(shedStyle().outline, outlineFeatures, entries) };
+    var lineFc = { type: "FeatureCollection", features: outlineFeaturesFor(shedStyle().outline, entries) };
     var segFc  = { type: "FeatureCollection", features: segFeatures };
 
     if (!map.getSource(WS_FILL_SRC)) {
@@ -649,7 +615,7 @@
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
-  // Muted line when a Contour run had to coarsen its grid to stay within the
+  // Muted line when a Standard-shape run had to coarsen its grid to stay within the
   // cell cap (very large budgets). Reports the coarsest grid any point used.
   function gridNoteHtml() {
     // Only cell-cap coarsening is reported; the planned per-budget scaling is
@@ -673,7 +639,7 @@
   }
   function shapeLabel() {
     var m = App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method;
-    return m === "smoothed" ? "Smoothed" : m === "contour" ? "Contour" : "Simplified";
+    return (App.walkShapeFor ? App.walkShapeFor().method : m) === "simplified" ? "Simplified" : "Standard";
   }
 
   // Each point's largest-band polygon, as outline features.
@@ -1028,7 +994,7 @@
     var sigBefore = walkshedSignature();
 
     // One point per tick, yielding between points, so the page stays responsive
-    // and the status shows progress on many-point runs (Contour is the slow case).
+    // and the status shows progress on many-point runs (the Standard shape is the slow case).
     var entries = [];
     function computeNext(i) {
       try {

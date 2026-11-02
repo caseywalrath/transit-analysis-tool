@@ -31,16 +31,15 @@
             title="How the walk area's outer edge is drawn">&#9432;</button>
         </label>
         <select id="wsShapeMethod" class="rf-select">
-          <option value="smoothed">Smoothed</option>
+          <option value="standard">Standard</option>
           <option value="simplified">Simplified</option>
-          <option value="contour">Contour</option>
         </select>
         <div id="wsShapeInfoText" class="tiny rf-info-box" style="display:none;margin-top:6px;">
-          <p><strong>Smoothed:</strong> fills small gaps and rounds the edge; recommended.</p>
-          <p><strong>Simplified:</strong> a concave hull around the reached intersections; fastest. Tune Hull detail.</p>
-          <p><strong>Contour:</strong> traces walk time everywhere near the streets, so the edge runs partway down
-            the last block. The most realistic edge; areas come out larger than the hull methods and it is slower
-            to calculate.</p>
+          <p><strong>Standard:</strong> traces walk time everywhere near the streets, so the edge runs partway down
+            the last block and up to the off-street reach beyond it. The most realistic edge; areas come out
+            larger than Simplified.</p>
+          <p><strong>Simplified:</strong> a hull around the reached intersections, with small gaps filled. Fastest;
+            tune Hull detail.</p>
           <p>Shared with Transit Travelshed.</p>
         </div>
       </div>
@@ -49,36 +48,32 @@
 
       <details class="u-mt-3 data-input-group" data-input-group="advanced">
         <summary class="tiny u-muted ws-advanced-summary">Advanced Settings</summary>
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="simplified smoothed">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="simplified">
           <label class="tiny">Hull detail — max edge (ft)</label>
           <input type="number" id="wsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
         </div>
-        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="simplified smoothed">
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="simplified">
           Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
         </p>
 
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="smoothed contour">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="standard simplified">
           <label class="tiny">Fill holes smaller than (acres)</label>
           <input type="number" id="wsHoleAcres" class="rf-number-input" min="0" max="1000" step="1" value="10">
         </div>
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="smoothed">
-          <label class="tiny">Edge rounding (ft)</label>
-          <input type="number" id="wsRoundFt" class="rf-number-input" min="0" max="1000" step="10" value="150">
-        </div>
-        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="smoothed">
-          Smoothed shape only: interior gaps below the size limit are filled (a lake stays), and notches
-          narrower than about twice the rounding distance are closed. Shared with Transit Travelshed.
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="standard simplified">
+          Interior gaps below this size are filled (a lake or rail yard larger than it stays a hole).
+          Shared with Transit Travelshed.
         </p>
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="contour">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="standard">
           <label class="tiny">Grid detail (ft)</label>
           <input type="number" id="wsGridFt" class="rf-number-input" min="30" max="500" step="10" value="80">
         </div>
-        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="contour">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="standard">
           <label class="tiny">Off-street reach (ft)</label>
           <input type="number" id="wsOffStreetFt" class="rf-number-input" min="50" max="2000" step="10" value="330">
         </div>
-        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="contour">
-          Contour shape only: how far beyond a street the area may extend (also the edge-rounding distance), and the
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="standard">
+          Standard shape only: how far beyond a street the area may extend (also the edge-rounding distance), and the
           spacing of the travel-time grid. A smaller grid is sharper but slower; very large areas coarsen it
           automatically. Shared with Transit Travelshed.
         </p>

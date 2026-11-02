@@ -17,9 +17,8 @@
 //   - turning flatten on collapses the fill source to one polygon per
 //     distinct minutes tier, unioned across every point, with each tier
 //     disjoint from every other (no double-painted overlap)
-//   - the outline source is NEVER flattened — it always carries every
-//     point's own band boundaries, so an overlap stays visible as a
-//     preserved outline even while the fill hides it
+//   - the outline source is independent of flattening (it holds the
+//     "Band outlines" geometry, empty by default)
 //   - the toggle is exposed as plain App.layerStyles state (App.setLayerStyle),
 //     the same persisted cascade every other layer-color override already
 //     uses, and turning it back off restores the un-flattened fill exactly
@@ -140,13 +139,12 @@ function check(name, pass, detail) {
       fill: App.map.getSource("walkshed-src")._data.features.length,
       line: App.map.getSource("walkshed-line-src")._data.features.length
     }));
-    // 2 points x 2 bands (15, 30 min) each = 4 ring-differenced polygons in
-    // BOTH sources when nothing is flattened — the fill and outline sources
-    // are identical off.
+    // 2 points x 2 bands (15, 30 min) each = 4 ring-differenced fill polygons
+    // when nothing is flattened.
     check("flatten off: fill has one polygon per point per band",
       unflattened.fill === 4, JSON.stringify(unflattened));
-    check("flatten off: outline matches fill (nothing flattened yet)",
-      unflattened.line === unflattened.fill, JSON.stringify(unflattened));
+    check("outline source is empty while Band outlines are off (the default)",
+      unflattened.line === 0, JSON.stringify(unflattened));
 
     // Reachable-streets proof layer starts hidden after a run; a user's choice
     // in the Layers panel then survives a re-run (setData keeps the layout).
@@ -215,22 +213,14 @@ function check(name, pass, detail) {
       JSON.stringify(flattened.fillMinutes) === JSON.stringify([15, 30]), JSON.stringify(flattened));
     check("flatten on: no two fill polygons overlap (shortest walkshed wins)",
       flattened.anyOverlap === false, JSON.stringify(flattened));
-    // The outline layer is untouched by flattening — every point's own band
-    // boundary is still drawn, so an overlap stays visible as an outline
-    // even though the fill only shows the shortest band there.
-    check("flatten on: outline still shows every point's own bands",
-      flattened.lineCount === unflattened.line, JSON.stringify(flattened));
-
-    const subtleOutline = await page.evaluate(() => ({
+    check("flatten on: outline source still empty (outlines off)",
+      flattened.lineCount === 0, JSON.stringify(flattened));
+    const flatOutline = await page.evaluate(() => ({
       width: App.map.getPaintProperty("walkshed-line", "line-width"),
       opacity: App.map.getPaintProperty("walkshed-line", "line-opacity")
     }));
-    // The preserved per-point outlines mostly sit INSIDE the flattened fill
-    // now (not on its real edge), so they must be much less prominent than
-    // the flatten-off style — thinner and far lower opacity, not removed.
-    check("flatten on: outline is thinner and much lower opacity than normal",
-      subtleOutline.width < normalOutline.width && subtleOutline.opacity < 0.2,
-      JSON.stringify({ normalOutline, subtleOutline }));
+    check("flatten on: outline paint unchanged (outlines are real band edges, never faded)",
+      flatOutline.width === normalOutline.width && flatOutline.opacity === normalOutline.opacity, JSON.stringify(flatOutline));
 
     // ---- Turn it back off: fill must return to the un-flattened set ----
     await page.evaluate(() => App.setLayerStyle("walkshed", { flatten: null }));

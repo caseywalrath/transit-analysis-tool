@@ -84,7 +84,7 @@ js/core/
   walk-audit.js             window.WalkAudit — sidewalk coverage classification + layer   [road-network]
   travelshed.js             window.Travelshed — transit travelshed math (pure)   [road-network]
   connector-graph.js        window.ConnectorGraph — connector planarization (pure)   [road-network]
-  walk-shape.js             window.WalkShape — walkshed boundary shapes (Smoothed cleanup, Contour isochrones; turf at call time)   [road-network]
+  walk-shape.js             window.WalkShape — walkshed boundary shapes (Standard contour isochrones, Simplified hole fill; turf at call time)   [road-network]
   point-icons.js            window.PointIcons — point icon registry (pure) + icon drawing, picker, setters   [drawing-and-features]
   points.js / lines.js / routes.js / polygons.js   Drawing, buffers, rendering per type   [drawing-and-features]
   labels.js / textboxes.js  Map label and text-box annotations (DOM markers)

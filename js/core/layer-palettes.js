@@ -417,7 +417,9 @@
   var OUTLINE_PX = { thin: 1, normal: 2, bold: 3 };
   App.resolveShedStyle = function (styleKey) {
     var ov = (App.layerStyles && App.layerStyles[styleKey]) || {};
-    var outline = (["bands", "tiers", "outer", "none"].indexOf(ov.outline) !== -1) ? ov.outline : "bands";
+    // Band outlines are off unless turned on; "merged" = one outline per time
+    // band, unioned across points.
+    var outline = (ov.outline === "merged") ? "merged" : "none";
     var tone = (["match", "dark", "white"].indexOf(ov.outlineTone) !== -1) ? ov.outlineTone : "match";
     return {
       outline: outline,

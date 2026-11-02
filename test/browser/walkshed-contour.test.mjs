@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/browser/walkshed-contour.test.mjs
 //
-// The "Contour" boundary shape (WalkShape.contour + App.contourSamples via
+// The "Standard" boundary shape (contour tracing: WalkShape.contour + App.contourSamples via
 // App.computeWalkshed): nested bands, barriers kept, small gaps filled,
 // partial-block reach, off-street limit, grid coarsening + its results note,
 // speed, the panel fields, and the Transit Travelshed path (minutes-based
@@ -65,7 +65,7 @@ function check(name, pass, detail) {
     const eng = await page.evaluate(({ LAT0, LNG0, D }) => {
       const origin = [LNG0 + 15.3 * D, LAT0 + 14.6 * D];
       const budgets = [1.25, 2.5];                       // 15 / 30 min at 3.1 mph
-      const contourShape = Object.assign(App.walkShapeDefaults(), { method: "contour" });
+      const contourShape = Object.assign(App.walkShapeDefaults(), { method: "standard" });
       App.networkSettings.walkShape = contourShape;
       const shape = App.walkShapeFor();
       const t0 = performance.now();
@@ -150,15 +150,24 @@ function check(name, pass, detail) {
     await page.evaluate(() => App.openModulePopup("walkshed"));
     await page.locator("#module-popup").waitFor({ state: "visible", timeout: 10000 });
     await page.locator("details.data-input-group summary").first().click();
-    await page.locator("#wsShapeMethod").selectOption("contour");
+    await page.locator("#wsShapeMethod").selectOption("standard");
     const fields = await page.evaluate(() => {
       const vis = (id) => { const el = document.getElementById(id); return !!(el && el.offsetParent !== null); };
-      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"), hull: vis("wsMaxEdge"), round: vis("wsRoundFt"),
+      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"), hull: vis("wsMaxEdge"),
         sig: App.walkShapeSignature() };
     });
-    check("Contour shows Grid detail, Off-street reach and Fill holes; hides Hull detail and Edge rounding",
-      fields.grid && fields.off && fields.holes && !fields.hull && !fields.round, JSON.stringify(fields));
-    check("contour cache-key signature", fields.sig === "|contour:10:80:330", fields.sig);
+    check("Standard shows Grid detail, Off-street reach and Fill holes; hides Hull detail",
+      fields.grid && fields.off && fields.holes && !fields.hull, JSON.stringify(fields));
+    check("Standard cache-key signature", fields.sig === "|standard:10:80:330", fields.sig);
+    await page.locator("#wsShapeMethod").selectOption("simplified");
+    const sfields = await page.evaluate(() => {
+      const vis = (id) => { const el = document.getElementById(id); return !!(el && el.offsetParent !== null); };
+      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"), hull: vis("wsMaxEdge"), sig: App.walkShapeSignature() };
+    });
+    check("Simplified shows Hull detail and Fill holes; hides Grid detail and Off-street reach",
+      !sfields.grid && !sfields.off && sfields.holes && sfields.hull, JSON.stringify(sfields));
+    check("Simplified cache-key signature", sfields.sig === "|simplified:10", sfields.sig);
+    await page.locator("#wsShapeMethod").selectOption("standard");
 
     // Three points: the run computes one point per tick and reports progress.
     await page.evaluate(() => {
@@ -213,7 +222,7 @@ function check(name, pass, detail) {
       return page.evaluate(() => App.map.getSource("ts-travelshed")._data.features.map((f) => ({ band: f.properties.band, area: turf.area(f), type: f.geometry.type })));
     };
     const tsSimplified = await runTs();
-    await page.evaluate(() => App.setWalkShape({ method: "contour" }));
+    await page.evaluate(() => App.setWalkShape({ method: "standard" }));
     check("Transit Travelshed: shape change marks it stale",
       await page.evaluate(() => !!document.querySelector("#tsStatus.rf-status-stale")));
     const tsContour = await runTs();

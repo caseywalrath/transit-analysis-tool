@@ -726,7 +726,8 @@
           wrap.appendChild(s2);
           return s2;
         };
-        var mkCheck = function (label, checked, title, key) {
+        // onValue: what a checked box stores (default true); unchecked stores null.
+        var mkCheck = function (label, checked, title, key, onValue) {
           var wrap = mkRow(label);
           var c = document.createElement("input");
           c.type = "checkbox";
@@ -736,16 +737,22 @@
           c.addEventListener("click", function (e) { e.stopPropagation(); });
           c.addEventListener("change", function () {
             var patch = {};
-            patch[key] = c.checked || null;
+            patch[key] = c.checked ? (onValue != null ? onValue : true) : null;
             App.setLayerStyle(styleKey, patch);
             rerender();
           });
           wrap.appendChild(c);
+          return c;
         };
+        // Checkboxes first, then the outline's line selects last, so the
+        // selects never sit sandwiched between toggles. Soft edge and Line only
+        // act on the outline, so they are disabled while outlines are off.
         var shed = App.resolveShedStyle(styleKey);
-        mkSelect(mkRow("Outline"), [["bands", "Per band"], ["tiers", "Band edges merged"],
-          ["outer", "Outer edge only"], ["none", "None"]], shed.outline, "Outline",
-          false, function (v) { App.setLayerStyle(styleKey, { outline: v === "bands" ? null : v }); });
+        var outlinesOn = shed.outline === "merged";
+        mkCheck("Fade outer bands", !!ov.bandFade, "Make longer-time bands progressively more transparent.", "bandFade");
+        mkCheck("Band outlines", outlinesOn,
+          "Draw one outline per time band, merged across points.", "outline", "merged");
+        var glowCb = mkCheck("Soft edge", !!ov.softEdge, "Blurred glow along the band outlines.", "softEdge");
         var lineWrap = mkRow("Line");
         var wSel = mkSelect(lineWrap, [["", "Auto"], ["thin", "Thin"], ["normal", "Normal"], ["bold", "Bold"]],
           ov.outlineWeight || "", "Outline weight", true,
@@ -753,9 +760,7 @@
         var tSel = mkSelect(lineWrap, [["match", "Match"], ["dark", "Darker"], ["white", "White"]],
           shed.tone, "Outline tone", true,
           function (v) { App.setLayerStyle(styleKey, { outlineTone: v === "match" ? null : v }); });
-        if (shed.outline === "none") { wSel.disabled = true; tSel.disabled = true; }
-        mkCheck("Soft edge", !!ov.softEdge, "Blurred glow along the outline.", "softEdge");
-        mkCheck("Fade outer bands", !!ov.bandFade, "Make longer-time bands progressively more transparent.", "bandFade");
+        if (!outlinesOn) { wSel.disabled = true; tSel.disabled = true; glowCb.disabled = true; }
       }
 
       if (ov.palette || ov.reverse != null || ov.flatten || ov.outline || ov.outlineWeight ||

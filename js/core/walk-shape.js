@@ -1,9 +1,9 @@
 // js/core/walk-shape.js
-// Walkshed boundary cleanup (window.WalkShape): the "Smoothed" shape method.
-// Takes the concave-hull polygon road-network.js builds and fills small holes,
-// closes narrow notches, and rounds corners, so the outline reads as a clean
-// service area instead of a jagged hull. Display/study-area geometry only —
-// the flood and its distances are never touched.
+// Walkshed boundary shapes (window.WalkShape). contour() traces the "Standard"
+// shape from a travel-time grid and cleans it with refine() (fill small holes,
+// close narrow notches, round corners); fillHoles() is also the "Simplified"
+// hull's only cleanup. Geometry only — the flood and its distances are never
+// touched.
 // CONSTRAINT: no DOM and no App state; reads `turf` at CALL time only, so the
 // file loads before/without turf. Detail: docs/reference/road-network.md.
 
@@ -76,7 +76,7 @@
   }
 
   var KM_PER_DEG = 111.32;          // simplify tolerance is in degrees; ~1 deg ≈ 111 km
-  var COARSE_ROUND_KM = 0.09;       // ~300 ft: Contour's rounding is above, Smoothed's below
+  var COARSE_ROUND_KM = 0.09;       // ~300 ft: the Standard shape's default 330 ft rounding is above
 
   // True when any two non-adjacent edges of the (Multi)Polygon's rings cross
   // or touch. Same question as turf.kinks, but turf.kinks tests every edge
@@ -175,11 +175,11 @@
     var p = step(feature, function (c) { return fillHoles(c, holeAcres); });
 
     if (roundKm > 0) {
-      // Large roundings (Contour's 330 ft) erase anything finer than ~1/3 of
-      // the radius, so thin the outline to a tenth of it first and draw buffer
-      // arcs coarsely: turf.buffer's cost grows with vertex count, and this cut
-      // it ~10x on contour bands (thousands of grid-traced vertices). Smoothed's
-      // 150 ft rounding stays below the threshold and keeps its exact output.
+      // Large roundings (the Standard shape's 330 ft) erase anything finer than
+      // ~1/3 of the radius, so thin the outline to a tenth of it first and draw
+      // buffer arcs coarsely: turf.buffer's cost grows with vertex count, and
+      // this cut it ~10x on grid-traced bands (thousands of vertices). Small
+      // roundings (a short off-street reach) keep the exact path.
       var coarse = roundKm >= COARSE_ROUND_KM;
       p = step(p, function (c) {
         var src = coarse ? turf.simplify(c, { tolerance: roundKm * 0.1 / KM_PER_DEG, highQuality: false }) : c;
@@ -208,7 +208,7 @@
     return p;
   }
 
-  // ---- Contour shape ----
+  // ---- Contour tracing ("Standard" shape) ----
   // Travel-time surface on a regular grid, traced at each budget. This is how
   // Valhalla / OpenTripPlanner build isochrones: the edge runs partway down the
   // last block instead of stopping at the last intersection.
@@ -225,7 +225,7 @@
   // cheapest sample within offStreetKm plus the straight-line walk to it;
   // anything farther from every sample is unreachable, so disjoint clusters
   // stay disjoint. The grid coarsens (gridKmUsed > gridKm) rather than exceed
-  // MAX_CELLS. Each band is cleaned like the Smoothed shape (refine with
+  // MAX_CELLS. Each band is cleaned with refine (with
   // roundKm), then clipped to the next larger band so bands stay nested.
   function contour(samples, budgets, opts) {
     opts = opts || {};
