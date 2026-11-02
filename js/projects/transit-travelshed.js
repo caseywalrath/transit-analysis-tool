@@ -23,7 +23,6 @@
     maxWaitMin: 10,
     boardPenaltyMin: 1,
     stopSpacingMi: 0.25,
-    maxEdgeKm: 0.3,
     shedMode: "transit",      // "transit" (walk legs capped) | "door" (walk legs uncapped)
     maxAccessWalkMi: 0.5,
     maxEgressWalkMi: 0.25,
@@ -31,7 +30,7 @@
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
-  var FT_PER_KM = 3280.84; // hull-detail maxEdgeKm is displayed in feet but stored/persisted in km
+  var FT_PER_KM = 3280.84; // grid sizes are stored in km and shown in feet
 
   var _settings     = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   var _origin        = null;   // [lng, lat] | null — probe pattern, not an App.points feature
@@ -567,9 +566,6 @@
     var spacing = document.getElementById("tsStopSpacing");
     if (spacing && +spacing.value > 0) _settings.stopSpacingMi = +spacing.value;
 
-    var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value / FT_PER_KM; // ft input -> km stored
-
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode && (shedMode.value === "transit" || shedMode.value === "door")) _settings.shedMode = shedMode.value;
 
@@ -635,8 +631,6 @@
     var spacing = document.getElementById("tsStopSpacing");
     if (spacing) spacing.value = _settings.stopSpacingMi;
 
-    var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge) maxEdge.value = Math.round(_settings.maxEdgeKm * FT_PER_KM); // km stored -> ft displayed
 
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — see
     // onSnapTolChange() above.
@@ -656,6 +650,7 @@
     if (transferWalk) transferWalk.value = _settings.maxTransferWalkMi;
 
     updateWalkCapInputsEnabled();
+    if (App.syncWalkShapeInputs) App.syncWalkShapeInputs("ts");
 
     var originLabel = document.getElementById("tsOriginLabel");
     if (originLabel) originLabel.textContent = _origin ? (_origin[1].toFixed(5) + ", " + _origin[0].toFixed(5)) : "Not set";
@@ -723,16 +718,41 @@
   var TS_SOURCE     = "ts-travelshed";
   var TS_FILL_LAYER = "ts-travelshed-fill";
   var TS_LINE_LAYER = "ts-travelshed-line";
+  // The outline has its own source so outline modes can change its data.
+  var TS_LINE_SRC   = "ts-travelshed-line-src";
+  var TS_FADE_ALPHA = [1, 0.6, 0.35];
+  var _lastRings = [];   // rings from the last render, to rebuild outline geometry on a style change
 
   // 3-class Blues, innermost (band 0 = shortest budget) darkest. Resolved through
   // the layer color cascade; a missing layer-palettes.js degrades to the
   // hardcoded colors rather than throwing.
-  function tsColorExpr() {
+  function shedStyle() {
+    return (typeof App.resolveShedStyle === "function") ? App.resolveShedStyle("transit-travelshed")
+      : { outline: "none", widthPx: null, tone: "match", bandFade: false };
+  }
+  // kind: "fill" (band fade) | "line" (outline tone) | other = plain.
+  function tsColorExpr(kind) {
     if (typeof window.LayerPalette === "undefined") {
       return ["match", ["get", "band"], 0, "#1d4ed8", 1, "#3b82f6", 2, "#93c5fd", "#93c5fd"];
     }
+    var LP = window.LayerPalette;
     var colors = App.resolveLayerColors("transit-travelshed") || ["#1d4ed8", "#3b82f6", "#93c5fd"];
-    return window.LayerPalette.matchExpr("band", colors);
+    var st = shedStyle();
+    if (kind === "fill" && st.bandFade) {
+      // Alpha baked into the color so it multiplies with the opacity slider.
+      colors = colors.map(function (c, i) { return LP.withAlpha(c, TS_FADE_ALPHA[Math.min(i, TS_FADE_ALPHA.length - 1)]); });
+    } else if (kind === "line") {
+      if (st.tone === "dark") colors = colors.map(function (c) { return LP.shade(c, 0.35); });
+      else if (st.tone === "white") return "#ffffff";
+    }
+    return LP.matchExpr("band", colors);
+  }
+
+  // Outline geometry: "merged" draws every band ring's edges (one origin set,
+  // so the rings already are the merged per-band boundaries); otherwise empty
+  // (the Layers panel owns visibility).
+  function outlineFeatures(rings, features) {
+    return shedStyle().outline === "merged" ? features : [];
   }
 
   // Re-applies paint properties from the current cascade without re-running
@@ -742,37 +762,54 @@
     fillTravelshedLegendColors();
     var map = App.map;
     if (!map || !map.getLayer(TS_FILL_LAYER)) return;
-    var expr = tsColorExpr();
-    map.setPaintProperty(TS_FILL_LAYER, "fill-color", expr);
-    map.setPaintProperty(TS_LINE_LAYER, "line-color", expr);
+    var st = shedStyle();
+    map.setPaintProperty(TS_FILL_LAYER, "fill-color", tsColorExpr("fill"));
+    map.setPaintProperty(TS_LINE_LAYER, "line-color", tsColorExpr("line"));
+    map.setPaintProperty(TS_LINE_LAYER, "line-width", st.widthPx || 1.5);
   }
   if (typeof App.registerLayerRepainter === "function") {
-    App.registerLayerRepainter("transit-travelshed", repaintTravelshedLayers);
+    App.registerLayerRepainter("transit-travelshed", function () {
+      // Turning outlines on/off is a geometry change, not just paint.
+      if (_lastRings.length && App.map && App.map.getSource(TS_LINE_SRC)) {
+        App.map.getSource(TS_LINE_SRC).setData({ type: "FeatureCollection",
+          features: outlineFeatures(_lastRings, ringFeatures(_lastRings)) });
+      }
+      repaintTravelshedLayers();
+    });
   }
 
-  function renderTravelshedLayers(rings) {
-    var map = App.map;
-    if (!map) return;
+  function ringFeatures(rings) {
     var features = [];
     rings.forEach(function (r) {
       if (!r.ring) return;
       features.push({ type: "Feature", properties: { band: r.band, budgetMin: r.budgetMin }, geometry: r.ring.geometry });
     });
+    return features;
+  }
+
+  function renderTravelshedLayers(rings) {
+    var map = App.map;
+    if (!map) return;
+    _lastRings = rings;
+    var features = ringFeatures(rings);
     var fc = { type: "FeatureCollection", features: features };
+    var lineFc = { type: "FeatureCollection", features: outlineFeatures(rings, features) };
 
     if (!map.getSource(TS_SOURCE)) {
       map.addSource(TS_SOURCE, { type: "geojson", data: fc });
       map.addLayer({
         id: TS_FILL_LAYER, type: "fill", source: TS_SOURCE,
-        paint: { "fill-color": tsColorExpr(), "fill-opacity": 0.35 }
+        paint: { "fill-color": tsColorExpr("fill"), "fill-opacity": 0.35 }
       });
+      map.addSource(TS_LINE_SRC, { type: "geojson", data: lineFc });
       map.addLayer({
-        id: TS_LINE_LAYER, type: "line", source: TS_SOURCE,
+        id: TS_LINE_LAYER, type: "line", source: TS_LINE_SRC,
         layout: { "line-join": "round" },
-        paint: { "line-color": tsColorExpr(), "line-width": 1.5, "line-opacity": 0.9 }
+        paint: { "line-color": tsColorExpr("line"), "line-width": shedStyle().widthPx || 1.5, "line-opacity": 0.9 }
       });
     } else {
       map.getSource(TS_SOURCE).setData(fc);
+      if (map.getSource(TS_LINE_SRC)) map.getSource(TS_LINE_SRC).setData(lineFc);
       repaintTravelshedLayers(); // pick up a palette changed while results were on screen
     }
   }
@@ -780,8 +817,10 @@
   function clearTravelshedLayers() {
     var map = App.map;
     if (!map) return;
+    _lastRings = [];
     if (map.getLayer(TS_LINE_LAYER)) map.removeLayer(TS_LINE_LAYER);
     if (map.getLayer(TS_FILL_LAYER)) map.removeLayer(TS_FILL_LAYER);
+    if (map.getSource(TS_LINE_SRC))  map.removeSource(TS_LINE_SRC);
     if (map.getSource(TS_SOURCE))    map.removeSource(TS_SOURCE);
   }
 
@@ -793,7 +832,9 @@
       ["#1d4ed8", "#3b82f6", "#93c5fd"];
     for (var i = 0; i < 3; i++) {
       var sw = document.getElementById("tsLegendSw" + i);
-      if (sw) sw.style.background = colors[i] || colors[colors.length - 1];
+      var c = colors[i] || colors[colors.length - 1];
+      if (sw) sw.style.background = (shedStyle().bandFade && window.LayerPalette)
+        ? window.LayerPalette.withAlpha(c, TS_FADE_ALPHA[i]) : c;
     }
   }
 
@@ -852,6 +893,11 @@
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
       "</p>" +
+      // Grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
+      ((result.contourGridKm && result.contourGridAskedKm && result.contourGridKm > result.contourGridAskedKm * 1.001)
+        ? '<p class="tiny" id="tsGridNote" style="margin-top:2px;color:var(--muted);">Grid coarsened to ' +
+          Math.round(result.contourGridKm * FT_PER_KM) + " ft for this size.</p>"
+        : "") +
       connectionReportHTML() +
       coverageReportHTML();
   }
@@ -1137,59 +1183,26 @@
       setStatus("Building isochrones…", "running");
       await new Promise(function (r) { setTimeout(r, 0); });
 
-      // Cluster-union polygonization: one polygon per reachable CLUSTER (the
-      // origin/access walk blob, plus one per alighting stop's egress walk),
-      // unioned per band — rather than one hull over every reachable node. A
-      // single hull across disjoint clusters shrink-wraps the gap between them
-      // (bridging unreachable space); per-cluster polygons + union can't bridge anything that isn't
-      // actually reachable. Used in BOTH modes — in "door" mode the clusters
-      // are large and overlap heavily, but the union is still correct.
+      // One travel-time surface from the engine's per-node arrival minutes
+      // (already the fastest path, with access/egress walk caps applied),
+      // traced at every budget. Only segments with BOTH
+      // ends reached are sampled: extending past a node that sits at a walk
+      // cap would walk beyond the cap. Disjoint clusters stay disjoint because
+      // grid points beyond offStreetKm of every sample are unreachable. (This
+      // replaced a per-cluster concave-hull union; see
+      // docs/archive/walkshed-simplified-shape.md.)
       var walkMinPerKm = 60 / walkSpeedKmh;
-      var originNodeKeys = Object.keys(originCost);
-      var polys = [];
-      var clustersSinceYield = 0;
-      for (var bi = 0; bi < budgets.length; bi++) {
-        var B = budgets[bi];
-        var clusterPolys = [];
-
-        // Origin/access cluster: capped at the access walk limit in "transit"
-        // mode (never past the band budget either).
-        var accessCap = isTransitMode ? Math.min(B, accessCapMin) : B;
-        var originCoords = originNodeKeys
-          .filter(function (k) { return originCost[k] * walkMinPerKm <= accessCap; })
-          .map(function (k) { return App.nodeKeyToCoord(k); });
-        if (originCoords.length) {
-          var originPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(originCoords, _settings.maxEdgeKm) : null;
-          if (originPoly) clusterPolys.push(originPoly);
-        }
-        clustersSinceYield++;
-        if (clustersSinceYield >= 15) { clustersSinceYield = 0; await new Promise(function (r) { setTimeout(r, 0); }); }
-
-        // One cluster per alighting stop: capped at whatever's left of the
-        // band budget after the ride (and, in "transit" mode, at the egress
-        // walk limit too).
-        for (var ei = 0; ei < engineResult.alightings.length; ei++) {
-          var al = engineResult.alightings[ei];
-          if (al.alightMin >= B) continue;
-          var stopCostObj = stopCosts[al.stopKey];
-          if (!stopCostObj) continue;
-          var egressCap = B - al.alightMin;
-          if (isTransitMode) egressCap = Math.min(egressCap, egressCapMin);
-          var stopCoords = Object.keys(stopCostObj)
-            .filter(function (k) { return stopCostObj[k] * walkMinPerKm <= egressCap; })
-            .map(function (k) { return App.nodeKeyToCoord(k); });
-          if (stopCoords.length) {
-            var stopPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(stopCoords, _settings.maxEdgeKm) : null;
-            if (stopPoly) clusterPolys.push(stopPoly);
-          }
-          clustersSinceYield++;
-          if (clustersSinceYield >= 15) { clustersSinceYield = 0; await new Promise(function (r) { setTimeout(r, 0); }); }
-        }
-
-        var bandPolygon = App.foldAnalysisUnion(clusterPolys); // null-safe union, null for an empty array
-        polys.push({ budgetMin: B, polygon: bandPolygon, nodeCount: bandSets[bi].nodeKeys.length });
-        await new Promise(function (r) { setTimeout(r, 0); }); // yield between bands
-      }
+      var shapeOpt = App.walkShapeFor();
+      var tsGridKm = window.WalkShape.scaledGridKm(shapeOpt.gridKm, maxBudgetMin / 15);
+      var cRes = window.WalkShape.contour(
+        App.contourSamples(engineResult.nodeTimes, maxBudgetMin, tsGridKm * window.WalkShape.SAMPLE_STEP_CELLS, walkMinPerKm, false),
+        budgets,
+        { gridKm: tsGridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
+          holeAcres: shapeOpt.holeAcres, roundKm: shapeOpt.roundKm });
+      var contourGridKm = cRes.gridKmUsed, contourGridPlannedKm = cRes.gridKmPlanned;
+      var polys = budgets.map(function (B, k) {
+        return { budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length };
+      });
 
       // Ring differencing largest-first so the innermost band stays solid; a
       // turf.difference failure falls back to the un-differenced polygon for
@@ -1219,7 +1232,9 @@
         resolved: resolved,
         offNetworkStopCount: offNetworkStopCount,
         floodStats: floodStats,
-        computeMs: Date.now() - t0
+        computeMs: Date.now() - t0,
+        contourGridKm: contourGridKm,
+        contourGridAskedKm: contourGridPlannedKm
       };
       _stale = false;
 
@@ -1257,11 +1272,13 @@
     if (clearOriginBtn) clearOriginBtn.addEventListener("click", clearOrigin);
 
     ["tsBudget1", "tsBudget2", "tsBudget3", "tsWalkSpeed", "tsDayType", "tsTimeOfDay",
-     "tsMaxWait", "tsBoardPenalty", "tsStopSpacing", "tsMaxEdge",
+     "tsMaxWait", "tsBoardPenalty", "tsStopSpacing",
      "tsShedMode", "tsAccessWalk", "tsEgressWalk", "tsTransferWalk"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
     });
+
+    if (App.wireWalkShapeInputs) App.wireWalkShapeInputs("ts");
 
     var snapEl = document.getElementById("tsSnapTol");
     if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
@@ -1356,6 +1373,8 @@
     }
   }
 
+  if (typeof App.onWalkShapeChange === "function") App.onWalkShapeChange(function () { markStale(); });
+
   async function update(core) {
     var noFeatures = (App.routes || []).length === 0 && (App.lines || []).length === 0;
     if (_lastResult && noFeatures) clearAll();
@@ -1380,7 +1399,6 @@
       maxWaitMin: _settings.maxWaitMin,
       boardPenaltyMin: _settings.boardPenaltyMin,
       stopSpacingMi: _settings.stopSpacingMi,
-      maxEdgeKm: _settings.maxEdgeKm,
       shedMode: _settings.shedMode,
       maxAccessWalkMi: _settings.maxAccessWalkMi,
       maxEgressWalkMi: _settings.maxEgressWalkMi,
@@ -1412,7 +1430,6 @@
     if (+data.maxWaitMin >= 0) _settings.maxWaitMin = +data.maxWaitMin;
     if (+data.boardPenaltyMin >= 0) _settings.boardPenaltyMin = +data.boardPenaltyMin;
     if (+data.stopSpacingMi > 0) _settings.stopSpacingMi = +data.stopSpacingMi;
-    if (+data.maxEdgeKm > 0) _settings.maxEdgeKm = +data.maxEdgeKm;
     if (data.shedMode === "transit" || data.shedMode === "door") _settings.shedMode = data.shedMode;
     if (+data.maxAccessWalkMi > 0) _settings.maxAccessWalkMi = +data.maxAccessWalkMi;
     if (+data.maxEgressWalkMi > 0) _settings.maxEgressWalkMi = +data.maxEgressWalkMi;

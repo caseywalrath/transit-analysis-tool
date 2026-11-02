@@ -106,5 +106,16 @@ export default {
       args: ["#abc", 0.5] },
     { id: "rgba/malformed-null", call: "LayerPalette.rgba",
       args: ["not-a-color", 0.35] },
+  
+    // ---- withAlpha / shade / new isochrone presets ----
+    { id: "withAlpha/6-digit", call: "LayerPalette.withAlpha", args: ["#1d4ed8", 0.6] },
+    { id: "withAlpha/3-digit", call: "LayerPalette.withAlpha", args: ["#abc", 0.35] },
+    { id: "withAlpha/pass-through", call: "LayerPalette.withAlpha", args: ["rgba(1,2,3,0.5)", 0.6] },
+    { id: "shade/zero", call: "LayerPalette.shade", args: ["#3b82f6", 0] },
+    { id: "shade/0.35", call: "LayerPalette.shade", args: ["#3b82f6", 0.35] },
+    { id: "shade/one-black", call: "LayerPalette.shade", args: ["#3b82f6", 1] },
+    { id: "shade/pass-through", call: "LayerPalette.shade", args: ["red", 0.35] },
+    { id: "list/sequential-only", call: "LayerPalette.list", args: [["sequential"]] },
+    { id: "rampColors/gnbu-n3", call: "LayerPalette.rampColors", args: ["gnbu", 3, false] },
   ],
 };

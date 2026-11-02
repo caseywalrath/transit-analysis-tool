@@ -1015,27 +1015,45 @@
     return dist;
   }
 
-  // Walkshed polygon from reachable node coordinates: concave hull with an
-  // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
-  // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
-  function buildWalkshedPolygon(coords, maxEdgeKm) {
-    if (!coords || coords.length === 0) return null;
-    var pts = [];
-    for (var i = 0; i < coords.length; i++) pts.push(turf.point(coords[i]));
-    var fc = turf.featureCollection(pts);
-
-    if (coords.length < 3) {
-      try { return turf.buffer(fc, 0.03, { units: "kilometers" }); } catch (e) { return null; }
+  // Contour samples [[lng, lat, cost]] from a per-node cost map (Map or plain
+  // object, nodeKey -> cost). Every reached node is a sample; segments whose
+  // ends are reached get a sample every stepKm, costing
+  // min(costA + t, costB + (L - t)) * costPerKm-style walk along the segment.
+  // partialEdges true also samples segments with only ONE end reached (the
+  // walk partway down the last block). Transit Travelshed passes false: its
+  // node times already apply walk caps, and extending past a capped node would
+  // break them. Samples above maxCost are dropped. Pure read of the graph.
+  function contourSamples(costs, maxCost, stepKm, costPerKm, partialEdges) {
+    var out = [];
+    if (!_segmentIndex || !costs) return out;
+    var get = (typeof costs.get === "function")
+      ? function (k) { var v = costs.get(k); return (v == null) ? Infinity : v; }
+      : function (k) { var v = costs[k]; return (v == null) ? Infinity : v; };
+    var eachNode = (typeof costs.forEach === "function")
+      ? function (fn) { costs.forEach(function (v, k) { fn(k, v); }); }
+      : function (fn) { Object.keys(costs).forEach(function (k) { fn(k, costs[k]); }); };
+    eachNode(function (k, v) {
+      if (v <= maxCost) { var c = keyToCoord(k); out.push([c[0], c[1], v]); }
+    });
+    var step = stepKm > 0 ? stepKm : 0.025;
+    var perKm = costPerKm > 0 ? costPerKm : 1;
+    for (var i = 0; i < _segmentIndex.length; i++) {
+      var seg = _segmentIndex[i];
+      if (seg.pedBlocked) continue;
+      var cA = get(seg.startKey), cB = get(seg.endKey);
+      if (cA === Infinity && cB === Infinity) continue;
+      if (!partialEdges && (cA === Infinity || cB === Infinity)) continue;
+      var a = seg.startCoord, b = seg.endCoord;
+      var kx = 111.32 * Math.cos(a[1] * Math.PI / 180), ky = 110.574;
+      var L = Math.sqrt(Math.pow((b[0] - a[0]) * kx, 2) + Math.pow((b[1] - a[1]) * ky, 2));
+      var n = Math.ceil(L / step);
+      for (var q = 1; q < n; q++) {
+        var t = L * q / n;
+        var cost = Math.min(cA + t * perKm, cB + (L - t) * perKm);
+        if (cost <= maxCost) out.push([a[0] + (b[0] - a[0]) * q / n, a[1] + (b[1] - a[1]) * q / n, cost]);
+      }
     }
-
-    var maxEdge = maxEdgeKm && maxEdgeKm > 0 ? maxEdgeKm : 0.3;
-    for (var attempt = 0; attempt < 8; attempt++) {
-      var hull = null;
-      try { hull = turf.concave(fc, { maxEdge: maxEdge, units: "kilometers" }); } catch (e) { hull = null; }
-      if (hull) return hull;
-      maxEdge *= 1.8;
-    }
-    try { return turf.convex(fc); } catch (e2) { return null; }
+    return out;
   }
 
   // Budget-limited flood from an arbitrary walk origin, shared by every walk-
@@ -1123,13 +1141,13 @@
   // Compute a network walkshed (walking isochrone) from an arbitrary origin.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km (= speedKmh * minutes/60)
-  //   options  : { maxEdge,       — advanced concave-hull edge length (km)
+  //   options  : { shape,         — OPTIONAL boundary-shape settings
+  //                                 (App.walkShapeFor(); read from there when absent)
   //               budgetsKm,     — OPTIONAL ascending km values; floods once at
   //                                 the max and returns one nested polygon per
   //                                 entry (`polygons` below).
   //               crossingPenaltyKm } — OPTIONAL { major, minor } km.
-  // Absent budgetsKm / zero penalties must stay byte-identical (hard
-  // backward-compat requirement).
+  // Zero penalties must stay byte-identical to no penalties.
   // Returns null when no network or origin off-network (snap > SNAP_MAX_KM).
   // Otherwise { polygon, reachableSegments, reachableCount, snap, computeMs,
   // snapMs, floodMs }. Assembly below never touches the graph (runWalkFlood owns that).
@@ -1146,9 +1164,6 @@
     var distMap = flood.distMap;
     var snap = flood.snap;
 
-    var coords = [];
-    distMap.forEach(function (d, key) { coords.push(keyToCoord(key)); });
-
     // Reachable street segments: both endpoints settled within budget.
     var segFeatures = [];
     for (var si = 0; si < _segmentIndex.length; si++) {
@@ -1163,7 +1178,27 @@
     if (distMap.has(snap.segStartKey)) segFeatures.push(turf.lineString([snap.coord, snap.segStartCoord]));
     if (distMap.has(snap.segEndKey)) segFeatures.push(turf.lineString([snap.coord, snap.segEndCoord]));
 
-    var polygon = buildWalkshedPolygon(coords, options.maxEdge);
+    // Boundary: one travel-time surface traced at every budget
+    // (WalkShape.contour). The old concave-hull boundary was removed; see
+    // docs/archive/walkshed-simplified-shape.md.
+    var shape = options.shape || (typeof App.walkShapeFor === "function" ? App.walkShapeFor() : null);
+    var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    var cBudgets = (options.budgetsKm && options.budgetsKm.length) ? options.budgetsKm.slice() : [];
+    if (cBudgets.indexOf(budgetKm) === -1) cBudgets.push(budgetKm);
+    var bandByBudget = {}, gridKmUsed = null, gridKmPlanned = null;
+    if (shape && window.WalkShape && window.WalkShape.contour) {
+      // 1.25 km = 15 min at the default 3.1 mph walk speed.
+      var cGridKm = window.WalkShape.scaledGridKm(shape.gridKm, Math.max.apply(null, cBudgets) / 1.25);
+      var cRes = window.WalkShape.contour(
+        contourSamples(distMap, budgetKm, cGridKm * window.WalkShape.SAMPLE_STEP_CELLS, 1, true), cBudgets,
+        { gridKm: cGridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
+          holeAcres: shape.holeAcres, roundKm: shape.roundKm });
+      cBudgets.forEach(function (b, k) { bandByBudget[b] = cRes.bands[k]; });
+      gridKmUsed = cRes.gridKmUsed;
+      gridKmPlanned = cRes.gridKmPlanned;
+    }
+    var shapeMs = Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - tc0);
+    var polygon = bandByBudget[budgetKm] || null;
 
     var result = {
       polygon: polygon,
@@ -1175,16 +1210,20 @@
       floodMs: flood.floodMs
     };
 
+    result.gridKmUsed = gridKmUsed;
+    result.gridKmPlanned = gridKmPlanned;
+    result.shapeMs = shapeMs;
+
     if (options.budgetsKm && options.budgetsKm.length) {
       var polygons = [];
       for (var bi = 0; bi < options.budgetsKm.length; bi++) {
         var b = options.budgetsKm[bi];
-        var bandCoords = [];
-        distMap.forEach(function (d, key) { if (d <= b) bandCoords.push(keyToCoord(key)); });
+        var nodeCount = 0;
+        distMap.forEach(function (d) { if (d <= b) nodeCount++; });
         polygons.push({
           budgetKm: b,
-          polygon: buildWalkshedPolygon(bandCoords, options.maxEdge),
-          nodeCount: bandCoords.length
+          polygon: bandByBudget[b] || null,
+          nodeCount: nodeCount
         });
       }
       result.polygons = polygons;
@@ -1307,8 +1346,8 @@
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
   App.computeWalkCostMap = computeWalkCostMap;
-  App.polygonizeNodeSet  = function (coords, maxEdgeKm) { return buildWalkshedPolygon(coords, maxEdgeKm); };
   App.nodeKeyToCoord     = keyToCoord;
+  App.contourSamples     = contourSamples;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
   App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon>|null
 

@@ -23,7 +23,7 @@ While drawing a line/route/polygon, snap new vertices to nearby reference geomet
 
 
 ### Walkshed polygons — Implemented
-True street-network walking isochrones from placed Points, entirely in-browser. **Walkshed** module (`js/projects/walkshed.js`) uses `App.computeWalkshed` (`js/core/road-network.js`: budget-limited flood Dijkstra + concave-hull polygon); requires a loaded road network. Points flagged `attributes.serviceAreaType = "walkshed"` substitute the walkshed for the circular buffer in `rebuildBuffers()`, so every study-area consumer (BAS, TPI, Title VI, FTA, corridor pickers) picks it up automatically.
+True street-network walking isochrones from placed Points, entirely in-browser. **Walkshed** module (`js/projects/walkshed.js`) uses `App.computeWalkshed` (`js/core/road-network.js`: budget-limited flood Dijkstra, then travel-time contour isochrones; the original concave-hull boundary was removed, see `docs/archive/walkshed-simplified-shape.md`); requires a loaded road network. Points flagged `attributes.serviceAreaType = "walkshed"` substitute the walkshed for the circular buffer in `rebuildBuffers()`, so every study-area consumer (BAS, TPI, Title VI, FTA, corridor pickers) picks it up automatically.
 
 ### Walkshed sidewalk & access refinement — Not started
 A further precision pass on the walkshed network, building on the class-aware traversal already in place (`js/core/road-network.js` tags every edge/segment `pedBlocked`/`carBlocked` from the OSM `highway` class and `foot` tag, so motorways/trunk roads and their ramps are already excluded from walksheds, pedestrian ways — footway/path/steps/pedestrian/cycleway/living_street — are already included, and driving routes still ignore pedestrian-only ways).
@@ -45,7 +45,7 @@ Computes everywhere reachable from a clicked map origin via walk → wait →
 ride drawn transit routes/lines → walk, with at most one transfer, rendered
 as 1–3 banded isochrones. Extends the walkshed engine's bones:
 `js/core/road-network.js` gained per-node cost-map primitives
-(`computeWalkCostMap`, `polygonizeNodeSet`, `snapWalk`, `nodeKeyToCoord`,
+(`computeWalkCostMap`, `polygonizeNodeSet` (since removed), `snapWalk`, `nodeKeyToCoord`,
 `fetchRoadNetworkForExtent`) shared with `computeWalkshed`; a new pure
 calculation engine `js/core/travelshed.js` (`window.Travelshed`) does the
 layered-flood arrival-time math on plain JSON so it's golden-testable with
@@ -520,6 +520,9 @@ Pin a text annotation to a specific map location. Notes persist in the session c
 ---
 
 ## UI & Layout
+
+### Responsive long-running work + standard progress indicator — Not started
+Standard to adopt across every module where possible: long calculations yield to the browser between units of work (one point, one route, one geography batch) instead of freezing the page, and show a consistent "working" indicator so the user can see something is happening and roughly how far along it is (e.g. "Calculating walksheds… 12 of 50 done"). Walkshed already does this (one point per tick, progress in its status line), and Transit Travelshed already yields between stop floods; most other modules run in one blocking pass. Scope: a shared helper (e.g. on `App.renderModuleState` or a small `App.runChunked(items, fn, onProgress)`) so modules don't each hand-roll it, a visible indicator in the module's status area (and possibly a spinner on the Run button), and an audit of which modules have runs long enough to need it. Optional later: a Cancel button for very long runs.
 
 ### Stale & empty-state consistency — Not started
 Standardize two cross-cutting popup patterns so the whole suite feels coherent. (1) **Stale banner:** most analysis modules already track a `_stale` flag — surface it as a uniform banner ("Inputs changed since last run — re-run to update") with a re-run affordance, instead of each module styling its own. (2) **Friendly empty states:** when a module has nothing to act on, show a one-line prompt ("Draw a route to begin", "Load a GTFS feed to begin") rather than an empty table. **Onboarding-aware:** given the beginner audience (see `CLAUDE.md`), each module's first open should show a one-line "what this needs" hint and lightweight tooltips on key inputs. Could be a shared helper (e.g., `App.renderModuleState({ stale, empty, hint })`) reused by every popup.

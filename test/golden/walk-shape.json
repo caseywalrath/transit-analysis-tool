@@ -1,0 +1,9 @@
+{
+  "selfIntersects/square-false": false,
+  "selfIntersects/bowtie-true": true,
+  "selfIntersects/square-with-inner-hole-false": false,
+  "selfIntersects/hole-crossing-shell-true": true,
+  "selfIntersects/ring-touching-itself-true": true,
+  "selfIntersects/many-vertex-circle-false": false,
+  "selfIntersects/null-geometry-false": false
+}

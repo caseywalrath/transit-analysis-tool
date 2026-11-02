@@ -103,11 +103,28 @@
       </p>
       </div>
 
-      <div class="data-input-group" data-input-group="hull-detail">
-        <label class="tiny u-mt-2">Hull detail — max edge (ft)</label>
-        <input type="number" id="tsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
+      <div class="data-input-group" data-input-group="walk-shape">
+
+        <div class="form-field u-mt-2">
+          <label class="tiny">Fill holes smaller than (acres)</label>
+          <input type="number" id="tsHoleAcres" class="rf-number-input" min="0" max="1000" step="1" value="10">
+        </div>
         <p class="tiny u-mt-1 u-muted">
-          Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
+          Interior gaps below this size are filled (a lake or rail yard larger than it stays a hole).
+          Shared with Walkshed.
+        </p>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Grid detail (ft)</label>
+          <input type="number" id="tsGridFt" class="rf-number-input" min="30" max="500" step="10" value="80">
+        </div>
+        <div class="form-field u-mt-2">
+          <label class="tiny">Off-street reach (ft)</label>
+          <input type="number" id="tsOffStreetFt" class="rf-number-input" min="50" max="2000" step="10" value="330">
+        </div>
+        <p class="tiny u-mt-1 u-muted">
+          How far beyond a street the walk area may extend (also the edge-rounding distance), and the
+          spacing of the travel-time grid. A smaller grid is sharper but slower; very large areas coarsen it
+          automatically. Shared with Walkshed.
         </p>
         <div class="form-field u-mt-2">
           <label class="tiny">Connector snap tolerance (ft)</label>

@@ -691,6 +691,7 @@ button { cursor: pointer; }
    inside the narrower .lp-style-control it needs a cap so a long palette
    label can't push the panel into horizontal scroll. */
 .lp-style-control .lp-basemap-select { max-width: 104px; flex: 0 1 auto; }
+.lp-style-control .lp-basemap-select.lp-select-sm { max-width: 80px; min-width: 0; }
 /* --- Shared census-cache status line (analysis modules) --- */
 /* A status NOTE, not a control: a left accent rule on a transparent ground,
    because a filled/bordered box under an outline button reads as a second

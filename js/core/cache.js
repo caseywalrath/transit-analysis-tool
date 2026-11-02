@@ -161,6 +161,7 @@
       networkSnapToleranceFt: (App.networkSettings && App.networkSettings.snapToleranceFt != null) ? App.networkSettings.snapToleranceFt : 50,
       networkCrossingMajorSec: (App.networkSettings && App.networkSettings.crossingMajorSec != null) ? App.networkSettings.crossingMajorSec : 0,
       networkCrossingMinorSec: (App.networkSettings && App.networkSettings.crossingMinorSec != null) ? App.networkSettings.crossingMinorSec : 0,
+      networkWalkShape: (App.networkSettings && App.networkSettings.walkShape) ? JSON.parse(JSON.stringify(App.networkSettings.walkShape)) : null,
       networkExcludedWayIds: (App.networkSettings && App.networkSettings.excludedWayIds) ? App.networkSettings.excludedWayIds.slice() : [],
       // Layer color palette cascade (additive fields — absent on an old
       // session, App.layerStyles/mapPalette keep their defaults).
@@ -340,6 +341,15 @@
     }
     if (App.networkSettings && state.networkCrossingMinorSec != null) {
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
+    }
+    // Boundary-shape settings: defaults, overlaid with only the stored fields
+    // that still exist (older sessions also stored a method name and an edge
+    // rounding distance; both are ignored now).
+    if (App.networkSettings) {
+      var wsd = (typeof App.walkShapeDefaults === "function") ? App.walkShapeDefaults() : {};
+      var wss = (state.networkWalkShape && typeof state.networkWalkShape === "object") ? state.networkWalkShape : {};
+      Object.keys(wsd).forEach(function (k) { if (wss[k] != null && isFinite(+wss[k])) wsd[k] = +wss[k]; });
+      App.networkSettings.walkShape = wsd;
     }
     // 3a-3b. Restore user-excluded streets (additive field — absent on an
     // old session leaves the exclusion set empty). Goes through the sanctioned write path
@@ -525,6 +535,7 @@
       App.networkSettings.snapToleranceFt = 50;
       App.networkSettings.crossingMajorSec = 0;
       App.networkSettings.crossingMinorSec = 0;
+      if (typeof App.walkShapeDefaults === "function") App.networkSettings.walkShape = App.walkShapeDefaults();
     }
     if (typeof App.setExcludedWays === "function") App.setExcludedWays([]);
 

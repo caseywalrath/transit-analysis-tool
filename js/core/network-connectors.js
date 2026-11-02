@@ -30,7 +30,65 @@
   if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
   if (App.networkSettings.excludedWayIds == null) App.networkSettings.excludedWayIds = [];
 
+  // Boundary-shape settings for walk polygons, shared by Walkshed and Transit
+  // Travelshed like the crossing delays. The boundary is a travel-time grid
+  // traced at each budget (WalkShape.contour); its edge rounding reuses
+  // offStreetFt (330 ft rounding is what removes the per-street-end scallops).
+  // Units are the honest ones (acres, ft); the engine gets km via
+  // App.walkShapeFor(). A session without stored settings gets the defaults.
+  // (The concave-hull alternative was removed:
+  // docs/archive/walkshed-simplified-shape.md.)
+  var WALK_SHAPE_DEFAULT = { holeAcres: 10, gridFt: 80, offStreetFt: 330 };
+  App.walkShapeDefaults = function () { return JSON.parse(JSON.stringify(WALK_SHAPE_DEFAULT)); };
+  if (!App.networkSettings.walkShape) App.networkSettings.walkShape = App.walkShapeDefaults();
+
+  // Engine-ready settings for App.computeWalkshed.
+  App.walkShapeFor = function () {
+    var ws = App.networkSettings.walkShape || {};
+    var offKm = (+ws.offStreetFt || 330) * 0.0003048;
+    return { holeAcres: (ws.holeAcres != null ? +ws.holeAcres : 10) || 0,
+             roundKm: offKm, gridKm: (+ws.gridFt || 80) * 0.0003048, offStreetKm: offKm };
+  };
+
+  // Cache-key suffix: every field that changes the polygons.
+  App.walkShapeSignature = function () {
+    var ws = App.networkSettings.walkShape || {};
+    return "|shape:" + App.walkShapeFor().holeAcres + ":" + (+ws.gridFt || 80) + ":" + (+ws.offStreetFt || 330);
+  };
+
+  // Modules register a callback so a shape change marks BOTH stale, whichever
+  // panel the user edited it in.
+  var _shapeListeners = [];
+  App.onWalkShapeChange = function (fn) { _shapeListeners.push(fn); };
+  App.setWalkShape = function (patch) {
+    var ws = App.networkSettings.walkShape = Object.assign({}, App.networkSettings.walkShape || App.walkShapeDefaults());
+    if (patch.gridFt != null && +patch.gridFt >= 30 && +patch.gridFt <= 500) ws.gridFt = +patch.gridFt;
+    if (patch.offStreetFt != null && +patch.offStreetFt > 0) ws.offStreetFt = +patch.offStreetFt;
+    if (patch.holeAcres != null && +patch.holeAcres >= 0) ws.holeAcres = +patch.holeAcres;
+    if (App.cache && App.cache.save) App.cache.save();
+    _shapeListeners.forEach(function (fn) { try { fn(); } catch (e) { /* one module's failure must not block the other */ } });
+  };
+
   var FT_TO_KM = 0.0003048;
+
+  // Shared popup wiring for the boundary-shape fields (ids <pfx>HoleAcres,
+  // <pfx>GridFt, <pfx>OffStreetFt), so Walkshed and Transit Travelshed stay on
+  // one implementation. sync* reads App.networkSettings.walkShape into them.
+  App.syncWalkShapeInputs = function (pfx) {
+    var ws = App.networkSettings.walkShape || App.walkShapeDefaults();
+    var h = document.getElementById(pfx + "HoleAcres");
+    var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (h) h.value = ws.holeAcres;
+    if (gEl) gEl.value = ws.gridFt;
+    if (oEl) oEl.value = ws.offStreetFt;
+  };
+  App.wireWalkShapeInputs = function (pfx) {
+    var h = document.getElementById(pfx + "HoleAcres");
+    var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (h) h.addEventListener("change", function () { App.setWalkShape({ holeAcres: h.value }); });
+    if (gEl) gEl.addEventListener("change", function () { App.setWalkShape({ gridFt: gEl.value }); App.syncWalkShapeInputs(pfx); });
+    if (oEl) oEl.addEventListener("change", function () { App.setWalkShape({ offStreetFt: oEl.value }); });
+  };
 
   var _lastSignature = null;
   var _lastReport = null;

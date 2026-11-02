@@ -691,7 +691,76 @@
         body.appendChild(fRow);
       }
 
-      if (ov.palette || ov.reverse != null || ov.flatten) {
+      // Band outlines / band fade — display-only options for layers whose
+      // spec sets styleOptions (Walkshed, Transit Travelshed). Resolved by
+      // App.resolveShedStyle; null always means today's default.
+      if (spec.styleOptions) {
+        var mkRow = function (label) {
+          var row = document.createElement("div");
+          row.className = "lp-style-row";
+          var lab = document.createElement("span");
+          lab.className = "lp-style-label";
+          lab.textContent = label;
+          row.appendChild(lab);
+          var wrap = document.createElement("div");
+          wrap.className = "lp-style-control";
+          row.appendChild(wrap);
+          body.appendChild(row);
+          return wrap;
+        };
+        var mkSelect = function (wrap, options, current, aria, small, onPick) {
+          var s2 = document.createElement("select");
+          s2.className = "lp-basemap-select" + (small ? " lp-select-sm" : "");
+          s2.setAttribute("aria-label", aria + " for " + spec.label);
+          options.forEach(function (o) {
+            var op = document.createElement("option");
+            op.value = o[0];
+            op.textContent = o[1];
+            s2.appendChild(op);
+          });
+          s2.value = current;
+          s2.addEventListener("click", function (e) { e.stopPropagation(); });
+          s2.addEventListener("change", function () { onPick(s2.value); rerender(); });
+          wrap.appendChild(s2);
+          return s2;
+        };
+        // onValue: what a checked box stores (default true); unchecked stores null.
+        var mkCheck = function (label, checked, title, key, onValue) {
+          var wrap = mkRow(label);
+          var c = document.createElement("input");
+          c.type = "checkbox";
+          c.checked = checked;
+          c.title = title;
+          c.setAttribute("aria-label", label + " for " + spec.label);
+          c.addEventListener("click", function (e) { e.stopPropagation(); });
+          c.addEventListener("change", function () {
+            var patch = {};
+            patch[key] = c.checked ? (onValue != null ? onValue : true) : null;
+            App.setLayerStyle(styleKey, patch);
+            rerender();
+          });
+          wrap.appendChild(c);
+        };
+        // Checkboxes first, then the outline's line selects last, so the
+        // selects never sit sandwiched between toggles. Line only acts on the
+        // outline, so it is disabled while outlines are off.
+        var shed = App.resolveShedStyle(styleKey);
+        var outlinesOn = shed.outline === "merged";
+        mkCheck("Fade outer bands", !!ov.bandFade, "Make longer-time bands progressively more transparent.", "bandFade");
+        mkCheck("Band outlines", outlinesOn,
+          "Draw one outline per time band, merged across points.", "outline", "merged");
+        var lineWrap = mkRow("Line");
+        var wSel = mkSelect(lineWrap, [["", "Auto"], ["thin", "Thin"], ["normal", "Normal"], ["bold", "Bold"]],
+          ov.outlineWeight || "", "Outline weight", true,
+          function (v) { App.setLayerStyle(styleKey, { outlineWeight: v || null }); });
+        var tSel = mkSelect(lineWrap, [["match", "Match"], ["dark", "Darker"], ["white", "White"]],
+          shed.tone, "Outline tone", true,
+          function (v) { App.setLayerStyle(styleKey, { outlineTone: v === "match" ? null : v }); });
+        if (!outlinesOn) { wSel.disabled = true; tSel.disabled = true; }
+      }
+
+      if (ov.palette || ov.reverse != null || ov.flatten || ov.outline || ov.outlineWeight ||
+          ov.outlineTone || ov.bandFade) {
         var resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "lp-style-reset";
