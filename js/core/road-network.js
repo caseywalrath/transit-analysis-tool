@@ -1018,7 +1018,17 @@
   // Walkshed polygon from reachable node coordinates: concave hull with an
   // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
   // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
-  function buildWalkshedPolygon(coords, maxEdgeKm) {
+  // `shape` (optional {method, holeAcres, roundKm}): method "smoothed" runs the
+  // hull through WalkShape.refine; absent/"classic" returns the hull exactly as
+  // before (byte-identical).
+  function refineHull(hull, shape) {
+    if (hull && shape && shape.method === "smoothed" && window.WalkShape) {
+      return window.WalkShape.refine(hull, { holeAcres: shape.holeAcres, roundKm: shape.roundKm });
+    }
+    return hull;
+  }
+
+  function buildWalkshedPolygon(coords, maxEdgeKm, shape) {
     if (!coords || coords.length === 0) return null;
     var pts = [];
     for (var i = 0; i < coords.length; i++) pts.push(turf.point(coords[i]));
@@ -1032,10 +1042,10 @@
     for (var attempt = 0; attempt < 8; attempt++) {
       var hull = null;
       try { hull = turf.concave(fc, { maxEdge: maxEdge, units: "kilometers" }); } catch (e) { hull = null; }
-      if (hull) return hull;
+      if (hull) return refineHull(hull, shape);
       maxEdge *= 1.8;
     }
-    try { return turf.convex(fc); } catch (e2) { return null; }
+    try { return refineHull(turf.convex(fc), shape); } catch (e2) { return null; }
   }
 
   // Budget-limited flood from an arbitrary walk origin, shared by every walk-
@@ -1163,7 +1173,7 @@
     if (distMap.has(snap.segStartKey)) segFeatures.push(turf.lineString([snap.coord, snap.segStartCoord]));
     if (distMap.has(snap.segEndKey)) segFeatures.push(turf.lineString([snap.coord, snap.segEndCoord]));
 
-    var polygon = buildWalkshedPolygon(coords, options.maxEdge);
+    var polygon = buildWalkshedPolygon(coords, options.maxEdge, options.shape);
 
     var result = {
       polygon: polygon,
@@ -1183,7 +1193,7 @@
         distMap.forEach(function (d, key) { if (d <= b) bandCoords.push(keyToCoord(key)); });
         polygons.push({
           budgetKm: b,
-          polygon: buildWalkshedPolygon(bandCoords, options.maxEdge),
+          polygon: buildWalkshedPolygon(bandCoords, options.maxEdge, options.shape),
           nodeCount: bandCoords.length
         });
       }
@@ -1307,7 +1317,7 @@
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
   App.computeWalkCostMap = computeWalkCostMap;
-  App.polygonizeNodeSet  = function (coords, maxEdgeKm) { return buildWalkshedPolygon(coords, maxEdgeKm); };
+  App.polygonizeNodeSet  = function (coords, maxEdgeKm, shape) { return buildWalkshedPolygon(coords, maxEdgeKm, shape); };
   App.nodeKeyToCoord     = keyToCoord;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
   App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon>|null

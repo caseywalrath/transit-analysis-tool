@@ -30,6 +30,10 @@ Origin block (`#tsPickOriginBtn`/`#tsOriginLabel`/`#tsClearOriginBtn`), `#tsBudg
 
 3 rows (`#tsLegendRow0/1/2`, `#tsLegendLabel0/1/2`, `.tpi-legend-*`); the module fills "≤ N min" labels and hides unused rows after mount.
 
+## Boundary shape
+
+Same shared `App.networkSettings.walkShape` as Walkshed (select `#tsShapeMethod`, fields `#tsHoleAcres` / `#tsRoundFt`, marked "Shared with Walkshed"). Every cluster polygon goes through `App.polygonizeNodeSet(coords, maxEdgeKm, shape)`; after `App.foldAnalysisUnion(clusterPolys)` a Smoothed run also calls `WalkShape.fillHoles(bandPolygon, holeAcres)` to close gaps the union of rounded clusters can leave. A shape change marks this module stale via `App.onWalkShapeChange`. There is no per-run cache keyed on the shape (only the stale flag), and no comparison overlay (Walkshed only).
+
 ## Style options
 
 Same display-only options as Walkshed (`App.resolveShedStyle("transit-travelshed")`; see `layers-and-styling.md`). The outline layer `ts-travelshed-line` now has its own source `ts-travelshed-line-src` so the outline mode can change its data: `bands` and `tiers` are the same ring set (one origin), `outer` dissolves the rings, `none` is empty. The repainter re-sets that source from the last rendered rings (`_lastRings`), so a style change never recomputes. Soft edge adds `ts-travelshed-glow` (below the line, listed in the Layers entry); `clearTravelshedLayers` removes it and the extra source.

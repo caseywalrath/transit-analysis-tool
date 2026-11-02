@@ -656,6 +656,7 @@
     if (transferWalk) transferWalk.value = _settings.maxTransferWalkMi;
 
     updateWalkCapInputsEnabled();
+    if (App.syncWalkShapeInputs) App.syncWalkShapeInputs("ts");
 
     var originLabel = document.getElementById("tsOriginLabel");
     if (originLabel) originLabel.textContent = _origin ? (_origin[1].toFixed(5) + ", " + _origin[0].toFixed(5)) : "Not set";
@@ -1225,6 +1226,7 @@
       // are large and overlap heavily, but the union is still correct.
       var walkMinPerKm = 60 / walkSpeedKmh;
       var originNodeKeys = Object.keys(originCost);
+      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "classic" };
       var polys = [];
       var clustersSinceYield = 0;
       for (var bi = 0; bi < budgets.length; bi++) {
@@ -1238,7 +1240,7 @@
           .filter(function (k) { return originCost[k] * walkMinPerKm <= accessCap; })
           .map(function (k) { return App.nodeKeyToCoord(k); });
         if (originCoords.length) {
-          var originPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(originCoords, _settings.maxEdgeKm) : null;
+          var originPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(originCoords, _settings.maxEdgeKm, shapeOpt) : null;
           if (originPoly) clusterPolys.push(originPoly);
         }
         clustersSinceYield++;
@@ -1258,7 +1260,7 @@
             .filter(function (k) { return stopCostObj[k] * walkMinPerKm <= egressCap; })
             .map(function (k) { return App.nodeKeyToCoord(k); });
           if (stopCoords.length) {
-            var stopPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(stopCoords, _settings.maxEdgeKm) : null;
+            var stopPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(stopCoords, _settings.maxEdgeKm, shapeOpt) : null;
             if (stopPoly) clusterPolys.push(stopPoly);
           }
           clustersSinceYield++;
@@ -1266,6 +1268,10 @@
         }
 
         var bandPolygon = App.foldAnalysisUnion(clusterPolys); // null-safe union, null for an empty array
+        // The union of rounded clusters can leave small enclosed gaps: fill them.
+        if (bandPolygon && shapeOpt.method === "smoothed" && window.WalkShape) {
+          bandPolygon = window.WalkShape.fillHoles(bandPolygon, shapeOpt.holeAcres);
+        }
         polys.push({ budgetMin: B, polygon: bandPolygon, nodeCount: bandSets[bi].nodeKeys.length });
         await new Promise(function (r) { setTimeout(r, 0); }); // yield between bands
       }
@@ -1341,6 +1347,8 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
     });
+
+    if (App.wireWalkShapeInputs) App.wireWalkShapeInputs("ts");
 
     var snapEl = document.getElementById("tsSnapTol");
     if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
@@ -1434,6 +1442,8 @@
       showEmpty();
     }
   }
+
+  if (typeof App.onWalkShapeChange === "function") App.onWalkShapeChange(function () { markStale(); });
 
   async function update(core) {
     var noFeatures = (App.routes || []).length === 0 && (App.lines || []).length === 0;

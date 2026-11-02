@@ -25,16 +25,44 @@
         <input type="number" id="wsSpeed" class="rf-number-input" min="0.5" max="7.5" step="0.1" value="3.1">
       </div>
 
+      <div class="form-field u-mt-3">
+        <label class="tiny">Boundary shape
+          <button id="wsShapeInfoBtn" class="rf-info-btn" type="button" aria-label="Explain boundary shapes"
+            title="How the walk area's outer edge is drawn">&#9432;</button>
+        </label>
+        <select id="wsShapeMethod" class="rf-select">
+          <option value="smoothed">Smoothed</option>
+          <option value="classic">Classic hull</option>
+        </select>
+        <div id="wsShapeInfoText" class="tiny rf-info-box" style="display:none;margin-top:6px;">
+          <p><strong>Smoothed:</strong> fills small gaps and rounds the edge; recommended.</p>
+          <p><strong>Classic hull:</strong> the original method; tune Hull detail. Shared with Transit Travelshed.</p>
+        </div>
+      </div>
+
       </div>
 
       <details class="u-mt-3 data-input-group" data-input-group="advanced">
         <summary class="tiny u-muted ws-advanced-summary">Advanced Settings</summary>
-        <div class="form-field u-mt-2">
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="classic smoothed">
           <label class="tiny">Hull detail — max edge (ft)</label>
           <input type="number" id="wsMaxEdge" class="rf-number-input" min="65" max="6560" step="5" value="984">
         </div>
-        <p class="tiny u-mt-1 u-muted">
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="classic smoothed">
           Smaller hugs the streets more tightly; the tool auto-relaxes if the hull comes back empty.
+        </p>
+
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="smoothed">
+          <label class="tiny">Fill holes smaller than (acres)</label>
+          <input type="number" id="wsHoleAcres" class="rf-number-input" min="0" max="1000" step="1" value="10">
+        </div>
+        <div class="form-field u-mt-2" data-shape-for="ws" data-shape-method="smoothed">
+          <label class="tiny">Edge rounding (ft)</label>
+          <input type="number" id="wsRoundFt" class="rf-number-input" min="0" max="1000" step="10" value="150">
+        </div>
+        <p class="tiny u-mt-1 u-muted" data-shape-for="ws" data-shape-method="smoothed">
+          Smoothed shape only: interior gaps below the size limit are filled (a lake stays), and notches
+          narrower than about twice the rounding distance are closed. Shared with Transit Travelshed.
         </p>
         <div class="form-field u-mt-2">
           <label class="tiny">Connector snap tolerance (ft)</label>
@@ -98,6 +126,11 @@
 
       <div id="wsResults" style="display:none;">
         <div id="wsResultsTable"></div>
+
+        <div id="wsPrevShape" class="tiny u-mt-2" style="display:none;">
+          <label><input type="checkbox" id="wsPrevShapeToggle" checked> <span id="wsPrevShapeLabel"></span></label>
+          <div id="wsPrevShapeNote" class="u-muted"></div>
+        </div>
 
         <div class="btn-row ws-export-row">
           <button id="wsUseStudyArea" type="button" class="rf-btn-sm" disabled title="Set these points' Service Area to Walkshed so demographic modules use the walkshed instead of a circle.">Use as study areas</button>

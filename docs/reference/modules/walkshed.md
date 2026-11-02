@@ -24,6 +24,10 @@ Street-network walking isochrones from placed Points via `App.computeWalkshed` (
 
 **Cache key** (`settingsKeyFor`): `lng|lat|budgets(all)|speed|maxEdge|networkEpoch|crossMajor|crossMinor`. All budgets and the crossing seconds must be in the key — they change the result without bumping the network epoch, so omitting them served stale polygons.
 
+**Boundary shape:** "Boundary shape" select (`#wsShapeMethod`, Smoothed default / Classic hull) under Walk speed; Advanced Settings shows Hull detail for both methods and Fill holes / Edge rounding for Smoothed. Global and shared with Transit Travelshed (`App.networkSettings.walkShape`, see `road-network.md`). Cache key gets `App.walkShapeSignature()` appended, which is empty for Classic. Changing it marks both modules stale; it never recalculates automatically.
+
+**Previous-shape comparison:** after a successful run whose shape signature (`shapeRunSig()` = shape signature + hull detail) differs from the last run's, the last run's per-point largest-band outlines stay as `walkshed-prev-line` (source `walkshed-prev-src`: dashed gray `#6b7280`, 1.5 px, on top, NOT in the Layers panel). `#wsPrevShape` under the results table has the show/hide checkbox and an `Area vs <label>: 15 min +0.2% · …` note (`n/a` for a band missing in the earlier run). Closure state `_prevShape`, never persisted; the same signature, Clear results (`clearWalkshedLayers`) and Clear All remove it. Test: `test/browser/walkshed-shape.test.mjs`.
+
 **Compute:** `computeForPoint` floods once at the largest budget: `App.computeWalkshed(coords, maxBudgetKm, {maxEdge, budgetsKm, crossingPenaltyKm})` → `entry.bands: [{minutes, polygon, area, nodeCount}]` (ascending). `entry.polygon`/`area`/`reachableCount` alias the **smallest** band, which is always the study-area polygon. `crossingPenaltyKm` comes from `window.WalkCost.penaltyKm(...)`, guarded by `typeof window.WalkCost` so a missing script means no penalty; zero/absent penalty is byte-identical to no-penalty output.
 
 **Rendering:**

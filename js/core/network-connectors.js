@@ -30,7 +30,73 @@
   if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
   if (App.networkSettings.excludedWayIds == null) App.networkSettings.excludedWayIds = [];
 
+  // Boundary shape for walk polygons, shared by Walkshed and Transit Travelshed
+  // like the crossing delays. method "classic" = the original concave hull;
+  // "smoothed" = hull + WalkShape.refine. Units are the honest ones (acres, ft);
+  // the engine gets km via App.walkShapeFor(). A FRESH session defaults to
+  // "smoothed"; cache.js sets "classic" for a restored session that predates
+  // this field so old studies keep their exact polygons.
+  var WALK_SHAPE_DEFAULT = { method: "smoothed", holeAcres: 10, roundFt: 150 };
+  App.walkShapeDefaults = function () { return JSON.parse(JSON.stringify(WALK_SHAPE_DEFAULT)); };
+  if (!App.networkSettings.walkShape) App.networkSettings.walkShape = App.walkShapeDefaults();
+
+  // Engine-ready shape object ({method, holeAcres, roundKm}) for
+  // App.computeWalkshed / App.polygonizeNodeSet.
+  App.walkShapeFor = function () {
+    var ws = App.networkSettings.walkShape || {};
+    return { method: ws.method === "smoothed" ? "smoothed" : "classic",
+             holeAcres: +ws.holeAcres || 0, roundKm: (+ws.roundFt || 0) * 0.0003048 };
+  };
+
+  // Cache-key suffix. EMPTY for classic so classic keys stay byte-identical to
+  // pre-shape sessions (no spurious stale on upgrade).
+  App.walkShapeSignature = function () {
+    var ws = App.networkSettings.walkShape || {};
+    return ws.method === "smoothed" ? "|smoothed:" + (+ws.holeAcres || 0) + ":" + (+ws.roundFt || 0) : "";
+  };
+
+  // Modules register a callback so a shape change marks BOTH stale, whichever
+  // panel the user edited it in.
+  var _shapeListeners = [];
+  App.onWalkShapeChange = function (fn) { _shapeListeners.push(fn); };
+  App.setWalkShape = function (patch) {
+    var ws = App.networkSettings.walkShape = Object.assign({}, App.networkSettings.walkShape || App.walkShapeDefaults());
+    if (patch.method === "classic" || patch.method === "smoothed") ws.method = patch.method;
+    if (patch.holeAcres != null && +patch.holeAcres >= 0) ws.holeAcres = +patch.holeAcres;
+    if (patch.roundFt != null && +patch.roundFt >= 0) ws.roundFt = +patch.roundFt;
+    if (App.cache && App.cache.save) App.cache.save();
+    _shapeListeners.forEach(function (fn) { try { fn(); } catch (e) { /* one module's failure must not block the other */ } });
+  };
+
   var FT_TO_KM = 0.0003048;
+
+  // Shared popup wiring for the Boundary-shape controls (ids <pfx>ShapeMethod,
+  // <pfx>HoleAcres, <pfx>RoundFt, <pfx>ShapeInfoBtn/Text; fields tagged
+  // data-shape-method="classic smoothed"). Keeps Walkshed and Transit Travelshed
+  // on one implementation. sync* reads App.networkSettings.walkShape into the
+  // inputs and shows only the selected method's fields.
+  App.syncWalkShapeInputs = function (pfx) {
+    var ws = App.networkSettings.walkShape || App.walkShapeDefaults();
+    var m = document.getElementById(pfx + "ShapeMethod");
+    var h = document.getElementById(pfx + "HoleAcres");
+    var r = document.getElementById(pfx + "RoundFt");
+    if (m) m.value = ws.method;
+    if (h) h.value = ws.holeAcres;
+    if (r) r.value = ws.roundFt;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-shape-for="' + pfx + '"][data-shape-method]'), function (el) {
+      el.style.display = el.getAttribute("data-shape-method").split(" ").indexOf(ws.method) !== -1 ? "" : "none";
+    });
+  };
+  App.wireWalkShapeInputs = function (pfx) {
+    var m = document.getElementById(pfx + "ShapeMethod");
+    var h = document.getElementById(pfx + "HoleAcres");
+    var r = document.getElementById(pfx + "RoundFt");
+    if (m) m.addEventListener("change", function () { App.setWalkShape({ method: m.value }); App.syncWalkShapeInputs(pfx); });
+    if (h) h.addEventListener("change", function () { App.setWalkShape({ holeAcres: h.value }); });
+    if (r) r.addEventListener("change", function () { App.setWalkShape({ roundFt: r.value }); });
+    var b = document.getElementById(pfx + "ShapeInfoBtn"), t = document.getElementById(pfx + "ShapeInfoText");
+    if (b && t) b.addEventListener("click", function (e) { e.preventDefault(); t.style.display = (t.style.display === "none") ? "" : "none"; });
+  };
 
   var _lastSignature = null;
   var _lastReport = null;

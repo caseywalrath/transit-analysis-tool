@@ -25,6 +25,13 @@
   var _stale         = false;
   var _running       = false;
   var _initialized   = false;
+  // "Previous shape" comparison: when a run's boundary-shape signature differs
+  // from the last run's, the last run's outermost outline stays on the map as a
+  // dashed gray line plus a per-band area-change note. Module-private, display
+  // only, never persisted. { label, outlineFc, areasByMin }
+  var _prevShape     = null;
+  var _lastRunLabel  = null;
+  var _lastRunSig    = null;       // shape signature the current _lastEntries were computed with
 
   // ---- Map layer ids ----
 
@@ -43,6 +50,9 @@
   // exists while the "Soft edge" style option is on; listed in the Layers entry
   // so the eye / opacity / remove actions cover it.
   var WS_GLOW_LAYER = "walkshed-glow";
+  // Transient comparison overlay; deliberately NOT in the Layers panel.
+  var WS_PREV_SRC   = "walkshed-prev-src";
+  var WS_PREV_LAYER = "walkshed-prev-line";
   var WS_FADE_ALPHA = [1, 0.6, 0.35]; // per bandIdx, outermost most transparent
   var WS_SEG_SRC   = "walkshed-seg-src";
   var WS_SEG_LAYER = "walkshed-seg";
@@ -120,7 +130,8 @@
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
     var crossMajor = (App.networkSettings && App.networkSettings.crossingMajorSec) || 0;
     var crossMinor = (App.networkSettings && App.networkSettings.crossingMinorSec) || 0;
-    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|");
+    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|") +
+      (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : ""); // "" for classic: key unchanged
   }
 
   // Builds { major, minor } crossing-penalty km values from the global
@@ -157,7 +168,8 @@
     var maxBudgetKm = budgetsKm[budgetsKm.length - 1];
     var res = App.computeWalkshed
       ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm,
-          { maxEdge: s.maxEdge, budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh) })
+          { maxEdge: s.maxEdge, budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh),
+          shape: (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : undefined })
       : null;
 
     if (!res) {
@@ -630,8 +642,107 @@
   function clearWalkshedLayers() {
     var map = App.map;
     if (!map) return;
+    clearPrevShape();
     [WS_SEG_LAYER, WS_GLOW_LAYER, WS_LINE_LAYER, WS_FILL_LAYER].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
+  }
+
+  // ---- "Previous shape" comparison ----
+
+  function shapeRunSig() {
+    return (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : "") +
+      "|edge:" + _settings.maxEdge;
+  }
+  function shapeLabel() {
+    return (App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method === "smoothed")
+      ? "Smoothed" : "Classic hull";
+  }
+
+  // Each point's largest-band polygon, as outline features.
+  function outermostFeatures(entries) {
+    var feats = [];
+    entries.forEach(function (e) {
+      if (!e || e.failed) return;
+      var bands = e.bands || [{ minutes: e.minutes, polygon: e.polygon }];
+      for (var i = bands.length - 1; i >= 0; i--) {
+        if (bands[i].polygon) {
+          feats.push({ type: "Feature", properties: { pointIdx: e.pointIdx }, geometry: bands[i].polygon.geometry });
+          break;
+        }
+      }
+    });
+    return feats;
+  }
+
+  function areasByMinutes(entries) {
+    var out = {};
+    entries.forEach(function (e) {
+      if (!e || e.failed) return;
+      (e.bands || []).forEach(function (b) {
+        if (b.polygon) out[b.minutes] = (out[b.minutes] || 0) + b.area;
+      });
+    });
+    return out;
+  }
+
+  // Called after a successful run with the entries/signature the run REPLACED.
+  function updatePrevShape(prevEntries, prevSig, prevLabel) {
+    var hadResult = prevEntries && prevEntries.some(function (e) { return e && !e.failed; });
+    if (!hadResult || prevSig == null || prevSig === _lastRunSig) { clearPrevShape(); return; }
+    var label = prevLabel === shapeLabel() ? prevLabel + " (earlier settings)" : prevLabel;
+    _prevShape = { label: label, outlineFc: { type: "FeatureCollection", features: outermostFeatures(prevEntries) },
+                   areasByMin: areasByMinutes(prevEntries) };
+    renderPrevShapeLayer();
+  }
+
+  function renderPrevShapeLayer() {
+    var map = App.map;
+    if (!map || !_prevShape) return;
+    var show = !document.getElementById("wsPrevShapeToggle") || document.getElementById("wsPrevShapeToggle").checked;
+    if (!map.getSource(WS_PREV_SRC)) {
+      map.addSource(WS_PREV_SRC, { type: "geojson", data: _prevShape.outlineFc });
+      map.addLayer({
+        id: WS_PREV_LAYER, type: "line", source: WS_PREV_SRC,
+        layout: { "line-join": "round", "visibility": show ? "visible" : "none" },
+        paint: { "line-color": "#6b7280", "line-width": 1.5, "line-dasharray": [2, 2], "line-opacity": 0.9 }
+      });
+    } else {
+      map.getSource(WS_PREV_SRC).setData(_prevShape.outlineFc);
+      map.setLayoutProperty(WS_PREV_LAYER, "visibility", show ? "visible" : "none");
+    }
+  }
+
+  function clearPrevShape() {
+    _prevShape = null;
+    var map = App.map;
+    if (map) {
+      if (map.getLayer(WS_PREV_LAYER)) map.removeLayer(WS_PREV_LAYER);
+      if (map.getSource(WS_PREV_SRC)) map.removeSource(WS_PREV_SRC);
+    }
+    renderPrevShapeUI();
+  }
+
+  // Checkbox + area-change note under the results table; hidden with no _prevShape.
+  function renderPrevShapeUI() {
+    var wrap = document.getElementById("wsPrevShape");
+    if (!wrap) return;
+    if (!_prevShape) { wrap.style.display = "none"; return; }
+    var cur = areasByMinutes(_lastEntries);
+    var parts = [];
+    Object.keys(cur).map(Number).sort(function (a, b) { return a - b; }).forEach(function (m) {
+      var old = _prevShape.areasByMin[m];
+      if (old > 0) {
+        var pct = (cur[m] - old) / old * 100;
+        parts.push(m + " min " + (pct >= 0 ? "+" : "\u2212") + Math.abs(pct).toFixed(1) + "%");
+      } else {
+        parts.push(m + " min n/a");
+      }
+    });
+    var lbl = document.getElementById("wsPrevShapeLabel");
+    if (lbl) lbl.textContent = "Show previous shape (" + _prevShape.label + ")";
+    var note = document.getElementById("wsPrevShapeNote");
+    if (note) note.textContent = "Area vs " + _prevShape.label + ": " + parts.join(" \u00b7 ");
+    wrap.style.display = "";
   }
 
   // Removes only the reachable-streets overlay, leaving the polygons and
@@ -736,6 +847,7 @@
 
     renderConnectionReport();
     renderCoverageReport();
+    renderPrevShapeUI();
   }
 
   // Connection-report footer: only when at least one walk connector exists;
@@ -902,7 +1014,11 @@
       try {
         var entries = [];
         targets.forEach(function (pf) { entries.push(computeForPoint(pf)); });
+        var prevEntries = _lastEntries, prevSig = _lastRunSig, prevLabel = _lastRunLabel;
         _lastEntries = entries;
+        _lastRunSig = shapeRunSig();
+        _lastRunLabel = shapeLabel();
+        updatePrevShape(prevEntries, prevSig, prevLabel);
         _stale = false;
 
         var ok = entries.filter(function (e) { return !e.failed; }).length;
@@ -1065,6 +1181,7 @@
       if (cMajor) cMajor.value = App.networkSettings.crossingMajorSec;
       if (cMinor) cMinor.value = App.networkSettings.crossingMinorSec;
     }
+    if (App.syncWalkShapeInputs) App.syncWalkShapeInputs("ws");
     syncExcludedWaysLine();
     syncEditStreetsButton();
     updateStudyAreaButtonLabel();
@@ -1152,6 +1269,10 @@
     if (_lastEntries.length) markStale();
   }
 
+  if (typeof App.onWalkShapeChange === "function") {
+    App.onWalkShapeChange(function () { if (_lastEntries.length) markStale(); });
+  }
+
   // ---- Lifecycle ----
 
   function init(core) {
@@ -1186,6 +1307,17 @@
 
     var snapEl = document.getElementById("wsSnapTol");
     if (snapEl) snapEl.addEventListener("change", onSnapTolChange);
+
+    // Boundary shape is global (shared with Transit Travelshed): a change marks
+    // BOTH modules stale via App.onWalkShapeChange (registered at load, below).
+    if (App.wireWalkShapeInputs) App.wireWalkShapeInputs("ws");
+
+    var prevToggle = document.getElementById("wsPrevShapeToggle");
+    if (prevToggle) prevToggle.addEventListener("change", function () {
+      if (App.map && App.map.getLayer(WS_PREV_LAYER)) {
+        App.map.setLayoutProperty(WS_PREV_LAYER, "visibility", prevToggle.checked ? "visible" : "none");
+      }
+    });
 
     ["wsCrossMajor", "wsCrossMinor"].forEach(function (id) {
       var el = document.getElementById(id);
