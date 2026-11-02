@@ -23,7 +23,7 @@ While drawing a line/route/polygon, snap new vertices to nearby reference geomet
 
 
 ### Walkshed polygons — Implemented
-True street-network walking isochrones from placed Points, entirely in-browser. **Walkshed** module (`js/projects/walkshed.js`) uses `App.computeWalkshed` (`js/core/road-network.js`: budget-limited flood Dijkstra, then one of two boundary shapes: Standard travel-time isochrones (default) or a Simplified concave hull); requires a loaded road network. Points flagged `attributes.serviceAreaType = "walkshed"` substitute the walkshed for the circular buffer in `rebuildBuffers()`, so every study-area consumer (BAS, TPI, Title VI, FTA, corridor pickers) picks it up automatically.
+True street-network walking isochrones from placed Points, entirely in-browser. **Walkshed** module (`js/projects/walkshed.js`) uses `App.computeWalkshed` (`js/core/road-network.js`: budget-limited flood Dijkstra, then travel-time contour isochrones; the original concave-hull boundary was removed, see `docs/archive/walkshed-simplified-shape.md`); requires a loaded road network. Points flagged `attributes.serviceAreaType = "walkshed"` substitute the walkshed for the circular buffer in `rebuildBuffers()`, so every study-area consumer (BAS, TPI, Title VI, FTA, corridor pickers) picks it up automatically.
 
 ### Walkshed sidewalk & access refinement — Not started
 A further precision pass on the walkshed network, building on the class-aware traversal already in place (`js/core/road-network.js` tags every edge/segment `pedBlocked`/`carBlocked` from the OSM `highway` class and `foot` tag, so motorways/trunk roads and their ramps are already excluded from walksheds, pedestrian ways — footway/path/steps/pedestrian/cycleway/living_street — are already included, and driving routes still ignore pedestrian-only ways).
@@ -45,7 +45,7 @@ Computes everywhere reachable from a clicked map origin via walk → wait →
 ride drawn transit routes/lines → walk, with at most one transfer, rendered
 as 1–3 banded isochrones. Extends the walkshed engine's bones:
 `js/core/road-network.js` gained per-node cost-map primitives
-(`computeWalkCostMap`, `polygonizeNodeSet`, `snapWalk`, `nodeKeyToCoord`,
+(`computeWalkCostMap`, `polygonizeNodeSet` (since removed), `snapWalk`, `nodeKeyToCoord`,
 `fetchRoadNetworkForExtent`) shared with `computeWalkshed`; a new pure
 calculation engine `js/core/travelshed.js` (`window.Travelshed`) does the
 layered-flood arrival-time math on plain JSON so it's golden-testable with

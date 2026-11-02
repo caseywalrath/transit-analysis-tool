@@ -1,9 +1,8 @@
 // js/core/walk-shape.js
-// Walkshed boundary shapes (window.WalkShape). contour() traces the "Standard"
-// shape from a travel-time grid and cleans it with refine() (fill small holes,
-// close narrow notches, round corners); fillHoles() is also the "Simplified"
-// hull's only cleanup. Geometry only — the flood and its distances are never
-// touched.
+// Walkshed boundary (window.WalkShape). contour() traces each time band from a
+// travel-time grid and cleans it with refine() (fill small holes, close narrow
+// notches, round corners). Geometry only — the flood and its distances are
+// never touched.
 // CONSTRAINT: no DOM and no App state; reads `turf` at CALL time only, so the
 // file loads before/without turf. Detail: docs/reference/road-network.md.
 
@@ -76,7 +75,7 @@
   }
 
   var KM_PER_DEG = 111.32;          // simplify tolerance is in degrees; ~1 deg ≈ 111 km
-  var COARSE_ROUND_KM = 0.09;       // ~300 ft: the Standard shape's default 330 ft rounding is above
+  var COARSE_ROUND_KM = 0.09;       // ~300 ft: the default 330 ft off-street rounding is above
 
   // True when any two non-adjacent edges of the (Multi)Polygon's rings cross
   // or touch. Same question as turf.kinks, but turf.kinks tests every edge
@@ -175,7 +174,7 @@
     var p = step(feature, function (c) { return fillHoles(c, holeAcres); });
 
     if (roundKm > 0) {
-      // Large roundings (the Standard shape's 330 ft) erase anything finer than
+      // Large roundings (the default 330 ft) erase anything finer than
       // ~1/3 of the radius, so thin the outline to a tenth of it first and draw
       // buffer arcs coarsely: turf.buffer's cost grows with vertex count, and
       // this cut it ~10x on grid-traced bands (thousands of vertices). Small
@@ -208,7 +207,7 @@
     return p;
   }
 
-  // ---- Contour tracing ("Standard" shape) ----
+  // ---- Contour tracing ----
   // Travel-time surface on a regular grid, traced at each budget. This is how
   // Valhalla / OpenTripPlanner build isochrones: the edge runs partway down the
   // last block instead of stopping at the last intersection.

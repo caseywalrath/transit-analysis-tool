@@ -30,33 +30,30 @@
   if (App.networkSettings.crossingMinorSec == null) App.networkSettings.crossingMinorSec = 0;
   if (App.networkSettings.excludedWayIds == null) App.networkSettings.excludedWayIds = [];
 
-  // Boundary shape for walk polygons, shared by Walkshed and Transit Travelshed
-  // like the crossing delays. method "standard" = travel-time grid traced at
-  // each budget (WalkShape.contour), whose edge rounding reuses offStreetFt
-  // (330 ft rounding is what removes the per-street-end scallops); "simplified"
-  // = concave hull around the reached intersections, with holes under holeAcres
-  // filled. Units are the honest ones (acres, ft); the engine gets km via
-  // App.walkShapeFor(). A session without a stored shape gets the defaults.
-  var WALK_SHAPE_DEFAULT = { method: "standard", holeAcres: 10, gridFt: 80, offStreetFt: 330 };
-  var SHAPE_METHODS = ["standard", "simplified"];
+  // Boundary-shape settings for walk polygons, shared by Walkshed and Transit
+  // Travelshed like the crossing delays. The boundary is a travel-time grid
+  // traced at each budget (WalkShape.contour); its edge rounding reuses
+  // offStreetFt (330 ft rounding is what removes the per-street-end scallops).
+  // Units are the honest ones (acres, ft); the engine gets km via
+  // App.walkShapeFor(). A session without stored settings gets the defaults.
+  // (The concave-hull alternative was removed:
+  // docs/archive/walkshed-simplified-shape.md.)
+  var WALK_SHAPE_DEFAULT = { holeAcres: 10, gridFt: 80, offStreetFt: 330 };
   App.walkShapeDefaults = function () { return JSON.parse(JSON.stringify(WALK_SHAPE_DEFAULT)); };
   if (!App.networkSettings.walkShape) App.networkSettings.walkShape = App.walkShapeDefaults();
 
-  // Engine-ready shape object for App.computeWalkshed / App.polygonizeNodeSet.
+  // Engine-ready settings for App.computeWalkshed.
   App.walkShapeFor = function () {
     var ws = App.networkSettings.walkShape || {};
-    var method = SHAPE_METHODS.indexOf(ws.method) !== -1 ? ws.method : WALK_SHAPE_DEFAULT.method;
     var offKm = (+ws.offStreetFt || 330) * 0.0003048;
-    return { method: method, holeAcres: (ws.holeAcres != null ? +ws.holeAcres : 10) || 0,
+    return { holeAcres: (ws.holeAcres != null ? +ws.holeAcres : 10) || 0,
              roundKm: offKm, gridKm: (+ws.gridFt || 80) * 0.0003048, offStreetKm: offKm };
   };
 
   // Cache-key suffix: every field that changes the polygons.
   App.walkShapeSignature = function () {
-    var s = App.walkShapeFor();
     var ws = App.networkSettings.walkShape || {};
-    if (s.method === "simplified") return "|simplified:" + s.holeAcres;
-    return "|standard:" + s.holeAcres + ":" + (+ws.gridFt || 80) + ":" + (+ws.offStreetFt || 330);
+    return "|shape:" + App.walkShapeFor().holeAcres + ":" + (+ws.gridFt || 80) + ":" + (+ws.offStreetFt || 330);
   };
 
   // Modules register a callback so a shape change marks BOTH stale, whichever
@@ -65,7 +62,6 @@
   App.onWalkShapeChange = function (fn) { _shapeListeners.push(fn); };
   App.setWalkShape = function (patch) {
     var ws = App.networkSettings.walkShape = Object.assign({}, App.networkSettings.walkShape || App.walkShapeDefaults());
-    if (SHAPE_METHODS.indexOf(patch.method) !== -1) ws.method = patch.method;
     if (patch.gridFt != null && +patch.gridFt >= 30 && +patch.gridFt <= 500) ws.gridFt = +patch.gridFt;
     if (patch.offStreetFt != null && +patch.offStreetFt > 0) ws.offStreetFt = +patch.offStreetFt;
     if (patch.holeAcres != null && +patch.holeAcres >= 0) ws.holeAcres = +patch.holeAcres;
@@ -75,35 +71,23 @@
 
   var FT_TO_KM = 0.0003048;
 
-  // Shared popup wiring for the Boundary-shape controls (ids <pfx>ShapeMethod,
-  // <pfx>HoleAcres, <pfx>GridFt, <pfx>OffStreetFt, <pfx>ShapeInfoBtn/Text;
-  // fields tagged data-shape-method="standard simplified"). Keeps Walkshed and Transit Travelshed
-  // on one implementation. sync* reads App.networkSettings.walkShape into the
-  // inputs and shows only the selected method's fields.
+  // Shared popup wiring for the boundary-shape fields (ids <pfx>HoleAcres,
+  // <pfx>GridFt, <pfx>OffStreetFt), so Walkshed and Transit Travelshed stay on
+  // one implementation. sync* reads App.networkSettings.walkShape into them.
   App.syncWalkShapeInputs = function (pfx) {
     var ws = App.networkSettings.walkShape || App.walkShapeDefaults();
-    var m = document.getElementById(pfx + "ShapeMethod");
     var h = document.getElementById(pfx + "HoleAcres");
-    var method = App.walkShapeFor().method;
-    if (m) m.value = method;
-    if (h) h.value = ws.holeAcres;
     var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (h) h.value = ws.holeAcres;
     if (gEl) gEl.value = ws.gridFt;
     if (oEl) oEl.value = ws.offStreetFt;
-    Array.prototype.forEach.call(document.querySelectorAll('[data-shape-for="' + pfx + '"][data-shape-method]'), function (el) {
-      el.style.display = el.getAttribute("data-shape-method").split(" ").indexOf(method) !== -1 ? "" : "none";
-    });
   };
   App.wireWalkShapeInputs = function (pfx) {
-    var m = document.getElementById(pfx + "ShapeMethod");
     var h = document.getElementById(pfx + "HoleAcres");
-    if (m) m.addEventListener("change", function () { App.setWalkShape({ method: m.value }); App.syncWalkShapeInputs(pfx); });
-    if (h) h.addEventListener("change", function () { App.setWalkShape({ holeAcres: h.value }); });
     var gEl = document.getElementById(pfx + "GridFt"), oEl = document.getElementById(pfx + "OffStreetFt");
+    if (h) h.addEventListener("change", function () { App.setWalkShape({ holeAcres: h.value }); });
     if (gEl) gEl.addEventListener("change", function () { App.setWalkShape({ gridFt: gEl.value }); App.syncWalkShapeInputs(pfx); });
     if (oEl) oEl.addEventListener("change", function () { App.setWalkShape({ offStreetFt: oEl.value }); });
-    var b = document.getElementById(pfx + "ShapeInfoBtn"), t = document.getElementById(pfx + "ShapeInfoText");
-    if (b && t) b.addEventListener("click", function (e) { e.preventDefault(); t.style.display = (t.style.display === "none") ? "" : "none"; });
   };
 
   var _lastSignature = null;

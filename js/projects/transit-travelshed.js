@@ -23,7 +23,6 @@
     maxWaitMin: 10,
     boardPenaltyMin: 1,
     stopSpacingMi: 0.25,
-    maxEdgeKm: 0.3,
     shedMode: "transit",      // "transit" (walk legs capped) | "door" (walk legs uncapped)
     maxAccessWalkMi: 0.5,
     maxEgressWalkMi: 0.25,
@@ -31,7 +30,7 @@
   };
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
-  var FT_PER_KM = 3280.84; // hull-detail maxEdgeKm is displayed in feet but stored/persisted in km
+  var FT_PER_KM = 3280.84; // grid sizes are stored in km and shown in feet
 
   var _settings     = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   var _origin        = null;   // [lng, lat] | null — probe pattern, not an App.points feature
@@ -567,9 +566,6 @@
     var spacing = document.getElementById("tsStopSpacing");
     if (spacing && +spacing.value > 0) _settings.stopSpacingMi = +spacing.value;
 
-    var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge && +maxEdge.value > 0) _settings.maxEdgeKm = +maxEdge.value / FT_PER_KM; // ft input -> km stored
-
     var shedMode = document.getElementById("tsShedMode");
     if (shedMode && (shedMode.value === "transit" || shedMode.value === "door")) _settings.shedMode = shedMode.value;
 
@@ -635,8 +631,6 @@
     var spacing = document.getElementById("tsStopSpacing");
     if (spacing) spacing.value = _settings.stopSpacingMi;
 
-    var maxEdge = document.getElementById("tsMaxEdge");
-    if (maxEdge) maxEdge.value = Math.round(_settings.maxEdgeKm * FT_PER_KM); // km stored -> ft displayed
 
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — see
     // onSnapTolChange() above.
@@ -899,7 +893,7 @@
       '<p class="tiny" style="margin-top:2px;color:var(--muted);">' +
         "snap " + result.floodStats.snapMs + " ms &middot; flood " + result.floodStats.floodMs + " ms" +
       "</p>" +
-      // Standard-shape grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
+      // Grids coarsen on large (city-scale) travelsheds to stay under the cell cap.
       ((result.contourGridKm && result.contourGridAskedKm && result.contourGridKm > result.contourGridAskedKm * 1.001)
         ? '<p class="tiny" id="tsGridNote" style="margin-top:2px;color:var(--muted);">Grid coarsened to ' +
           Math.round(result.contourGridKm * FT_PER_KM) + " ft for this size.</p>"
@@ -1189,84 +1183,26 @@
       setStatus("Building isochrones…", "running");
       await new Promise(function (r) { setTimeout(r, 0); });
 
-      // Cluster-union polygonization: one polygon per reachable CLUSTER (the
-      // origin/access walk blob, plus one per alighting stop's egress walk),
-      // unioned per band — rather than one hull over every reachable node. A
-      // single hull across disjoint clusters shrink-wraps the gap between them
-      // (bridging unreachable space); per-cluster polygons + union can't bridge anything that isn't
-      // actually reachable. Used in BOTH modes — in "door" mode the clusters
-      // are large and overlap heavily, but the union is still correct.
+      // One travel-time surface from the engine's per-node arrival minutes
+      // (already the fastest path, with access/egress walk caps applied),
+      // traced at every budget. Only segments with BOTH
+      // ends reached are sampled: extending past a node that sits at a walk
+      // cap would walk beyond the cap. Disjoint clusters stay disjoint because
+      // grid points beyond offStreetKm of every sample are unreachable. (This
+      // replaced a per-cluster concave-hull union; see
+      // docs/archive/walkshed-simplified-shape.md.)
       var walkMinPerKm = 60 / walkSpeedKmh;
-      var originNodeKeys = Object.keys(originCost);
-      var shapeOpt = (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : { method: "simplified", holeAcres: 0 };
-      var polys = [];
-      var clustersSinceYield = 0;
-      var contourGridKm = null, contourGridPlannedKm = null;
-      if (shapeOpt.method === "standard" && window.WalkShape && window.WalkShape.contour && App.contourSamples) {
-        // One travel-time surface from the engine's per-node arrival minutes
-        // (already the fastest path, with access/egress walk caps applied).
-        // Only segments with BOTH ends reached are sampled: extending past a
-        // node that sits at a walk cap would walk beyond the cap. Disjoint
-        // clusters stay disjoint because grid points beyond offStreetKm of
-        // every sample are unreachable.
-        var tsGridKm = window.WalkShape.scaledGridKm(shapeOpt.gridKm, maxBudgetMin / 15);
-        var cRes = window.WalkShape.contour(
-          App.contourSamples(engineResult.nodeTimes, maxBudgetMin, tsGridKm * window.WalkShape.SAMPLE_STEP_CELLS, walkMinPerKm, false),
-          budgets,
-          { gridKm: tsGridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
-            holeAcres: shapeOpt.holeAcres, roundKm: shapeOpt.roundKm });
-        contourGridKm = cRes.gridKmUsed;
-        contourGridPlannedKm = cRes.gridKmPlanned;
-        budgets.forEach(function (B, k) {
-          polys.push({ budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length });
-        });
-      }
-      for (var bi = 0; contourGridKm == null && bi < budgets.length; bi++) {
-        var B = budgets[bi];
-        var clusterPolys = [];
-
-        // Origin/access cluster: capped at the access walk limit in "transit"
-        // mode (never past the band budget either).
-        var accessCap = isTransitMode ? Math.min(B, accessCapMin) : B;
-        var originCoords = originNodeKeys
-          .filter(function (k) { return originCost[k] * walkMinPerKm <= accessCap; })
-          .map(function (k) { return App.nodeKeyToCoord(k); });
-        if (originCoords.length) {
-          var originPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(originCoords, _settings.maxEdgeKm, shapeOpt) : null;
-          if (originPoly) clusterPolys.push(originPoly);
-        }
-        clustersSinceYield++;
-        if (clustersSinceYield >= 15) { clustersSinceYield = 0; await new Promise(function (r) { setTimeout(r, 0); }); }
-
-        // One cluster per alighting stop: capped at whatever's left of the
-        // band budget after the ride (and, in "transit" mode, at the egress
-        // walk limit too).
-        for (var ei = 0; ei < engineResult.alightings.length; ei++) {
-          var al = engineResult.alightings[ei];
-          if (al.alightMin >= B) continue;
-          var stopCostObj = stopCosts[al.stopKey];
-          if (!stopCostObj) continue;
-          var egressCap = B - al.alightMin;
-          if (isTransitMode) egressCap = Math.min(egressCap, egressCapMin);
-          var stopCoords = Object.keys(stopCostObj)
-            .filter(function (k) { return stopCostObj[k] * walkMinPerKm <= egressCap; })
-            .map(function (k) { return App.nodeKeyToCoord(k); });
-          if (stopCoords.length) {
-            var stopPoly = App.polygonizeNodeSet ? App.polygonizeNodeSet(stopCoords, _settings.maxEdgeKm, shapeOpt) : null;
-            if (stopPoly) clusterPolys.push(stopPoly);
-          }
-          clustersSinceYield++;
-          if (clustersSinceYield >= 15) { clustersSinceYield = 0; await new Promise(function (r) { setTimeout(r, 0); }); }
-        }
-
-        var bandPolygon = App.foldAnalysisUnion(clusterPolys); // null-safe union, null for an empty array
-        // The union of rounded clusters can leave small enclosed gaps: fill them.
-        if (bandPolygon && shapeOpt.method === "simplified" && shapeOpt.holeAcres > 0 && window.WalkShape) {
-          bandPolygon = window.WalkShape.fillHoles(bandPolygon, shapeOpt.holeAcres);
-        }
-        polys.push({ budgetMin: B, polygon: bandPolygon, nodeCount: bandSets[bi].nodeKeys.length });
-        await new Promise(function (r) { setTimeout(r, 0); }); // yield between bands
-      }
+      var shapeOpt = App.walkShapeFor();
+      var tsGridKm = window.WalkShape.scaledGridKm(shapeOpt.gridKm, maxBudgetMin / 15);
+      var cRes = window.WalkShape.contour(
+        App.contourSamples(engineResult.nodeTimes, maxBudgetMin, tsGridKm * window.WalkShape.SAMPLE_STEP_CELLS, walkMinPerKm, false),
+        budgets,
+        { gridKm: tsGridKm, offStreetKm: shapeOpt.offStreetKm, costPerKm: walkMinPerKm,
+          holeAcres: shapeOpt.holeAcres, roundKm: shapeOpt.roundKm });
+      var contourGridKm = cRes.gridKmUsed, contourGridPlannedKm = cRes.gridKmPlanned;
+      var polys = budgets.map(function (B, k) {
+        return { budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length };
+      });
 
       // Ring differencing largest-first so the innermost band stays solid; a
       // turf.difference failure falls back to the un-differenced polygon for
@@ -1297,7 +1233,7 @@
         offNetworkStopCount: offNetworkStopCount,
         floodStats: floodStats,
         computeMs: Date.now() - t0,
-        contourGridKm: contourGridKm,               // null unless the Standard shape ran
+        contourGridKm: contourGridKm,
         contourGridAskedKm: contourGridPlannedKm
       };
       _stale = false;
@@ -1336,7 +1272,7 @@
     if (clearOriginBtn) clearOriginBtn.addEventListener("click", clearOrigin);
 
     ["tsBudget1", "tsBudget2", "tsBudget3", "tsWalkSpeed", "tsDayType", "tsTimeOfDay",
-     "tsMaxWait", "tsBoardPenalty", "tsStopSpacing", "tsMaxEdge",
+     "tsMaxWait", "tsBoardPenalty", "tsStopSpacing",
      "tsShedMode", "tsAccessWalk", "tsEgressWalk", "tsTransferWalk"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
@@ -1463,7 +1399,6 @@
       maxWaitMin: _settings.maxWaitMin,
       boardPenaltyMin: _settings.boardPenaltyMin,
       stopSpacingMi: _settings.stopSpacingMi,
-      maxEdgeKm: _settings.maxEdgeKm,
       shedMode: _settings.shedMode,
       maxAccessWalkMi: _settings.maxAccessWalkMi,
       maxEgressWalkMi: _settings.maxEgressWalkMi,
@@ -1495,7 +1430,6 @@
     if (+data.maxWaitMin >= 0) _settings.maxWaitMin = +data.maxWaitMin;
     if (+data.boardPenaltyMin >= 0) _settings.boardPenaltyMin = +data.boardPenaltyMin;
     if (+data.stopSpacingMi > 0) _settings.stopSpacingMi = +data.stopSpacingMi;
-    if (+data.maxEdgeKm > 0) _settings.maxEdgeKm = +data.maxEdgeKm;
     if (data.shedMode === "transit" || data.shedMode === "door") _settings.shedMode = data.shedMode;
     if (+data.maxAccessWalkMi > 0) _settings.maxAccessWalkMi = +data.maxAccessWalkMi;
     if (+data.maxEgressWalkMi > 0) _settings.maxEgressWalkMi = +data.maxEgressWalkMi;

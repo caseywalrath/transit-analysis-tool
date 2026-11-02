@@ -14,10 +14,10 @@
 
   // ---- Defaults + module-local state (persists across popup open/close) ----
 
-  var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1, maxEdge: 0.3 };
+  var DEFAULT_SETTINGS = { budgets: [15, 30, null], walkSpeedMph: 3.1 };
   var MAX_MINUTES = 60;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
-  var FT_PER_KM = 3280.84; // hull-detail maxEdge is displayed in feet but stored/persisted in km
+  var FT_PER_KM = 3280.84; // grid sizes are stored in km and shown in feet
 
   var _settings      = Object.assign({}, DEFAULT_SETTINGS);
   var _walkshedCache = new Map();  // pointIdx -> entry (see computeForPoint)
@@ -30,7 +30,6 @@
   // dashed gray line plus a per-band area-change note. Module-private, display
   // only, never persisted. { label, outlineFc, areasByMin }
   var _prevShape     = null;
-  var _lastRunLabel  = null;
   var _lastRunSig    = null;       // shape signature the current _lastEntries were computed with
 
   // ---- Map layer ids ----
@@ -107,7 +106,7 @@
       ? [Math.min(+attrs.walkMinutes, MAX_MINUTES)]
       : activeBudgets();
     var speed = (attrs.walkSpeedMph != null && +attrs.walkSpeedMph > 0) ? +attrs.walkSpeedMph : _settings.walkSpeedMph;
-    return { budgets: budgets, speed: speed, maxEdge: _settings.maxEdge };
+    return { budgets: budgets, speed: speed };
   }
 
   // Cache key — a walkshed is a pure function of the origin coords, the walk
@@ -122,8 +121,8 @@
     var epoch = (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : 0;
     var crossMajor = (App.networkSettings && App.networkSettings.crossingMajorSec) || 0;
     var crossMinor = (App.networkSettings && App.networkSettings.crossingMinorSec) || 0;
-    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, s.maxEdge, epoch, crossMajor, crossMinor].join("|") +
-      (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : ""); // "" for simplified: key unchanged
+    return [c[0].toFixed(6), c[1].toFixed(6), s.budgets.join(","), s.speed, epoch, crossMajor, crossMinor].join("|") +
+      (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : "");
   }
 
   // Builds { major, minor } crossing-penalty km values from the global
@@ -160,7 +159,7 @@
     var maxBudgetKm = budgetsKm[budgetsKm.length - 1];
     var res = App.computeWalkshed
       ? App.computeWalkshed(pf.geometry.coordinates, maxBudgetKm,
-          { maxEdge: s.maxEdge, budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh),
+          { budgetsKm: budgetsKm, crossingPenaltyKm: crossingPenaltyKmFor(speedKmh),
           shape: (typeof App.walkShapeFor === "function") ? App.walkShapeFor() : undefined })
       : null;
 
@@ -207,8 +206,8 @@
       reachableCount:    bands[0].nodeCount,
       area:              bands[0].area,   // m²
       bands:             bands,           // ascending, one entry per active budget
-      computeMs:         res.computeMs + (res.shapeMs || 0), // Standard-shape tracing is the slow part, so count it
-      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // Standard shape only; > planned = hit the cell cap
+      computeMs:         res.computeMs + (res.shapeMs || 0), // contour tracing is the slow part, so count it
+      gridKmUsed:        res.gridKmUsed != null ? res.gridKmUsed : null, // > planned = hit the cell cap
       gridKmPlanned:     res.gridKmPlanned != null ? res.gridKmPlanned : null,
       minutes:           bands[0].minutes,
       name:              pf.properties.name,
@@ -590,7 +589,7 @@
     [WS_SEG_SRC, WS_FILL_SRC, WS_LINE_SRC].forEach(function (id) { if (map.getSource(id)) map.removeSource(id); });
   }
 
-  // Muted line when a Standard-shape run had to coarsen its grid to stay within the
+  // Muted line when a run had to coarsen its grid to stay within the
   // cell cap (very large budgets). Reports the coarsest grid any point used.
   function gridNoteHtml() {
     // Only cell-cap coarsening is reported; the planned per-budget scaling is
@@ -609,12 +608,7 @@
   // ---- "Previous shape" comparison ----
 
   function shapeRunSig() {
-    return (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : "") +
-      "|edge:" + _settings.maxEdge;
-  }
-  function shapeLabel() {
-    var m = App.networkSettings && App.networkSettings.walkShape && App.networkSettings.walkShape.method;
-    return (App.walkShapeFor ? App.walkShapeFor().method : m) === "simplified" ? "Simplified" : "Standard";
+    return (typeof App.walkShapeSignature === "function" ? App.walkShapeSignature() : "");
   }
 
   // Each point's largest-band polygon, as outline features.
@@ -645,11 +639,10 @@
   }
 
   // Called after a successful run with the entries/signature the run REPLACED.
-  function updatePrevShape(prevEntries, prevSig, prevLabel) {
+  function updatePrevShape(prevEntries, prevSig) {
     var hadResult = prevEntries && prevEntries.some(function (e) { return e && !e.failed; });
     if (!hadResult || prevSig == null || prevSig === _lastRunSig) { clearPrevShape(); return; }
-    var label = prevLabel === shapeLabel() ? prevLabel + " (earlier settings)" : prevLabel;
-    _prevShape = { label: label, outlineFc: { type: "FeatureCollection", features: outermostFeatures(prevEntries) },
+    _prevShape = { label: "earlier settings", outlineFc: { type: "FeatureCollection", features: outermostFeatures(prevEntries) },
                    areasByMin: areasByMinutes(prevEntries) };
     renderPrevShapeLayer();
   }
@@ -969,7 +962,7 @@
     var sigBefore = walkshedSignature();
 
     // One point per tick, yielding between points, so the page stays responsive
-    // and the status shows progress on many-point runs (the Standard shape is the slow case).
+    // and the status shows progress on many-point runs (contour tracing is the slow part).
     var entries = [];
     function computeNext(i) {
       try {
@@ -992,11 +985,10 @@
 
     function finishRun() {
       try {
-        var prevEntries = _lastEntries, prevSig = _lastRunSig, prevLabel = _lastRunLabel;
+        var prevEntries = _lastEntries, prevSig = _lastRunSig;
         _lastEntries = entries;
         _lastRunSig = shapeRunSig();
-        _lastRunLabel = shapeLabel();
-        updatePrevShape(prevEntries, prevSig, prevLabel);
+        updatePrevShape(prevEntries, prevSig);
         _stale = false;
 
         var ok = entries.filter(function (e) { return !e.failed; }).length;
@@ -1095,7 +1087,7 @@
     if (!features.length) { setStatus("Nothing to export.", "error"); return; }
     var fc = {
       type: "FeatureCollection",
-      metadata: { generator: "micro-analysis-tool walkshed", generated: new Date().toISOString(), walkSpeedMph: _settings.walkSpeedMph, maxEdgeKm: _settings.maxEdge },
+      metadata: { generator: "micro-analysis-tool walkshed", generated: new Date().toISOString(), walkSpeedMph: _settings.walkSpeedMph },
       features: features
     };
     _triggerDownload(JSON.stringify(fc, null, 2), "application/geo+json", "walkshed-" + _dateStamp() + ".geojson");
@@ -1121,7 +1113,6 @@
     var m2 = document.getElementById("wsMinutes2");
     var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
-    var e = document.getElementById("wsMaxEdge");
     var budgets = [];
     [m1, m2, m3].forEach(function (el) {
       if (el && +el.value > 0) budgets.push(Math.min(+el.value, MAX_MINUTES));
@@ -1131,7 +1122,6 @@
       _settings.budgets = budgets;
     }
     if (s && +s.value > 0) _settings.walkSpeedMph = +s.value;
-    if (e && +e.value > 0) _settings.maxEdge = +e.value / FT_PER_KM; // ft input -> km stored
     if (App.cache && App.cache.save) App.cache.save();
     updateStudyAreaButtonLabel();
   }
@@ -1141,13 +1131,11 @@
     var m2 = document.getElementById("wsMinutes2");
     var m3 = document.getElementById("wsMinutes3");
     var s = document.getElementById("wsSpeed");
-    var e = document.getElementById("wsMaxEdge");
     var b = _settings.budgets || [];
     if (m1) m1.value = (b[0] != null) ? b[0] : "";
     if (m2) m2.value = (b[1] != null) ? b[1] : "";
     if (m3) m3.value = (b[2] != null) ? b[2] : "";
     if (s) s.value = _settings.walkSpeedMph;
-    if (e) e.value = Math.round(_settings.maxEdge * FT_PER_KM); // km stored -> ft displayed
     // Snap tolerance reads the GLOBAL App.networkSettings, not _settings — it's
     // shared with Transit Travelshed, so this module never stores its own copy.
     var tol = document.getElementById("wsSnapTol");
@@ -1278,7 +1266,7 @@
     var use = document.getElementById("wsUseStudyArea");
     if (use) use.addEventListener("click", useAsStudyAreas);
 
-    ["wsMinutes", "wsMinutes2", "wsMinutes3", "wsSpeed", "wsMaxEdge"].forEach(function (id) {
+    ["wsMinutes", "wsMinutes2", "wsMinutes3", "wsSpeed"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); if (_lastEntries.length) markStale(); });
     });
@@ -1391,8 +1379,7 @@
     var data = {
       version: 3,
       budgets: (_settings.budgets || []).filter(function (b) { return b != null; }),
-      walkSpeedMph: _settings.walkSpeedMph,
-      maxEdge: _settings.maxEdge
+      walkSpeedMph: _settings.walkSpeedMph
     };
     if (mode === "full" && _lastEntries.length) {
       data.lastEntries = _lastEntries.map(function (e) {
@@ -1433,7 +1420,6 @@
       // v1 schema migration: saved speed was km/h — convert to mph.
       _settings.walkSpeedMph = +data.walkSpeedKmh / KM_PER_MILE;
     }
-    if (+data.maxEdge > 0) _settings.maxEdge = +data.maxEdge;
 
     if (Array.isArray(data.lastEntries) && data.lastEntries.length) restoreEntries(data.lastEntries);
   }

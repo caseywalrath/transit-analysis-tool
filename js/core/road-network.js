@@ -1056,40 +1056,6 @@
     return out;
   }
 
-  // Walkshed polygon from reachable node coordinates: concave hull with an
-  // auto-relax loop (grow maxEdge until non-null), then convex hull; a small
-  // buffer for <3 nodes so downstream turf.union/intersect get a valid polygon.
-  // `shape` (optional {method, holeAcres, ...}): method "simplified" fills
-  // interior holes under holeAcres (a block missing its streets; a lake stays).
-  // Absent shape returns the bare hull. "standard" never reaches here (it is
-  // traced from a travel-time grid in computeWalkshed).
-  function refineHull(hull, shape) {
-    if (hull && shape && shape.holeAcres > 0 && window.WalkShape) {
-      return window.WalkShape.fillHoles(hull, shape.holeAcres);
-    }
-    return hull;
-  }
-
-  function buildWalkshedPolygon(coords, maxEdgeKm, shape) {
-    if (!coords || coords.length === 0) return null;
-    var pts = [];
-    for (var i = 0; i < coords.length; i++) pts.push(turf.point(coords[i]));
-    var fc = turf.featureCollection(pts);
-
-    if (coords.length < 3) {
-      try { return turf.buffer(fc, 0.03, { units: "kilometers" }); } catch (e) { return null; }
-    }
-
-    var maxEdge = maxEdgeKm && maxEdgeKm > 0 ? maxEdgeKm : 0.3;
-    for (var attempt = 0; attempt < 8; attempt++) {
-      var hull = null;
-      try { hull = turf.concave(fc, { maxEdge: maxEdge, units: "kilometers" }); } catch (e) { hull = null; }
-      if (hull) return refineHull(hull, shape);
-      maxEdge *= 1.8;
-    }
-    try { return refineHull(turf.convex(fc), shape); } catch (e2) { return null; }
-  }
-
   // Budget-limited flood from an arbitrary walk origin, shared by every walk-
   // isochrone consumer. Temp origin-node injection, flood and cleanup all happen
   // inside this one synchronous call: callers may yield BETWEEN calls, never
@@ -1175,13 +1141,13 @@
   // Compute a network walkshed (walking isochrone) from an arbitrary origin.
   //   lngLat   : [lng, lat] origin
   //   budgetKm : maximum network walking distance in km (= speedKmh * minutes/60)
-  //   options  : { maxEdge,       — advanced concave-hull edge length (km)
+  //   options  : { shape,         — OPTIONAL boundary-shape settings
+  //                                 (App.walkShapeFor(); read from there when absent)
   //               budgetsKm,     — OPTIONAL ascending km values; floods once at
   //                                 the max and returns one nested polygon per
   //                                 entry (`polygons` below).
   //               crossingPenaltyKm } — OPTIONAL { major, minor } km.
-  // Absent budgetsKm / zero penalties must stay byte-identical (hard
-  // backward-compat requirement).
+  // Zero penalties must stay byte-identical to no penalties.
   // Returns null when no network or origin off-network (snap > SNAP_MAX_KM).
   // Otherwise { polygon, reachableSegments, reachableCount, snap, computeMs,
   // snapMs, floodMs }. Assembly below never touches the graph (runWalkFlood owns that).
@@ -1198,9 +1164,6 @@
     var distMap = flood.distMap;
     var snap = flood.snap;
 
-    var coords = [];
-    distMap.forEach(function (d, key) { coords.push(keyToCoord(key)); });
-
     // Reachable street segments: both endpoints settled within budget.
     var segFeatures = [];
     for (var si = 0; si < _segmentIndex.length; si++) {
@@ -1215,31 +1178,27 @@
     if (distMap.has(snap.segStartKey)) segFeatures.push(turf.lineString([snap.coord, snap.segStartCoord]));
     if (distMap.has(snap.segEndKey)) segFeatures.push(turf.lineString([snap.coord, snap.segEndCoord]));
 
-    // The "standard" (contour) shape replaces the hull entirely: one travel-time surface traced
-    // at every budget (bands come out in exactly the hull path's shape).
-    var shape = options.shape;
-    var contourBands = null, gridKmUsed = null, shapeMs = null;
-    if (shape && shape.method === "standard" && window.WalkShape && window.WalkShape.contour) {
-      var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-      var cBudgets = (options.budgetsKm && options.budgetsKm.length) ? options.budgetsKm.slice() : [];
-      if (cBudgets.indexOf(budgetKm) === -1) cBudgets.push(budgetKm);
+    // Boundary: one travel-time surface traced at every budget
+    // (WalkShape.contour). The old concave-hull boundary was removed; see
+    // docs/archive/walkshed-simplified-shape.md.
+    var shape = options.shape || (typeof App.walkShapeFor === "function" ? App.walkShapeFor() : null);
+    var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    var cBudgets = (options.budgetsKm && options.budgetsKm.length) ? options.budgetsKm.slice() : [];
+    if (cBudgets.indexOf(budgetKm) === -1) cBudgets.push(budgetKm);
+    var bandByBudget = {}, gridKmUsed = null, gridKmPlanned = null;
+    if (shape && window.WalkShape && window.WalkShape.contour) {
       // 1.25 km = 15 min at the default 3.1 mph walk speed.
       var cGridKm = window.WalkShape.scaledGridKm(shape.gridKm, Math.max.apply(null, cBudgets) / 1.25);
       var cRes = window.WalkShape.contour(
         contourSamples(distMap, budgetKm, cGridKm * window.WalkShape.SAMPLE_STEP_CELLS, 1, true), cBudgets,
         { gridKm: cGridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
           holeAcres: shape.holeAcres, roundKm: shape.roundKm });
-      contourBands = {};
-      cBudgets.forEach(function (b, k) { contourBands[b] = cRes.bands[k]; });
+      cBudgets.forEach(function (b, k) { bandByBudget[b] = cRes.bands[k]; });
       gridKmUsed = cRes.gridKmUsed;
-      var gridKmPlanned = cRes.gridKmPlanned;
-      shapeMs = Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - tc0);
+      gridKmPlanned = cRes.gridKmPlanned;
     }
-    function bandPolygon(b, bandCoords) {
-      return contourBands ? (contourBands[b] || null) : buildWalkshedPolygon(bandCoords, options.maxEdge, shape);
-    }
-
-    var polygon = bandPolygon(budgetKm, coords);
+    var shapeMs = Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - tc0);
+    var polygon = bandByBudget[budgetKm] || null;
 
     var result = {
       polygon: polygon,
@@ -1251,18 +1210,20 @@
       floodMs: flood.floodMs
     };
 
-    if (gridKmUsed != null) { result.gridKmUsed = gridKmUsed; result.gridKmPlanned = gridKmPlanned; result.shapeMs = shapeMs; }
+    result.gridKmUsed = gridKmUsed;
+    result.gridKmPlanned = gridKmPlanned;
+    result.shapeMs = shapeMs;
 
     if (options.budgetsKm && options.budgetsKm.length) {
       var polygons = [];
       for (var bi = 0; bi < options.budgetsKm.length; bi++) {
         var b = options.budgetsKm[bi];
-        var bandCoords = [];
-        distMap.forEach(function (d, key) { if (d <= b) bandCoords.push(keyToCoord(key)); });
+        var nodeCount = 0;
+        distMap.forEach(function (d) { if (d <= b) nodeCount++; });
         polygons.push({
           budgetKm: b,
-          polygon: bandPolygon(b, bandCoords),
-          nodeCount: bandCoords.length
+          polygon: bandByBudget[b] || null,
+          nodeCount: nodeCount
         });
       }
       result.polygons = polygons;
@@ -1385,7 +1346,6 @@
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
   App.computeWalkCostMap = computeWalkCostMap;
-  App.polygonizeNodeSet  = function (coords, maxEdgeKm, shape) { return buildWalkshedPolygon(coords, maxEdgeKm, shape); };
   App.nodeKeyToCoord     = keyToCoord;
   App.contourSamples     = contourSamples;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };

@@ -342,11 +342,14 @@
     if (App.networkSettings && state.networkCrossingMinorSec != null) {
       App.networkSettings.crossingMinorSec = state.networkCrossingMinorSec;
     }
-    // Boundary shape (absent or unknown method -> the defaults; see network-connectors.js).
+    // Boundary-shape settings: defaults, overlaid with only the stored fields
+    // that still exist (older sessions also stored a method name and an edge
+    // rounding distance; both are ignored now).
     if (App.networkSettings) {
       var wsd = (typeof App.walkShapeDefaults === "function") ? App.walkShapeDefaults() : {};
-      var wss = (state.networkWalkShape && typeof state.networkWalkShape === "object") ? state.networkWalkShape : null;
-      App.networkSettings.walkShape = wss ? Object.assign(wsd, wss) : wsd;
+      var wss = (state.networkWalkShape && typeof state.networkWalkShape === "object") ? state.networkWalkShape : {};
+      Object.keys(wsd).forEach(function (k) { if (wss[k] != null && isFinite(+wss[k])) wsd[k] = +wss[k]; });
+      App.networkSettings.walkShape = wsd;
     }
     // 3a-3b. Restore user-excluded streets (additive field — absent on an
     // old session leaves the exclusion set empty). Goes through the sanctioned write path

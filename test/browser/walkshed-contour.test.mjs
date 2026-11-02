@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test/browser/walkshed-contour.test.mjs
 //
-// The "Standard" boundary shape (contour tracing: WalkShape.contour + App.contourSamples via
+// The walk boundary shape (contour tracing: WalkShape.contour + App.contourSamples via
 // App.computeWalkshed): nested bands, barriers kept, small gaps filled,
 // partial-block reach, off-street limit, grid coarsening + its results note,
 // speed, the panel fields, and the Transit Travelshed path (minutes-based
@@ -65,13 +65,19 @@ function check(name, pass, detail) {
     const eng = await page.evaluate(({ LAT0, LNG0, D }) => {
       const origin = [LNG0 + 15.3 * D, LAT0 + 14.6 * D];
       const budgets = [1.25, 2.5];                       // 15 / 30 min at 3.1 mph
-      const contourShape = Object.assign(App.walkShapeDefaults(), { method: "standard" });
-      App.networkSettings.walkShape = contourShape;
+      App.networkSettings.walkShape = App.walkShapeDefaults();
       const shape = App.walkShapeFor();
       const t0 = performance.now();
-      const c = App.computeWalkshed(origin, 2.5, { maxEdge: 0.3, budgetsKm: budgets, shape });
+      const c = App.computeWalkshed(origin, 2.5, { budgetsKm: budgets, shape });
       const ms = performance.now() - t0;
-      const simplified = App.computeWalkshed(origin, 2.5, { maxEdge: 0.3, budgetsKm: budgets });
+      // Reference node counts straight from the flood, and the effect of the
+      // partial-edge samples (one end reached): same surface with and without them.
+      const dist = App.computeWalkCostMap(origin, 2.5).distMap;
+      const floodCounts = budgets.map((b) => { let n = 0; dist.forEach((d) => { if (d <= b) n++; }); return n; });
+      const g = WalkShape.scaledGridKm(shape.gridKm, 2);
+      const opt = { gridKm: g, offStreetKm: shape.offStreetKm, costPerKm: 1, holeAcres: shape.holeAcres, roundKm: shape.roundKm };
+      const withPartial = WalkShape.contour(App.contourSamples(dist, 2.5, g * 2, 1, true), budgets, opt).bands;
+      const nodesOnly = WalkShape.contour(App.contourSamples(dist, 2.5, g * 2, 1, false), budgets, opt).bands;
       const [inner, outer] = c.polygons.map((p) => p.polygon);
       let leak = null;
       try { const dd = turf.difference(inner, outer); leak = dd ? turf.area(dd) / turf.area(inner) : 0; } catch (e) { leak = "err " + e.message; }
@@ -87,15 +93,15 @@ function check(name, pass, detail) {
       const lakeC = [LNG0 + 15.5 * D, LAT0 + 19.5 * D], gapC = [LNG0 + 19 * D, LAT0 + 11 * D];
       return {
         ms, kinds: c.polygons.map((p) => p.polygon && p.polygon.geometry.type),
-        nodeCounts: c.polygons.map((p) => p.nodeCount), simplifiedNodeCounts: simplified.polygons.map((p) => p.nodeCount),
-        areas: c.polygons.map((p) => turf.area(p.polygon)), simplifiedAreas: simplified.polygons.map((p) => turf.area(p.polygon)),
+        nodeCounts: c.polygons.map((p) => p.nodeCount), floodCounts,
+        partialRatio: withPartial.map((f, k) => turf.area(f) / turf.area(nodesOnly[k])),
         leak, holes: holesOf(outer), kinks: [inner, outer].map((f) => turf.kinks(f).features.length),
         far, limit: 2.5 + shape.offStreetKm, gridKmUsed: c.gridKmUsed, gridKmPlanned: c.gridKmPlanned, gridKm: shape.gridKm,
         lakeOut: !turf.booleanPointInPolygon(lakeC, outer), gapIn: turf.booleanPointInPolygon(gapC, outer)
       };
     }, { LAT0, LNG0, D });
     check("contour bands are polygons", eng.kinds.every((k) => k === "Polygon" || k === "MultiPolygon"), JSON.stringify(eng.kinds));
-    check("node counts match the hull path (same flood)", JSON.stringify(eng.nodeCounts) === JSON.stringify(eng.simplifiedNodeCounts));
+    check("node counts match the flood", JSON.stringify(eng.nodeCounts) === JSON.stringify(eng.floodCounts), JSON.stringify(eng.nodeCounts));
     check("nesting: 15-min band lies within the 30-min band (< 0.5% outside)",
       typeof eng.leak === "number" && eng.leak < 0.005, String(eng.leak));
     check("barrier: the lake stays a hole", eng.lakeOut && eng.holes.some((a) => a > 50), JSON.stringify(eng.holes.map(Math.round)));
@@ -103,9 +109,10 @@ function check(name, pass, detail) {
     check("no self-intersections", eng.kinks.every((k) => k === 0));
     check("off-street limit: no vertex beyond budget + reach from the origin",
       eng.far <= eng.limit, eng.far.toFixed(3) + " km <= " + eng.limit.toFixed(3));
-    check("partial edges: contour area >= simplified area - 5% for each band",
-      eng.areas.every((a, k) => a >= eng.simplifiedAreas[k] * 0.95),
-      eng.areas.map((a, k) => (a / eng.simplifiedAreas[k]).toFixed(3)).join(" / "));
+    // Partial-edge samples only add reach, so the raw surface can only grow;
+    // simplify/smooth in the cleanup can shave a fraction of a percent.
+    check("partial edges extend the walk area (outer band clearly larger; none shrinks beyond cleanup noise)",
+      eng.partialRatio.every((r) => r > 0.99) && eng.partialRatio[eng.partialRatio.length - 1] > 1.02, eng.partialRatio.map((r) => r.toFixed(3)).join(" / "));
     check("30-min grid scales to 80 ft x sqrt(2) and is not cell-capped",
       Math.abs(eng.gridKmPlanned - eng.gridKm * Math.SQRT2) < 1e-9 && Math.abs(eng.gridKmUsed - eng.gridKmPlanned) < 1e-9,
       Math.round(eng.gridKmPlanned * 3280.84) + " ft planned, " + Math.round(eng.gridKmUsed * 3280.84) + " ft used");
@@ -150,24 +157,14 @@ function check(name, pass, detail) {
     await page.evaluate(() => App.openModulePopup("walkshed"));
     await page.locator("#module-popup").waitFor({ state: "visible", timeout: 10000 });
     await page.locator("details.data-input-group summary").first().click();
-    await page.locator("#wsShapeMethod").selectOption("standard");
     const fields = await page.evaluate(() => {
       const vis = (id) => { const el = document.getElementById(id); return !!(el && el.offsetParent !== null); };
-      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"), hull: vis("wsMaxEdge"),
-        sig: App.walkShapeSignature() };
+      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"),
+        select: !!document.getElementById("wsShapeMethod"), hull: !!document.getElementById("wsMaxEdge"), sig: App.walkShapeSignature() };
     });
-    check("Standard shows Grid detail, Off-street reach and Fill holes; hides Hull detail",
-      fields.grid && fields.off && fields.holes && !fields.hull, JSON.stringify(fields));
-    check("Standard cache-key signature", fields.sig === "|standard:10:80:330", fields.sig);
-    await page.locator("#wsShapeMethod").selectOption("simplified");
-    const sfields = await page.evaluate(() => {
-      const vis = (id) => { const el = document.getElementById(id); return !!(el && el.offsetParent !== null); };
-      return { grid: vis("wsGridFt"), off: vis("wsOffStreetFt"), holes: vis("wsHoleAcres"), hull: vis("wsMaxEdge"), sig: App.walkShapeSignature() };
-    });
-    check("Simplified shows Hull detail and Fill holes; hides Grid detail and Off-street reach",
-      !sfields.grid && !sfields.off && sfields.holes && sfields.hull, JSON.stringify(sfields));
-    check("Simplified cache-key signature", sfields.sig === "|simplified:10", sfields.sig);
-    await page.locator("#wsShapeMethod").selectOption("standard");
+    check("Advanced Settings shows Grid detail, Off-street reach and Fill holes (no shape picker, no hull field)",
+      fields.grid && fields.off && fields.holes && !fields.select && !fields.hull, JSON.stringify(fields));
+    check("cache-key signature", fields.sig === "|shape:10:80:330", fields.sig);
 
     // Three points: the run computes one point per tick and reports progress.
     await page.evaluate(() => {
@@ -206,9 +203,7 @@ function check(name, pass, detail) {
       st.points = [];
       st.moduleState = st.moduleState || {};
       st.moduleState["transit-travelshed"] = { v: 2, origin: [LNG0 + 3 * D, row + 0.3 * D], budgets: [15, 30, null] };
-      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "simplified" });
       App.cache.applyState(st);
-      App.networkSettings.walkShape = Object.assign(App.walkShapeDefaults(), { method: "simplified" });
     }, { LAT0, LNG0, D });
     await page.evaluate(() => App.openModulePopup("transit-travelshed"));
     await page.locator("#tsRunBtn").waitFor({ state: "visible", timeout: 10000 });
@@ -221,8 +216,8 @@ function check(name, pass, detail) {
       await page.waitForFunction(() => !document.querySelector("#tsStatus.rf-status-running"), { timeout: 60000 });
       return page.evaluate(() => App.map.getSource("ts-travelshed")._data.features.map((f) => ({ band: f.properties.band, area: turf.area(f), type: f.geometry.type })));
     };
-    const tsSimplified = await runTs();
-    await page.evaluate(() => App.setWalkShape({ method: "standard" }));
+    const tsFirst = await runTs();
+    await page.evaluate(() => App.setWalkShape({ offStreetFt: 200 }));
     check("Transit Travelshed: shape change marks it stale",
       await page.evaluate(() => !!document.querySelector("#tsStatus.rf-status-stale")));
     const tsContour = await runTs();
@@ -236,11 +231,10 @@ function check(name, pass, detail) {
       tsContour.length === 2 && tsContour.every((b) => b.area > 0), JSON.stringify(tsContour.map((b) => Math.round(b.area / 4046.86))));
     check("Transit Travelshed contour bands are nested (rings barely overlap)",
       typeof tsNest === "number" && tsNest < 0.005, String(tsNest));
-    check("Transit Travelshed contour is in the same range as Simplified (0.8x-1.6x total area)", (() => {
+    check("Transit Travelshed: a shorter off-street reach gives a smaller area", (() => {
       const sum = (a) => a.reduce((t, b) => t + b.area, 0);
-      const r = sum(tsContour) / sum(tsSimplified);
-      return r > 0.8 && r < 1.6;
-    })(), (tsContour.reduce((t, b) => t + b.area, 0) / tsSimplified.reduce((t, b) => t + b.area, 0)).toFixed(3));
+      return sum(tsContour) < sum(tsFirst);
+    })(), (tsContour.reduce((t, b) => t + b.area, 0) / tsFirst.reduce((t, b) => t + b.area, 0)).toFixed(3));
 
     check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   } finally {
