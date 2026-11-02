@@ -75,6 +75,86 @@
     return withProps(geom, feature);
   }
 
+  var KM_PER_DEG = 111.32;          // simplify tolerance is in degrees; ~1 deg ≈ 111 km
+  var COARSE_ROUND_KM = 0.09;       // ~300 ft: Contour's rounding is above, Smoothed's below
+
+  // True when any two non-adjacent edges of the (Multi)Polygon's rings cross
+  // or touch. Same question as turf.kinks, but turf.kinks tests every edge
+  // against every other (quadratic: 18 ms on a ~1,400-vertex band, far worse
+  // on travelsheds). Edges are bucketed into a uniform grid sized to the
+  // average edge length, so only edges sharing a cell are compared. Pure
+  // arithmetic on lng/lat (no turf), so the golden harness can pin it.
+  function selfIntersects(feature) {
+    var g = feature && feature.geometry;
+    if (!g) return false;
+    var polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    var segs = []; // [ax, ay, bx, by, ringId, idxInRing, ringLen]
+    var ringId = 0, totalLen = 0;
+    polys.forEach(function (poly) {
+      poly.forEach(function (ring) {
+        var n = ring.length - 1; // closed ring: last == first
+        for (var i = 0; i < n; i++) {
+          var a = ring[i], b = ring[i + 1];
+          segs.push([a[0], a[1], b[0], b[1], ringId, i, n]);
+          totalLen += Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]);
+        }
+        ringId++;
+      });
+    });
+    if (segs.length < 4) return false;
+    var cell = Math.max(totalLen / segs.length, 1e-9);
+    var H = new Map();
+    for (var s = 0; s < segs.length; s++) {
+      var q = segs[s];
+      var x0 = Math.floor(Math.min(q[0], q[2]) / cell), x1 = Math.floor(Math.max(q[0], q[2]) / cell);
+      var y0 = Math.floor(Math.min(q[1], q[3]) / cell), y1 = Math.floor(Math.max(q[1], q[3]) / cell);
+      for (var x = x0; x <= x1; x++) {
+        for (var y = y0; y <= y1; y++) {
+          var k = x + ":" + y, arr = H.get(k);
+          if (!arr) H.set(k, arr = []);
+          arr.push(s);
+        }
+      }
+    }
+    var seen = new Set();
+    var found = false;
+    H.forEach(function (arr) {
+      if (found) return;
+      for (var i = 0; i < arr.length && !found; i++) {
+        for (var j = i + 1; j < arr.length; j++) {
+          var a = segs[arr[i]], b = segs[arr[j]];
+          if (a[4] === b[4]) {
+            var d = Math.abs(a[5] - b[5]);
+            if (d === 1 || d === a[6] - 1) continue; // neighbours share a vertex by design
+          }
+          var pk = arr[i] < arr[j] ? arr[i] * 1e7 + arr[j] : arr[j] * 1e7 + arr[i];
+          if (seen.has(pk)) continue;
+          seen.add(pk);
+          if (segmentsTouch(a, b)) { found = true; break; }
+        }
+      }
+    });
+    return found;
+  }
+
+  function orient(ax, ay, bx, by, cx, cy) {
+    var v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    return v > 0 ? 1 : v < 0 ? -1 : 0;
+  }
+  function onSeg(ax, ay, bx, by, cx, cy) {
+    return Math.min(ax, bx) <= cx && cx <= Math.max(ax, bx) && Math.min(ay, by) <= cy && cy <= Math.max(ay, by);
+  }
+  function segmentsTouch(p, q) {
+    var o1 = orient(p[0], p[1], p[2], p[3], q[0], q[1]), o2 = orient(p[0], p[1], p[2], p[3], q[2], q[3]);
+    var o3 = orient(q[0], q[1], q[2], q[3], p[0], p[1]), o4 = orient(q[0], q[1], q[2], q[3], p[2], p[3]);
+    if (o1 !== o2 && o3 !== o4) return true;
+    if (o1 === 0 && onSeg(p[0], p[1], p[2], p[3], q[0], q[1])) return true;
+    if (o2 === 0 && onSeg(p[0], p[1], p[2], p[3], q[2], q[3])) return true;
+    if (o3 === 0 && onSeg(q[0], q[1], q[2], q[3], p[0], p[1])) return true;
+    if (o4 === 0 && onSeg(q[0], q[1], q[2], q[3], p[2], p[3])) return true;
+    return false;
+  }
+
   // refine(polygonFeature, { holeAcres, roundKm }) -> Feature<Polygon|MultiPolygon>
   // Steps: fill holes, close (buffer out then in), simplify (~3 m), Chaikin
   // smooth, validate (self-intersections fall back to the simplified shape),
@@ -95,9 +175,17 @@
     var p = step(feature, function (c) { return fillHoles(c, holeAcres); });
 
     if (roundKm > 0) {
+      // Large roundings (Contour's 330 ft) erase anything finer than ~1/3 of
+      // the radius, so thin the outline to a tenth of it first and draw buffer
+      // arcs coarsely: turf.buffer's cost grows with vertex count, and this cut
+      // it ~10x on contour bands (thousands of grid-traced vertices). Smoothed's
+      // 150 ft rounding stays below the threshold and keeps its exact output.
+      var coarse = roundKm >= COARSE_ROUND_KM;
       p = step(p, function (c) {
-        var grown = turf.buffer(c, roundKm, { units: "kilometers" });
-        return turf.buffer(grown, -roundKm, { units: "kilometers" });
+        var src = coarse ? turf.simplify(c, { tolerance: roundKm * 0.1 / KM_PER_DEG, highQuality: false }) : c;
+        var bopts = coarse ? { units: "kilometers", steps: 4 } : { units: "kilometers" };
+        var grown = turf.buffer(src, roundKm, bopts);
+        return turf.buffer(grown, -roundKm, bopts);
       });
     }
 
@@ -111,7 +199,7 @@
     });
     if (p !== simplified) {
       var bad = false;
-      try { bad = turf.kinks(p).features.length > 0; } catch (e) { bad = true; }
+      try { bad = selfIntersects(p); } catch (e) { bad = true; }
       if (bad) p = simplified;
     }
 
@@ -270,5 +358,5 @@
   var SAMPLE_STEP_CELLS = 2;
 
   window.WalkShape = { refine: refine, fillHoles: fillHoles, contour: contour,
-    scaledGridKm: scaledGridKm, SAMPLE_STEP_CELLS: SAMPLE_STEP_CELLS };
+    scaledGridKm: scaledGridKm, SAMPLE_STEP_CELLS: SAMPLE_STEP_CELLS, selfIntersects: selfIntersects };
 })();
