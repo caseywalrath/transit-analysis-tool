@@ -3050,6 +3050,110 @@ body.present-mode .module-popup {
   padding: 8px 10px;
 }
 
+/* ---- GeoPackage viewer (js/core/gpkg-import.js) ---- */
+.gpkg-popup .maplibregl-popup-content {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
+.gpkg-popup-item + .gpkg-popup-item {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.gpkg-popup-title {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+  padding-right: var(--space-4);
+}
+.gpkg-popup-sub,
+.gpkg-popup-more {
+  font-weight: var(--weight-normal);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.gpkg-popup-more { margin-top: var(--space-2); }
+.gpkg-props {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  width: 100%;
+}
+.gpkg-props th,
+.gpkg-props td {
+  text-align: left;
+  vertical-align: top;
+  padding: 1px var(--space-2) 1px 0;
+  word-break: break-word;
+}
+.gpkg-props th {
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.gpkg-props td { color: var(--text-primary); font-family: var(--font-mono); }
+.floating-widget.gpkg-table-widget {
+  max-height: none;
+  overflow: visible;
+  max-width: calc(100% - 20px);
+}
+.gpkg-table-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.gpkg-table-filter {
+  flex: 0 0 200px;
+  height: var(--ctl-height-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}
+.gpkg-table-count {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.gpkg-table-scroll {
+  max-height: 34vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.gpkg-table {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.gpkg-table th,
+.gpkg-table td {
+  padding: 2px var(--space-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.gpkg-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-weight: var(--weight-semibold);
+  z-index: 1;
+}
+.gpkg-table td { color: var(--text-primary); font-family: var(--font-mono); }
+.gpkg-table td:first-child { color: var(--text-faint); }
+.gpkg-table-spatial tbody tr { cursor: pointer; }
+.gpkg-table tbody tr:hover { background: var(--surface-hover); }
+.gpkg-table tbody tr.gpkg-row-active { background: var(--accent-soft); }
+.gpkg-table-hint {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
 /* ---- TPI popup body wrapper ---- */
 .tpi-body {
   padding: 16px;

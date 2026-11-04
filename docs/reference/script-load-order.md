@@ -2,7 +2,7 @@
 
 Plain `<script>` tags in `index.html`, in this order (verified against `index.html`). Order matters: a file may only use, **at load time**, what earlier files defined. Most files touch `App.*` only inside functions.
 
-CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile.
+CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js is not a script tag: `gpkg-import.js` injects it the first time a `.gpkg` is opened.
 
 ```
 js/core/
@@ -37,7 +37,9 @@ attr-bulk.js         window.AttrBulk (pure multi-select field rules; no App at l
 feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/closeAttrDock/syncAttrDock/isAttrDockOpen/getAttrDockFeature
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
-layers-panel.js      App.refreshLayersPanel
+layers-panel.js      App.refreshLayersPanel, App.registerReferenceLayer/unregisterReferenceLayer
+geopackage.js        window.GeoPackage (pure .gpkg geometry decoding; no App at load)
+gpkg-import.js       GeoPackage viewer; uses window.GeoPackage, App.registerReferenceLayer, App.popup (all at call time); lazy-loads sql.js from cdnjs
 census.js            needs App.bboxStringFromFeature, App.getMeta, turf
 lodes.js             needs App.bufferUnionPolygon, pako, turf
 projections.js       population-projection CSV (App.parseProjectionsCSV/setProjectionsData/projGrowthFactors/…)

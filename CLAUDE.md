@@ -66,7 +66,7 @@ One line per file. Detail (behavior, invariants, public API) lives in the refere
 
 ```
 index.html                  App shell: toolbar, map, Features/Layers panel, module-panel container, script tags   [core-app]
-css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-)   [core-app]
+css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gpkg-)   [core-app]
 css/sidebar-v2.css          Dormant legacy sidebar styles   [core-app]
 js/app.js                   Startup, module registry, toolbar menus, keyboard shortcuts, renderModuleState/renderModuleInputs   [core-app]
 js/core/
@@ -99,6 +99,8 @@ js/core/
   feature-attributes.js     Attributes dock (left edge, follows selection), ATTR_FIELDS, shared editors   [drawing-and-features]
   merge.js / split.js       Feature Merge/Unmerge and Split   [drawing-and-features]
   layers-panel.js           Layers tab: drawn/analysis/reference bands, style drawers, GTFS browser   [layers-and-styling]
+  geopackage.js             window.GeoPackage — .gpkg geometry decoding (pure)   [layers-and-styling]
+  gpkg-import.js            Read-only GeoPackage viewer: reference layers, popups, table viewer   [layers-and-styling]
   census.js / lodes.js      TIGERweb + ACS fetch/aggregation; LODES employment   [core-app]
   projections.js            Population-projection CSV additions
   cache.js                  Session save/restore/import/export, schema migrations   [core-app]
@@ -133,13 +135,14 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 
 ## Script Load Order
 
-Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
+Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `geopackage`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
 config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → road-network
 → network-connectors → walk-audit → travelshed → connector-graph → walk-shape → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
-→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → census → lodes → projections
+→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → geopackage → gpkg-import
+→ census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
@@ -152,8 +155,8 @@ Hard ordering rules: `config.js` first (map.js/census.js read the keys at init);
 
 ## Conventions
 
-- **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js).
-- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`).
+- **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js; sql.js is injected by `gpkg-import.js` only when a `.gpkg` is opened).
+- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.GeoPackage`).
 - **Module-local state stays private** inside the IIFE closure (`_lastResult`, `_stale`, `_running`, …), never on `App`.
 - **Dormant sidebar.** `#sidebar-wrap`, `sidebar-v2.css` and `js/core/sidebar.js` ship hidden and unused. Data actions live in the toolbar Add Data menu and analyses in the toolbar Analysis menu. Never describe the sidebar as live.
 - **Analysis panels** are non-modal floating panels over a live map, managed by `App.popup` (load, init/open/close, Escape, docking, collapse). Single-step modules declare `panelWidths` and call `App.popup.setLayoutMode("setup" | "results" | "workspace")`; a successful run collapses Inputs via `App.renderModuleInputs()` (failed runs leave them open). Keep movable input sections in `data-input-group` wrappers and Run buttons in `.module-input-actions`. Width rules: `docs/reference/analysis-modules.md`.

@@ -69,7 +69,7 @@ otherwise mean `App.map` is never created and nothing renders. To make the
 harness work in exactly that kind of environment (and to keep every run
 fast and deterministic even with real internet access), the script:
 
-- Serves pinned local copies of those six files from `vendor/` (below) via
+- Serves pinned local copies of those files from `vendor/` (below) via
   Playwright route interception whenever the browser requests the exact
   unpkg URL `index.html` currently uses. **`index.html` itself is never
   modified** — the real app still loads from the real CDN in production.
@@ -92,6 +92,7 @@ plain static files:
 | `papaparse.min.js` | `papaparse@5.4.1` |
 | `jszip.min.js` | `jszip@3.10.1` (`dist/`) |
 | `shapefile.js` | `shapefile@0.6.6` (`dist/`) |
+| `sql-wasm.js`, `sql-wasm.wasm` | `sql.js@1.10.3` (from `cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/`; loaded lazily by `js/core/gpkg-import.js`, so the URL pin lives there, not in `index.html`) |
 
 If a later phase (or any other change) bumps one of these CDN version pins
 in `index.html`, re-fetch the matching file here so the two stay in sync:

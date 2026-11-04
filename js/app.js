@@ -1316,6 +1316,7 @@
       // Unload only: Clear removes map content, not the downloaded streets.
       if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
+      if (typeof App.clearGeoPackages === "function") App.clearGeoPackages();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
       App.setStatus("Cleared");
@@ -1676,6 +1677,11 @@
         if (typeof App.loadRoadNetworkFromFile === "function") App.loadRoadNetworkFromFile(file);
         return;
       }
+      // GeoPackage opens as read-only reference layers, never drawn features.
+      if (ext === "gpkg") {
+        if (typeof App.importGeoPackage === "function") App.importGeoPackage(file);
+        return;
+      }
       if (typeof App.cache === "undefined") return;
       if (ext === "json") {
         App.cache.importFromFile(file);
@@ -1686,7 +1692,7 @@
       } else if (ext === "shp" || ext === "zip") {
         App.cache.importSHP(file);
       } else {
-        alert("Unsupported file format: ." + ext + "\nSupported: .json, .csv, .kml, .shp, .zip");
+        alert("Unsupported file format: ." + ext + "\nSupported: .json, .csv, .kml, .kmz, .shp, .zip, .geojson, .gpkg");
       }
     });
 

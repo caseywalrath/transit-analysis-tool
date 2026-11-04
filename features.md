@@ -144,6 +144,9 @@ Currently `bufferUnionPolygon()` always dissolves overlapping buffers. Add an op
 ### Import geospatial data (KML/KMZ/GeoJSON) — Implemented
 Upload KML, KMZ, GeoJSON, JSON, CSV, or shapefile (.shp/.zip) via Add Data (+) → Spatial Data as editable features. `js/app.js` extension router → `importKML`/`importFromFile`/`importCSV`/`importSHP` in `js/core/cache.js`.
 
+### GeoPackage viewer (.gpkg) — Implemented
+Open a GeoPackage via Add Data (+) → Spatial Data to inspect it as read-only Reference / Imported layers (not editable features): one layer per vector table, colored green → red by a seconds/minutes/time/cost column when present, click for a feature's fields, ⋯ → View attribute table for a filterable table (click a row to zoom). Non-spatial tables open from the same menu. Longitude/latitude (EPSG:4326) layers only; projected layers are skipped. Not saved with the session. `js/core/gpkg-import.js` + `js/core/geopackage.js`; see `docs/reference/layers-and-styling.md`.
+
 ### Floating attributes popup — Implemented
 Feature attributes open in a floating draggable popup (`#fp-attr-popup`, 320px, clamped to viewport, Escape/X to close, auto-updates on selection change). Opened via the row's gear icon (⚙) or right-click → "Attributes".
 
