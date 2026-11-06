@@ -170,6 +170,24 @@
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
   var _analysisOrder = ANALYSIS.map(function (e) { return e.id; });
 
+  // Runtime reference rows (GeoPackage layers from gpkg-import.js). Same entry
+  // shape as REFERENCE; a new row goes to the top of the band, matching where
+  // its importer inserts the map layer (directly under the drawn features).
+  // Both arrays are mutated in place because rendered rows hold references.
+  function registerReferenceLayer(entry) {
+    if (!entry || !entry.id || !entry.layers) return;
+    unregisterReferenceLayer(entry.id, true);
+    REFERENCE.push(entry);
+    _refOrder.unshift(entry.id);
+    refreshLayersPanel();
+  }
+  function unregisterReferenceLayer(id, skipRefresh) {
+    for (var i = REFERENCE.length - 1; i >= 0; i--) if (REFERENCE[i].id === id) REFERENCE.splice(i, 1);
+    var k = _refOrder.indexOf(id);
+    if (k >= 0) _refOrder.splice(k, 1);
+    if (!skipRefresh) refreshLayersPanel();
+  }
+
   function orderedPresent(entries, order) {
     var byId = {};
     entries.forEach(function (e) { byId[e.id] = e; });
@@ -2024,4 +2042,6 @@
   }
 
   App.refreshLayersPanel = refreshLayersPanel;
+  App.registerReferenceLayer = registerReferenceLayer;
+  App.unregisterReferenceLayer = unregisterReferenceLayer;
 })();

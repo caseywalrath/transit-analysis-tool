@@ -60,4 +60,27 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 
 **GTFS route browser** (`docs/archive/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
 
+**Runtime reference rows:** `App.registerReferenceLayer(entry)` adds a row to the Reference / Imported band at run time (same entry shape as `REFERENCE`: `id`, `label`, `layers: [{id, op}]`, optional `clear`, `badge`, `menuItems`, `extraActions`); the row goes to the top of the band, and re-registering an id replaces it. `App.unregisterReferenceLayer(id)` drops it. Both mutate `REFERENCE`/`_refOrder` in place (rendered rows hold references) and re-render. Used only by `gpkg-import.js`; built-in rows stay in the static manifest.
+
 Also uses: `App.rerenderForType`, `App._openFpSlider`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, basemap API, `properties.hidden`.
+
+## geopackage.js — `window.GeoPackage` (pure)
+
+GeoPackage decoding helpers; no App/map/DOM/sql.js, golden-tested in `test/cases/geopackage.mjs`.
+- `parseGeometry(bytes)` → `{ srsId, geometry }` from one GeoPackageBinary cell (`"GP"` header, 0/32/48/64-byte envelope, either byte order, then WKB). Handles ISO Z/M/ZM type codes and EWKB flags (Z/M dropped); empty flag or NaN point → `geometry: null`. Throws on a malformed cell.
+- `geometryKind(g)` → `"point" | "line" | "polygon" | null`; `flattenGeometry(g)` splits a GeometryCollection into members.
+- `isLonLatSrs({srsId, organization, organizationCoordsysId})` → true for EPSG:4326, OGC CRS84 and srs_id 0 (undefined geographic). Nothing is reprojected; other SRSs are skipped by the importer.
+- `pickColorField(columns, rows)` → `{ field, min, max, count }` for the first column whose name matches seconds/minutes/time/cost and holds a number (numeric-looking text counts), else null.
+- `numericValue(v)`, `bboxLooksLonLat(bbox)` (catches a projected layer mislabeled as 4326), `formatValue(v)` (3-decimal floats, blobs as "(binary, N bytes)").
+
+## gpkg-import.js — GeoPackage viewer
+
+Read-only viewer for `.gpkg` files picked in Add Data → Spatial Data (`js/app.js` routes the extension before the drawn-feature importers). Opens the file with sql.js 1.10.3 (WebAssembly SQLite from cdnjs, injected on first use; `harness.mjs` vendors both files), reads `gpkg_contents`, and closes the database before touching the map.
+
+- **Tables:** each `features` table in a lon/lat SRS becomes one map layer per geometry family present (circle / line / fill + outline), id `gpkg-<n>-<table>` (+ `-point`/`-line`/`-polygon` for mixed tables, `-fill`/`-line` for polygons), inserted under the lowest drawn-feature layer. `attributes` tables are kept for the table viewer only. Projected SRSs, tiles and unreadable geometries are skipped and named in the status line. Caps: 200 MB file, 250,000 features per table, 20,000 rows per attribute table.
+- **Color:** a layer with a `pickColorField` column runs green → red over its min–max (gray = no value) via a per-feature `_gpkgColor`; others get a solid color. The row badge shows the feature count; its tooltip names the field and range.
+- **Layers panel:** rows come from `App.registerReferenceLayer`. ⋯ menu adds "View attribute table", "View table: <name>" for each non-spatial table in the file and (multi-layer files) "Remove all layers from <file>". Remove layer drops that layer and its source; the import record goes when its last layer does.
+- **Inspect:** one map `click` handler queries every visible gpkg layer in a 5 px box and shows up to three rows (fill + outline of one polygon count once) in a `.gpkg-popup`. The table viewer is the floating widget `gpkg-table` (filter over all columns, first 500 matches); clicking a spatial row zooms there with camera padding that clears the widget, reset on `moveend`.
+- **Lifetime:** per session only; nothing is saved or undone. Clear all (`js/app.js`) and session reset (`cache.js`) call `App.clearGeoPackages()`.
+- **API:** `App.importGeoPackage(file)` → import id or null; `App.clearGeoPackages()`; `App.openGeoPackageTable(importId, tableName)`; `App.geoPackageImports()` (read-only summary for tests).
+- Test: `test/browser/gpkg-import.test.mjs` (builds a sample file in the page with sql.js).

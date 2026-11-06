@@ -90,7 +90,10 @@ export const VENDOR_MAP = new Map([
   ["https://unpkg.com/pako@2.1.0/dist/pako.min.js", { file: "pako.min.js", type: "application/javascript" }],
   ["https://unpkg.com/papaparse@5.4.1/papaparse.min.js", { file: "papaparse.min.js", type: "application/javascript" }],
   ["https://unpkg.com/jszip@3.10.1/dist/jszip.min.js", { file: "jszip.min.js", type: "application/javascript" }],
-  ["https://unpkg.com/shapefile@0.6.6/dist/shapefile.js", { file: "shapefile.js", type: "application/javascript" }]
+  ["https://unpkg.com/shapefile@0.6.6/dist/shapefile.js", { file: "shapefile.js", type: "application/javascript" }],
+  // Lazy-loaded by js/core/gpkg-import.js the first time a .gpkg is opened.
+  ["https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js", { file: "sql-wasm.js", type: "application/javascript" }],
+  ["https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.wasm", { file: "sql-wasm.wasm", type: "application/wasm" }]
 ]);
 
 // Vendors CDN assets locally, allows the local static server through, and
