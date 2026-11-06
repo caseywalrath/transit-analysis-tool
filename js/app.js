@@ -1484,6 +1484,21 @@
       importFileInput.click();
     });
 
+    // GeoPackage menu item → its own hidden file input, so the picked file goes straight
+    // to the GeoPackage loader and never through the extension router
+    var gpkgFileInput = document.getElementById("ad-gpkg-file");
+    document.getElementById("ad-gpkg").addEventListener("click", function () {
+      addDataDropdown.style.display = "none";
+      gpkgFileInput.value = "";
+      gpkgFileInput.click();
+    });
+    gpkgFileInput.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (typeof App.gpkgOpenFile === "function") App.gpkgOpenFile(file);
+      e.target.value = "";
+    });
+
     // Municipal Boundaries toggle
     var _muniBoundariesActive = false;
     // Any caller that hides the boundaries (the Layers panel's Remove layer, too)
@@ -1689,6 +1704,11 @@
         if (typeof App.loadRoadNetworkFromFile === "function") App.loadRoadNetworkFromFile(file);
         return;
       }
+      // A GeoPackage is read directly by gpkg-layers.js and does not need App.cache
+      if (ext === "gpkg") {
+        if (typeof App.gpkgOpenFile === "function") App.gpkgOpenFile(file);
+        return;
+      }
       if (typeof App.cache === "undefined") return;
       if (ext === "json") {
         App.cache.importFromFile(file);
@@ -1699,7 +1719,7 @@
       } else if (ext === "shp" || ext === "zip") {
         App.cache.importSHP(file);
       } else {
-        alert("Unsupported file format: ." + ext + "\nSupported: .json, .csv, .kml, .shp, .zip");
+        alert("Unsupported file format: ." + ext + "\nSupported: .json, .csv, .kml, .kmz, .shp, .zip, .geojson, .gpkg");
       }
     });
 

@@ -6966,3 +6966,113 @@ body.present-mode .box-select-bar { display: none; }
   color: var(--text-secondary);
   cursor: pointer;
 }
+
+/* GeoPackage import (.gp-) */
+/* Centered modal picker. z-index matches #lodes-popup so it is never layered
+   under the Add Data menu's other floating surfaces. */
+.gp-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1200;
+  width: calc(100vw - 32px);
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  gap: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+/* .gp-dialog sets display:flex, which would otherwise beat the hidden attribute. */
+.gp-dialog[hidden] { display: none; }
+.gp-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.gp-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+/* The list is the only part that scrolls; the title, progress and buttons stay put. */
+.gp-layer-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.gp-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-2);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+/* The checkbox spans the name, meta and reason lines so it stays aligned with the first line. */
+.gp-row > input {
+  grid-row: 1 / span 3;
+}
+.gp-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+.gp-meta,
+.gp-reason {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.gp-row-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* Reserves one line so the layout does not jump while progress text appears. */
+.gp-progress {
+  min-height: 1.3em;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+/* .btn-row has no justify-content of its own; the dialog's buttons sit at the right edge.
+   The dialog gap already separates them from the content, so the row's top margin is dropped. */
+.gp-dialog .btn-row {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+/* Attribute popup for a clicked GeoPackage feature (a MapLibre popup). Long
+   values wrap and the body scrolls, since some layers carry dozens of fields
+   or JSON blobs. */
+.gp-popup { font-size: var(--text-xs); color: var(--text-primary); max-height: 280px; overflow-y: auto; }
+.gp-popup-title { font-weight: var(--weight-semibold); font-size: var(--text-sm); margin-bottom: var(--space-2); overflow-wrap: anywhere; padding-right: var(--space-4); }
+.gp-popup-list { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); column-gap: var(--space-2); row-gap: var(--space-1); margin: 0; }
+.gp-popup-list dt { color: var(--text-secondary); overflow-wrap: anywhere; }
+.gp-popup-list dd { margin: 0; overflow-wrap: anywhere; }
+.gp-popup-nested { list-style: none; margin: 0; padding-left: var(--space-3); border-left: 1px solid var(--border); }
+.gp-popup-key { color: var(--text-secondary); }
+.gp-popup-empty { color: var(--text-secondary); }
+/* MapLibre paints its popup white; follow the app theme instead. */
+.gp-popup-wrap .maplibregl-popup-content { background: var(--surface); color: var(--text-primary); box-shadow: var(--shadow-lg); }
+.gp-popup-wrap.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.gp-popup-wrap.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.gp-popup-wrap.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: var(--surface); }
+.gp-popup-wrap.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.gp-popup-wrap.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.gp-popup-wrap.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: var(--surface); }
+.gp-popup-wrap.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--surface); }
+.gp-popup-wrap.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--surface); }
+.gp-popup-wrap .maplibregl-popup-close-button { color: var(--text-secondary); }

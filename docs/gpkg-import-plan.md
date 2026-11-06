@@ -893,3 +893,28 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
   onProgress)` → `{featureCollection, skipped:{empty, nullGeom, collection, unsupported,
   invalid}}`; `_addLayerToMap(fc, {fileName, layerName})` → id or null. Menu item id
   `ad-gpkg`, its file input `ad-gpkg-file`.
+
+**Phases 4 and 5 (2026-11-06), one commit** (4c and 5 both live in `gpkg-layers.js`).
+4a [H], 4b [H], 4d [H] accepted first pass; **1 send-back** (4b+4d items); 4c and 5 [O].
+- 4a's card was wrong (no Shapefile item exists in Add Data); the orchestrator caught it
+  before launch and gave exact anchors. Haiku added the item after "Spatial Data".
+- 4b's dialog sat inside `#toolbar`, whose square icon-button rule broke its buttons; the
+  screenshot review caught it (Haiku was told not to judge images). Send-back moved the
+  dialog to the end of `<body>` and removed the override CSS that copied shared
+  primitives. Lesson: card placement "beside the LODES popup" was the bug; layout
+  instructions need to name the container, not a neighbor.
+- 4c: `App.gpkgOpenFile` → libs + file in parallel → `_openDb` → `_inspect` → picker →
+  per-layer read with `setTimeout(0)` between layers for progress → summary status.
+  Busy guard shows a status message; files over 200 MB confirm first.
+- 5: one map click handler (wired at first import) opens a MapLibre popup only when a
+  `gpkg-` layer is topmost and no tool is active and no OSM/walk-network layer (which have
+  their own click handlers) is under the pointer. JSON-object text renders as nested
+  lists. The popup uses `closeOnClick: false` and closes itself on other clicks, because
+  MapLibre's close-on-click fires after our handler and closed a popup just moved.
+  **Deviation from the plan:** a click on a GeoPackage feature still clears the drawn
+  selection (editing.js treats it as an empty-map click); blocking that would leave no
+  place to click to deselect when an import covers the whole study area.
+- Known limitations (documented in 8a): Escape does not close the picker while the box
+  select tool is active (box-select.js stops Escape first on `window`); hiding a layer from
+  its Layers-panel eye does not close an open popup (the Add Data eye does); hover pointer
+  shows over a GeoPackage layer even where another layer would take the click.

@@ -15,6 +15,8 @@
 //   - attribute conversion: BOOLEAN, JSON text, NULL keys omitted
 //   - a file that is not a GeoPackage is rejected with the plain message
 //   - a failed sql.js load is retried on the next call
+//   - the Add Data picker lists every table, adds the checked ones, and Escape
+//     and focus behave as the dialog contract says
 //   - a tiles-only file (no metadata geometry table) lists its layer as unsupported
 //   - geometry column names match case-insensitively; composite keys stay
 //     attributes; a text key stays an attribute and the row index is the id
@@ -24,6 +26,7 @@
 // test/browser/harness.mjs. USAGE: see test/browser/README.md (NODE_PATH points
 // at a Playwright install).
 
+import { fileURLToPath } from "node:url";
 import { loadPlaywright, launchBrowser, routeVendoredAssets, startStaticServer } from "./harness.mjs";
 
 const { chromium } = loadPlaywright("test/browser/gpkg-import.test.mjs");
@@ -379,6 +382,167 @@ function allPositions(c) {
     check("21. toolbar Clear removes every GeoPackage layer",
       s3.styleIds.length === 0 && Object.values(s3.sources).every((x) => !x) && s3.rows.length === 0 &&
       (await page.evaluate(() => App.gpkgLoaded())) === false, JSON.stringify(s3));
+
+    // ---- Add Data → GeoPackage → layer picker (#gp-dialog) ----
+    // Runs after check 21, so the page starts with no GeoPackage layers. The
+    // file goes in through the hidden Add Data input, the same path the menu uses.
+    const GPKG_FIXTURE = fileURLToPath(new URL("../fixtures/sample.gpkg", import.meta.url));
+    const openPicker = async () => {
+      await page.evaluate(() => { document.getElementById("ad-gpkg-file").value = ""; });
+      await page.setInputFiles("#ad-gpkg-file", GPKG_FIXTURE);
+      return page.locator("#gp-dialog").waitFor({ state: "visible", timeout: 15000 }).then(() => true, () => false);
+    };
+    const pickerRows = () => page.evaluate(() => Array.from(document.querySelectorAll("#gp-layer-list label.gp-row")).map((row) => {
+      const box = row.querySelector("input[type=checkbox]");
+      return { name: row.querySelector(".gp-name").textContent, disabled: box.disabled, checked: box.checked };
+    }));
+    const gpkgRowLabels = () => page.evaluate(() => Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label"))
+      .map((e) => e.textContent).filter((s) => s.indexOf("sample.gpkg") === 0));
+
+    // ---- 22. Opening the picker lists every table; only supported rows start checked ----
+    const opened22 = await openPicker();
+    const rows22 = opened22 ? await pickerRows() : [];
+    const disabled22 = rows22.filter((r) => r.disabled).map((r) => r.name);
+    const enabled22 = rows22.filter((r) => !r.disabled);
+    check("22. setInputFiles opens the picker: 10 rows, 4 disabled, the 6 supported rows start checked",
+      opened22 && rows22.length === 10 && disabled22.length === 4 &&
+      enabled22.length === 6 && enabled22.every((r) => r.checked),
+      "rows " + rows22.length + ", disabled " + JSON.stringify(disabled22));
+
+    // ---- 23. Add follows the checked rows ----
+    const enabledBoxes = page.locator("#gp-layer-list label.gp-row:not(.gp-row-disabled) input[type=checkbox]");
+    const enabledTotal = await enabledBoxes.count();
+    for (let i = 0; i < enabledTotal; i++) await enabledBoxes.nth(i).click();
+    const addAfterUncheckAll = await page.locator("#gp-add").isDisabled();
+    await page.locator("#gp-layer-list label.gp-row", { hasText: "pts_utm" }).locator("input[type=checkbox]").click();
+    const addAfterOne = await page.locator("#gp-add").isEnabled();
+    const checkedNames23 = (await pickerRows()).filter((r) => r.checked).map((r) => r.name);
+    check("23. unchecking every enabled row disables Add; checking only pts_utm enables it",
+      addAfterUncheckAll && addAfterOne && JSON.stringify(checkedNames23) === JSON.stringify(["pts_utm"]),
+      JSON.stringify({ addAfterUncheckAll, addAfterOne, checkedNames23 }));
+
+    // ---- 24. Add reads the checked layer and adds exactly one Layers row ----
+    const rowsBefore24 = (await gpkgRowLabels()).length;
+    await page.locator("#gp-add").click();
+    const closed24 = await page.locator("#gp-dialog").waitFor({ state: "hidden", timeout: 15000 }).then(() => true, () => false);
+    await page.waitForFunction(() => (document.getElementById("status").textContent || "").indexOf("Added") === 0,
+      null, { timeout: 15000 }).catch(() => {});
+    const statusText24 = await page.locator("#status").textContent();
+    const rows24 = await gpkgRowLabels();
+    check("24. Add closes the picker, adds one Layers row \"sample.gpkg · pts_utm\", status starts \"Added 1 GeoPackage layer\"",
+      closed24 && rowsBefore24 === 0 && JSON.stringify(rows24) === JSON.stringify(["sample.gpkg · pts_utm"]) &&
+      statusText24.indexOf("Added 1 GeoPackage layer") === 0,
+      JSON.stringify({ closed24, rowsBefore24, rows24, statusText24 }));
+
+    // ---- 25. Escape closes a reopened picker and adds nothing ----
+    const opened25 = await openPicker();
+    await page.keyboard.press("Escape");
+    const closed25 = await page.locator("#gp-dialog").waitFor({ state: "hidden", timeout: 5000 }).then(() => true, () => false);
+    const rows25 = (await gpkgRowLabels()).length;
+    check("25. Escape closes a reopened picker and adds nothing: still 1 sample.gpkg row",
+      opened25 && closed25 && rows25 === 1, JSON.stringify({ opened25, closed25, rows25 }));
+
+    // ---- 26. Focus lands on the first enabled checkbox when the picker opens ----
+    const opened26 = await openPicker();
+    const focus26 = await page.evaluate(() => {
+      const first = document.querySelector("#gp-layer-list input[type=checkbox]:not([disabled])");
+      return { isFirst: !!first && document.activeElement === first, activeTag: document.activeElement && document.activeElement.tagName };
+    });
+    check("26. right after the picker opens, focus is on the first enabled checkbox",
+      opened26 && focus26.isFirst, JSON.stringify({ opened26, focus26 }));
+    await page.keyboard.press("Escape");
+    await page.locator("#gp-dialog").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    await page.evaluate(() => App.gpkgClearAll());
+
+    // ---- Click a GeoPackage feature to see its attributes ----
+    // Polygon import first, point import above it. The point "center" sits in
+    // the polygon's hole; `spot` is inside the polygon's solid part.
+    const geo = await page.evaluate(async () => {
+      App.points.length = 0;
+      App.renderPointLayers();
+      const t = App._gpkgTest;
+      const libs = await t.loadLibs();
+      const db = t.openDb(libs, await (await fetch("/test/fixtures/sample.gpkg")).arrayBuffer());
+      try {
+        const layers = t.inspect(libs, db).layers;
+        const read = (n) => t.readLayer(libs, db, layers.find((l) => l.table === n)).featureCollection;
+        const polys = read("polys_utm");
+        const pts = read("pts_utm");
+        t.addLayerToMap(polys, { fileName: "sample.gpkg", layerName: "polys_utm" });
+        t.addLayerToMap(pts, { fileName: "sample.gpkg", layerName: "pts_utm" });
+        const ring = polys.features[0].geometry.coordinates[0];
+        const xs = ring.map((c) => c[0]), ys = ring.map((c) => c[1]);
+        const bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+        App.map.jumpTo({ center: [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2], zoom: 14 });
+        const center = pts.features.find((f) => f.properties.name === "center").geometry.coordinates;
+        return { spot: [bb[0] + (bb[2] - bb[0]) * 0.1, bb[1] + (bb[3] - bb[1]) * 0.5], center };
+      } finally { db.close(); }
+    });
+    await page.waitForFunction(() => App.map.loaded() && !App.map.isMoving(), null, { timeout: 10000 });
+    async function clickAt(lngLat) {
+      const px = await page.evaluate((ll) => {
+        const p = App.map.project(ll);
+        const r = App.map.getCanvas().getBoundingClientRect();
+        return { x: r.left + p.x, y: r.top + p.y };
+      }, lngLat);
+      await page.mouse.click(px.x, px.y);
+      await page.waitForTimeout(0);
+    }
+    const popupState = () => page.evaluate(() => {
+      const el = document.querySelector(".gp-popup");
+      return el ? { title: el.querySelector(".gp-popup-title").textContent, nested: !!el.querySelector(".gp-popup-nested"),
+        keys: Array.from(el.querySelectorAll("dt")).map((d) => d.textContent) } : null;
+    });
+    const closePopup = () => page.evaluate(() => {
+      const b = document.querySelector(".gp-popup-wrap .maplibregl-popup-close-button");
+      if (b) b.click();
+    });
+
+    await clickAt(geo.spot);
+    await page.waitForFunction(() => !!document.querySelector(".gp-popup"), null, { timeout: 5000 }).catch(() => {});
+    const pPoly = await popupState();
+    check("27. clicking a GeoPackage polygon opens its attribute popup",
+      !!pPoly && pPoly.title === "sample.gpkg · polys_utm", JSON.stringify(pPoly));
+    // Popup left open on purpose: the next click must move it to the point.
+
+    await clickAt(geo.center);
+    await page.waitForFunction(() => {
+      const t = document.querySelector(".gp-popup .gp-popup-title");
+      return t && t.textContent.indexOf("pts_utm") >= 0;
+    }, null, { timeout: 5000 }).catch(() => {});
+    const pPt = await popupState();
+    check("28. with the popup open, clicking a point above the polygon moves it there; JSON text shows as a nested list",
+      !!pPt && pPt.title === "sample.gpkg · pts_utm" && pPt.nested &&
+      pPt.keys.includes("name") && pPt.keys.includes("info") && !pPt.keys.includes("note"), JSON.stringify(pPt));
+    await closePopup();
+
+    // A drawn point on top of the polygon: the click selects it, no popup.
+    await page.evaluate((ll) => {
+      App.points.push({ type: "Feature", geometry: { type: "Point", coordinates: ll }, properties: { name: "Drawn", pointIdx: 9001 } });
+      App.renderPointLayers();
+    }, geo.spot);
+    await page.waitForFunction(() => !App.map.isMoving(), null, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    await clickAt(geo.spot);
+    await page.waitForTimeout(300);
+    const sel29 = await page.evaluate(() => ({
+      popup: !!document.querySelector(".gp-popup"),
+      selected: (App.getSelectedFeatures ? App.getSelectedFeatures() : []).map((s) => s.type + ":" + s.index)
+    }));
+    check("29. a drawn point above a GeoPackage polygon takes the click: selected, no popup",
+      !sel29.popup && sel29.selected.length === 1 && sel29.selected[0] === "point:0", JSON.stringify(sel29));
+    await page.keyboard.press("Escape");
+
+    // Point tool active: the click draws, the popup stays shut.
+    const before30 = await page.evaluate(() => App.points.length);
+    await page.locator('.tool-btn[data-mode="point"]').click();
+    await clickAt([geo.spot[0], geo.spot[1] + 0.001]);
+    await page.waitForTimeout(300);
+    const after30 = await page.evaluate(() => ({ n: App.points.length, popup: !!document.querySelector(".gp-popup") }));
+    check("30. with the point tool active, clicking a GeoPackage polygon draws a point and opens no popup",
+      after30.n === before30 + 1 && !after30.popup, JSON.stringify({ before30, after30 }));
+    await page.locator('.tool-btn[data-mode="point"]').click();
+    await page.evaluate(() => App.gpkgClearAll());
   } finally {
     if (browser) await browser.close().catch(() => {});
     stopServer();

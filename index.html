@@ -80,6 +80,7 @@
             <div id="add-data-dropdown" class="add-data-dropdown" style="display:none;">
               <div class="add-data-heading">LOCAL</div>
               <button id="import-file-btn">Spatial Data</button>
+              <button id="ad-gpkg">GeoPackage (.gpkg)…</button>
               <button id="gtfs-load-btn">GTFS Feed</button>
               <button id="lodes-employment-btn">LODES Employment</button>
               <div class="add-data-divider"></div>
@@ -118,8 +119,9 @@
               </div>
             </div>
             <input id="lodesFile" type="file" accept=".gz,.csv.gz" style="display:none" />
-            <input id="fp-import-file" type="file" accept=".json,.csv,.kml,.kmz,.shp,.zip,.geojson" style="display:none" />
+            <input id="fp-import-file" type="file" accept=".json,.csv,.kml,.kmz,.shp,.zip,.geojson,.gpkg" style="display:none" />
             <input id="gtfs-file-input" type="file" accept=".zip" style="display:none" />
+            <input id="ad-gpkg-file" type="file" accept=".gpkg" style="display:none" />
           </div>
           <div class="export-wrapper">
             <button id="export-btn" title="Export" aria-label="Export data">
@@ -378,6 +380,16 @@
 
     </div>
 
+    <div id="gp-dialog" class="gp-dialog" role="dialog" aria-modal="true" aria-labelledby="gp-title" hidden>
+      <h2 id="gp-title" class="gp-title">Add GeoPackage layers</h2>
+      <div id="gp-file-name" class="gp-file-name"></div>
+      <div id="gp-layer-list" class="gp-layer-list"></div>
+      <div id="gp-progress" class="gp-progress" aria-live="polite"></div>
+      <div class="btn-row">
+        <button id="gp-cancel" class="rf-btn-sm">Cancel</button>
+        <button id="gp-add" class="rf-action-primary" disabled>Add to map</button>
+      </div>
+    </div>
     <!-- Core modules (order matters) -->
     <script src="js/core/config.js"></script>
     <script src="js/core/utils.js"></script>

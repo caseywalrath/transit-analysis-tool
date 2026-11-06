@@ -480,14 +480,45 @@
     // registry entry, so no invisible import the panel cannot show or remove.
     if (!featureCollection.features.length) return null;
     var map = App.map;
+    _wireClick();
     var id = "gpkg" + (++_counter);
     var sourceId = "gpkg-src-" + id;
     var kinds = _geomKinds(featureCollection);
     var color = meta.color || _nextColor();
     var styleKey = _styleKey(id);
 
-    map.addSource(sourceId, { type: "geojson", data: featureCollection });
     var layers = [];
+    var rec = {
+      id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
+      featureCount: featureCollection.features.length, color: color,
+      sourceId: sourceId, styleKey: styleKey, layers: layers
+    };
+    try {
+      _addMapLayers(rec, featureCollection, color);
+      // A fresh import starts at its own color: a style left in App.layerStyles
+      // under this key (ids restart at gpkg1 each page load) belongs to an
+      // earlier, unrelated import.
+      delete App.layerStyles[styleKey];
+      App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
+        function () { _repaint(rec); });
+    } catch (e) {
+      // Undo whatever got onto the map, so a half-added import never draws
+      // shapes that have no Layers-panel row to remove them.
+      _removeOne(rec);
+      throw e;
+    }
+    _registry.push(rec);
+    _afterChange();
+    return id;
+  }
+
+  function _addMapLayers(rec, featureCollection, color) {
+    var map = App.map;
+    var id = rec.id;
+    var sourceId = rec.sourceId;
+    var kinds = rec.geomKinds;
+    var layers = rec.layers;
+    map.addSource(sourceId, { type: "geojson", data: featureCollection });
     var before = App.firstUserLayer();
     var polyFilter = ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false];
     var lineFilter = ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false];
@@ -497,6 +528,8 @@
       def.source = sourceId;
       map.addLayer(def, before);
       layers.push({ id: def.id, op: op, kind: kind });
+      map.on("mouseenter", def.id, _onEnter);
+      map.on("mouseleave", def.id, _onLeave);
     }
     if (kinds.polygon) {
       add("fill", "fill-opacity", { type: "fill", filter: polyFilter,
@@ -513,23 +546,6 @@
         paint: { "circle-color": color, "circle-radius": 4, "circle-opacity": 1,
           "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 } });
     }
-
-    var rec = {
-      id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
-      featureCount: featureCollection.features.length, color: color,
-      sourceId: sourceId, styleKey: styleKey, layers: layers
-    };
-    _registry.push(rec);
-
-    // A fresh import starts at its own color: a style left in App.layerStyles
-    // under this key (ids restart at gpkg1 each page load) belongs to an
-    // earlier, unrelated import.
-    delete App.layerStyles[styleKey];
-    App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
-      function () { _repaint(rec); });
-
-    _afterChange();
-    return id;
   }
 
   // updateAddDataClearIcons already refreshes the Layers panel.
@@ -547,8 +563,11 @@
     var map = App.map;
     // Layers before the source: MapLibre refuses to remove a source in use.
     for (var i = rec.layers.length - 1; i >= 0; i--) {
+      map.off("mouseenter", rec.layers[i].id, _onEnter);
+      map.off("mouseleave", rec.layers[i].id, _onLeave);
       if (map.getLayer(rec.layers[i].id)) map.removeLayer(rec.layers[i].id);
     }
+    if (_popup && _popupImportId === rec.id) _popup.remove();
     if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
     App.unregisterLayerStyle(rec.styleKey);
   }
@@ -562,6 +581,7 @@
   };
 
   App.gpkgClearAll = function () {
+    _closePopup();
     if (!_registry.length) return;
     _registry.forEach(_removeOne);
     _registry = [];
@@ -581,6 +601,7 @@
 
   App.gpkgSetVisible = function (v) {
     var map = App.map;
+    if (!v) _closePopup();
     _registry.forEach(function (r) {
       r.layers.forEach(function (L) {
         if (map.getLayer(L.id)) map.setLayoutProperty(L.id, "visibility", v ? "visible" : "none");
@@ -604,6 +625,370 @@
           return { text: r.featureCount.toLocaleString(), title: r.featureCount.toLocaleString() + " features" };
         }
       };
+    });
+  };
+
+  // ---- Click a feature to see its attributes ---------------------------------
+  // The popup opens only when a GeoPackage layer is the topmost thing under the
+  // pointer: drawn features, labels, GTFS and every other layer above it win,
+  // and any active tool (drawing, measure, box select, split pick) suppresses
+  // it. editing.js still treats the click as an empty-map click, so it clears
+  // the drawn-feature selection: a GeoPackage layer can cover the whole study
+  // area, and blocking that would leave no place to click to deselect.
+
+  var _popup = null;
+  var _popupImportId = null;
+  var _clickWired = false;
+
+  function _onEnter() {
+    if (!App.drawMode) App.map.getCanvas().style.cursor = "pointer";
+  }
+  // Only undo a pointer this file set, so another layer's hover cursor (a
+  // drawn line under the pointer, say) is left alone.
+  function _onLeave() {
+    var c = App.map.getCanvas();
+    if (c.style.cursor === "pointer") c.style.cursor = App.drawMode ? "crosshair" : "";
+  }
+
+  function _layerRecord(layerId) {
+    for (var i = 0; i < _registry.length; i++) {
+      for (var j = 0; j < _registry[i].layers.length; j++) {
+        if (_registry[i].layers[j].id === layerId) return _registry[i];
+      }
+    }
+    return null;
+  }
+
+  // A TEXT value holding a JSON object or array is shown as a nested list;
+  // anything else as plain text. Parsing happens only here, for display.
+  function _parsedJson(v) {
+    if (typeof v !== "string") return null;
+    var t = v.trim();
+    if (t.charAt(0) !== "{" && t.charAt(0) !== "[") return null;
+    try {
+      var o = JSON.parse(t);
+      return (o && typeof o === "object") ? o : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _valueNode(v, depth) {
+    if (v !== null && typeof v === "object" && depth < 6) {
+      var ul = document.createElement("ul");
+      ul.className = "gp-popup-nested";
+      Object.keys(v).forEach(function (k) {
+        var li = document.createElement("li");
+        var key = document.createElement("span");
+        key.className = "gp-popup-key";
+        key.textContent = k + ": ";
+        li.appendChild(key);
+        li.appendChild(_valueNode(v[k], depth + 1));
+        ul.appendChild(li);
+      });
+      return ul;
+    }
+    var span = document.createElement("span");
+    span.className = "gp-popup-value";
+    span.textContent = (v === null || v === undefined) ? "—" : (typeof v === "object" ? JSON.stringify(v) : String(v));
+    return span;
+  }
+
+  function _popupContent(rec, props) {
+    var root = document.createElement("div");
+    root.className = "gp-popup";
+    var title = document.createElement("div");
+    title.className = "gp-popup-title";
+    title.textContent = rec.fileName + " · " + rec.layerName;
+    root.appendChild(title);
+    var keys = Object.keys(props || {});
+    if (!keys.length) {
+      var none = document.createElement("div");
+      none.className = "gp-popup-empty";
+      none.textContent = "No attributes";
+      root.appendChild(none);
+      return root;
+    }
+    var dl = document.createElement("dl");
+    dl.className = "gp-popup-list";
+    keys.forEach(function (k) {
+      var dt = document.createElement("dt");
+      dt.textContent = k;
+      var dd = document.createElement("dd");
+      var parsed = _parsedJson(props[k]);
+      dd.appendChild(_valueNode(parsed || props[k], 0));
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    });
+    root.appendChild(dl);
+    return root;
+  }
+
+  // Reference layers that open their own popup or act on a click from their
+  // own layer handler, whatever is drawn above them. When one is under the
+  // pointer it keeps the click, so one click never opens two popups (or
+  // toggles a street while showing GeoPackage attributes).
+  var OWN_CLICK_PREFIXES = ["osm-", "walk-network", "network-joins"];
+
+  function _hasOwnClickLayer(hits) {
+    for (var i = 0; i < hits.length; i++) {
+      var lid = String(hits[i].layer && hits[i].layer.id);
+      for (var j = 0; j < OWN_CLICK_PREFIXES.length; j++) {
+        if (lid.indexOf(OWN_CLICK_PREFIXES[j]) === 0) return true;
+      }
+    }
+    return false;
+  }
+
+  function _closePopup() {
+    if (_popup) _popup.remove();
+  }
+
+  // The popup uses closeOnClick: false and closes here instead: MapLibre's own
+  // close-on-click runs after this handler on the same click, so it would shut
+  // a popup just moved to a second feature.
+  function _onMapClick(e) {
+    if (App.drawMode || !_registry.length) { _closePopup(); return; }
+    var tgt = e.originalEvent && e.originalEvent.target;
+    if (tgt && tgt.closest && tgt.closest(".maplibregl-marker, .maplibregl-popup")) return;
+    var hits = App.map.queryRenderedFeatures(e.point);
+    var top = hits[0];
+    var rec = (top && top.layer && String(top.layer.id).indexOf("gpkg-") === 0) ? _layerRecord(top.layer.id) : null;
+    if (!rec || _hasOwnClickLayer(hits)) { _closePopup(); return; }
+    if (!_popup) {
+      _popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: "320px", className: "gp-popup-wrap" });
+    }
+    _popupImportId = rec.id;
+    _popup.setLngLat(e.lngLat).setDOMContent(_popupContent(rec, top.properties)).addTo(App.map);
+  }
+
+  // Registered on the first import rather than at load: App.map may not exist
+  // yet when this file loads, and nothing is clickable before an import.
+  function _wireClick() {
+    if (_clickWired) return;
+    _clickWired = true;
+    App.map.on("click", _onMapClick);
+  }
+
+  // ---- Open flow: file → layer picker → map --------------------------------
+
+  var LARGE_FILE = 200 * 1024 * 1024;
+  var _busy = false;
+
+  function _status(msg) {
+    if (typeof App.setStatus === "function") App.setStatus(msg);
+  }
+
+  function _el(id) { return document.getElementById(id); }
+
+  function _plural(n, word) {
+    return n.toLocaleString() + " " + word + (n === 1 ? "" : "s");
+  }
+
+  // Lets the browser paint between layers. sql.js reads synchronously, so
+  // without this the progress text would only appear after the last layer.
+  function _yield() {
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  function _buildRows(layers) {
+    var list = _el("gp-layer-list");
+    list.innerHTML = "";
+    layers.forEach(function (layer, i) {
+      var row = document.createElement("label");
+      row.className = "gp-row" + (layer.supported ? "" : " gp-row-disabled");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = layer.supported;
+      cb.disabled = !layer.supported;
+      cb.setAttribute("data-gp-index", String(i));
+      row.appendChild(cb);
+      var name = document.createElement("span");
+      name.className = "gp-name";
+      name.textContent = layer.table;
+      row.appendChild(name);
+      var meta = document.createElement("span");
+      meta.className = "gp-meta";
+      if (layer.supported) {
+        meta.textContent = [layer.geomType || "Geometry", _plural(layer.count, "feature"),
+          layer.projection ? layer.projection.label : ""].filter(Boolean).join(" · ");
+      } else {
+        meta.textContent = "Not supported";
+      }
+      row.appendChild(meta);
+      if (!layer.supported && layer.reason) {
+        var reason = document.createElement("span");
+        reason.className = "gp-reason";
+        reason.textContent = layer.reason;
+        row.appendChild(reason);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function _checkedIndexes() {
+    var out = [];
+    var boxes = _el("gp-layer-list").querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked && !boxes[i].disabled) out.push(Number(boxes[i].getAttribute("data-gp-index")));
+    }
+    return out;
+  }
+
+  function _setControlsDisabled(dis) {
+    var dlg = _el("gp-dialog");
+    var inputs = dlg.querySelectorAll("input, button");
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      if (dis) {
+        el.setAttribute("data-gp-was-disabled", el.disabled ? "1" : "0");
+        el.disabled = true;
+      } else if (el.hasAttribute("data-gp-was-disabled")) {
+        el.disabled = el.getAttribute("data-gp-was-disabled") === "1";
+        el.removeAttribute("data-gp-was-disabled");
+      }
+    }
+  }
+
+  // Shows the picker and resolves to { indexes, finish } when the user clicks
+  // Add, or null on Cancel/Escape. The dialog stays open while the caller
+  // reads (so progress is visible); finish() closes it.
+  function _pickLayers(fileName, layers) {
+    return new Promise(function (resolve) {
+      var dlg = _el("gp-dialog");
+      var addBtn = _el("gp-add");
+      var cancelBtn = _el("gp-cancel");
+      var list = _el("gp-layer-list");
+      var returnFocus = document.activeElement;
+      var reading = false;
+
+      _el("gp-file-name").textContent = fileName;
+      _el("gp-file-name").title = fileName;
+      _el("gp-progress").textContent = "";
+      _buildRows(layers);
+      function syncAdd() { addBtn.disabled = reading || _checkedIndexes().length === 0; }
+      syncAdd();
+
+      function close() {
+        dlg.hidden = true;
+        document.removeEventListener("keydown", onKey, true);
+        list.removeEventListener("change", syncAdd);
+        addBtn.removeEventListener("click", onAdd);
+        cancelBtn.removeEventListener("click", onCancel);
+        if (returnFocus && typeof returnFocus.focus === "function" && document.contains(returnFocus)) {
+          returnFocus.focus();
+        }
+      }
+      function onCancel() {
+        if (reading) return;
+        close();
+        resolve(null);
+      }
+      // Capture phase, so Escape closes only this dialog and never reaches the
+      // attributes dock, an analysis panel or an active drawing tool.
+      function onKey(e) {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        e.preventDefault();
+        onCancel();
+      }
+      function onAdd() {
+        var idx = _checkedIndexes();
+        if (!idx.length) return;
+        reading = true;
+        _setControlsDisabled(true);
+        resolve({ indexes: idx, finish: function () { reading = false; _setControlsDisabled(false); close(); } });
+      }
+
+      list.addEventListener("change", syncAdd);
+      addBtn.addEventListener("click", onAdd);
+      cancelBtn.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKey, true);
+      dlg.hidden = false;
+      var first = list.querySelector("input[type=checkbox]:not([disabled])");
+      (first || cancelBtn).focus();
+    });
+  }
+
+  function _readFile(file) {
+    if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { reject(new Error("Could not read the file.")); };
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  function _summary(added, skipped, failed) {
+    var parts = ["Added " + _plural(added, "GeoPackage layer")];
+    var empty = skipped.empty + skipped.nullGeom;
+    if (empty) parts.push(empty.toLocaleString() + (empty === 1 ? " empty geometry" : " empty geometries") + " skipped");
+    if (skipped.collection) parts.push(_plural(skipped.collection, "geometry collection") + " skipped");
+    if (skipped.unsupported) parts.push(_plural(skipped.unsupported, "unsupported shape") + " skipped");
+    if (skipped.invalid) parts.push(_plural(skipped.invalid, "invalid shape") + " skipped");
+    if (failed.length) parts.push("could not read " + failed.join(", "));
+    return parts.join(" · ");
+  }
+
+  // Entry point from the Add Data menu and the general Import picker.
+  App.gpkgOpenFile = function (file) {
+    if (!file) return Promise.resolve();
+    if (_busy) {
+      _status("Still opening the previous GeoPackage. Try again when it has finished.");
+      return Promise.resolve();
+    }
+    if (file.size > LARGE_FILE &&
+        !window.confirm("This GeoPackage is " + Math.round(file.size / 1048576) + " MB. Opening it may take a while and use a lot of memory. Continue?")) {
+      return Promise.resolve();
+    }
+    _busy = true;
+    var db = null;
+    var libs = null;
+    _status("Opening " + file.name + "…");
+    return Promise.all([_loadLibs(), _readFile(file)]).then(function (res) {
+      libs = res[0];
+      db = _openDb(libs, res[1]);
+      var layers = _inspect(libs, db).layers;
+      if (!layers.length) throw new Error("This GeoPackage has no layers.");
+      _status("");
+      return _pickLayers(file.name, layers).then(function (choice) {
+        if (!choice) return;
+        var skipped = { empty: 0, nullGeom: 0, collection: 0, unsupported: 0, invalid: 0 };
+        var added = 0;
+        var failed = [];
+        var chain = Promise.resolve();
+        choice.indexes.forEach(function (i, n) {
+          var layer = layers[i];
+          chain = chain.then(function () {
+            var msg = "Reading " + layer.table + "… (" + (n + 1) + " of " + choice.indexes.length + ")";
+            _el("gp-progress").textContent = msg;
+            _status(msg);
+            return _yield();
+          }).then(function () {
+            try {
+              var r = _readLayer(libs, db, layer);
+              Object.keys(skipped).forEach(function (k) { skipped[k] += r.skipped[k] || 0; });
+              if (_addLayerToMap(r.featureCollection, { fileName: file.name, layerName: layer.table })) added++;
+            } catch (e) {
+              failed.push(layer.table);
+            }
+          });
+        });
+        return chain.then(function () {
+          choice.finish();
+          _status(_summary(added, skipped, failed));
+        }, function (e) {
+          choice.finish();
+          throw e;
+        });
+      });
+    }).catch(function (e) {
+      _status("");
+      window.alert((e && e.message) || "Could not open this GeoPackage.");
+    }).then(function () {
+      if (db) { try { db.close(); } catch (e) { /* already closed */ } }
+      _busy = false;
     });
   };
 
