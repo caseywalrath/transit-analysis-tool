@@ -15,12 +15,14 @@ walk-cost.js         pure, no deps; window.WalkCost (before road-network.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
+gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
 road-network.js      needs App.map, turf, window.WalkCost, App.networkStore (optional, guarded)
 network-connectors.js needs road-network.js; App.refreshWalkNetworkLayer etc.
 walk-audit.js        pure window.WalkAudit + App block (call time); after road-network/network-connectors
 travelshed.js        pure; window.Travelshed
 connector-graph.js   pure; window.ConnectorGraph
 walk-shape.js        window.WalkShape; reads turf at CALL time only (road-network.js calls it for both boundary shapes)
+gpkg-reader.js       pure window.GpkgReader; no App, DOM, map or sql.js use at any time; before gpkg-layers.js, which calls it at call time
 point-icons.js      pure window.PointIcons + App block (call time); before points.js, whose rendering calls App.stampPointIcon
 points.js / lines.js / routes.js / polygons.js   need App.map, turf
 labels.js            App.labels, addLabel/removeLabel/…
@@ -38,6 +40,7 @@ feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/clos
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
 layers-panel.js      App.refreshLayersPanel
+gpkg-layers.js       needs App (var App at load); App.map, window.GpkgReader, window.LayerPalette, App.registerLayerStyle, App.firstUserLayer, App.cache, App.gpkgStore at call time; sql.js and proj4 lazy-loaded from unpkg
 census.js            needs App.bboxStringFromFeature, App.getMeta, turf
 lodes.js             needs App.bufferUnionPolygon, pako, turf
 projections.js       population-projection CSV (App.parseProjectionsCSV/setProjectionsData/projGrowthFactors/…)

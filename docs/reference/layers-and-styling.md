@@ -22,7 +22,9 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 - Ramp `reverse` defaults to `spec.reverseDefault`: `true` for Walkshed/Travelshed (dark = fewest minutes), `false` for TPI/RF/Corridor Scoring (dark = high score).
 - `palette: "custom"` → `gradientColors(ov.from, ov.to, spec.n)`. **Per-layer only, never global**: not in `PALETTES`, so `list`/`familyOf`/`allows` never see it. Offered even on Corridor Scoring (two deliberate picks can't happen by accident), while the global row stays curated so one click can't make a semantic layer unreadable. Literal: `from` = first class, `to` = last, ignoring `reverseDefault` and any stale `ov.reverse`.
 - `App.setLayerStyle(styleKey, patch)` — shallow-merge; deletes the entry once every field is null/absent; `App.cache.save()`; `App.repaintStyledLayers()`. `App.clearLayerStyle(styleKey)` — delete, save, repaint. `App.setLayerClassColor(styleKey, idx, color)` — the only writer of a categorical class's sparse `colors` array (pads/nulls/collapses so an all-default entry deletes).
-- `App.resolveShedStyle(styleKey)` → `{outline: "merged"|"none", widthPx: 1|2|3|null, tone: "match"|"dark"|"white", bandFade}` for `styleOptions` layers. Null/absent keys mean the defaults: no band outlines, `widthPx` null = the module's own width (2 px Walkshed, 1.5 px Travelshed), tone "match". `outline: "merged"` draws one outline per time band, unioned across points. Display-only; never touches `bands[]`, study areas, exports or cache keys. `LayerPalette.withAlpha(hex, a)` / `shade(hex, amount)` are the pure color helpers. **Band fade bakes alpha into the fill COLOR** (`rgba(...)`, alphas 1 / 0.6 / 0.35 by band) rather than `fill-opacity`, because the Layers opacity slider writes `fill-opacity` directly and a color alpha multiplies with it.registerLayerRepainter(styleKey, fn)` / `App.repaintStyledLayers(only)` — one cheap callback per consuming module, each in its own try/catch (no live layer = no-op, never blocks others). Usually paint-only; a module may re-render geometry from its own cached results (Walkshed flatten) but never recomputes the analysis.
+- `App.resolveShedStyle(styleKey)` → `{outline: "merged"|"none", widthPx: 1|2|3|null, tone: "match"|"dark"|"white", bandFade}` for `styleOptions` layers. Null/absent keys mean the defaults: no band outlines, `widthPx` null = the module's own width (2 px Walkshed, 1.5 px Travelshed), tone "match". `outline: "merged"` draws one outline per time band, unioned across points. Display-only; never touches `bands[]`, study areas, exports or cache keys. `LayerPalette.withAlpha(hex, a)` / `shade(hex, amount)` are the pure color helpers. **Band fade bakes alpha into the fill COLOR** (`rgba(...)`, alphas 1 / 0.6 / 0.35 by band) rather than `fill-opacity`, because the Layers opacity slider writes `fill-opacity` directly and a color alpha multiplies with it.
+- `App.registerLayerRepainter(styleKey, fn)` / `App.repaintStyledLayers(only)` — one cheap callback per consuming module, each in its own try/catch (no live layer = no-op, never blocks others). Usually paint-only; a module may re-render geometry from its own cached results (Walkshed flatten) but never recomputes the analysis.
+- `App.registerLayerStyle(styleKey, spec, repaint)` / `App.unregisterLayerStyle(styleKey)` — run-time styleable layers that come and go (GeoPackage imports): register adds the spec and repainter, unregister removes the spec, repainter and any `App.layerStyles` override together.
 - **Invariant:** these are the only write paths; nothing outside a module's own repainter calls `map.setPaintProperty` on a styled layer. Consumers: `choropleth.js` (`render()`'s `opts.colors`), `walkshed.js`, `transit-travelshed.js`, `transit-propensity.js`, `ridership-forecasting.js`, `corridor-scoring.js`, `transit-coverage.js`, `title-vi.js`, `gtfs.js`, the static legend fragments, and `layers-panel.js`.
 
 ## layers-panel.js
@@ -61,3 +63,64 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 **GTFS route browser** (`docs/archive/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
 
 Also uses: `App.rerenderForType`, `App._openFpSlider`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, basemap API, `properties.hidden`.
+
+## GeoPackage import (gpkg-reader.js / gpkg-layers.js / gpkg-store.js)
+
+Add Data → **GeoPackage (.gpkg)…** (button `ad-gpkg`), or the general Import file picker (`#fp-import-file`, routed by extension in `js/app.js`), opens a layer picker (`#gp-dialog`). Each checked feature table becomes a **view-only reference layer** in the Layers panel's Reference band, labelled `<file name> · <table>`. Imported layers are not drawn features: they stay out of `App.points/lines/routes/polygons`, have no Features-panel rows and are not analysis inputs. Each layer row has show/hide, opacity, drag-reorder, Zoom to layer, Remove layer and a solid color drawer.
+
+- `js/core/gpkg-reader.js` — `window.GpkgReader`: pure blob/WKB → GeoJSON, projection rules and row → properties. No DOM, map or sql.js.
+- `js/core/gpkg-layers.js` — library loader, sql.js reading, picker flow, map layers, registry, click popup and startup restore.
+- `js/core/gpkg-store.js` — IndexedDB copy of the original file bytes (see Persistence).
+
+**Libraries.** sql.js 1.10.3 and proj4 2.11.0 are loaded from unpkg on the first open, not from `index.html`. The sql.js WASM is fetched first and passed in as `wasmBinary`, because sql.js never settles when its own fetch fails. A failed load rejects with one message and the next open tries again. Offline tests use copies in `test/ui-screens/vendor/` (`sql-wasm.js`, `sql-wasm.wasm`, `proj4.js`), mapped by `VENDOR_MAP` in `test/browser/harness.mjs`.
+
+**Reading.** Feature layers are `gpkg_contents` rows with `data_type = 'features'`, joined to `gpkg_geometry_columns`. Raster tile tables are listed as "Raster tiles are not supported"; any other non-feature table as "Table has no geometry". A file without `gpkg_geometry_columns` is still listed. A layer that fails while it is inspected is listed as unsupported and does not abort the file. Rows are read one at a time with a prepared statement.
+
+**Projection** (`GpkgReader.resolveProjection`, first match wins). Nothing is imported untransformed; a refused layer is listed with its reason.
+- srs_id 4326, EPSG 4326 or 4269, or OGC CRS84 → used as-is (labelled WGS 84 or NAD83).
+- EPSG 3857 or 900913 → Web Mercator through proj4.
+- Built in, no lookup: NAD83 UTM 26901–26923; WGS 84 UTM 32601–32660 (north) and 32701–32760 (south).
+- Otherwise a non-empty stored definition (not `"undefined"`) → the file's WKT through proj4. `AXIS[...]` clauses are stripped so x/y stay easting/longitude. Refused as "Unknown projection (org:code)" if proj4 throws or an envelope corner falls outside lon/lat.
+- srs_id −1 or 0 with no usable definition → treated as lon/lat only if the envelope lies within −180..180 × −90..90; otherwise refused.
+- Anything else → refused as "Unknown projection (org:code)".
+
+**Geometry.** ISO and EWKB Z/M/SRID forms are read and Z/M are dropped, so every coordinate is `[x, y]`. Skipped and counted in the import status: empty and NULL geometries (`empty`, `nullGeom`), GeometryCollections (`collection`), curve and surface types, extended blobs and Multi* members of the wrong type (`unsupported`), and shapes that fail a bounds check (rings under 4 points, lines under 2, non-finite values) or a transform (`invalid`). Attributes are every column except the geometry and a single integer primary key; BOOLEAN 0/1 becomes true/false, BLOB columns are dropped and NULL is omitted. The feature id is the integer primary key when there is one, otherwise the row number.
+
+**Map layers.** One GeoJSON source `gpkg-src-gpkgN` per import, where N counts from 1 on each page load. Layers `gpkg-gpkgN-fill` and `-outline` (polygons), `-line` (lines) and `-point` (points), each filtered by geometry type, only for the kinds present. They are added bottom to top directly below the drawn-feature layers via `App.firstUserLayer()`. Transparency lives in the fill color (`FILL_ALPHA` 0.35 through `LayerPalette.withAlpha`), so every opacity starts at 1 and the row's slider reads 100% for "as imported". Colors come from a fixed list of eight in `gpkg-layers.js`, taking the first one no other import uses. A layer with no drawable features gets no source and no row.
+
+**Styling.** Each import registers a run-time `solid` spec with `App.registerLayerStyle("gpkg-gpkgN", { label, kind: "solid", defaultColors: [color] }, repaint)` (`js/core/layer-palettes.js`). The drawer writes `App.layerStyles["gpkg-gpkgN"]` through `App.setLayerStyle`, and the repainter sets the paint properties. Removal calls `App.unregisterLayerStyle`. A new import first deletes any stale override under its key, because ids restart at gpkg1 on each page load.
+
+**Click popup.** One map click handler, wired on the first import. The popup opens only when a `gpkg-` layer is the topmost rendered feature, no tool is active (`App.drawMode` is null; drawing, measure, box select and split pick all set it), and no OSM, walk-network or network-join layer is under the pointer, since those have their own click handlers. The title is file and table; each attribute is a row, and JSON object or array text is shown as a nested list. A click on a GeoPackage feature still clears the drawn-feature selection (editing.js treats it as an empty-map click). Blocking it would leave no way to deselect when an import covers the study area. The hover cursor is a pointer.
+
+**Copy to drawn features.** The layer's ⋯ menu offers "Copy to drawn features" when the layer converts to 2,000 drawn features or fewer (Multi* parts count; only those layers keep their features in memory). It calls `App.cache.appendGeoJSONFeatures(features)` (`js/core/cache.js`), which returns `{ added }` or `{ added: 0, error }`. Copies are appended and never replace drawn features. They are deep copies, so edits to them never reach the import, and they form one undo step. Nothing is selected afterwards.
+
+**Opening.** Files over 200 MB ask first. One file opens at a time; a second attempt shows a status message. Layers are read one at a time with a yield between them so the progress text shows. Escape and Cancel close the picker, and the picker stops Escape in the capture phase, as the attributes dock does.
+
+**Persistence** (`App.gpkgStore`, `js/core/gpkg-store.js`). IndexedDB database `mat-gpkg-cache`, store `files`, keyed by `"<file name>|<byte size>"`. Record: `{ name, savedAt, size, bytes, layers: [table names], colors: { table: { base, color } } }`, where `base` is the import's own color and `color` is the current one. Limits: 3 files and 100 MB in total, oldest dropped first; a single file over 100 MB is not stored. Writes happen on import, on Remove layer (`update`, which deletes the record when no layers are left) and on a color change (debounced 400 ms). Toolbar Clear empties the store even when nothing is on screen.
+
+`App.restoreCachedGpkg()` runs from `js/app.js` after the GTFS restore. It opens the oldest file first and re-runs the normal open → read → add path, so a restored layer matches a fresh import. Restored layers start visible with their saved colors. A file that no longer opens is dropped from the store. Offline at startup, the files are kept for the next refresh.
+
+**Not saved in session JSON or share links**, same as GTFS. A recolor override does sit in `App.layerStyles` (so it can appear in session JSON) until its layer is removed.
+
+**Clear All.** Toolbar Clear calls `App.gpkgClearAll()`, as it does for GTFS: it removes every import and empties the store.
+
+**Public API**
+- `App.gpkgOpenFile(file)` — entry point from Add Data and the Import picker; returns a Promise.
+- `App.gpkgReferenceEntries()` — Layers-panel entries, newest first, in the `REFERENCE` shape. `clear` removes the layer, `menuItems` adds Copy to drawn features and `badge` shows the feature count.
+- `App.gpkgRemoveLayer(id)` — removes one import's layers, source and style, then updates the store.
+- `App.gpkgClearAll()` — removes every import and empties the store.
+- `App.gpkgLoaded()` — true when at least one import is loaded (the Add Data row's state).
+- `App.gpkgVisible()` / `App.gpkgSetVisible(v)` — the Add Data eye. Hiding also closes an open popup.
+- `App.restoreCachedGpkg()` — startup restore; resolves to the number of layers restored.
+- `App.gpkgStore` — `{ supported, save(key, bytes, layers, colors), list (newest first), update(key, layers, colors), remove, clear, MAX_ENTRIES, MAX_BYTES }`.
+- `window.GpkgReader` — `parseGeometryBlob(bytes)`, `wkbToGeoJSON(view, offset)`, `rowToProperties(columns, values)`, `resolveProjection(srsRow, envelope)`, `transformGeometry(geometry, fn)`. The `parseGeometryHex`, `rowToPropertiesJSON`, `tryParseGeometryHex`, `wkbHexToGeoJSON` and `transformGeometryAffine` wrappers exist for golden tests only.
+- `App._gpkgTest` — test-only hook (exists only when `window.__MAT_TEST__` is set, as in core-app.md): `loadLibs`, `openDb`, `inspect`, `readLayer`, `addLayerToMap`.
+
+**Known limitations**
+- Raster tiles, attribute-only tables, grid-shift projections and WKT2 nested AXIS clauses are not supported.
+- Escape does not close the picker while the box select tool is active (box-select.js handles Escape first).
+- Hiding a layer with its Layers-panel eye does not close an open popup (the Add Data eye does).
+- The pointer cursor shows over a GeoPackage layer even where another layer takes the click.
+- Remove layer's undo step cannot bring an import back (as with GTFS).
+
+**Tests.** Golden: `test/cases/gpkg-reader.mjs` (`node test/run-golden.mjs`). Browser: `test/browser/gpkg-import.test.mjs`, `gpkg-store.test.mjs`, `gpkg-cache.test.mjs`. Fixture: `test/fixtures/sample.gpkg`, rebuilt by `python3 -I test/fixtures/make-gpkg-fixture.py`.

@@ -2,8 +2,8 @@
 // GeoPackage geometry blob and attribute row reader (window.GpkgReader).
 // CONSTRAINT: plain-value parsing only — no DOM, map, sql.js or App state — so
 // the golden harness can load it into a bare node:vm sandbox
-// (test/cases/gpkg-reader.mjs). Format rules: docs/gpkg-import-plan.md,
-// "Reading a GeoPackage".
+// (test/cases/gpkg-reader.mjs). Format and projection rules:
+// docs/reference/layers-and-styling.md, "GeoPackage import".
 
 (function () {
   "use strict";

@@ -3,7 +3,7 @@
 // turns each feature table into WGS 84 GeoJSON through window.GpkgReader.
 // The libraries are fetched only when a GeoPackage is opened, so users who never
 // open one pay nothing at startup. Format and projection rules:
-// docs/gpkg-import-plan.md, "Reading a GeoPackage" and "Projection resolution".
+// docs/reference/layers-and-styling.md, "GeoPackage import".
 // Nothing here touches the DOM beyond injecting the two library script tags, and
 // GpkgReader is referenced only inside functions so the file loads on its own.
 
@@ -594,6 +594,8 @@
     // Cleared even when nothing is on screen: files not restored yet (offline
     // start, restore still loading) must not come back on the next refresh.
     if (App.gpkgStore && App.gpkgStore.supported()) App.gpkgStore.clear();
+    _restoreGen++;
+    _deferredPersist = {};
     if (!_registry.length) return;
     _registry.forEach(_removeOne);
     _registry = [];
@@ -768,7 +770,7 @@
   // own layer handler, whatever is drawn above them. When one is under the
   // pointer it keeps the click, so one click never opens two popups (or
   // toggles a street while showing GeoPackage attributes).
-  var OWN_CLICK_PREFIXES = ["osm-", "walk-network", "network-joins"];
+  var OWN_CLICK_PREFIXES = ["osm-", "walk-network", "network-joins", "gtfs-"];
 
   function _hasOwnClickLayer(hits) {
     for (var i = 0; i < hits.length; i++) {
@@ -1065,6 +1067,11 @@
 
   function _saveFile(fileKey, bytes) {
     if (!_storeOk() || !bytes) return;
+    if (bytes.byteLength > App.gpkgStore.MAX_BYTES) {
+      _status("Added, but this file is too large to keep after a page refresh (limit " +
+        Math.round(App.gpkgStore.MAX_BYTES / 1048576) + " MB)");
+      return;
+    }
     var st = _fileState(fileKey);
     _registry.forEach(function (r) { if (r.fileKey === fileKey) r.savedColor = _currentColor(r); });
     App.gpkgStore.save(fileKey, bytes, st.layers, st.colors).catch(function () { /* convenience only */ });
@@ -1072,7 +1079,10 @@
 
   // Removing a file's last layer passes [] to update(), which deletes the record.
   function _persist(fileKey) {
-    if (!_storeOk() || _restoring) return;
+    if (!_storeOk() || _addingRestored) return;
+    // Mid-restore, the registry does not yet hold this file's later tables;
+    // writing now would drop them from the record. Write once restore ends.
+    if (_restoreActive) { _deferredPersist[fileKey] = true; return; }
     var st = _fileState(fileKey);
     App.gpkgStore.update(fileKey, st.layers, st.colors).catch(function () { /* convenience only */ });
   }
@@ -1082,7 +1092,7 @@
   // update() rewrites the whole record, file bytes included.
   var _persistTimers = {};
   function _colorMaybeChanged(rec) {
-    if (_restoring) return;
+    if (_addingRestored) return;
     var c = _currentColor(rec);
     if (c === rec.savedColor) return;
     rec.savedColor = c;
@@ -1090,7 +1100,13 @@
     _persistTimers[rec.fileKey] = setTimeout(function () { _persist(rec.fileKey); }, 400);
   }
 
-  var _restoring = false;
+  // _addingRestored: true only while a restored table is being added (its
+  // own add and color set must not write back). _restoreGen: bumped by
+  // gpkgClearAll so a running restore stops adding layers after a Clear.
+  var _addingRestored = false;
+  var _restoreActive = false;
+  var _restoreGen = 0;
+  var _deferredPersist = {};
 
   // The display name is the store key without its "|<size>" suffix.
   function _nameFromKey(key) {
@@ -1102,6 +1118,7 @@
   function _restoreTable(libs, db, layers, rec, table) {
     var layer = layers.filter(function (l) { return l.table === table && l.supported; })[0];
     if (!layer) return false;
+    _addingRestored = true;
     try {
       var r = _readLayer(libs, db, layer);
       var saved = (rec.colors && rec.colors[table]) || {};
@@ -1115,6 +1132,8 @@
       return true;
     } catch (e) {
       return false;
+    } finally {
+      _addingRestored = false;
     }
   }
 
@@ -1128,12 +1147,14 @@
     return App.gpkgStore.list().then(function (recs) {
       if (!recs.length || _busy || _registry.length) return 0;
       _busy = true;
-      _restoring = true;
+      _restoreActive = true;
+      var gen = ++_restoreGen;
       var restored = 0;
       return _loadLibs().then(function (libs) {
         var chain = Promise.resolve();
         recs.slice().reverse().forEach(function (rec) {
           chain = chain.then(function () {
+            if (gen !== _restoreGen) return;
             var db;
             try {
               db = _openDb(libs, rec.bytes);
@@ -1147,6 +1168,7 @@
             var step = Promise.resolve();
             tables.forEach(function (table) {
               step = step.then(_yield).then(function () {
+                if (gen !== _restoreGen) return;
                 if (_restoreTable(libs, db, layers, rec, table)) restored++;
               });
             });
@@ -1161,13 +1183,17 @@
         return 0;
       }).then(function (n) {
         _busy = false;
-        _restoring = false;
+        _restoreActive = false;
+        var keys = Object.keys(_deferredPersist);
+        _deferredPersist = {};
+        keys.forEach(_persist);
         if (n) _status("Restored " + _plural(n, "GeoPackage layer"));
         return n;
       });
     }).catch(function () {
       _busy = false;
-      _restoring = false;
+      _restoreActive = false;
+      _deferredPersist = {};
       return 0;
     });
   };

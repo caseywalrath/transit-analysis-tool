@@ -5,7 +5,8 @@ Run with `python3 -I test/fixtures/make-gpkg-fixture.py`. The file is deleted an
 rewritten next to this script, and the output is byte-identical on every run.
 
 Tables and the rule each one exercises (see "Reading a GeoPackage" and
-"Projection resolution" in docs/gpkg-import-plan.md):
+"Projection resolution" in docs/archive/gpkg-import-plan.md; current rules:
+docs/reference/layers-and-styling.md, "GeoPackage import"):
 
   gpkg_spatial_ref_sys   SRS lookup for every srs_id used below (4326, 26913, -1, 0, 999001).
   gpkg_contents          Layer list: 'features', 'attributes' and 'tiles' data types.

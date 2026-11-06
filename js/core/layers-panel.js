@@ -183,13 +183,16 @@
       if (_refOrder[k].indexOf("gpkg-") === 0 && !live[_refOrder[k]]) _refOrder.splice(k, 1);
     }
     var all = REFERENCE.concat(dyn);
+    var styleIds = null;
     dyn.forEach(function (e) {
       if (_refOrder.indexOf(e.id) >= 0) return;
-      var top = entryTopIndex(e);
+      // getStyle() serializes the whole style: read the id list once.
+      if (!styleIds) styleIds = App.map.getStyle().layers.map(function (l) { return l.id; });
+      var top = entryTopIndex(e, styleIds);
       var at = _refOrder.length;
       for (var i = 0; i < _refOrder.length; i++) {
         var other = all.filter(function (x) { return x.id === _refOrder[i]; })[0];
-        if (other && entryPresent(other) && entryTopIndex(other) < top) { at = i; break; }
+        if (other && entryPresent(other) && entryTopIndex(other, styleIds) < top) { at = i; break; }
       }
       _refOrder.splice(at, 0, e.id);
     });
@@ -197,8 +200,7 @@
   }
 
   // Style index of an entry's topmost layer (-1 when none is on the map).
-  function entryTopIndex(entry) {
-    var ids = App.map.getStyle().layers.map(function (l) { return l.id; });
+  function entryTopIndex(entry, ids) {
     var top = -1;
     entry.layers.forEach(function (L) { var i = ids.indexOf(L.id); if (i > top) top = i; });
     return top;

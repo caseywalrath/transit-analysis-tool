@@ -367,7 +367,19 @@
     // happens once at the end of this function, after every module has had
     // a chance to register its repainter.
     if (state.layerStyles && typeof state.layerStyles === "object") {
+      // GeoPackage styles (gpkg-*) belong to the imports on screen now, not to
+      // the snapshot or session being applied: their ids restart each page
+      // load, so a stored gpkg-gpkg1 may name an unrelated layer. Keep the live
+      // ones and drop incoming ones.
+      var liveGpkg = {};
+      Object.keys(App.layerStyles || {}).forEach(function (k) {
+        if (k.indexOf("gpkg-") === 0) liveGpkg[k] = App.layerStyles[k];
+      });
       App.layerStyles = JSON.parse(JSON.stringify(state.layerStyles));
+      Object.keys(App.layerStyles).forEach(function (k) {
+        if (k.indexOf("gpkg-") === 0) delete App.layerStyles[k];
+      });
+      Object.keys(liveGpkg).forEach(function (k) { App.layerStyles[k] = liveGpkg[k]; });
     }
     if (state.mapPalette !== undefined) App.mapPalette = state.mapPalette || null;
 
@@ -1834,7 +1846,9 @@
       properties: { name: name || "", color: color || "" }
     };
     if (attrs && Object.keys(attrs).length > 0) {
-      feat.properties.attributes = attrs;
+      var own = {};
+      Object.keys(attrs).forEach(function (k) { own[k] = attrs[k]; });
+      feat.properties.attributes = own;
     }
     return feat;
   }
@@ -1868,6 +1882,8 @@
 
       if (!geom) continue;
 
+      // Each drawn feature gets its own attributes object: the attributes
+      // dock edits it in place, and Multi* parts must not share one.
       if (geom.type === "Point") {
         ptFeats.push(_makeFeature("Point", geom.coordinates, String(name), "", attrs));
       } else if (geom.type === "MultiPoint") {

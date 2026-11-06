@@ -1,6 +1,6 @@
 # GeoPackage (.gpkg) import as reference layers — implementation plan
 
-> **Status:** Not started (written 2026-11-06; revised the same day for Haiku/Opus split).
+> **Status:** Complete (2026-11-06). Archived. Current behavior and API: `docs/reference/layers-and-styling.md`, "GeoPackage import".
 
 Lets a user open a GeoPackage from **Add Data**, pick which of its layers to show, and see
 them on the map as **reference layers** (view-only, like GTFS routes or OSM layers), not as
@@ -947,3 +947,38 @@ back because it was three lines.
   with the last saved color), toolbar Clear empties the store even if nothing is shown.
 - Not done (accepted): store records hold bytes and metadata together, so prune/update
   copy file bytes (≤100 MB); a third copy of the IndexedDB helper (gtfs/network/gpkg).
+
+**Phase 8 (2026-11-06).** 8a [H] accepted first pass (it flagged two stale references
+outside its allowed files; the orchestrator fixed them). 8b [O]: whole-branch review
+(high) found 10; fixed 7 — GTFS layers added to the popup's own-click list; Clear stops a
+running restore; edits made mid-restore are written once restore ends (instead of being
+lost, or dropping not-yet-restored tables); undo/session import keep live `gpkg-*`
+layer styles instead of overwriting them; shapefile Multi* parts no longer share one
+attributes object (pre-existing bug, now in the shared helper); a file over the 100 MB
+cache limit says it will not survive a refresh; the Layers panel reads the style id
+list once per render. Skipped: WKT2 nested AXIS (documented limitation), an unrelated
+pre-existing dead tuple in layer-palettes.js, the plan-path finding (resolved by this
+archive move).
+- Manual acceptance with the user's `comparison.gpkg` through the real UI (headless
+  Chromium): picker lists 4 layers with EPSG:26913 labels; Add took 0.84 s for all four;
+  census bbox −105.11..−103.15, 38.52..39.91 (Colorado Front Range); popup on
+  `representative_points` shows `source_attributes` as a nested list; a reload restores
+  all four layers; no page errors. Pan smoothness could not be judged headless (no GPU;
+  12 fps at full extent) — check on a laptop.
+
+## Experiment summary: Haiku for pattern work, Opus for delicate work and review
+
+| | Count |
+|---|---|
+| Haiku tasks | 11 (0a, 0b, 1a, 2a, 2b, 4a, 4b, 4d, 6a, 8a; 2a+2b sent back together) |
+| Accepted first pass | 8 |
+| Accepted after one send-back | 3 (1a, 2a/2b, 4b/4d) |
+| Reassigned to Opus | 0 |
+| Cards corrected by the orchestrator before launch | 3 (4a: menu item that did not exist; 6a: GTFS store API; 1a: golden runner has no expectError) |
+
+What worked: the fixed card layout (closed file list, exact contract, done-when command,
+stop conditions); listing edge cases up front (2a's 12 listed cases all landed first
+time); asking Haiku to report rather than judge screenshots. What did not: Haiku built
+exactly what the card said and no more, so every gap in a card became a review finding,
+and two cards carried wrong assumptions about the codebase that only a pre-launch check
+caught. Every Opus review (high) found real bugs, including in Opus's own phases.

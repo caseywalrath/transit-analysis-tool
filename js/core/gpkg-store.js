@@ -21,7 +21,7 @@
  * it would still leave nothing stored.
  *
  * Record: { name, savedAt, size, bytes (ArrayBuffer), layers: [table names],
- *           colors: { table: "#hex" } }
+ *           colors: { table: { base: "#hex", color: "#hex" } } }  (base = reset color)
  * Every transaction goes through _withStore, which is subject to the
  * TransactionInactiveError rule documented in network-store.js: requests must be
  * issued synchronously or from another request's onsuccess, never after an await.
