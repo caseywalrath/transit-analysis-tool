@@ -24,6 +24,10 @@ Project onboarding for Claude Code sessions. Read this first.
 - Use specific line numbers when referencing code locations
 **At session start**: Always notify the user what branch you are working on and why a new branch was created. Example: "This session is on branch `claude/review-changelog". It was created automatically for this session and includes all prior work."
 
+## Multi-Agent Work
+
+Before planning or running work split across agents (subagents, parallel sessions, or a plan for another model to implement), read `AGENTS.md`: model classes and what each may own, the task-card format, the rules block for agent prompts, review gates and progress logs.
+
 ## Common Issues to Prevent
 
 - Wrong branch base → old UI deploying
