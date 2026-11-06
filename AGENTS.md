@@ -20,6 +20,16 @@ Use subagents only when the user asks for delegation or a plan calls for it.
 - **Older plans:** model names in archived plans and in `docs/ui-refresh/DEVELOPER.md` are history. Map any such assignment to the class above that fits the package.
 - **Responsibility:** the primary agent stays responsible for architecture, integration review, cross-file consistency and final verification, whoever wrote the code.
 
+### Prefer the structural class where it can succeed
+
+When planning, check each implementer-sized task: could a structural agent do it if the card were precise enough? If so, assign it to Haiku and do the work that makes that possible:
+
+- Split it into structural pieces: a pure function plus its tests, markup separate from behavior, a copy of an existing pattern separate from wiring it in. Keep any piece needing judgment for Sonnet or Opus.
+- Settle every decision in the card: the contract, the edge cases, the exact placement and the expected test values. Do not leave choices to the agent.
+- Check the card against the code before launch (next section).
+
+Keep a task with Sonnet when the card would need a decision the planner cannot make in advance, or when writing a complete card would cost more than doing the work. Record each choice and its outcome in the plan's progress log, so later plans can tell which kinds of task Haiku handles well.
+
 ### Opus only
 
 These areas are not for structural agents. Implementers get them only with a tight card and an Opus review:
