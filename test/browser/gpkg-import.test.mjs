@@ -282,6 +282,103 @@ function allPositions(c) {
       keyed.supported.tk === true && tkFeats.length === 1 && tkFeats[0].id === 0 &&
       tkFeats[0].properties.code === "X1",
       JSON.stringify({ supported: keyed.supported.tk, features: tkFeats.length, id: tkFeats[0] && tkFeats[0].id, props: tkFeats[0] && tkFeats[0].properties }));
+
+    // ---- Map layers and the Layers panel ----
+    // A drawn point first, so the checks can prove imports never touch drawn
+    // features and sit below them in the layer stack.
+    await page.evaluate(() => {
+      App.points.push({ type: "Feature", geometry: { type: "Point", coordinates: [-105, 39.75] }, properties: { name: "Drawn" } });
+      App.renderPointLayers();
+    });
+    await page.locator('.fp-tab-btn[data-fptab="layers"]').click();
+    const added = await page.evaluate(async () => {
+      const t = App._gpkgTest;
+      const libs = await t.loadLibs();
+      const buf = await (await fetch("/test/fixtures/sample.gpkg")).arrayBuffer();
+      const db = t.openDb(libs, buf);
+      try {
+        const layers = t.inspect(libs, db).layers;
+        const byName = (n) => layers.find((l) => l.table === n);
+        const ids = {};
+        ["polys_utm", "pts_utm", "mixed_z"].forEach((n) => {
+          ids[n] = t.addLayerToMap(t.readLayer(libs, db, byName(n)).featureCollection,
+            { fileName: "sample.gpkg", layerName: n });
+        });
+        // The same layer again: must get its own id, source and row.
+        ids.again = t.addLayerToMap(t.readLayer(libs, db, byName("pts_utm")).featureCollection,
+          { fileName: "sample.gpkg", layerName: "pts_utm" });
+        return ids;
+      } finally { db.close(); }
+    });
+    const state = () => page.evaluate((ids) => {
+      const m = App.map;
+      const styleIds = m.getStyle().layers.map((l) => l.id);
+      const out = { styleIds: styleIds.filter((s) => s.startsWith("gpkg-")), drawn: App.points.length,
+        pointsIdx: styleIds.indexOf("points-layer"), rows: {}, sources: {} };
+      Object.keys(ids).forEach((k) => {
+        out.sources[k] = !!m.getSource("gpkg-src-" + ids[k]);
+      });
+      out.rows = Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label")).map((e) => e.textContent)
+        .filter((s) => s.indexOf("sample.gpkg") === 0);
+      out.maxGpkgIdx = Math.max.apply(null, out.styleIds.map((s) => styleIds.indexOf(s)));
+      return out;
+    }, added);
+    let s1 = await state();
+    const p = added.polys_utm, m = added.mixed_z;
+    check("16. polygon layer gets fill + outline, mixed layer gets line + point, all below drawn points",
+      s1.styleIds.includes("gpkg-" + p + "-fill") && s1.styleIds.includes("gpkg-" + p + "-outline") &&
+      !s1.styleIds.includes("gpkg-" + p + "-point") &&
+      s1.styleIds.includes("gpkg-" + m + "-line") && s1.styleIds.includes("gpkg-" + m + "-point") &&
+      s1.pointsIdx > s1.maxGpkgIdx, JSON.stringify(s1.styleIds) + " points@" + s1.pointsIdx);
+    check("17. four imports get four distinct ids, sources and Reference rows",
+      new Set(Object.values(added)).size === 4 && Object.values(s1.sources).every(Boolean) && s1.rows.length === 4,
+      JSON.stringify({ added, rows: s1.rows }));
+
+    const label = "sample.gpkg · polys_utm";
+    const vis = await page.evaluate(({ label, p }) => {
+      document.querySelector('#fp-tab-layers button[aria-label="Hide ' + label + '"]').click();
+      const v = App.map.getLayoutProperty("gpkg-" + p + "-fill", "visibility");
+      document.querySelector('#fp-tab-layers button[aria-label="Show ' + label + '"]').click();
+      return [v, App.map.getLayoutProperty("gpkg-" + p + "-fill", "visibility")];
+    }, { label, p });
+    check("18. the row's eye hides and shows the layer", vis[0] === "none" && vis[1] !== "none", JSON.stringify(vis));
+
+    const color = await page.evaluate(({ p }) => {
+      App.setLayerStyle("gpkg-" + p, { color: "#123456" });
+      return [App.map.getPaintProperty("gpkg-" + p + "-fill", "fill-color"),
+        App.map.getPaintProperty("gpkg-" + p + "-outline", "line-color")];
+    }, { p });
+    // The fill keeps its transparency in the color itself (see FILL_ALPHA).
+    check("19. a color set through App.setLayerStyle repaints fill and outline",
+      color[0] === "rgba(18,52,86,0.35)" && color[1] === "#123456", JSON.stringify(color));
+    const extra = await page.evaluate(({ p }) => ({
+      emptyId: App._gpkgTest.addLayerToMap({ type: "FeatureCollection", features: [] }, { fileName: "x", layerName: "y" }),
+      opacities: [App.map.getPaintProperty("gpkg-" + p + "-fill", "fill-opacity"),
+        App.map.getPaintProperty("gpkg-" + p + "-outline", "line-opacity")]
+    }), { p });
+    check("19b. an empty collection is not imported; fill and outline opacity start at 1 so the row slider reads 100%",
+      extra.emptyId === null && extra.opacities[0] === 1 && extra.opacities[1] === 1, JSON.stringify(extra));
+
+    await page.evaluate((l) => {
+      document.querySelector('#fp-tab-layers button[aria-label="More actions for ' + l + '"]').click();
+    }, label);
+    await page.locator("#fp-context-menu").waitFor({ state: "visible", timeout: 5000 });
+    const menu = await page.evaluate(() => Array.from(document.querySelectorAll("#fp-context-menu button")).map((b) => b.textContent));
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll("#fp-context-menu button")).find((b) => b.textContent === "Remove layer").click();
+    });
+    const s2 = await state();
+    check("20. ⋯ menu has Zoom to layer and Remove layer; Remove deletes source, layers and row only",
+      menu.includes("Zoom to layer") && menu.includes("Remove layer") &&
+      !s2.sources.polys_utm && !s2.styleIds.some((x) => x.startsWith("gpkg-" + p + "-")) &&
+      s2.rows.length === 3 && s2.sources.pts_utm && s2.drawn === 1,
+      JSON.stringify({ menu, s2 }));
+
+    await page.evaluate(() => { window.confirm = () => true; document.getElementById("clear").click(); });
+    const s3 = await state();
+    check("21. toolbar Clear removes every GeoPackage layer",
+      s3.styleIds.length === 0 && Object.values(s3.sources).every((x) => !x) && s3.rows.length === 0 &&
+      (await page.evaluate(() => App.gpkgLoaded())) === false, JSON.stringify(s3));
   } finally {
     if (browser) await browser.close().catch(() => {});
     stopServer();

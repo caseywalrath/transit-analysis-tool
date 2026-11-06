@@ -864,3 +864,32 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
 - Deferred to 8a: CLAUDE.md file map/load order and doc-coverage entries for
   `GpkgReader`, `App._gpkgTest` (test-only, guarded); header comments that point at this
   plan file must be repointed when it moves to `docs/archive/`.
+
+**Phase 3 (2026-11-06).** All [O], by the orchestrator; review (high) found 10 items, 8 fixed.
+- Map: one source `gpkg-src-gpkgN`, layers `-fill`/`-outline`/`-line`/`-point` filtered by
+  geometry type, added bottom-to-top below drawn features via the new shared
+  `App.firstUserLayer()` (exported from `network-connectors.js`, no fourth copy). Colors
+  from a fixed 8-color list in `gpkg-layers.js` (LayerPalette has no categorical palette).
+  Fill transparency lives in the fill color (`FILL_ALPHA` 0.35) so every opacity starts
+  at 1 and the row's single slider reads 100% for "as imported".
+- Styling: new `App.registerLayerStyle(key, spec, repaint)` / `App.unregisterLayerStyle(key)`
+  in `layer-palettes.js` for run-time styleable layers; each import is a `solid` spec
+  `gpkg-gpkgN`. A recolored import's override sits in `App.layerStyles` (so it reaches
+  session JSON) until the layer is removed; a new import deletes any stale override for
+  its key because ids restart at gpkg1 each page load. Accepted; documented in 8a.
+- Panel: `layers-panel.js` `referenceEntries()` = `REFERENCE` + `App.gpkgReferenceEntries()`;
+  a new import is slotted into `_refOrder` by its real map position; removed ids pruned.
+  "Zoom to layer" and "Remove layer" come from the generic row menu.
+- `_addLayerToMap` returns `null` and registers nothing for an empty collection.
+- Clear All: toolbar Clear now calls `App.gpkgClearAll()`, matching GTFS (removed through
+  `clearModules()`). Undo does not restore imports (as GTFS); the undo step it pushes is
+  accepted.
+- Add Data: `_adClrCfgs` entry for button id **`ad-gpkg`** (eye = `App.gpkgVisible` /
+  `App.gpkgSetVisible`, × = `App.gpkgClearAll`); inert until 4a adds the button.
+- **Haiku hand-off notes for Phase 4:** private functions in `gpkg-layers.js`:
+  `_loadLibs()` → Promise `{SQL, proj4}`; `_openDb(libs, arrayBuffer)` → db (throws
+  "This file is not a GeoPackage."); `_inspect(libs, db)` → `{layers:[{table, geomType,
+  projection:{label}, count, supported, reason}]}`; `_readLayer(libs, db, layer,
+  onProgress)` → `{featureCollection, skipped:{empty, nullGeom, collection, unsupported,
+  invalid}}`; `_addLayerToMap(fc, {fileName, layerName})` → id or null. Menu item id
+  `ad-gpkg`, its file input `ad-gpkg-file`.

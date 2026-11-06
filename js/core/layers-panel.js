@@ -170,6 +170,40 @@
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
   var _analysisOrder = ANALYSIS.map(function (e) { return e.id; });
 
+  // The static REFERENCE entries plus GeoPackage imports, whose rows come and
+  // go at run time. A new import's id is slotted into _refOrder where its
+  // layers actually sit on the map (other reference layers can be added above
+  // or below it later), so the panel order keeps matching the map order;
+  // removed imports' ids are dropped.
+  function referenceEntries() {
+    var dyn = (typeof App.gpkgReferenceEntries === "function") ? App.gpkgReferenceEntries() : [];
+    var live = {};
+    dyn.forEach(function (e) { live[e.id] = true; });
+    for (var k = _refOrder.length - 1; k >= 0; k--) {
+      if (_refOrder[k].indexOf("gpkg-") === 0 && !live[_refOrder[k]]) _refOrder.splice(k, 1);
+    }
+    var all = REFERENCE.concat(dyn);
+    dyn.forEach(function (e) {
+      if (_refOrder.indexOf(e.id) >= 0) return;
+      var top = entryTopIndex(e);
+      var at = _refOrder.length;
+      for (var i = 0; i < _refOrder.length; i++) {
+        var other = all.filter(function (x) { return x.id === _refOrder[i]; })[0];
+        if (other && entryPresent(other) && entryTopIndex(other) < top) { at = i; break; }
+      }
+      _refOrder.splice(at, 0, e.id);
+    });
+    return all;
+  }
+
+  // Style index of an entry's topmost layer (-1 when none is on the map).
+  function entryTopIndex(entry) {
+    var ids = App.map.getStyle().layers.map(function (l) { return l.id; });
+    var top = -1;
+    entry.layers.forEach(function (L) { var i = ids.indexOf(L.id); if (i > top) top = i; });
+    return top;
+  }
+
   function orderedPresent(entries, order) {
     var byId = {};
     entries.forEach(function (e) { byId[e.id] = e; });
@@ -1990,7 +2024,7 @@
     }
 
     // Reference / imported (only those currently on the map)
-    var getRef = function () { return orderedPresent(REFERENCE, _refOrder); };
+    var getRef = function () { return orderedPresent(referenceEntries(), _refOrder); };
     var refPresent = getRef();
     if (refPresent.length) {
       var rBand = buildBand("Reference / Imported");

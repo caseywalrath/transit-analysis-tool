@@ -1316,6 +1316,9 @@
       // Unload only: Clear removes map content, not the downloaded streets.
       if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
+      // Same as GTFS, which clearModules() removes: Clear empties the map of
+      // loaded data too, not only drawn features.
+      if (typeof App.gpkgClearAll === "function") App.gpkgClearAll();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
       App.setStatus("Cleared");
@@ -1510,6 +1513,16 @@
     var _EYESVG_CLOSED = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 6s2.5-4 5-4 5 4 5 4-2.5 4-5 4-5-4-5-4z"/><circle cx="6" cy="6" r="1.5"/><line x1="2" y1="10" x2="10" y2="2"/></svg>';
 
     var _adClrCfgs = [
+      {
+        // One Add Data row for every GeoPackage import: the eye toggles them
+        // all, × removes them all; the Layers panel handles them one by one.
+        btnId: "ad-gpkg",
+        isLoaded: function () { return typeof App.gpkgLoaded === "function" && App.gpkgLoaded(); },
+        clear: function () { if (typeof App.gpkgClearAll === "function") App.gpkgClearAll(); },
+        hasEye: true,
+        isVisible: function () { return typeof App.gpkgVisible === "function" && App.gpkgVisible(); },
+        setVisible: function (v) { if (typeof App.gpkgSetVisible === "function") App.gpkgSetVisible(v); }
+      },
       {
         btnId: "gtfs-load-btn",
         isLoaded: function () {

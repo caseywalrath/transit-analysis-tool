@@ -459,6 +459,20 @@
   App.registerLayerRepainter = function (styleKey, fn) {
     _repainters[styleKey] = fn;
   };
+  // Run-time styleable layers (GeoPackage imports) come and go, unlike the
+  // fixed LAYER_STYLES table above. Registering adds the spec and repainter;
+  // unregistering removes spec, repainter and any override together, so a
+  // removed layer leaves nothing behind for the drawer or the session cache.
+  App.registerLayerStyle = function (styleKey, spec, repaint) {
+    LAYER_STYLES[styleKey] = spec;
+    _repainters[styleKey] = repaint;
+  };
+  App.unregisterLayerStyle = function (styleKey) {
+    delete LAYER_STYLES[styleKey];
+    delete _repainters[styleKey];
+    delete App.layerStyles[styleKey];
+  };
+
   App.repaintStyledLayers = function (only) {
     Object.keys(_repainters).forEach(function (k) {
       if (only && k !== only) return;

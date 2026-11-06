@@ -418,6 +418,195 @@
     };
   }
 
+  // ---- Map layers and registry ------------------------------------------
+  // Each imported GeoPackage layer is one GeoJSON source plus one MapLibre
+  // layer per geometry kind present, drawn below the drawn-feature layers.
+  // They are reference layers: never part of App.points/lines/routes/polygons,
+  // never hit-tested by the drawn-feature helpers, never in session JSON.
+
+  // Distinct, mid-saturation colors that read on both light and dark basemaps.
+  var COLORS = ["#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#2563eb", "#dc2626", "#0d9488"];
+
+  // The fill's transparency lives in its color, not in fill-opacity: the
+  // Layers panel's one opacity slider writes the same value to every layer of
+  // a row, so fill-opacity and the outline's line-opacity must both start at 1
+  // for 100% to mean "as imported".
+  var FILL_ALPHA = 0.35;
+
+  var _registry = [];   // in import order
+  var _counter = 0;     // per page load, so ids are never reused within a session
+
+  function _nextColor() {
+    var used = {};
+    _registry.forEach(function (r) { used[r.color] = true; });
+    for (var i = 0; i < COLORS.length; i++) if (!used[COLORS[i]]) return COLORS[i];
+    return COLORS[_registry.length % COLORS.length];
+  }
+
+  function _geomKinds(fc) {
+    var k = { polygon: false, line: false, point: false };
+    for (var i = 0; i < fc.features.length; i++) {
+      var t = fc.features[i].geometry.type;
+      if (t === "Polygon" || t === "MultiPolygon") k.polygon = true;
+      else if (t === "LineString" || t === "MultiLineString") k.line = true;
+      else k.point = true;
+    }
+    return k;
+  }
+
+  function _styleKey(id) { return "gpkg-" + id; }
+
+  // The color drawer writes App.layerStyles[styleKey] through App.setLayerStyle;
+  // this repainter is the only place that turns it into paint properties.
+  function _repaint(rec) {
+    var map = App.map;
+    var colors = App.resolveLayerColors(rec.styleKey);
+    var c = (colors && colors[0]) || rec.color;
+    rec.layers.forEach(function (L) {
+      if (!map.getLayer(L.id)) return;
+      if (L.kind === "fill") map.setPaintProperty(L.id, "fill-color", window.LayerPalette.withAlpha(c, FILL_ALPHA));
+      else if (L.kind === "outline" || L.kind === "line") map.setPaintProperty(L.id, "line-color", c);
+      else map.setPaintProperty(L.id, "circle-color", c);
+    });
+  }
+
+  // Adds one layer's features to the map and the registry. Returns the import
+  // id, or null when the collection has no features.
+  // meta: { fileName, layerName, color? }. Layers are added bottom-to-top
+  // (fill, outline, line, point), each directly below the drawn features, so
+  // the first one is the lowest: applyBandOrder in layers-panel.js relies on that.
+  function _addLayerToMap(featureCollection, meta) {
+    // Nothing drawable (every row empty, NULL or skipped): no source, no
+    // registry entry, so no invisible import the panel cannot show or remove.
+    if (!featureCollection.features.length) return null;
+    var map = App.map;
+    var id = "gpkg" + (++_counter);
+    var sourceId = "gpkg-src-" + id;
+    var kinds = _geomKinds(featureCollection);
+    var color = meta.color || _nextColor();
+    var styleKey = _styleKey(id);
+
+    map.addSource(sourceId, { type: "geojson", data: featureCollection });
+    var layers = [];
+    var before = App.firstUserLayer();
+    var polyFilter = ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false];
+    var lineFilter = ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false];
+    var pointFilter = ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false];
+    function add(kind, op, def) {
+      def.id = "gpkg-" + id + "-" + kind;
+      def.source = sourceId;
+      map.addLayer(def, before);
+      layers.push({ id: def.id, op: op, kind: kind });
+    }
+    if (kinds.polygon) {
+      add("fill", "fill-opacity", { type: "fill", filter: polyFilter,
+        paint: { "fill-color": window.LayerPalette.withAlpha(color, FILL_ALPHA), "fill-opacity": 1 } });
+      add("outline", "line-opacity", { type: "line", filter: polyFilter,
+        paint: { "line-color": color, "line-width": 1, "line-opacity": 1 } });
+    }
+    if (kinds.line) {
+      add("line", "line-opacity", { type: "line", filter: lineFilter,
+        paint: { "line-color": color, "line-width": 2, "line-opacity": 1 } });
+    }
+    if (kinds.point) {
+      add("point", "circle-opacity", { type: "circle", filter: pointFilter,
+        paint: { "circle-color": color, "circle-radius": 4, "circle-opacity": 1,
+          "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 } });
+    }
+
+    var rec = {
+      id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
+      featureCount: featureCollection.features.length, color: color,
+      sourceId: sourceId, styleKey: styleKey, layers: layers
+    };
+    _registry.push(rec);
+
+    // A fresh import starts at its own color: a style left in App.layerStyles
+    // under this key (ids restart at gpkg1 each page load) belongs to an
+    // earlier, unrelated import.
+    delete App.layerStyles[styleKey];
+    App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
+      function () { _repaint(rec); });
+
+    _afterChange();
+    return id;
+  }
+
+  // updateAddDataClearIcons already refreshes the Layers panel.
+  function _afterChange() {
+    if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
+    else if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+  }
+
+  function _find(id) {
+    for (var i = 0; i < _registry.length; i++) if (_registry[i].id === id) return i;
+    return -1;
+  }
+
+  function _removeOne(rec) {
+    var map = App.map;
+    // Layers before the source: MapLibre refuses to remove a source in use.
+    for (var i = rec.layers.length - 1; i >= 0; i--) {
+      if (map.getLayer(rec.layers[i].id)) map.removeLayer(rec.layers[i].id);
+    }
+    if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+    App.unregisterLayerStyle(rec.styleKey);
+  }
+
+  App.gpkgRemoveLayer = function (id) {
+    var i = _find(id);
+    if (i < 0) return;
+    _removeOne(_registry[i]);
+    _registry.splice(i, 1);
+    _afterChange();
+  };
+
+  App.gpkgClearAll = function () {
+    if (!_registry.length) return;
+    _registry.forEach(_removeOne);
+    _registry = [];
+    _afterChange();
+  };
+
+  App.gpkgLoaded = function () { return _registry.length > 0; };
+
+  App.gpkgVisible = function () {
+    var map = App.map;
+    return _registry.some(function (r) {
+      return r.layers.some(function (L) {
+        return map.getLayer(L.id) && map.getLayoutProperty(L.id, "visibility") !== "none";
+      });
+    });
+  };
+
+  App.gpkgSetVisible = function (v) {
+    var map = App.map;
+    _registry.forEach(function (r) {
+      r.layers.forEach(function (L) {
+        if (map.getLayer(L.id)) map.setLayoutProperty(L.id, "visibility", v ? "visible" : "none");
+      });
+    });
+    _afterChange();
+  };
+
+  // Layers-panel manifest entries, newest first. Same shape as the static
+  // REFERENCE entries in layers-panel.js, so the panel builds the rows,
+  // visibility, opacity, reorder, Zoom to layer and Remove with no special case.
+  App.gpkgReferenceEntries = function () {
+    return _registry.slice().reverse().map(function (r) {
+      return {
+        id: r.styleKey,
+        label: r.fileName + " · " + r.layerName,
+        layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
+        styleKey: r.styleKey,
+        clear: function () { App.gpkgRemoveLayer(r.id); },
+        badge: function () {
+          return { text: r.featureCount.toLocaleString(), title: r.featureCount.toLocaleString() + " features" };
+        }
+      };
+    });
+  };
+
   // Test hook for the browser harness. The guard keeps it out of normal page
   // loads; App is checked so a page without the app shell does not throw here.
   if (typeof window !== "undefined" && window.__MAT_TEST__ && App) {
@@ -425,7 +614,8 @@
       loadLibs: _loadLibs,
       openDb: _openDb,
       inspect: _inspect,
-      readLayer: _readLayer
+      readLayer: _readLayer,
+      addLayerToMap: _addLayerToMap
     };
   }
 })();
