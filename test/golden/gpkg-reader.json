@@ -1,0 +1,710 @@
+{
+  "point-le-no-envelope": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-be": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-envelope-type-1": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-envelope-type-2": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-envelope-type-3": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-envelope-type-4": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "point-empty-flag": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "point-nan-is-empty": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "point-one-nan-is-empty": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "extended-binary-unsupported": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "unsupported"
+  },
+  "extended-binary-empty-bit-wins": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "linestring": {
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          0,
+          0
+        ],
+        [
+          1.5,
+          2.5
+        ],
+        [
+          3,
+          -4
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "polygon-with-hole": {
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            10,
+            0
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            0,
+            10
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            2,
+            2
+          ],
+          [
+            4,
+            2
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            2,
+            4
+          ],
+          [
+            2,
+            2
+          ]
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "linestring-zero-points": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "polygon-zero-rings": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "multipoint": {
+    "geometry": {
+      "type": "MultiPoint",
+      "coordinates": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "multilinestring": {
+    "geometry": {
+      "type": "MultiLineString",
+      "coordinates": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          [
+            5,
+            5
+          ],
+          [
+            6,
+            7
+          ]
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "multipolygon-two-parts": {
+    "geometry": {
+      "type": "MultiPolygon",
+      "coordinates": [
+        [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              0
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              0,
+              10
+            ],
+            [
+              0,
+              0
+            ]
+          ]
+        ],
+        [
+          [
+            [
+              20,
+              20
+            ],
+            [
+              24,
+              20
+            ],
+            [
+              24,
+              24
+            ],
+            [
+              20,
+              20
+            ]
+          ]
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "multipolygon-be-member-in-le": {
+    "geometry": {
+      "type": "MultiPolygon",
+      "coordinates": [
+        [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              0
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              0,
+              10
+            ],
+            [
+              0,
+              0
+            ]
+          ]
+        ],
+        [
+          [
+            [
+              20,
+              20
+            ],
+            [
+              24,
+              20
+            ],
+            [
+              24,
+              24
+            ],
+            [
+              20,
+              20
+            ]
+          ]
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "multipoint-only-nan-member": {
+    "geometry": null,
+    "empty": true,
+    "skipped": null
+  },
+  "multipoint-contains-linestring": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "unsupported"
+  },
+  "multipolygon-contains-point": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "unsupported"
+  },
+  "pointz-1001": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "pointm-2001": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "pointzm-3001": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "linestringz-1002": {
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "ewkb-pointz-flag": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "ewkb-srid-flag": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "collection-with-point": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "collection"
+  },
+  "collection-nested-members-walked": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "collection"
+  },
+  "try-valid-point-passthrough": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -105.25,
+        39.75
+      ]
+    },
+    "empty": false,
+    "skipped": null
+  },
+  "bad-magic": {
+    "error": "Not a GeoPackage geometry"
+  },
+  "bad-envelope-type-5": {
+    "error": "Bad envelope type"
+  },
+  "bad-envelope-type-7": {
+    "error": "Bad envelope type"
+  },
+  "curvepolygon-type-10-unsupported": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "unsupported"
+  },
+  "collection-with-circularstring-member": {
+    "geometry": null,
+    "empty": false,
+    "skipped": "unsupported"
+  },
+  "hex-odd-length": {
+    "error": "Bad hex"
+  },
+  "hex-non-hex-digits": {
+    "error": "Bad hex"
+  },
+  "wkb-bytes-pointz": {
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        1,
+        2
+      ]
+    },
+    "bytesRead": 29,
+    "skipped": null
+  },
+  "wkb-bytes-nested-collection": {
+    "geometry": null,
+    "bytesRead": 80,
+    "skipped": "collection"
+  },
+  "wkb-bytes-multipoint-mismatch-walked": {
+    "geometry": null,
+    "bytesRead": 71,
+    "skipped": "unsupported"
+  },
+  "row-full-rules": {
+    "open": true,
+    "closed": false,
+    "name": "Stop A",
+    "props": "{\"a\":1}",
+    "flag": true,
+    "count": 42
+  },
+  "row-boolean-zero-and-one": {
+    "a": false,
+    "b": true
+  },
+  "row-null-omitted": {},
+  "row-blob-skipped": {
+    "t": "kept"
+  },
+  "row-pk-and-geom-skipped": {
+    "x": 3
+  },
+  "row-lowercase-boolean": {
+    "flag": true
+  },
+  "row-json-text-unchanged": {
+    "props": "{\"a\":1}"
+  },
+  "row-blob-with-length-declared-type": {
+    "t": "kept"
+  },
+  "proj-srsid-4326": {
+    "kind": "none",
+    "label": "WGS 84 (EPSG:4326)"
+  },
+  "proj-epsg-4326-lowercase-org": {
+    "kind": "none",
+    "label": "WGS 84 (EPSG:4326)"
+  },
+  "proj-ogc-crs84": {
+    "kind": "none",
+    "label": "WGS 84 (EPSG:4326)"
+  },
+  "proj-epsg-4269": {
+    "kind": "none",
+    "label": "NAD83 (EPSG:4269)"
+  },
+  "proj-epsg-3857": {
+    "kind": "proj4",
+    "def": "EPSG:3857",
+    "label": "Web Mercator (EPSG:3857)"
+  },
+  "proj-epsg-900913": {
+    "kind": "proj4",
+    "def": "EPSG:3857",
+    "label": "Web Mercator (EPSG:3857)"
+  },
+  "proj-nad83-utm-13n": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=13 +datum=NAD83 +units=m +no_defs",
+    "label": "NAD83 / UTM zone 13N (EPSG:26913)"
+  },
+  "proj-nad83-utm-1n": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=1 +datum=NAD83 +units=m +no_defs",
+    "label": "NAD83 / UTM zone 1N (EPSG:26901)"
+  },
+  "proj-nad83-utm-23n": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=23 +datum=NAD83 +units=m +no_defs",
+    "label": "NAD83 / UTM zone 23N (EPSG:26923)"
+  },
+  "proj-wgs84-utm-1n": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=1 +datum=WGS84 +units=m +no_defs",
+    "label": "WGS 84 / UTM zone 1N (EPSG:32601)"
+  },
+  "proj-wgs84-utm-60n": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=60 +datum=WGS84 +units=m +no_defs",
+    "label": "WGS 84 / UTM zone 60N (EPSG:32660)"
+  },
+  "proj-wgs84-utm-1s": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=1 +south +datum=WGS84 +units=m +no_defs",
+    "label": "WGS 84 / UTM zone 1S (EPSG:32701)"
+  },
+  "proj-wgs84-utm-60s": {
+    "kind": "proj4",
+    "def": "+proj=utm +zone=60 +south +datum=WGS84 +units=m +no_defs",
+    "label": "WGS 84 / UTM zone 60S (EPSG:32760)"
+  },
+  "proj-26900-falls-to-wkt": {
+    "kind": "wkt",
+    "def": "PROJCS[\"x\"]",
+    "label": "EPSG:26900 (from file)"
+  },
+  "proj-26924-no-wkt-unsupported": {
+    "kind": "unsupported",
+    "label": "EPSG:26924",
+    "error": "Unknown projection (EPSG:26924)"
+  },
+  "proj-32661-undefined-wkt-unsupported": {
+    "kind": "unsupported",
+    "label": "EPSG:32661",
+    "error": "Unknown projection (EPSG:32661)"
+  },
+  "proj-other-org-wkt": {
+    "kind": "wkt",
+    "def": "NOT A REAL WKT",
+    "label": "NONE:999001 (from file)"
+  },
+  "proj-undefined-minus1-lonlat-envelope": {
+    "kind": "none",
+    "label": "Undefined (treated as longitude/latitude)"
+  },
+  "proj-undefined-0-projected-envelope": {
+    "kind": "unsupported",
+    "label": "Undefined projection",
+    "error": "Undefined projection and coordinates are not longitude/latitude"
+  },
+  "proj-undefined-no-envelope": {
+    "kind": "unsupported",
+    "label": "Undefined projection",
+    "error": "Undefined projection and coordinates are not longitude/latitude"
+  },
+  "proj-undefined-srs-with-real-wkt": {
+    "kind": "wkt",
+    "def": "PROJCS[\"y\"]",
+    "label": "NONE:0 (from file)"
+  },
+  "proj-null-row": {
+    "kind": "unsupported",
+    "label": "?:?",
+    "error": "Unknown projection (?:?)"
+  },
+  "transform-point": {
+    "type": "Point",
+    "coordinates": [
+      12,
+      26
+    ]
+  },
+  "transform-polygon-hole": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -100,
+          40
+        ],
+        [
+          -96,
+          40
+        ],
+        [
+          -96,
+          44
+        ],
+        [
+          -100,
+          40
+        ]
+      ],
+      [
+        [
+          -99,
+          41
+        ],
+        [
+          -98,
+          41
+        ],
+        [
+          -98,
+          42
+        ],
+        [
+          -99,
+          41
+        ]
+      ]
+    ]
+  },
+  "transform-multipolygon": {
+    "type": "MultiPolygon",
+    "coordinates": [
+      [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            0.5,
+            0
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            2.5,
+            2.5
+          ],
+          [
+            3,
+            2.5
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            2.5,
+            2.5
+          ]
+        ]
+      ]
+    ]
+  },
+  "transform-null": null
+}

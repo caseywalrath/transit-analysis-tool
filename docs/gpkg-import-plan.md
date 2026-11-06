@@ -823,3 +823,19 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
   `empty_geom` and the non-feature rows have NULL envelopes. Fixture sha256 `af3df120…`.
 - Gate: decoded blobs by hand (magic, flags, UTM point); code-review skill skipped as the
   diff is vendored files plus a test generator.
+
+**Phase 1 (2026-11-06).** 1a [H] accepted after **1 send-back**; 1b [O] by the orchestrator.
+- 1a first pass: clean code and 39 correct golden cases, but `code-review` (high) found gaps
+  the card never specified: sized `BLOB(n)` types, curve types (8+) throwing and aborting a
+  layer, zero-count bodies not reported empty, Multi* member type not checked, one-NaN
+  points, ExtendedGeoPackageBinary flag, loose hex parsing, `bytesRead` untested. Send-back
+  with 8 numbered fixes; second Haiku pass did all 8 with no regressions. Lesson: the card's
+  contract was the ceiling of what Haiku built; edge cases need to be listed in the card.
+- 1b review finding (orchestrator's own bug): undefined SRS was checked before the file's
+  WKT; now WKT first, matching the plan order.
+- **For Phase 2:** `skipped` can be `null`, `"collection"` or `"unsupported"`; `_readLayer`
+  must count `unsupported` too (add `skipped.unsupported`). `wkbToGeoJSON` still throws on
+  unknown types; always go through `parseGeometryBlob`. A Polygon whose rings have zero
+  points (`[[]]`) is passed through; the loader should drop features whose geometry fails a
+  cheap bbox check. Extra wrappers on `GpkgReader` (`*Hex`, `*JSON`, `transformGeometryAffine`,
+  `wkbHexToGeoJSON`) exist for golden tests only.
