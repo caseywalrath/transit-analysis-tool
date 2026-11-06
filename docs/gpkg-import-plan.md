@@ -928,3 +928,22 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
   reach the import. Layer ⋯ menu "Copy to drawn features" appears when the layer
   converts to ≤ 2,000 drawn features (Multi* parts counted); only those layers keep
   their FeatureCollection in memory.
+
+**Phase 6 (2026-11-06).** 6a [H] accepted first pass (card corrected before launch: the
+GTFS store has no list/remove, so the contract was rewritten); 6b [O]. Review (high)
+found 10: 7 fixed by the orchestrator, including one in 6a's code (a failed trim after a
+successful write triggered the drop-everything retry) — fixed directly rather than sent
+back because it was three lines.
+- `App.gpkgStore = { supported, save(key, bytes, layers, colors), list, update(key,
+  layers, colors), remove, clear }`, DB `mat-gpkg-cache`, max 3 files / 100 MB.
+- Store key is `"<file name>|<byte size>"` so two different files with the same name
+  never merge; the display name drops the suffix. `colors[table] = { base, color }`:
+  `base` stays the layer's reset color, `color` is any recolor.
+- `App.restoreCachedGpkg()` runs from app.js after the GTFS restore: oldest file first,
+  `_yield` between tables, per-table failure skips only that table, an unopenable file is
+  dropped from the store, offline startup keeps the files for next time.
+- Writes: on import (`save`), on Remove layer (`update`; last layer deletes), on a real
+  color change (debounced 400 ms; repainters run on every style change so it compares
+  with the last saved color), toolbar Clear empties the store even if nothing is shown.
+- Not done (accepted): store records hold bytes and metadata together, so prune/update
+  copy file bytes (≤100 MB); a third copy of the IndexedDB helper (gtfs/network/gpkg).

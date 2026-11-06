@@ -490,6 +490,10 @@
     var layers = [];
     var rec = {
       id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
+      // Store key: name plus byte size, so two different files that share a
+      // name never merge into one stored record.
+      fileKey: meta.fileKey || meta.fileName,
+      savedColor: color,
       featureCount: featureCollection.features.length, color: color,
       sourceId: sourceId, styleKey: styleKey, layers: layers,
       // Kept only when the layer is small enough to copy to drawn features;
@@ -503,7 +507,7 @@
       // earlier, unrelated import.
       delete App.layerStyles[styleKey];
       App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
-        function () { _repaint(rec); });
+        function () { _repaint(rec); _colorMaybeChanged(rec); });
     } catch (e) {
       // Undo whatever got onto the map, so a half-added import never draws
       // shapes that have no Layers-panel row to remove them.
@@ -578,13 +582,18 @@
   App.gpkgRemoveLayer = function (id) {
     var i = _find(id);
     if (i < 0) return;
+    var fileKey = _registry[i].fileKey;
     _removeOne(_registry[i]);
     _registry.splice(i, 1);
+    _persist(fileKey);
     _afterChange();
   };
 
   App.gpkgClearAll = function () {
     _closePopup();
+    // Cleared even when nothing is on screen: files not restored yet (offline
+    // start, restore still loading) must not come back on the next refresh.
+    if (App.gpkgStore && App.gpkgStore.supported()) App.gpkgStore.clear();
     if (!_registry.length) return;
     _registry.forEach(_removeOne);
     _registry = [];
@@ -977,8 +986,12 @@
     var db = null;
     var libs = null;
     _status("Opening " + file.name + "…");
+    var bytes = null;
+    var fileKey = null;
     return Promise.all([_loadLibs(), _readFile(file)]).then(function (res) {
       libs = res[0];
+      bytes = res[1];
+      fileKey = file.name + "|" + (bytes.byteLength || 0);
       db = _openDb(libs, res[1]);
       var layers = _inspect(libs, db).layers;
       if (!layers.length) throw new Error("This GeoPackage has no layers.");
@@ -1000,7 +1013,7 @@
             try {
               var r = _readLayer(libs, db, layer);
               Object.keys(skipped).forEach(function (k) { skipped[k] += r.skipped[k] || 0; });
-              if (_addLayerToMap(r.featureCollection, { fileName: file.name, layerName: layer.table })) added++;
+              if (_addLayerToMap(r.featureCollection, { fileName: file.name, fileKey: fileKey, layerName: layer.table })) added++;
             } catch (e) {
               failed.push(layer.table);
             }
@@ -1009,6 +1022,7 @@
         return chain.then(function () {
           choice.finish();
           _status(_summary(added, skipped, failed));
+          if (added) _saveFile(fileKey, bytes);
         }, function (e) {
           choice.finish();
           throw e;
@@ -1020,6 +1034,141 @@
     }).then(function () {
       if (db) { try { db.close(); } catch (e) { /* already closed */ } }
       _busy = false;
+    });
+  };
+
+  // ---- Keep imports across a page refresh -------------------------------------
+  // The store (js/core/gpkg-store.js) keeps each file's original bytes plus the
+  // tables shown and their colors; restoring re-runs the same open → read →
+  // add path as an upload, so a restored layer can never differ from one just
+  // imported. Everything here is best-effort: the layers on screen are already
+  // usable whether or not a write lands.
+
+  // Per table: the import's own color (`base`, the reset target) and the
+  // color on screen now (`color`, after any recolor).
+  function _currentColor(r) {
+    var c = App.resolveLayerColors(r.styleKey);
+    return (c && c[0]) || r.color;
+  }
+
+  function _fileState(fileKey) {
+    var layers = [], colors = {};
+    _registry.forEach(function (r) {
+      if (r.fileKey !== fileKey) return;
+      if (layers.indexOf(r.layerName) < 0) layers.push(r.layerName);
+      colors[r.layerName] = { base: r.color, color: _currentColor(r) };
+    });
+    return { layers: layers, colors: colors };
+  }
+
+  function _storeOk() { return !!(App.gpkgStore && App.gpkgStore.supported()); }
+
+  function _saveFile(fileKey, bytes) {
+    if (!_storeOk() || !bytes) return;
+    var st = _fileState(fileKey);
+    _registry.forEach(function (r) { if (r.fileKey === fileKey) r.savedColor = _currentColor(r); });
+    App.gpkgStore.save(fileKey, bytes, st.layers, st.colors).catch(function () { /* convenience only */ });
+  }
+
+  // Removing a file's last layer passes [] to update(), which deletes the record.
+  function _persist(fileKey) {
+    if (!_storeOk() || _restoring) return;
+    var st = _fileState(fileKey);
+    App.gpkgStore.update(fileKey, st.layers, st.colors).catch(function () { /* convenience only */ });
+  }
+
+  // Every style change anywhere runs every repainter, so this writes only when
+  // this layer's own color really changed, and only once a drag settles:
+  // update() rewrites the whole record, file bytes included.
+  var _persistTimers = {};
+  function _colorMaybeChanged(rec) {
+    if (_restoring) return;
+    var c = _currentColor(rec);
+    if (c === rec.savedColor) return;
+    rec.savedColor = c;
+    clearTimeout(_persistTimers[rec.fileKey]);
+    _persistTimers[rec.fileKey] = setTimeout(function () { _persist(rec.fileKey); }, 400);
+  }
+
+  var _restoring = false;
+
+  // The display name is the store key without its "|<size>" suffix.
+  function _nameFromKey(key) {
+    var i = String(key).lastIndexOf("|");
+    return i > 0 ? key.slice(0, i) : key;
+  }
+
+  // Restores one table; a failure skips that table only.
+  function _restoreTable(libs, db, layers, rec, table) {
+    var layer = layers.filter(function (l) { return l.table === table && l.supported; })[0];
+    if (!layer) return false;
+    try {
+      var r = _readLayer(libs, db, layer);
+      var saved = (rec.colors && rec.colors[table]) || {};
+      var base = typeof saved === "string" ? saved : saved.base;
+      var id = _addLayerToMap(r.featureCollection,
+        { fileName: _nameFromKey(rec.name), fileKey: rec.name, layerName: table, color: base });
+      if (!id) return false;
+      var reg = _registry[_find(id)];
+      if (saved.color && saved.color !== reg.color) App.setLayerStyle(reg.styleKey, { color: saved.color });
+      reg.savedColor = _currentColor(reg);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Called once at startup from app.js, after the session and GTFS restores.
+  // Oldest file first, so the newest import ends up on top as it was, yielding
+  // between tables so a large cache does not freeze the page. Resolves to the
+  // number of layers restored. A file that no longer opens is dropped from the
+  // store so it does not fail again on every refresh.
+  App.restoreCachedGpkg = function () {
+    if (!_storeOk() || _busy) return Promise.resolve(0);
+    return App.gpkgStore.list().then(function (recs) {
+      if (!recs.length || _busy || _registry.length) return 0;
+      _busy = true;
+      _restoring = true;
+      var restored = 0;
+      return _loadLibs().then(function (libs) {
+        var chain = Promise.resolve();
+        recs.slice().reverse().forEach(function (rec) {
+          chain = chain.then(function () {
+            var db;
+            try {
+              db = _openDb(libs, rec.bytes);
+            } catch (e) {
+              App.gpkgStore.remove(rec.name);
+              return;
+            }
+            var layers;
+            try { layers = _inspect(libs, db).layers; } catch (e) { layers = []; }
+            var tables = rec.layers || [];
+            var step = Promise.resolve();
+            tables.forEach(function (table) {
+              step = step.then(_yield).then(function () {
+                if (_restoreTable(libs, db, layers, rec, table)) restored++;
+              });
+            });
+            return step.then(function () {
+              try { db.close(); } catch (e) { /* already closed */ }
+            });
+          });
+        });
+        return chain.then(function () { return restored; });
+      }, function () {
+        // Offline at startup: keep the files for the next refresh.
+        return 0;
+      }).then(function (n) {
+        _busy = false;
+        _restoring = false;
+        if (n) _status("Restored " + _plural(n, "GeoPackage layer"));
+        return n;
+      });
+    }).catch(function () {
+      _busy = false;
+      _restoring = false;
+      return 0;
     });
   };
 

@@ -2044,6 +2044,11 @@
       });
     }
 
+    // GeoPackage imports, same approach: original file bytes in IndexedDB,
+    // re-opened through the normal import path (App.restoreCachedGpkg in
+    // js/core/gpkg-layers.js). Reference layers only, so nothing else waits on it.
+    if (typeof App.restoreCachedGpkg === "function") App.restoreCachedGpkg();
+
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");
     if (_viewOnlyFreshBtn) {
