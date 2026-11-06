@@ -918,3 +918,13 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
   select tool is active (box-select.js stops Escape first on `window`); hiding a layer from
   its Layers-panel eye does not close an open popup (the Add Data eye does); hover pointer
   shows over a GeoPackage layer even where another layer would take the click.
+
+**Phase 7 (2026-11-06).** All [O]; review (high) found 6, fixed 5 (doc entry → 8a).
+- 7a: shapefile conversion moved verbatim into `_geojsonToDrawn(features)` in `cache.js`
+  (diffed against the old body: identical apart from one blank line).
+- 7b: `App.cache.appendGeoJSONFeatures(features)` → `{ added }` or `{ added: 0, error }`.
+  Snapshot → append → `validateSessionState` (before the undo push, so a refused copy
+  leaves no dead step) → `applyState`; one undo step; deep-copied so drawn edits never
+  reach the import. Layer ⋯ menu "Copy to drawn features" appears when the layer
+  converts to ≤ 2,000 drawn features (Multi* parts counted); only those layers keep
+  their FeatureCollection in memory.

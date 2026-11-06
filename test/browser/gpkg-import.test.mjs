@@ -543,6 +543,56 @@ function allPositions(c) {
       after30.n === before30 + 1 && !after30.popup, JSON.stringify({ before30, after30 }));
     await page.locator('.tool-btn[data-mode="point"]').click();
     await page.evaluate(() => App.gpkgClearAll());
+
+    // ---- Copy to drawn features ----
+    const copyLabel = "sample.gpkg · polys_utm";
+    const pre = await page.evaluate(async () => {
+      const t = App._gpkgTest;
+      const libs = await t.loadLibs();
+      const db = t.openDb(libs, await (await fetch("/test/fixtures/sample.gpkg")).arrayBuffer());
+      try {
+        const layer = t.inspect(libs, db).layers.find((l) => l.table === "polys_utm");
+        t.addLayerToMap(t.readLayer(libs, db, layer).featureCollection, { fileName: "sample.gpkg", layerName: "polys_utm" });
+      } finally { db.close(); }
+      return { points: App.points.length, polygons: App.polygons.length };
+    });
+    await page.evaluate((l) => {
+      document.querySelector('#fp-tab-layers button[aria-label="More actions for ' + l + '"]').click();
+    }, copyLabel);
+    await page.locator("#fp-context-menu").waitFor({ state: "visible", timeout: 5000 });
+    const copyMenu = await page.evaluate(() => Array.from(document.querySelectorAll("#fp-context-menu button")).map((b) => b.textContent));
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll("#fp-context-menu button")).find((b) => b.textContent === "Copy to drawn features").click();
+    });
+    const post = await page.evaluate(() => ({
+      points: App.points.length, polygons: App.polygons.length,
+      last: App.polygons.slice(-3).map((f) => ({ name: f.properties.name, attrs: f.properties.attributes || null, id: f.properties[App.FEATURE_ID_PROP.polygon] || null })),
+      stillImported: App.gpkgLoaded()
+    }));
+    // polys_utm has a Polygon and a 2-part MultiPolygon: 3 drawn polygons.
+    check("31. Copy to drawn features adds 3 polygons, keeps the existing drawn features and the import",
+      copyMenu.includes("Copy to drawn features") && post.points === pre.points &&
+      post.polygons === pre.polygons + 3 && post.stillImported, JSON.stringify({ copyMenu, pre, post }));
+    check("32. copied polygons carry the layer's attributes and get feature ids",
+      post.last.every((f) => f.attrs && f.attrs.label && f.id), JSON.stringify(post.last));
+    // Copies must not share coordinate arrays with the import: edit one in
+    // place, copy again, and the second copy must still have the original.
+    const alias = await page.evaluate((l) => {
+      const before = JSON.stringify(App.polygons[App.polygons.length - 3].geometry.coordinates[0][0]);
+      App.polygons[App.polygons.length - 3].geometry.coordinates[0][0][0] += 1;
+      const entry = App.gpkgReferenceEntries().find((e) => e.label === l);
+      entry.menuItems()[0].action();
+      const again = JSON.stringify(App.polygons[App.polygons.length - 3].geometry.coordinates[0][0]);
+      App.undo.undo();
+      return { before, again };
+    }, copyLabel);
+    check("33b. editing a copied polygon does not change what the next copy gets",
+      alias.before === alias.again, JSON.stringify(alias));
+    await page.evaluate(() => App.undo.undo());
+    const undone = await page.evaluate(() => ({ points: App.points.length, polygons: App.polygons.length }));
+    check("33. one Undo removes the whole copy",
+      undone.points === pre.points && undone.polygons === pre.polygons, JSON.stringify({ pre, undone }));
+    await page.evaluate(() => App.gpkgClearAll());
   } finally {
     if (browser) await browser.close().catch(() => {});
     stopServer();

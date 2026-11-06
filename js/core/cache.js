@@ -1839,6 +1839,85 @@
     return feat;
   }
 
+  // GeoJSON features → drawn-feature arrays: picks a name from the usual
+  // name-like properties, copies every other non-empty property as a string
+  // attribute, and splits Multi* geometries into one drawn feature per part
+  // (drawn features are single-part). Shared by shapefile import and
+  // GeoPackage "Copy to drawn features" so both convert identically.
+  function _geojsonToDrawn(features) {
+    var ptFeats = [], lineFeats = [], polygonFeats = [];
+
+    for (var i = 0; i < features.length; i++) {
+      var feat = features[i];
+      var geom = feat.geometry;
+      var props = feat.properties || {};
+
+      var name = props.name || props.NAME || props.Name || props.label || props.LABEL ||
+                 props.id || props.ID || ("Feature " + (i + 1));
+
+      // Copy all properties as attributes
+      var attrs = {};
+      var propKeys = Object.keys(props);
+      for (var k = 0; k < propKeys.length; k++) {
+        var pk = propKeys[k];
+        var pv = props[pk];
+        if (pv != null && pv !== "" && pk.toLowerCase() !== "name") {
+          attrs[pk] = String(pv);
+        }
+      }
+
+      if (!geom) continue;
+
+      if (geom.type === "Point") {
+        ptFeats.push(_makeFeature("Point", geom.coordinates, String(name), "", attrs));
+      } else if (geom.type === "MultiPoint") {
+        for (var mp = 0; mp < geom.coordinates.length; mp++) {
+          ptFeats.push(_makeFeature("Point", geom.coordinates[mp], String(name) + " " + (mp + 1), "", attrs));
+        }
+      } else if (geom.type === "LineString") {
+        lineFeats.push(_makeFeature("LineString", geom.coordinates, String(name), "", attrs));
+      } else if (geom.type === "MultiLineString") {
+        for (var ml = 0; ml < geom.coordinates.length; ml++) {
+          lineFeats.push(_makeFeature("LineString", geom.coordinates[ml], String(name) + " " + (ml + 1), "", attrs));
+        }
+      } else if (geom.type === "Polygon") {
+        polygonFeats.push(_makeFeature("Polygon", geom.coordinates, String(name), "", attrs));
+      } else if (geom.type === "MultiPolygon") {
+        for (var mg = 0; mg < geom.coordinates.length; mg++) {
+          polygonFeats.push(_makeFeature("Polygon", geom.coordinates[mg], String(name) + " " + (mg + 1), "", attrs));
+        }
+      }
+    }
+    return { points: ptFeats, lines: lineFeats, polygons: polygonFeats };
+  }
+
+  // Adds GeoJSON features to the drawn features without touching the existing
+  // ones (every other importer replaces them). Goes through the same snapshot
+  // → applyState path as undo, so IDs, colors and module updates behave as for
+  // any restore, and it is one undo step. Returns { added } (Multi* parts count
+  // separately) or { added: 0, error } when the result would break the
+  // session limits; nothing changes in that case.
+  function appendGeoJSONFeatures(features) {
+    // Deep copy: drawn features are edited in place (vertex drags), and must
+    // never write back into the caller's data.
+    var drawn = JSON.parse(JSON.stringify(_geojsonToDrawn(features || [])));
+    var n = drawn.points.length + drawn.lines.length + drawn.polygons.length;
+    if (!n) return { added: 0, error: "No points, lines or polygons to copy." };
+    var state = JSON.parse(JSON.stringify(collectState("light")));
+    state.points = (state.points || []).concat(drawn.points);
+    state.lines = (state.lines || []).concat(drawn.lines);
+    state.polygons = (state.polygons || []).concat(drawn.polygons);
+    // Checked before the undo snapshot, so a refused copy leaves no dead step.
+    var err = validateSessionState(state);
+    if (err) return { added: 0, error: err };
+    if (typeof App.exitEditMode === "function") App.exitEditMode();
+    if (App.undo && !App.undo.isRestoring()) App.undo.push();
+    applyState(state);
+    save();
+    if (typeof App.notifyProject === "function") App.notifyProject();
+    return { added: n };
+  }
+
   // ---- Import: CSV ----
 
   function importCSV(file) {
@@ -2215,49 +2294,8 @@
 
       if (!_confirmReplace()) return;
 
-      var ptFeats = [], lineFeats = [], polygonFeats = [];
-
-      for (var i = 0; i < geojson.features.length; i++) {
-        var feat = geojson.features[i];
-        var geom = feat.geometry;
-        var props = feat.properties || {};
-
-        var name = props.name || props.NAME || props.Name || props.label || props.LABEL ||
-                   props.id || props.ID || ("Feature " + (i + 1));
-
-        // Copy all properties as attributes
-        var attrs = {};
-        var propKeys = Object.keys(props);
-        for (var k = 0; k < propKeys.length; k++) {
-          var pk = propKeys[k];
-          var pv = props[pk];
-          if (pv != null && pv !== "" && pk.toLowerCase() !== "name") {
-            attrs[pk] = String(pv);
-          }
-        }
-
-        if (!geom) continue;
-
-        if (geom.type === "Point") {
-          ptFeats.push(_makeFeature("Point", geom.coordinates, String(name), "", attrs));
-        } else if (geom.type === "MultiPoint") {
-          for (var mp = 0; mp < geom.coordinates.length; mp++) {
-            ptFeats.push(_makeFeature("Point", geom.coordinates[mp], String(name) + " " + (mp + 1), "", attrs));
-          }
-        } else if (geom.type === "LineString") {
-          lineFeats.push(_makeFeature("LineString", geom.coordinates, String(name), "", attrs));
-        } else if (geom.type === "MultiLineString") {
-          for (var ml = 0; ml < geom.coordinates.length; ml++) {
-            lineFeats.push(_makeFeature("LineString", geom.coordinates[ml], String(name) + " " + (ml + 1), "", attrs));
-          }
-        } else if (geom.type === "Polygon") {
-          polygonFeats.push(_makeFeature("Polygon", geom.coordinates, String(name), "", attrs));
-        } else if (geom.type === "MultiPolygon") {
-          for (var mg = 0; mg < geom.coordinates.length; mg++) {
-            polygonFeats.push(_makeFeature("Polygon", geom.coordinates[mg], String(name) + " " + (mg + 1), "", attrs));
-          }
-        }
-      }
+      var drawn = _geojsonToDrawn(geojson.features);
+      var ptFeats = drawn.points, lineFeats = drawn.lines, polygonFeats = drawn.polygons;
 
       var total = ptFeats.length + lineFeats.length + polygonFeats.length;
       if (total === 0) {
@@ -2343,6 +2381,7 @@
     importCSV: importCSV,
     importKML: importKML,
     importSHP: importSHP,
+    appendGeoJSONFeatures: appendGeoJSONFeatures,
     exportFullState: exportFullState,
     importFullState: importFullState,
     listRecents:     listRecents,

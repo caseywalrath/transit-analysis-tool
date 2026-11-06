@@ -491,7 +491,10 @@
     var rec = {
       id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
       featureCount: featureCollection.features.length, color: color,
-      sourceId: sourceId, styleKey: styleKey, layers: layers
+      sourceId: sourceId, styleKey: styleKey, layers: layers,
+      // Kept only when the layer is small enough to copy to drawn features;
+      // a large layer's geometry lives in the map source alone.
+      data: _drawnPartCount(featureCollection) <= COPY_LIMIT ? featureCollection : null
     };
     try {
       _addMapLayers(rec, featureCollection, color);
@@ -610,6 +613,33 @@
     _afterChange();
   };
 
+  // Above this many drawn features a copy would swamp the Features panel and
+  // the attributes dock with one row per feature; the layer stays
+  // reference-only. Counted in drawn features, i.e. after Multi* geometries
+  // are split into one feature per part.
+  var COPY_LIMIT = 2000;
+
+  function _drawnPartCount(fc) {
+    var n = 0;
+    for (var i = 0; i < fc.features.length; i++) {
+      var g = fc.features[i].geometry;
+      n += /^Multi/.test(g.type) ? g.coordinates.length : 1;
+    }
+    return n;
+  }
+
+  function _copyMenuItems(rec) {
+    if (!rec.data || !App.cache || typeof App.cache.appendGeoJSONFeatures !== "function") return [];
+    return [{ label: "Copy to drawn features", action: function () {
+      var r = App.cache.appendGeoJSONFeatures(rec.data.features);
+      if (r.error) {
+        window.alert("Could not copy to drawn features: " + r.error);
+        return;
+      }
+      _status("Copied " + r.added.toLocaleString() + " feature" + (r.added === 1 ? "" : "s") + " to drawn features");
+    } }];
+  }
+
   // Layers-panel manifest entries, newest first. Same shape as the static
   // REFERENCE entries in layers-panel.js, so the panel builds the rows,
   // visibility, opacity, reorder, Zoom to layer and Remove with no special case.
@@ -621,6 +651,7 @@
         layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
         styleKey: r.styleKey,
         clear: function () { App.gpkgRemoveLayer(r.id); },
+        menuItems: function () { return _copyMenuItems(r); },
         badge: function () {
           return { text: r.featureCount.toLocaleString(), title: r.featureCount.toLocaleString() + " features" };
         }
