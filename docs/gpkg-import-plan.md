@@ -839,3 +839,28 @@ each, send-backs (count and reason), reassignments, and notes later phases need.
   points (`[[]]`) is passed through; the loader should drop features whose geometry fails a
   cheap bbox check. Extra wrappers on `GpkgReader` (`*Hex`, `*JSON`, `transformGeometryAffine`,
   `wkbHexToGeoJSON`) exist for golden tests only.
+
+**Phase 2 (2026-11-06).** 2a [H] and 2b [H] accepted after **1 combined send-back**; 2c [O].
+- 2a first pass followed the card plus the 12 up-front edge cases (A–L) with no misses; the
+  card-listed edge cases worked. Review (high) still found what neither listed: sql.js
+  caches a failed init globally (no retry), tiles-only files lacking
+  `gpkg_geometry_columns` threw raw SQL errors, one bad layer aborted `_inspect`,
+  case-sensitive identifier matching, composite/TEXT primary keys, a double count(*).
+  Send-back (6 fixes + 4 tests) passed; Haiku also found and fixed a real hang on its own
+  (sql.js never settles when its WASM fetch fails, so the bytes are now fetched first and
+  passed as `wasmBinary`).
+- Orchestrator fixes: "Unknown projection" reasons drop the "(from file)" suffix; WKT
+  `AXIS[...]` clauses are stripped before proj4 (GeoPackage stores x/y regardless of the
+  CRS's axis order; proj4 would otherwise swap). WKT2 nested AXIS clauses are not handled.
+- **2c scale check** with the user's `comparison.gpkg` (headless Chromium, this
+  container): library load 48 ms (vendored), inspect 44 ms; `full_census_units` 11,511
+  rows read+reprojected in 310 ms, added to map and idle in ~1.15 s; the other layers
+  31 ms / 16 ms / 3 ms read, ~0.4–0.5 s to map. All features kept, all land around
+  Denver. Well under the 5 s target: **no Web Worker or simplification needed.**
+- **For Phase 4c:** `_readLayer` and `onProgress` are fully synchronous, so a progress
+  bar would not repaint mid-layer. At the measured speeds per-layer progress (update
+  between layers, yielding with `setTimeout(0)`) is enough; per-1,000-row progress is not
+  worth making the loop async.
+- Deferred to 8a: CLAUDE.md file map/load order and doc-coverage entries for
+  `GpkgReader`, `App._gpkgTest` (test-only, guarded); header comments that point at this
+  plan file must be repointed when it moves to `docs/archive/`.
