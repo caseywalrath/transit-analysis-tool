@@ -92,6 +92,8 @@ plain static files:
 | `papaparse.min.js` | `papaparse@5.4.1` |
 | `jszip.min.js` | `jszip@3.10.1` (`dist/`) |
 | `shapefile.js` | `shapefile@0.6.6` (`dist/`) |
+| `sql-wasm.js`, `sql-wasm.wasm` | `sql.js@1.10.3` (`dist/`) — loaded lazily by the GeoPackage importer, not by `index.html` |
+| `proj4.js` | `proj4@2.11.0` (`dist/`) — loaded lazily by the GeoPackage importer, not by `index.html` |
 
 If a later phase (or any other change) bumps one of these CDN version pins
 in `index.html`, re-fetch the matching file here so the two stay in sync:

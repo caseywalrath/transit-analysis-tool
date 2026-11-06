@@ -814,4 +814,12 @@ using GeoPackage layers as analysis inputs (study areas, demand points); styling
 _Appended by the orchestrator at each phase commit: phase, tasks and the model that did
 each, send-backs (count and reason), reassignments, and notes later phases need._
 
-(empty)
+**Phase 0 (2026-11-06).** 0a [H] and 0b [H] ran in parallel; both accepted first pass, 0 send-backs.
+- 0a: README has one row covering both sql.js files instead of two (fine). `run-browser.sh`
+  prints no overall summary line; "Done when" for browser runs means every file reports
+  PASS and none FAIL (20/20 files).
+- 0b: added `PRAGMA page_size = 1024` to get under 50 KB (16 KB). `polys_utm` row 1 is a
+  plain Polygon inside a MULTIPOLYGON-typed table (deliberate: readers must accept it).
+  `empty_geom` and the non-feature rows have NULL envelopes. Fixture sha256 `af3df120…`.
+- Gate: decoded blobs by hand (magic, flags, UTM point); code-review skill skipped as the
+  diff is vendored files plus a test generator.
