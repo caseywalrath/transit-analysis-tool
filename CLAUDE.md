@@ -70,7 +70,7 @@ One line per file. Detail (behavior, invariants, public API) lives in the refere
 
 ```
 index.html                  App shell: toolbar, map, Features/Layers panel, module-panel container, script tags   [core-app]
-css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-)   [core-app]
+css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gpkg-)   [core-app]
 css/sidebar-v2.css          Dormant legacy sidebar styles   [core-app]
 js/app.js                   Startup, module registry, toolbar menus, keyboard shortcuts, renderModuleState/renderModuleInputs   [core-app]
 js/core/

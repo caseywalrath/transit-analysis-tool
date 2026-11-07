@@ -3050,6 +3050,68 @@ body.present-mode .module-popup {
   padding: 8px 10px;
 }
 
+/* ---- GeoPackage attribute table viewer ---- */
+.floating-widget.gpkg-table-widget {
+  max-height: none;
+  overflow: visible;
+  max-width: calc(100% - 20px);
+}
+.gpkg-table-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.gpkg-table-filter {
+  flex: 0 0 200px;
+  height: var(--ctl-height-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}
+.gpkg-table-count {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.gpkg-table-scroll {
+  max-height: 34vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.gpkg-table {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.gpkg-table th,
+.gpkg-table td {
+  padding: 2px var(--space-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.gpkg-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-weight: var(--weight-semibold);
+  z-index: 1;
+}
+.gpkg-table td { color: var(--text-primary); font-family: var(--font-mono); }
+.gpkg-table td:first-child { color: var(--text-faint); }
+.gpkg-table-spatial tbody tr { cursor: pointer; }
+.gpkg-table tbody tr:hover { background: var(--surface-hover); }
+.gpkg-table tbody tr.gpkg-row-active { background: var(--accent-soft); }
+.gpkg-table-hint {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
 /* ---- TPI popup body wrapper ---- */
 .tpi-body {
   padding: 16px;

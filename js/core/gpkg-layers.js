@@ -11,9 +11,9 @@
   "use strict";
   var App = window.App;
 
-  var SQL_JS_BASE = "https://unpkg.com/sql.js@1.10.3/dist/";
+  var SQL_JS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/";
   var SQL_JS_URL = SQL_JS_BASE + "sql-wasm.js";
-  var PROJ4_URL = "https://unpkg.com/proj4@2.11.0/dist/proj4.js";
+  var PROJ4_URL = "https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js";
 
   var LIBS_ERROR = "Could not load the GeoPackage reader. Check your internet connection and try again.";
   var NOT_GPKG = "This file is not a GeoPackage.";

@@ -183,7 +183,7 @@ function allPositions(c) {
       await retryContext.addInitScript(() => { window.__MAT_TEST__ = true; });
       let wasmAborted = false;
       await routeVendoredAssets(retryContext, port, async (route, reqUrl) => {
-        if (reqUrl === "https://unpkg.com/sql.js@1.10.3/dist/sql-wasm.wasm" && !wasmAborted) {
+        if (reqUrl === "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.wasm" && !wasmAborted) {
           wasmAborted = true;
           await route.abort();
           return true;

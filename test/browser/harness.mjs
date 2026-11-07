@@ -91,9 +91,9 @@ export const VENDOR_MAP = new Map([
   ["https://unpkg.com/papaparse@5.4.1/papaparse.min.js", { file: "papaparse.min.js", type: "application/javascript" }],
   ["https://unpkg.com/jszip@3.10.1/dist/jszip.min.js", { file: "jszip.min.js", type: "application/javascript" }],
   ["https://unpkg.com/shapefile@0.6.6/dist/shapefile.js", { file: "shapefile.js", type: "application/javascript" }],
-  ["https://unpkg.com/sql.js@1.10.3/dist/sql-wasm.js", { file: "sql-wasm.js", type: "application/javascript" }],
-  ["https://unpkg.com/sql.js@1.10.3/dist/sql-wasm.wasm", { file: "sql-wasm.wasm", type: "application/wasm" }],
-  ["https://unpkg.com/proj4@2.11.0/dist/proj4.js", { file: "proj4.js", type: "application/javascript" }]
+  ["https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js", { file: "sql-wasm.js", type: "application/javascript" }],
+  ["https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.wasm", { file: "sql-wasm.wasm", type: "application/wasm" }],
+  ["https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js", { file: "proj4.js", type: "application/javascript" }]
 ]);
 
 // Vendors CDN assets locally, allows the local static server through, and

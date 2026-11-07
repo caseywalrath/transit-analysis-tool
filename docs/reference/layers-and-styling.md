@@ -62,6 +62,8 @@ Two halves: a pure `window.LayerPalette` block (no turf/DOM/Map/App, golden-test
 
 **GTFS route browser** (`docs/archive/gtfs-route-browser-plan.md`): the "GTFS routes" row gets a caret (`decorateGtfsRow`) opening a filter (`.lp-gtfs-filter`, `App.gtfsBrowse.filterRoutes`), Show all / Hide all / Show only filtered, and up to 200 route rows (then "Showing 200 of N"). Shape rows build lazily. Hover/focus → `App.gtfsHighlight`; click pins (double-click pins + zooms); eye → `gtfsSetRouteHidden`/`gtfsSetShapeHidden`; ⋯/right-click/ContextMenu/Shift+F10 → `App.showContextMenu` (copy as line / each shape / grouped Service, show only, zoom). Copies then `App.selectFeature("line", firstNewIndex)`. UI state `_gtfsUI` survives `render()`, which also preserves scroll and filter focus; a new feed resets it; nothing renders when `App.gtfsRouteIndex()` is null. Styles `.lp-gtfs-*`.
 
+**Runtime reference rows:** `App.registerReferenceLayer(entry)` adds a row to the Reference / Imported band at run time (same entry shape as `REFERENCE`: `id`, `label`, `layers: [{id, op}]`, optional `clear`, `badge`, `menuItems`, `extraActions`); the row goes to the top of the band, and re-registering an id replaces it. `App.unregisterReferenceLayer(id)` drops it. Both mutate `REFERENCE`/`_refOrder` in place (rendered rows hold references) and re-render. Used only by `gpkg-import.js`; built-in rows stay in the static manifest.
+
 Also uses: `App.rerenderForType`, `App._openFpSlider`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, basemap API, `properties.hidden`.
 
 ## GeoPackage import (gpkg-reader.js / gpkg-layers.js / gpkg-store.js)

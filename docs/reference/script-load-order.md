@@ -2,7 +2,7 @@
 
 Plain `<script>` tags in `index.html`, in this order (verified against `index.html`). Order matters: a file may only use, **at load time**, what earlier files defined. Most files touch `App.*` only inside functions.
 
-CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile.
+CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js is not a script tag: `gpkg-import.js` injects it the first time a `.gpkg` is opened.
 
 ```
 js/core/
