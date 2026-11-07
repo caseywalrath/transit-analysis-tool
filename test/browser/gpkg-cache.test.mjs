@@ -144,6 +144,29 @@ async function load(page, url) {
     check("6. toolbar Clear empties the store; nothing comes back after a reload",
       cleared.length === 0 && afterClear.length === 0, JSON.stringify({ cleared, afterClear }));
 
+    // A table without geometry is stored with its file and back after a reload.
+    await page.evaluate(() => { document.getElementById("ad-gpkg-file").value = ""; });
+    await page.setInputFiles("#ad-gpkg-file", FIXTURE);
+    await page.waitForFunction(() => !document.getElementById("gp-dialog").hidden, null, { timeout: 20000 });
+    await page.evaluate(() => {
+      document.querySelectorAll("#gp-layer-list label.gp-row").forEach((row) => {
+        const cb = row.querySelector("input");
+        const name = row.querySelector(".gp-name").textContent;
+        if (!cb.disabled && cb.checked !== (name === "pts_utm" || name === "notes")) cb.click();
+      });
+      document.getElementById("gp-add").click();
+    });
+    const storedT = await waitStored(page, (s) => s.length === 1 && s[0].layers.includes("notes"));
+    await load(page, url);
+    await waitImports(page, 1);
+    const menuT = await page.evaluate(() => {
+      const e = App.gpkgReferenceEntries()[0];
+      return e ? e.menuItems().map((m) => m.label) : [];
+    });
+    check("6b. a table without geometry is stored with its file and offered again after a reload",
+      storedT.length === 1 && menuT.includes("View table: notes"), JSON.stringify({ storedT, menuT }));
+    await page.evaluate(() => App.gpkgClearAll());
+
     check("7. no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | "));
   } finally {
     if (browser) await browser.close().catch(() => {});

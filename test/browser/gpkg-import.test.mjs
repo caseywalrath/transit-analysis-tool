@@ -71,10 +71,10 @@ function allPositions(c) {
         const inspected = T.inspect(libs, db);
         const reads = {};
         for (const l of inspected.layers) {
-          if (l.supported) reads[l.table] = T.readLayer(libs, db, l);
+          if (l.supported && !l.tableOnly) reads[l.table] = T.readLayer(libs, db, l);
         }
         return {
-          layers: inspected.layers.map((l) => ({ table: l.table, supported: l.supported, reason: l.reason, count: l.count })),
+          layers: inspected.layers.map((l) => ({ table: l.table, supported: l.supported, reason: l.reason, count: l.count, tableOnly: !!l.tableOnly })),
           reads: reads,
           notGpkg: notGpkg
         };
@@ -92,7 +92,7 @@ function allPositions(c) {
     const byId = (table, id) => feat(table, (f) => f.id === id)[0] || null;
 
     // ---- 1. Supported layers ----
-    const supportedNames = layers.filter((l) => l.supported).map((l) => l.table).sort();
+    const supportedNames = layers.filter((l) => l.supported && !l.tableOnly).map((l) => l.table).sort();
     check("1. supported layers are exactly pts_utm, lines_wgs, polys_utm, mixed_z, empty_geom, undef_ok",
       JSON.stringify(supportedNames) === JSON.stringify(SUPPORTED),
       "actual " + JSON.stringify(supportedNames));
@@ -101,16 +101,18 @@ function allPositions(c) {
     const reasons = {
       weird_srs: byTable.weird_srs && byTable.weird_srs.reason,
       undef_bad: byTable.undef_bad && byTable.undef_bad.reason,
-      notes: byTable.notes && byTable.notes.reason,
       tiles_tbl: byTable.tiles_tbl && byTable.tiles_tbl.reason
     };
     const reasonsOk = byTable.weird_srs && byTable.weird_srs.supported === false &&
       typeof reasons.weird_srs === "string" && reasons.weird_srs.indexOf("Unknown projection") === 0 &&
       reasons.undef_bad === "Undefined projection and coordinates are not longitude/latitude" &&
-      reasons.notes === "Table has no geometry" &&
       reasons.tiles_tbl === "Raster tiles are not supported";
-    check("2. unsupported layers: weird_srs, undef_bad, notes, tiles_tbl have the plan's reasons",
+    check("2. unsupported layers: weird_srs, undef_bad, tiles_tbl have the plan's reasons",
       reasonsOk, JSON.stringify(reasons));
+    // Attribute tables open in the table viewer instead of being refused.
+    check("2b. the attribute table notes is listed as a table, not a map layer, with its row count",
+      byTable.notes && byTable.notes.supported === true && byTable.notes.tableOnly === true && byTable.notes.count === 1,
+      JSON.stringify(byTable.notes));
 
     // ---- 3. pts_utm reprojection ----
     const center = byLabel("pts_utm", "center", "name");
@@ -404,9 +406,10 @@ function allPositions(c) {
     const rows22 = opened22 ? await pickerRows() : [];
     const disabled22 = rows22.filter((r) => r.disabled).map((r) => r.name);
     const enabled22 = rows22.filter((r) => !r.disabled);
-    check("22. setInputFiles opens the picker: 10 rows, 4 disabled, the 6 supported rows start checked",
-      opened22 && rows22.length === 10 && disabled22.length === 4 &&
-      enabled22.length === 6 && enabled22.every((r) => r.checked),
+    // The attribute table "notes" is selectable (it opens in the table viewer).
+    check("22. setInputFiles opens the picker: 10 rows, 3 disabled, the 7 supported rows start checked",
+      opened22 && rows22.length === 10 && disabled22.length === 3 &&
+      enabled22.length === 7 && enabled22.every((r) => r.checked),
       "rows " + rows22.length + ", disabled " + JSON.stringify(disabled22));
 
     // ---- 23. Add follows the checked rows ----
@@ -581,7 +584,7 @@ function allPositions(c) {
       const before = JSON.stringify(App.polygons[App.polygons.length - 3].geometry.coordinates[0][0]);
       App.polygons[App.polygons.length - 3].geometry.coordinates[0][0][0] += 1;
       const entry = App.gpkgReferenceEntries().find((e) => e.label === l);
-      entry.menuItems()[0].action();
+      entry.menuItems().find((m) => m.label === "Copy to drawn features").action();
       const again = JSON.stringify(App.polygons[App.polygons.length - 3].geometry.coordinates[0][0]);
       App.undo.undo();
       return { before, again };
@@ -592,6 +595,69 @@ function allPositions(c) {
     const undone = await page.evaluate(() => ({ points: App.points.length, polygons: App.polygons.length }));
     check("33. one Undo removes the whole copy",
       undone.points === pre.points && undone.polygons === pre.polygons, JSON.stringify({ pre, undone }));
+    await page.evaluate(() => App.gpkgClearAll());
+
+    // ---- Time/cost color ramp ----
+    const ramp = await page.evaluate(() => {
+      const fc = { type: "FeatureCollection", features: [10, 20, null].map((v, i) => ({
+        type: "Feature", id: i, geometry: { type: "Point", coordinates: [-105 + i * 0.001, 39.75] },
+        properties: v === null ? { name: "n" + i } : { name: "n" + i, travel_secs: v } })) };
+      const id = App._gpkgTest.addLayerToMap(fc, { fileName: "ramp.gpkg", layerName: "reach" });
+      const e = App.gpkgReferenceEntries().find((x) => x.label === "ramp.gpkg · reach");
+      const L = e.layers[0].id;
+      const asRamp = App.map.getPaintProperty(L, "circle-color");
+      App.setLayerStyle(e.styleKey, { color: "#123456" });
+      const asSolid = App.map.getPaintProperty(L, "circle-color");
+      App.clearLayerStyle(e.styleKey);
+      const back = App.map.getPaintProperty(L, "circle-color");
+      return { id, title: e.badge().title, asRamp, asSolid, back };
+    });
+    check("34. a layer with a time column is colored by a green → red ramp, gray for no value",
+      Array.isArray(ramp.asRamp) && ramp.asRamp[0] === "case" && JSON.stringify(ramp.asRamp).indexOf("#9aa0a6") >= 0 &&
+      JSON.stringify(ramp.asRamp).indexOf("#1a9850") >= 0 && /colored by travel_secs \(10 green → 20 red/.test(ramp.title),
+      JSON.stringify(ramp).slice(0, 400));
+    check("35. a color picked in the style drawer replaces the ramp; reset brings the ramp back",
+      ramp.asSolid === "#123456" && Array.isArray(ramp.back) && ramp.back[0] === "case", JSON.stringify({ asSolid: ramp.asSolid, back: ramp.back && ramp.back[0] }));
+    await page.evaluate(() => App.gpkgClearAll());
+
+    // ---- Attribute tables: a layer's own table and a table without geometry ----
+    await page.evaluate(() => { document.getElementById("ad-gpkg-file").value = ""; });
+    await page.setInputFiles("#ad-gpkg-file", GPKG_FIXTURE);
+    await page.locator("#gp-dialog").waitFor({ state: "visible", timeout: 15000 });
+    await page.evaluate(() => {
+      document.querySelectorAll("#gp-layer-list label.gp-row").forEach((row) => {
+        const cb = row.querySelector("input");
+        const name = row.querySelector(".gp-name").textContent;
+        if (!cb.disabled && cb.checked !== (name === "pts_utm" || name === "notes")) cb.click();
+      });
+      document.getElementById("gp-add").click();
+    });
+    await page.locator("#gp-dialog").waitFor({ state: "hidden", timeout: 15000 });
+    const tblMenu = await page.evaluate(() => App.gpkgReferenceEntries()[0].menuItems().map((m) => m.label));
+    check("36. a layer's ⋯ menu offers its attribute table and the file's table without geometry",
+      tblMenu.includes("View attribute table") && tblMenu.includes("View table: notes"), JSON.stringify(tblMenu));
+    const widgetRows = () => page.evaluate(() => {
+      const w = document.querySelector('.floating-widget[data-widget-id="gpkg-table"]');
+      return w ? { rows: w.querySelectorAll("tbody tr").length, title: w.textContent.slice(0, 80) } : null;
+    });
+    await page.evaluate(() => App.gpkgReferenceEntries()[0].menuItems().find((m) => m.label === "View table: notes").action());
+    await page.waitForFunction(() => document.querySelectorAll('.floating-widget[data-widget-id="gpkg-table"] tbody tr').length > 0, null, { timeout: 5000 }).catch(() => {});
+    const notesView = await widgetRows();
+    check("37. View table: notes opens the table window with its one row", notesView && notesView.rows === 1, JSON.stringify(notesView));
+    await page.evaluate(() => App.gpkgReferenceEntries()[0].menuItems().find((m) => m.label === "View attribute table").action());
+    await page.waitForFunction(() => document.querySelectorAll('.floating-widget[data-widget-id="gpkg-table"] tbody tr').length === 3, null, { timeout: 5000 }).catch(() => {});
+    const layerView = await widgetRows();
+    await page.evaluate(() => document.querySelector('.floating-widget[data-widget-id="gpkg-table"] tbody tr[data-row="1"]').click());
+    await page.waitForFunction(() => {
+      const t = document.querySelector(".gp-popup .gp-popup-title");
+      return t && t.textContent.indexOf("pts_utm") >= 0;
+    }, null, { timeout: 5000 }).catch(() => {});
+    const zoomed = await page.evaluate(() => ({ popup: !!document.querySelector(".gp-popup"), keys: Array.from(document.querySelectorAll(".gp-popup dt")).map((d) => d.textContent) }));
+    check("38. View attribute table lists the layer's 3 rows; clicking a row zooms there and opens its popup",
+      layerView && layerView.rows === 3 && zoomed.popup && zoomed.keys.includes("name"), JSON.stringify({ layerView, zoomed }));
+    await page.evaluate(() => App.gpkgReferenceEntries()[0].clear());
+    const closed = await page.evaluate(() => !document.querySelector('.floating-widget[data-widget-id="gpkg-table"]'));
+    check("39. removing a file's last layer closes its table window", closed, String(closed));
     await page.evaluate(() => App.gpkgClearAll());
   } finally {
     if (browser) await browser.close().catch(() => {});

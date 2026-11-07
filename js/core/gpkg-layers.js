@@ -190,12 +190,21 @@
       layer.reason = "Raster tiles are not supported";
       return layer;
     }
-    if (r.data_type !== "features") {
-      layer.reason = "Table has no geometry";
+    // Attribute tables, and feature tables with no geometry-column entry, open
+    // in the table viewer instead of becoming map layers.
+    var noGeom = r.column_name === null || r.column_name === undefined;
+    if (r.data_type === "attributes" || (r.data_type === "features" && noGeom)) {
+      if (!_tableExists(db, r.table_name)) {
+        layer.reason = "Table is missing from the file";
+        return layer;
+      }
+      layer.tableOnly = true;
+      layer.count = _query(db, "SELECT count(*) AS n FROM " + _q(r.table_name), [])[0].n;
+      layer.supported = true;
       return layer;
     }
-    if (r.column_name === null || r.column_name === undefined) {
-      layer.reason = "Missing geometry column information";
+    if (r.data_type !== "features") {
+      layer.reason = "Not supported (" + (r.data_type || "unknown type") + ")";
       return layer;
     }
     layer.geomColumn = r.column_name;
@@ -352,11 +361,35 @@
     };
   }
 
+  // Rows past this are counted but not loaded: the viewer is for looking, and
+  // sql.js already holds the whole file in memory.
+  var MAX_TABLE_ROWS = 20000;
+
+  // Reads a table without geometry for the table viewer: every column, values
+  // as stored (formatValue renders them, binary included).
+  function _readTableRows(libs, db, layer) {
+    var columns = _query(db, "PRAGMA table_info(" + _q(layer.table) + ")", []).map(function (c) { return c.name; });
+    var rows = [];
+    var stmt = db.prepare("SELECT * FROM " + _q(layer.table));
+    try {
+      while (rows.length < MAX_TABLE_ROWS && stmt.step()) {
+        var v = stmt.get();
+        var o = {};
+        for (var i = 0; i < columns.length; i++) o[columns[i]] = v[i];
+        rows.push(o);
+      }
+    } finally {
+      stmt.free();
+    }
+    return { name: layer.table, columns: columns, rows: rows, total: layer.count };
+  }
+
   // Reads one feature table into a WGS 84 FeatureCollection. Synchronous. The
   // table is walked row by row with a prepared statement; db is not closed here.
   // onProgress(done, total) is optional: it runs every 1,000 rows and once at the end.
   function _readLayer(libs, db, layer, onProgress) {
     if (!layer.supported) throw new Error("Layer is not supported (" + layer.reason + ")");
+    if (layer.tableOnly) throw new Error("Table has no geometry; read it with _readTableRows");
 
     var raw = _query(db, "PRAGMA table_info(" + _q(layer.table) + ")", []);
     var columns = [];
@@ -456,17 +489,79 @@
 
   function _styleKey(id) { return "gpkg-" + id; }
 
+  // ---- Time/cost color ramp ----
+  // A layer with a travel-time or cost column (GpkgReader.pickColorField) is
+  // colored by it, near → far as green → red, the way a walkshed reads; rows
+  // without a value are gray. The value is copied into a private _gpkgColor
+  // property (numeric text included) so the paint expression stays simple.
+  // Data encodings, exempt from the chrome design tokens.
+  var RAMP = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
+  var NO_VALUE_COLOR = "#9aa0a6";
+  var RAMP_PROP = "_gpkgColor";
+
+  // Properties starting with this are the importer's own, never file data:
+  // hidden from popups, the table viewer and copies to drawn features.
+  function _isInternalKey(k) { return String(k).indexOf("_gpkg") === 0; }
+
+  function _columnsOf(features) {
+    var seen = {}, cols = [];
+    for (var i = 0; i < features.length; i++) {
+      var p = features[i].properties || {};
+      for (var k in p) {
+        if (Object.prototype.hasOwnProperty.call(p, k) && !seen[k] && !_isInternalKey(k)) {
+          seen[k] = true;
+          cols.push(k);
+        }
+      }
+    }
+    return cols;
+  }
+
+  function _pickRamp(featureCollection) {
+    var R = window.GpkgReader;
+    if (!R || typeof R.pickColorField !== "function") return null;
+    var feats = featureCollection.features;
+    var info = R.pickColorField(_columnsOf(feats), feats.map(function (f) { return f.properties || {}; }));
+    if (!info) return null;
+    feats.forEach(function (f) {
+      f.properties = f.properties || {};
+      f.properties[RAMP_PROP] = R.numericValue(f.properties[info.field]);
+    });
+    return info;
+  }
+
+  function _rampExpr(info, alpha) {
+    var tone = function (c) { return alpha < 1 ? window.LayerPalette.withAlpha(c, alpha) : c; };
+    var value = ["get", RAMP_PROP];
+    var ramp;
+    if (info.max <= info.min) {
+      ramp = tone(RAMP[0]);
+    } else {
+      ramp = ["interpolate", ["linear"], value];
+      RAMP.forEach(function (c, i) { ramp.push(info.min + (info.max - info.min) * i / (RAMP.length - 1), tone(c)); });
+    }
+    return ["case", ["==", ["typeof", value], "number"], ramp, tone(NO_VALUE_COLOR)];
+  }
+
+  // The paint color for one of a record's layers. A color the user picked in
+  // the style drawer replaces the ramp; resetting it brings the ramp back.
+  function _paintColor(rec, kind) {
+    var ov = App.layerStyles && App.layerStyles[rec.styleKey];
+    var alpha = kind === "fill" ? FILL_ALPHA : 1;
+    if (rec.ramp && !(ov && ov.color)) return _rampExpr(rec.ramp, alpha);
+    var colors = App.resolveLayerColors ? App.resolveLayerColors(rec.styleKey) : null;
+    var c = (colors && colors[0]) || rec.color;
+    return alpha < 1 ? window.LayerPalette.withAlpha(c, alpha) : c;
+  }
+
+  var PAINT_PROP = { fill: "fill-color", outline: "line-color", line: "line-color", point: "circle-color" };
+
   // The color drawer writes App.layerStyles[styleKey] through App.setLayerStyle;
   // this repainter is the only place that turns it into paint properties.
   function _repaint(rec) {
     var map = App.map;
-    var colors = App.resolveLayerColors(rec.styleKey);
-    var c = (colors && colors[0]) || rec.color;
     rec.layers.forEach(function (L) {
-      if (!map.getLayer(L.id)) return;
-      if (L.kind === "fill") map.setPaintProperty(L.id, "fill-color", window.LayerPalette.withAlpha(c, FILL_ALPHA));
-      else if (L.kind === "outline" || L.kind === "line") map.setPaintProperty(L.id, "line-color", c);
-      else map.setPaintProperty(L.id, "circle-color", c);
+      if (map.getLayer(L.id)) map.setPaintProperty(L.id, PAINT_PROP[L.kind], _paintColor(rec, L.kind));
     });
   }
 
@@ -495,17 +590,18 @@
       fileKey: meta.fileKey || meta.fileName,
       savedColor: color,
       featureCount: featureCollection.features.length, color: color,
+      ramp: _pickRamp(featureCollection),
       sourceId: sourceId, styleKey: styleKey, layers: layers,
       // Kept only when the layer is small enough to copy to drawn features;
       // a large layer's geometry lives in the map source alone.
       data: _drawnPartCount(featureCollection) <= COPY_LIMIT ? featureCollection : null
     };
     try {
-      _addMapLayers(rec, featureCollection, color);
       // A fresh import starts at its own color: a style left in App.layerStyles
       // under this key (ids restart at gpkg1 each page load) belongs to an
       // earlier, unrelated import.
       delete App.layerStyles[styleKey];
+      _addMapLayers(rec, featureCollection);
       App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
         function () { _repaint(rec); _colorMaybeChanged(rec); });
     } catch (e) {
@@ -519,7 +615,7 @@
     return id;
   }
 
-  function _addMapLayers(rec, featureCollection, color) {
+  function _addMapLayers(rec, featureCollection) {
     var map = App.map;
     var id = rec.id;
     var sourceId = rec.sourceId;
@@ -540,17 +636,17 @@
     }
     if (kinds.polygon) {
       add("fill", "fill-opacity", { type: "fill", filter: polyFilter,
-        paint: { "fill-color": window.LayerPalette.withAlpha(color, FILL_ALPHA), "fill-opacity": 1 } });
+        paint: { "fill-color": _paintColor(rec, "fill"), "fill-opacity": 1 } });
       add("outline", "line-opacity", { type: "line", filter: polyFilter,
-        paint: { "line-color": color, "line-width": 1, "line-opacity": 1 } });
+        paint: { "line-color": _paintColor(rec, "outline"), "line-width": 1, "line-opacity": 1 } });
     }
     if (kinds.line) {
       add("line", "line-opacity", { type: "line", filter: lineFilter,
-        paint: { "line-color": color, "line-width": 2, "line-opacity": 1 } });
+        paint: { "line-color": _paintColor(rec, "line"), "line-width": 2, "line-opacity": 1 } });
     }
     if (kinds.point) {
       add("point", "circle-opacity", { type: "circle", filter: pointFilter,
-        paint: { "circle-color": color, "circle-radius": 4, "circle-opacity": 1,
+        paint: { "circle-color": _paintColor(rec, "point"), "circle-radius": 4, "circle-opacity": 1,
           "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 } });
     }
   }
@@ -583,8 +679,14 @@
     var i = _find(id);
     if (i < 0) return;
     var fileKey = _registry[i].fileKey;
+    if (_openTableRecId === id) _closeTable();
     _removeOne(_registry[i]);
     _registry.splice(i, 1);
+    // A file's tables go with its last layer: nothing else could reopen them.
+    if (!_registry.some(function (r) { return r.fileKey === fileKey; })) {
+      _tables = _tables.filter(function (t) { return t.fileKey !== fileKey; });
+      _closeTableFor(fileKey);
+    }
     _persist(fileKey);
     _afterChange();
   };
@@ -596,6 +698,8 @@
     if (App.gpkgStore && App.gpkgStore.supported()) App.gpkgStore.clear();
     _restoreGen++;
     _deferredPersist = {};
+    _tables = [];
+    _closeTableFor();
     if (!_registry.length) return;
     _registry.forEach(_removeOne);
     _registry = [];
@@ -642,13 +746,103 @@
   function _copyMenuItems(rec) {
     if (!rec.data || !App.cache || typeof App.cache.appendGeoJSONFeatures !== "function") return [];
     return [{ label: "Copy to drawn features", action: function () {
-      var r = App.cache.appendGeoJSONFeatures(rec.data.features);
+      // The importer's own properties (the ramp value) are not file data.
+      var r = App.cache.appendGeoJSONFeatures(rec.data.features.map(function (f) {
+        var p = {};
+        Object.keys(f.properties || {}).forEach(function (k) { if (!_isInternalKey(k)) p[k] = f.properties[k]; });
+        return { type: "Feature", geometry: f.geometry, properties: p };
+      }));
       if (r.error) {
         window.alert("Could not copy to drawn features: " + r.error);
         return;
       }
       _status("Copied " + r.added.toLocaleString() + " feature" + (r.added === 1 ? "" : "s") + " to drawn features");
     } }];
+  }
+
+  // ---- Tables and the attribute-table viewer --------------------------------
+  // Tables without geometry have no Layers-panel row of their own: they open
+  // from the ⋯ menu of any layer from the same file, and live as long as one
+  // of that file's layers does. The viewer itself is js/core/gpkg-table.js.
+
+  var _tables = [];   // { fileKey, fileName, name, columns, rows, total }
+  var _openTableKey = null;   // fileKey of the table in the viewer, if any
+  var _openTableRecId = null; // import id when the viewer shows a layer's own rows
+  var TABLE_ZOOM_PADDING = { top: 240, left: 80, right: 80 };
+
+  function _tablesOf(fileKey) {
+    return _tables.filter(function (t) { return t.fileKey === fileKey; });
+  }
+
+  function _closeTable() {
+    if (typeof App.gpkgCloseTable === "function") App.gpkgCloseTable();
+    _openTableKey = null;
+    _openTableRecId = null;
+  }
+
+  function _closeTableFor(fileKey) {
+    if (_openTableKey !== null && (fileKey === undefined || _openTableKey === fileKey)) _closeTable();
+  }
+
+  function _openPlainTable(t) {
+    if (typeof App.gpkgOpenTable !== "function") return;
+    _openTableKey = t.fileKey;
+    _openTableRecId = null;
+    App.gpkgOpenTable({ title: t.name + " — " + t.fileName, columns: t.columns, rows: t.rows,
+      total: t.total, onRowClick: null });
+  }
+
+  function _sourceFeatures(rec) {
+    if (rec.data) return rec.data.features;
+    var src = App.map.getSource(rec.sourceId);
+    return (src && src._data && src._data.features) || [];
+  }
+
+  // Bottom padding keeps the target (and its popup) clear of the viewer,
+  // which floats over the bottom of the map.
+  function _zoomToFeature(rec, feature) {
+    if (typeof turf === "undefined") return;
+    var bb = turf.bbox(feature);
+    var center = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+    var w = document.querySelector('.floating-widget[data-widget-id="gpkg-table"]');
+    var mapH = App.map.getContainer().clientHeight;
+    var padding = {
+      top: TABLE_ZOOM_PADDING.top, left: TABLE_ZOOM_PADDING.left, right: TABLE_ZOOM_PADDING.right,
+      bottom: w ? Math.min(w.offsetHeight + 40, Math.max(0, mapH - 260)) : 80
+    };
+    if (bb[0] === bb[2] && bb[1] === bb[3]) {
+      // An offset, not camera padding: easeTo keeps padding on the camera, and
+      // clearing it afterwards makes the point jump.
+      App.map.easeTo({ center: center, zoom: Math.max(App.map.getZoom(), 17),
+        offset: [0, (padding.top - padding.bottom) / 2], duration: 500 });
+    } else {
+      App.map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: padding, maxZoom: 18, duration: 500 });
+    }
+    _showPopup(rec, feature.properties, { lng: center[0], lat: center[1] });
+  }
+
+  function _openLayerTable(rec) {
+    if (typeof App.gpkgOpenTable !== "function") return;
+    var feats = _sourceFeatures(rec);
+    _openTableKey = rec.fileKey;
+    _openTableRecId = rec.id;
+    App.gpkgOpenTable({
+      title: rec.layerName + " — " + rec.fileName,
+      columns: _columnsOf(feats),
+      rows: feats.map(function (f) { return f.properties || {}; }),
+      total: feats.length,
+      // A removed layer's window is closed, but guard anyway: never fly to a
+      // feature that is no longer drawn.
+      onRowClick: function (i) { if (feats[i] && _find(rec.id) >= 0) _zoomToFeature(rec, feats[i]); }
+    });
+  }
+
+  function _tableMenuItems(rec) {
+    var items = [{ label: "View attribute table", action: function () { _openLayerTable(rec); } }];
+    _tablesOf(rec.fileKey).forEach(function (t) {
+      items.push({ label: "View table: " + t.name, action: function () { _openPlainTable(t); } });
+    });
+    return items;
   }
 
   // Layers-panel manifest entries, newest first. Same shape as the static
@@ -662,9 +856,15 @@
         layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
         styleKey: r.styleKey,
         clear: function () { App.gpkgRemoveLayer(r.id); },
-        menuItems: function () { return _copyMenuItems(r); },
+        menuItems: function () { return _tableMenuItems(r).concat(_copyMenuItems(r)); },
         badge: function () {
-          return { text: r.featureCount.toLocaleString(), title: r.featureCount.toLocaleString() + " features" };
+          var title = r.featureCount.toLocaleString() + " features";
+          if (r.ramp) {
+            var fmt = window.GpkgReader.formatValue;
+            title += " · colored by " + r.ramp.field + " (" + fmt(r.ramp.min) + " green → " +
+              fmt(r.ramp.max) + " red; gray = no value)";
+          }
+          return { text: r.featureCount.toLocaleString(), title: title };
         }
       };
     });
@@ -743,7 +943,7 @@
     title.className = "gp-popup-title";
     title.textContent = rec.fileName + " · " + rec.layerName;
     root.appendChild(title);
-    var keys = Object.keys(props || {});
+    var keys = Object.keys(props || {}).filter(function (k) { return !_isInternalKey(k); });
     if (!keys.length) {
       var none = document.createElement("div");
       none.className = "gp-popup-empty";
@@ -789,20 +989,37 @@
   // The popup uses closeOnClick: false and closes here instead: MapLibre's own
   // close-on-click runs after this handler on the same click, so it would shut
   // a popup just moved to a second feature.
+  // A click that lands on nothing is retried in a small box around the
+  // pointer, so thin lines and small points do not need a pixel-perfect hit.
+  // Anything directly under the pointer keeps priority.
+  var CLICK_TOLERANCE_PX = 5;
+
   function _onMapClick(e) {
     if (App.drawMode || !_registry.length) { _closePopup(); return; }
     var tgt = e.originalEvent && e.originalEvent.target;
     if (tgt && tgt.closest && tgt.closest(".maplibregl-marker, .maplibregl-popup")) return;
     var hits = App.map.queryRenderedFeatures(e.point);
+    if (!hits.length) {
+      // Only GeoPackage features count in the retry: anything else in the box
+      // is not under the pointer, and its own handler will not fire either.
+      var T = CLICK_TOLERANCE_PX;
+      hits = App.map.queryRenderedFeatures([[e.point.x - T, e.point.y - T], [e.point.x + T, e.point.y + T]])
+        .filter(function (h) { return h.layer && String(h.layer.id).indexOf("gpkg-") === 0; });
+    }
     var top = hits[0];
     var rec = (top && top.layer && String(top.layer.id).indexOf("gpkg-") === 0) ? _layerRecord(top.layer.id) : null;
     if (!rec || _hasOwnClickLayer(hits)) { _closePopup(); return; }
+    _showPopup(rec, top.properties, e.lngLat);
+  }
+
+  function _showPopup(rec, props, lngLat) {
     if (!_popup) {
       _popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: "320px", className: "gp-popup-wrap" });
     }
     _popupImportId = rec.id;
-    _popup.setLngLat(e.lngLat).setDOMContent(_popupContent(rec, top.properties)).addTo(App.map);
+    _popup.setLngLat(lngLat).setDOMContent(_popupContent(rec, props)).addTo(App.map);
   }
+
 
   // Registered on the first import rather than at load: App.map may not exist
   // yet when this file loads, and nothing is clickable before an import.
@@ -851,7 +1068,9 @@
       row.appendChild(name);
       var meta = document.createElement("span");
       meta.className = "gp-meta";
-      if (layer.supported) {
+      if (layer.tableOnly) {
+        meta.textContent = "Table (no map layer) · " + _plural(layer.count, "row");
+      } else if (layer.supported) {
         meta.textContent = [layer.geomType || "Geometry", _plural(layer.count, "feature"),
           layer.projection ? layer.projection.label : ""].filter(Boolean).join(" · ");
       } else {
@@ -973,6 +1192,28 @@
     return parts.join(" · ");
   }
 
+  // Brings a fresh import into view: fit the map to the new layers and switch
+  // the right panel to the Layers tab, where their rows are.
+  function _showNewLayers(ids) {
+    var feats = [];
+    ids.forEach(function (id) {
+      var i = _find(id);
+      if (i >= 0) feats = feats.concat(_sourceFeatures(_registry[i]));
+    });
+    if (feats.length && typeof turf !== "undefined") {
+      var bb = turf.bbox({ type: "FeatureCollection", features: feats });
+      if (bb.every(isFinite)) {
+        if (bb[0] === bb[2] && bb[1] === bb[3]) {
+          App.map.easeTo({ center: [bb[0], bb[1]], zoom: Math.max(App.map.getZoom(), 15), duration: 600 });
+        } else {
+          App.map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 60, duration: 600 });
+        }
+      }
+    }
+    var tab = document.querySelector('.fp-tab-btn[data-fptab="layers"]');
+    if (tab) tab.click();
+  }
+
   // Entry point from the Add Data menu and the general Import picker.
   App.gpkgOpenFile = function (file) {
     if (!file) return Promise.resolve();
@@ -1002,6 +1243,8 @@
         if (!choice) return;
         var skipped = { empty: 0, nullGeom: 0, collection: 0, unsupported: 0, invalid: 0 };
         var added = 0;
+        var addedIds = [];
+        var newTables = [];
         var failed = [];
         var chain = Promise.resolve();
         choice.indexes.forEach(function (i, n) {
@@ -1013,9 +1256,19 @@
             return _yield();
           }).then(function () {
             try {
+              if (layer.tableOnly) {
+                var t = _readTableRows(libs, db, layer);
+                t.fileKey = fileKey;
+                t.fileName = file.name;
+                _tables = _tables.filter(function (x) { return !(x.fileKey === fileKey && x.name === t.name); });
+                _tables.push(t);
+                newTables.push(t);
+                return;
+              }
               var r = _readLayer(libs, db, layer);
               Object.keys(skipped).forEach(function (k) { skipped[k] += r.skipped[k] || 0; });
-              if (_addLayerToMap(r.featureCollection, { fileName: file.name, fileKey: fileKey, layerName: layer.table })) added++;
+              var newId = _addLayerToMap(r.featureCollection, { fileName: file.name, fileKey: fileKey, layerName: layer.table });
+              if (newId) { added++; addedIds.push(newId); }
             } catch (e) {
               failed.push(layer.table);
             }
@@ -1023,8 +1276,25 @@
         });
         return chain.then(function () {
           choice.finish();
-          _status(_summary(added, skipped, failed));
-          if (added) _saveFile(fileKey, bytes);
+          var summary = _summary(added, skipped, failed);
+          if (newTables.length) summary += " · " + _plural(newTables.length, "table") + (added ? " (open from a layer's ⋯ menu)" : "");
+          _status(summary);
+          var fileHasLayers = _registry.some(function (r) { return r.fileKey === fileKey; });
+          if (added) {
+            _saveFile(fileKey, bytes);
+            _showNewLayers(addedIds);
+          } else if (newTables.length && fileHasLayers) {
+            // Tables added to a file already on the map: record them too.
+            _persist(fileKey);
+          } else if (newTables.length) {
+            // No layer row could reopen these later, so they are not kept: the
+            // first is shown now and the status says how to see the others.
+            _tables = _tables.filter(function (t) { return t.fileKey !== fileKey; });
+            _openPlainTable(newTables[0]);
+            if (newTables.length > 1) {
+              _status("Showing " + newTables[0].name + ". A file with no map layers shows one table at a time: open it again to view another.");
+            }
+          }
         }, function (e) {
           choice.finish();
           throw e;
@@ -1060,6 +1330,10 @@
       if (layers.indexOf(r.layerName) < 0) layers.push(r.layerName);
       colors[r.layerName] = { base: r.color, color: _currentColor(r) };
     });
+    // Tables are stored only alongside a layer; see gpkgRemoveLayer.
+    if (layers.length) {
+      _tablesOf(fileKey).forEach(function (t) { if (layers.indexOf(t.name) < 0) layers.push(t.name); });
+    }
     return { layers: layers, colors: colors };
   }
 
@@ -1118,6 +1392,17 @@
   function _restoreTable(libs, db, layers, rec, table) {
     var layer = layers.filter(function (l) { return l.table === table && l.supported; })[0];
     if (!layer) return false;
+    if (layer.tableOnly) {
+      try {
+        var t = _readTableRows(libs, db, layer);
+        t.fileKey = rec.name;
+        t.fileName = _nameFromKey(rec.name);
+        _tables.push(t);
+        return false;   // not a layer: the restored-layer count stays layers only
+      } catch (e) {
+        return false;
+      }
+    }
     _addingRestored = true;
     try {
       var r = _readLayer(libs, db, layer);
@@ -1174,6 +1459,10 @@
             });
             return step.then(function () {
               try { db.close(); } catch (e) { /* already closed */ }
+              // Tables are reachable only from a layer of the same file.
+              if (!_registry.some(function (r) { return r.fileKey === rec.name; })) {
+                _tables = _tables.filter(function (t) { return t.fileKey !== rec.name; });
+              }
             });
           });
         });
