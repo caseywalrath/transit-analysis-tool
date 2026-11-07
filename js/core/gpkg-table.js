@@ -19,9 +19,7 @@
   // must then do nothing, or it would fill the newer window with its rows.
   var _openSeq = 0;
 
-  function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
+  function esc(s) { return App.escapeHTML(s); }
 
   function widgetEl() {
     return document.querySelector('.floating-widget[data-widget-id="' + WIDGET_ID + '"]');
@@ -123,6 +121,10 @@
       var widget = widgetEl();
       if (!widget) return;
       buildBody(widget, columns, rows, total, onRowClick);
+      // The shared close button only hides a widget; this one holds a whole
+      // layer's rows, so closing removes it and frees them.
+      var closeBtn = widget.querySelector(".floating-widget-close");
+      if (closeBtn) closeBtn.addEventListener("click", function () { gpkgCloseTable(); });
     });
   }
 

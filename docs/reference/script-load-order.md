@@ -2,7 +2,7 @@
 
 Plain `<script>` tags in `index.html`, in this order (verified against `index.html`). Order matters: a file may only use, **at load time**, what earlier files defined. Most files touch `App.*` only inside functions.
 
-CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js is not a script tag: `gpkg-import.js` injects it the first time a `.gpkg` is opened.
+CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js and proj4 are not script tags: `gpkg-layers.js` loads them from cdnjs the first time a `.gpkg` is opened.
 
 ```
 js/core/
@@ -40,7 +40,8 @@ feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/clos
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
 layers-panel.js      App.refreshLayersPanel
-gpkg-layers.js       needs App (var App at load); App.map, window.GpkgReader, window.LayerPalette, App.registerLayerStyle, App.firstUserLayer, App.cache, App.gpkgStore at call time; sql.js and proj4 lazy-loaded from unpkg
+gpkg-layers.js       needs App (var App at load); App.map, window.GpkgReader, window.LayerPalette, App.registerLayerStyle, App.firstUserLayer, App.cache, App.gpkgStore at call time; sql.js and proj4 lazy-loaded from cdnjs
+gpkg-table.js        needs App (assigns App.gpkgOpenTable/gpkgCloseTable at load); App.popup and window.GpkgReader at call time only; after gpkg-layers.js, which calls App.gpkgOpenTable only at call time, behind a typeof guard
 census.js            needs App.bboxStringFromFeature, App.getMeta, turf
 lodes.js             needs App.bufferUnionPolygon, pako, turf
 projections.js       population-projection CSV (App.parseProjectionsCSV/setProjectionsData/projGrowthFactors/…)

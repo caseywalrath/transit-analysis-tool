@@ -406,16 +406,20 @@ function allPositions(c) {
     const rows22 = opened22 ? await pickerRows() : [];
     const disabled22 = rows22.filter((r) => r.disabled).map((r) => r.name);
     const enabled22 = rows22.filter((r) => !r.disabled);
-    // The attribute table "notes" is selectable (it opens in the table viewer).
-    check("22. setInputFiles opens the picker: 10 rows, 3 disabled, the 7 supported rows start checked",
-      opened22 && rows22.length === 10 && disabled22.length === 3 &&
-      enabled22.length === 7 && enabled22.every((r) => r.checked),
+    // The attribute table "notes" is selectable (it opens in the table viewer)
+    // but starts unchecked; the 6 map layers start checked.
+    check("22. setInputFiles opens the picker: 10 rows, 3 disabled, 6 map layers checked, the notes table unchecked",
+      opened22 && rows22.length === 10 && disabled22.length === 3 && enabled22.length === 7 &&
+      enabled22.every((r) => r.checked === (r.name !== "notes")),
       "rows " + rows22.length + ", disabled " + JSON.stringify(disabled22));
 
     // ---- 23. Add follows the checked rows ----
     const enabledBoxes = page.locator("#gp-layer-list label.gp-row:not(.gp-row-disabled) input[type=checkbox]");
     const enabledTotal = await enabledBoxes.count();
-    for (let i = 0; i < enabledTotal; i++) await enabledBoxes.nth(i).click();
+    // Click only the checked boxes: tables start unchecked.
+    for (let i = 0; i < enabledTotal; i++) {
+      if (await enabledBoxes.nth(i).isChecked()) await enabledBoxes.nth(i).click();
+    }
     const addAfterUncheckAll = await page.locator("#gp-add").isDisabled();
     await page.locator("#gp-layer-list label.gp-row", { hasText: "pts_utm" }).locator("input[type=checkbox]").click();
     const addAfterOne = await page.locator("#gp-add").isEnabled();
@@ -655,9 +659,12 @@ function allPositions(c) {
     const zoomed = await page.evaluate(() => ({ popup: !!document.querySelector(".gp-popup"), keys: Array.from(document.querySelectorAll(".gp-popup dt")).map((d) => d.textContent) }));
     check("38. View attribute table lists the layer's 3 rows; clicking a row zooms there and opens its popup",
       layerView && layerView.rows === 3 && zoomed.popup && zoomed.keys.includes("name"), JSON.stringify({ layerView, zoomed }));
+    // A table without geometry in the window: it closes with the file's last layer.
+    await page.evaluate(() => App.gpkgReferenceEntries()[0].menuItems().find((m) => m.label === "View table: notes").action());
+    await page.waitForFunction(() => document.querySelectorAll('.floating-widget[data-widget-id="gpkg-table"] tbody tr').length === 1, null, { timeout: 5000 }).catch(() => {});
     await page.evaluate(() => App.gpkgReferenceEntries()[0].clear());
     const closed = await page.evaluate(() => !document.querySelector('.floating-widget[data-widget-id="gpkg-table"]'));
-    check("39. removing a file's last layer closes its table window", closed, String(closed));
+    check("39. removing a file's last layer closes the window showing its table without geometry", closed, String(closed));
     await page.evaluate(() => App.gpkgClearAll());
   } finally {
     if (browser) await browser.close().catch(() => {});

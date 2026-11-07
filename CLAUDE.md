@@ -70,7 +70,7 @@ One line per file. Detail (behavior, invariants, public API) lives in the refere
 
 ```
 index.html                  App shell: toolbar, map, Features/Layers panel, module-panel container, script tags   [core-app]
-css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gpkg-)   [core-app]
+css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gp-)   [core-app]
 css/sidebar-v2.css          Dormant legacy sidebar styles   [core-app]
 js/app.js                   Startup, module registry, toolbar menus, keyboard shortcuts, renderModuleState/renderModuleInputs   [core-app]
 js/core/
@@ -105,7 +105,8 @@ js/core/
   feature-attributes.js     Attributes dock (left edge, follows selection), ATTR_FIELDS, shared editors   [drawing-and-features]
   merge.js / split.js       Feature Merge/Unmerge and Split   [drawing-and-features]
   layers-panel.js           Layers tab: drawn/analysis/reference bands, style drawers, GTFS browser   [layers-and-styling]
-  gpkg-layers.js            GeoPackage import: lazy sql.js/proj4, picker, reference layers, click popup, restore   [layers-and-styling]
+  gpkg-layers.js            GeoPackage import: lazy sql.js/proj4, picker, reference layers, color ramp, tables, click popup, restore   [layers-and-styling]
+  gpkg-table.js             Attribute-table window for GeoPackage layers and tables   [layers-and-styling]
   census.js / lodes.js      TIGERweb + ACS fetch/aggregation; LODES employment   [core-app]
   projections.js            Population-projection CSV additions
   cache.js                  Session save/restore/import/export, schema migrations   [core-app]
@@ -146,7 +147,7 @@ Plain `<script>` tags in `index.html`; a file may only use what loads before it 
 config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → gpkg-store → road-network
 → network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
-→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → census → lodes → projections
+→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
@@ -167,7 +168,7 @@ Hard ordering rules: `config.js` first (map.js/census.js read the keys at init);
 - **Inputs vs. Settings.** Required selections (buffer, checklist, geography, year) sit inline and collapse after a run; optional/expert tuning sits behind a button, modal or `<details>`.
 - **Tabbed popups** (Ridership Forecasting, FTA, Title VI) use a `[data-tab]` tab bar and a module `switchTab(id)`; state is kept in the closure across tab switches.
 - **Inline help** is a `<button class="rf-info-btn">ⓘ</button>` toggling a sibling `<div>` in `init()`. No tooltip libraries.
-- **CSS namespacing.** Each module's styles use its prefix (`.tpi-`, `.rf-`, `.fta-`, `.tvi-`, …) in `css/style.css`. **Exception:** `.rf-status*` and `.rf-info-box` are deliberately shared by every module through `App.renderModuleState()`; do not rename or fork them.
+- **CSS namespacing.** Each module's styles use its prefix (`.tpi-`, `.rf-`, `.fta-`, `.tvi-`, `.gp-`, …) in `css/style.css`. **Exception:** `.rf-status*` and `.rf-info-box` are deliberately shared by every module through `App.renderModuleState()`; do not rename or fork them.
 - **Standardized module state.** Every module renders its stale banner (with a working Re-run button via `onRerun`) and its empty/onboarding hint through `App.renderModuleState()`, usually via thin local `setStatus`, `showStale()` and `emptyHint()` → `{need, action}` wrappers. New modules follow this pattern, never a bespoke banner.
 - **Design tokens.** Chrome colors use the semantic tokens in `:root` / `body.dark-mode` (`--bg`, `--surface*`, `--text-*`, `--border*`, `--accent`, status tokens); no raw hex for chrome. Data encodings (feature colors, ramps, pills, legend swatches, map symbols) are exempt. Spacing uses `--space-*`; typography uses the `:root` font variables (Inter only). Extend the shared primitives (`.form-field`, `.form-section`, `.btn-row`, `.rf-select`, `.rf-number-input`, `.rf-action-primary`, `.rf-btn-sm`, `.u-*`) rather than adding module copies.
 - **Comments explain why, not what.** Keep invariants, past-bug reasons and quirks; no plan-phase history ("Phase 3 added…") in code comments. Module detail goes in `docs/reference/`, not `CLAUDE.md`; finished plans go in `docs/archive/`.

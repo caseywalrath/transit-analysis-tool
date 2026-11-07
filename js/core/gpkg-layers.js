@@ -447,6 +447,9 @@
 
     return {
       featureCollection: { type: "FeatureCollection", features: features },
+      // Table column order (geometry and key excluded): the ramp picks the
+      // first qualifying column in this order, not in row order.
+      columns: attrColumns.filter(function (c) { return !c.isGeom && !c.pk; }).map(function (c) { return c.name; }),
       skipped: skipped
     };
   }
@@ -517,11 +520,11 @@
     return cols;
   }
 
-  function _pickRamp(featureCollection) {
+  function _pickRamp(featureCollection, columns) {
     var R = window.GpkgReader;
     if (!R || typeof R.pickColorField !== "function") return null;
     var feats = featureCollection.features;
-    var info = R.pickColorField(_columnsOf(feats), feats.map(function (f) { return f.properties || {}; }));
+    var info = R.pickColorField(columns || _columnsOf(feats), feats.map(function (f) { return f.properties || {}; }));
     if (!info) return null;
     feats.forEach(function (f) {
       f.properties = f.properties || {};
@@ -534,11 +537,15 @@
     var tone = function (c) { return alpha < 1 ? window.LayerPalette.withAlpha(c, alpha) : c; };
     var value = ["get", RAMP_PROP];
     var ramp;
-    if (info.max <= info.min) {
+    var stops = RAMP.map(function (c, i) { return info.min + (info.max - info.min) * i / (RAMP.length - 1); });
+    // MapLibre rejects stops that are not strictly ascending, which a zero or
+    // tiny range (next to huge values) produces: one color then.
+    var ascending = stops.every(function (v, i) { return i === 0 || v > stops[i - 1]; });
+    if (!ascending) {
       ramp = tone(RAMP[0]);
     } else {
       ramp = ["interpolate", ["linear"], value];
-      RAMP.forEach(function (c, i) { ramp.push(info.min + (info.max - info.min) * i / (RAMP.length - 1), tone(c)); });
+      RAMP.forEach(function (c, i) { ramp.push(stops[i], tone(c)); });
     }
     return ["case", ["==", ["typeof", value], "number"], ramp, tone(NO_VALUE_COLOR)];
   }
@@ -590,7 +597,7 @@
       fileKey: meta.fileKey || meta.fileName,
       savedColor: color,
       featureCount: featureCollection.features.length, color: color,
-      ramp: _pickRamp(featureCollection),
+      ramp: _pickRamp(featureCollection, meta.columns),
       sourceId: sourceId, styleKey: styleKey, layers: layers,
       // Kept only when the layer is small enough to copy to drawn features;
       // a large layer's geometry lives in the map source alone.
@@ -859,7 +866,8 @@
         menuItems: function () { return _tableMenuItems(r).concat(_copyMenuItems(r)); },
         badge: function () {
           var title = r.featureCount.toLocaleString() + " features";
-          if (r.ramp) {
+          var ov = App.layerStyles && App.layerStyles[r.styleKey];
+          if (r.ramp && !(ov && ov.color)) {
             var fmt = window.GpkgReader.formatValue;
             title += " · colored by " + r.ramp.field + " (" + fmt(r.ramp.min) + " green → " +
               fmt(r.ramp.max) + " red; gray = no value)";
@@ -1058,7 +1066,9 @@
       row.className = "gp-row" + (layer.supported ? "" : " gp-row-disabled");
       var cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = layer.supported;
+      // Tables start unchecked: files often carry bookkeeping tables (QGIS's
+      // layer_styles, for one) that nobody means to open.
+      cb.checked = layer.supported && !layer.tableOnly;
       cb.disabled = !layer.supported;
       cb.setAttribute("data-gp-index", String(i));
       row.appendChild(cb);
@@ -1267,7 +1277,7 @@
               }
               var r = _readLayer(libs, db, layer);
               Object.keys(skipped).forEach(function (k) { skipped[k] += r.skipped[k] || 0; });
-              var newId = _addLayerToMap(r.featureCollection, { fileName: file.name, fileKey: fileKey, layerName: layer.table });
+              var newId = _addLayerToMap(r.featureCollection, { fileName: file.name, fileKey: fileKey, layerName: layer.table, columns: r.columns });
               if (newId) { added++; addedIds.push(newId); }
             } catch (e) {
               failed.push(layer.table);
@@ -1277,7 +1287,8 @@
         return chain.then(function () {
           choice.finish();
           var summary = _summary(added, skipped, failed);
-          if (newTables.length) summary += " · " + _plural(newTables.length, "table") + (added ? " (open from a layer's ⋯ menu)" : "");
+          var onMapNow = _registry.some(function (r) { return r.fileKey === fileKey; });
+          if (newTables.length) summary += " · " + _plural(newTables.length, "table") + (onMapNow ? " (open from a layer's ⋯ menu)" : "");
           _status(summary);
           var fileHasLayers = _registry.some(function (r) { return r.fileKey === fileKey; });
           if (added) {
@@ -1409,7 +1420,7 @@
       var saved = (rec.colors && rec.colors[table]) || {};
       var base = typeof saved === "string" ? saved : saved.base;
       var id = _addLayerToMap(r.featureCollection,
-        { fileName: _nameFromKey(rec.name), fileKey: rec.name, layerName: table, color: base });
+        { fileName: _nameFromKey(rec.name), fileKey: rec.name, layerName: table, color: base, columns: r.columns });
       if (!id) return false;
       var reg = _registry[_find(id)];
       if (saved.color && saved.color !== reg.color) App.setLayerStyle(reg.styleKey, { color: saved.color });

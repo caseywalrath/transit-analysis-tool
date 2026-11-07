@@ -1,6 +1,6 @@
 # GeoPackage importer consolidation — plan
 
-> **Status:** In progress (2026-11-07).
+> **Status:** Complete (2026-11-07). Archived. Current behavior: `docs/reference/layers-and-styling.md`, "GeoPackage import".
 
 Main's PR #34 added a second GeoPackage viewer (`gpkg-import.js` + `geopackage.js`,
 lon/lat only). The merge commit kept this branch's importer (`gpkg-reader.js`,
@@ -135,3 +135,23 @@ layers all failed. Skipped: `_gpkgColor` stored in feature properties (filtered 
   once and keeps none (no Layers row could reopen them); the status says so.
   `App.gpkgOpenTable` / `App.gpkgCloseTable` in `js/core/gpkg-table.js`; CSS prefix
   `.gp-table*`.
+
+**D (Haiku, high).** Accepted first pass. It also fixed two stale passages outside the
+GeoPackage section that the grep check caught (a description of PR #34's removed
+`registerReferenceLayer`, and `gpkg-import.js` named as the sql.js loader).
+
+**E (Opus).** Final review (high) over the consolidation found 10; fixed 7: the ramp
+column now follows the table's column order (not row order with NULLs dropped); stops
+that are not strictly ascending fall back to one color instead of dropping the layer;
+the "open from a layer's ⋯ menu" hint follows whether the file is on the map; tables
+start unchecked in the picker; the badge drops "colored by" while a drawer color
+replaces the ramp; the table window's × removes it, freeing its rows; `gpkg-table.js`
+uses `App.escapeHTML`. Test 39 now covers the table-without-geometry close path.
+Skipped: the 5 px retry not helping over other fills (documented limitation), three
+copies of zoom-to-extent. Manual check with the user's `comparison.gpkg`: all four
+layers import; `reached_source_intervals` is ramp-colored by `seconds_at_from_offset`
+(0 → 600); popup, reload restore, no page errors.
+
+**Summary.** Haiku: 4 tasks (A, B, D, plus none sent back), all accepted first pass;
+two small fixes in Haiku code made directly by the orchestrator after review. Opus:
+merge, C, all reviews.
