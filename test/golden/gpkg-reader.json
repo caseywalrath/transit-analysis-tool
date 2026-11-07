@@ -706,5 +706,32 @@
       ]
     ]
   },
-  "transform-null": null
+  "transform-null": null,
+  "numeric-number": 12.5,
+  "numeric-padded-text": 7,
+  "numeric-empty-text": null,
+  "numeric-non-numeric-text": null,
+  "pr34-color-seconds-field": {
+    "field": "seconds",
+    "min": 12,
+    "max": 300.5,
+    "count": 2
+  },
+  "pr34-color-text-seconds-parsed": {
+    "field": "remaining_seconds",
+    "min": 7.5,
+    "max": 40,
+    "count": 2
+  },
+  "pr34-color-skips-all-null-candidate": {
+    "field": "minutes",
+    "min": 3,
+    "max": 9,
+    "count": 2
+  },
+  "pr34-color-none-without-time-column": null,
+  "pr34-format-float-rounded": "39.785",
+  "pr34-format-integer": "1047066333",
+  "pr34-format-null-empty": "",
+  "pr34-format-text": "way/1/segment/0"
 }

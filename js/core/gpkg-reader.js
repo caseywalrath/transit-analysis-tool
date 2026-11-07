@@ -324,6 +324,46 @@
     return transformGeometry(geometry, function (c) { return [c[0] * sx + dx, c[1] * sy + dy]; });
   }
 
+  // Numeric value of a table cell, or null. Numeric-looking text counts: some
+  // writers store times as TEXT (e.g. "125.5"), and the color ramp would miss them.
+  function numericValue(v) {
+    if (typeof v === "number" && isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && isFinite(Number(v))) return Number(v);
+    return null;
+  }
+
+  // Chooses the column a layer's map ramp is colored by. Only travel-time and
+  // cost names qualify, so an id or length column never recolors a layer, and
+  // the first qualifying column with a numeric value wins so the choice is
+  // stable for a given column order. Returns { field, min, max, count } or null.
+  var COLOR_FIELD_RE = /(second|minute|^sec|_sec|time|cost)/i;
+  function pickColorField(columns, rows) {
+    var names = (columns || []).filter(function (c) { return COLOR_FIELD_RE.test(c); });
+    for (var i = 0; i < names.length; i++) {
+      var f = names[i], min = Infinity, max = -Infinity, count = 0;
+      for (var r = 0; r < rows.length; r++) {
+        var v = numericValue(rows[r] ? rows[r][f] : null);
+        if (v === null) continue;
+        if (v < min) min = v;
+        if (v > max) max = v;
+        count++;
+      }
+      if (count > 0) return { field: f, min: min, max: max, count: count };
+    }
+    return null;
+  }
+
+  // Display text for a cell value in the attribute table and popups.
+  function formatValue(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "number") {
+      if (Number.isInteger(v)) return String(v);
+      return String(Math.round(v * 1000) / 1000);
+    }
+    if (v instanceof Uint8Array) return "(binary, " + v.length + " bytes)";
+    return String(v);
+  }
+
   window.GpkgReader = {
     resolveProjection: resolveProjection,
     transformGeometry: transformGeometry,
@@ -334,7 +374,10 @@
     parseGeometryHex: parseGeometryHex,
     wkbHexToGeoJSON: wkbHexToGeoJSON,
     tryParseGeometryHex: tryParseGeometryHex,
-    rowToPropertiesJSON: rowToPropertiesJSON
+    rowToPropertiesJSON: rowToPropertiesJSON,
+    numericValue: numericValue,
+    pickColorField: pickColorField,
+    formatValue: formatValue
   };
 
 })();

@@ -206,5 +206,27 @@ export default {
     { id: "transform-polygon-hole", call: "GpkgReader.transformGeometryAffine", args: [{ type: "Polygon", coordinates: [[[0, 0], [4, 0], [4, 4], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 1]]] }, 1, 1, -100, 40] },
     { id: "transform-multipolygon", call: "GpkgReader.transformGeometryAffine", args: [{ type: "MultiPolygon", coordinates: [[[[0, 0], [1, 0], [1, 1], [0, 0]]], [[[5, 5], [6, 5], [6, 6], [5, 5]]]] }, 0.5, 0.5, 0, 0] },
     { id: "transform-null", call: "GpkgReader.transformGeometryAffine", args: [null, 1, 1, 0, 0] },
+
+    // ---- numericValue -------------------------------------------------------
+    { id: "numeric-number", call: "GpkgReader.numericValue", args: [12.5] },
+    { id: "numeric-padded-text", call: "GpkgReader.numericValue", args: [" 7 "] },
+    { id: "numeric-empty-text", call: "GpkgReader.numericValue", args: [""] },
+    { id: "numeric-non-numeric-text", call: "GpkgReader.numericValue", args: ["abc"] },
+
+    // ---- pickColorField (ported from PR #34) --------------------------------
+    { id: "pr34-color-seconds-field", call: "GpkgReader.pickColorField",
+      args: [["node_id", "seconds"], [{ node_id: "a", seconds: 12 }, { node_id: "b", seconds: 300.5 }, { node_id: "c", seconds: null }]] },
+    { id: "pr34-color-text-seconds-parsed", call: "GpkgReader.pickColorField",
+      args: [["node_id", "remaining_seconds"], [{ remaining_seconds: "40" }, { remaining_seconds: "7.5" }, { remaining_seconds: "n/a" }]] },
+    { id: "pr34-color-skips-all-null-candidate", call: "GpkgReader.pickColorField",
+      args: [["seconds", "minutes"], [{ seconds: null, minutes: 3 }, { seconds: "", minutes: 9 }]] },
+    { id: "pr34-color-none-without-time-column", call: "GpkgReader.pickColorField",
+      args: [["name", "length_ft"], [{ name: "x", length_ft: 10 }]] },
+
+    // ---- formatValue (ported from PR #34) -----------------------------------
+    { id: "pr34-format-float-rounded", call: "GpkgReader.formatValue", args: [39.78539575832313] },
+    { id: "pr34-format-integer", call: "GpkgReader.formatValue", args: [1047066333] },
+    { id: "pr34-format-null-empty", call: "GpkgReader.formatValue", args: [null] },
+    { id: "pr34-format-text", call: "GpkgReader.formatValue", args: ["way/1/segment/0"] },
   ],
 };
