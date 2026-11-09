@@ -63,12 +63,12 @@ async function installHelpers(page) {
     H.entry = (label) => App.gpkgReferenceEntries().find((e) => e.label === label) || null;
     H.id = (label) => { const e = H.entry(label); return e ? e.styleKey.replace(/^gpkg-/, "") : null; };
     H.row = (label) => Array.from(document.querySelectorAll("#fp-tab-layers .lp-row"))
-      .find((r) => { const l = r.querySelector(".lp-row-label"); return !!l && l.textContent === label; }) || null;
+      .find((r) => { const l = r.querySelector(".lp-row-label"); return !!l && (l.title || l.textContent) === label; }) || null;
     H.badge = (label) => { const e = H.entry(label); return e ? e.badge().text : null; };
     H.caret = (label) => { const r = H.row(label); return r ? r.querySelector(".lp-caret") : null; };
     H.drawer = (label) => { const r = H.row(label); return r ? r.closest(".lp-style-group") : null; };
     H.panelLabels = () => Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label"))
-      .map((l) => l.textContent).filter((s) => s.indexOf("sample.gpkg") === 0);
+      .map((l) => l.title || l.textContent).filter((s) => s.indexOf("sample.gpkg") === 0);
     // Opens the row's ⋯ menu and clicks one item, as a user would.
     H.menuClick = (label, item) => {
       const row = H.row(label);

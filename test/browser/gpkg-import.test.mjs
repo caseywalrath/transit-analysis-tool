@@ -323,7 +323,8 @@ function allPositions(c) {
       Object.keys(ids).forEach((k) => {
         out.sources[k] = !!m.getSource("gpkg-src-" + ids[k]);
       });
-      out.rows = Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label")).map((e) => e.textContent)
+      // A row's full label is its hover text when the row shows a shorter displayLabel.
+      out.rows = Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label")).map((e) => e.title || e.textContent)
         .filter((s) => s.indexOf("sample.gpkg") === 0);
       out.maxGpkgIdx = Math.max.apply(null, out.styleIds.map((s) => styleIds.indexOf(s)));
       return out;
@@ -399,7 +400,7 @@ function allPositions(c) {
       return { name: row.querySelector(".gp-name").textContent, disabled: box.disabled, checked: box.checked };
     }));
     const gpkgRowLabels = () => page.evaluate(() => Array.from(document.querySelectorAll("#fp-tab-layers .lp-row-label"))
-      .map((e) => e.textContent).filter((s) => s.indexOf("sample.gpkg") === 0));
+      .map((e) => e.title || e.textContent).filter((s) => s.indexOf("sample.gpkg") === 0));
 
     // ---- 22. Opening the picker lists every table; only supported rows start checked ----
     const opened22 = await openPicker();
