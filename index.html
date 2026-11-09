@@ -80,6 +80,7 @@
             <div id="add-data-dropdown" class="add-data-dropdown" style="display:none;">
               <div class="add-data-heading">LOCAL</div>
               <button id="import-file-btn">Spatial Data</button>
+              <button id="ad-gpkg">GeoPackage (.gpkg)…</button>
               <button id="gtfs-load-btn">GTFS Feed</button>
               <button id="lodes-employment-btn">LODES Employment</button>
               <div class="add-data-divider"></div>
@@ -120,6 +121,7 @@
             <input id="lodesFile" type="file" accept=".gz,.csv.gz" style="display:none" />
             <input id="fp-import-file" type="file" accept=".json,.csv,.kml,.kmz,.shp,.zip,.geojson,.gpkg" style="display:none" />
             <input id="gtfs-file-input" type="file" accept=".zip" style="display:none" />
+            <input id="ad-gpkg-file" type="file" accept=".gpkg" style="display:none" />
           </div>
           <div class="export-wrapper">
             <button id="export-btn" title="Export" aria-label="Export data">
@@ -378,6 +380,16 @@
 
     </div>
 
+    <div id="gp-dialog" class="gp-dialog" role="dialog" aria-modal="true" aria-labelledby="gp-title" hidden>
+      <h2 id="gp-title" class="gp-title">Add GeoPackage layers</h2>
+      <div id="gp-file-name" class="gp-file-name"></div>
+      <div id="gp-layer-list" class="gp-layer-list"></div>
+      <div id="gp-progress" class="gp-progress" aria-live="polite"></div>
+      <div class="btn-row">
+        <button id="gp-cancel" class="rf-btn-sm">Cancel</button>
+        <button id="gp-add" class="rf-action-primary" disabled>Add to map</button>
+      </div>
+    </div>
     <!-- Core modules (order matters) -->
     <script src="js/core/config.js"></script>
     <script src="js/core/utils.js"></script>
@@ -388,12 +400,15 @@
     <script src="js/core/layer-palettes.js"></script>
     <script src="js/core/network-store.js"></script>
     <script src="js/core/gtfs-store.js"></script>
+    <script src="js/core/gpkg-store.js"></script>
     <script src="js/core/road-network.js"></script>
     <script src="js/core/network-connectors.js"></script>
     <script src="js/core/walk-audit.js"></script>
     <script src="js/core/travelshed.js"></script>
     <script src="js/core/connector-graph.js"></script>
     <script src="js/core/walk-shape.js"></script>
+    <script src="js/core/gpkg-reader.js"></script>
+    <script src="js/core/gpkg-filter.js"></script>
     <script src="js/core/point-icons.js"></script>
     <script src="js/core/points.js"></script>
     <script src="js/core/lines.js"></script>
@@ -414,8 +429,9 @@
     <script src="js/core/merge.js"></script>
     <script src="js/core/split.js"></script>
     <script src="js/core/layers-panel.js"></script>
-    <script src="js/core/geopackage.js"></script>
-    <script src="js/core/gpkg-import.js"></script>
+    <script src="js/core/gpkg-layers.js"></script>
+    <script src="js/core/gpkg-table.js"></script>
+    <script src="js/core/gpkg-filter-ui.js"></script>
     <script src="js/core/census.js"></script>
     <script src="js/core/lodes.js"></script>
     <script src="js/core/projections.js"></script>

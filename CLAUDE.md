@@ -24,6 +24,10 @@ Project onboarding for Claude Code sessions. Read this first.
 - Use specific line numbers when referencing code locations
 **At session start**: Always notify the user what branch you are working on and why a new branch was created. Example: "This session is on branch `claude/review-changelog". It was created automatically for this session and includes all prior work."
 
+## Multi-Agent Work
+
+Before planning or running work split across agents (subagents, parallel sessions, or a plan for another model to implement), read `AGENTS.md`: model classes and what each may own, the task-card format, the rules block for agent prompts, review gates and progress logs.
+
 ## Common Issues to Prevent
 
 - Wrong branch base → old UI deploying
@@ -38,7 +42,7 @@ Project onboarding for Claude Code sessions. Read this first.
 - **Feature attribute changes must update BOTH the attributes dock and Attribute Summary.** The schema is duplicated in `js/core/feature-attributes.js` (`ATTR_FIELDS`, the `#attr-dock`) and `js/projects/attribute-summary.js` (`renderPoints` / `renderLineLike` / `renderPolygons` / `renderMarkers`). Any add/remove/rename/type change of a `feature.properties.attributes.*` field, or a direct `feature.properties.*` field shown in the UI, changes both files in the same commit. Adding or removing a column also changes the matching grid template in `css/style.css` (`.as-grid-points` / `-routelike` / `-polygons` / `-marker`): header and data rows share it. A multi-row editor (Time Bands, Route Picker) is a shared helper in `feature-attributes.js` (`App.buildXBadge` + `App.openXPopup`), never a second copy.
 - **The attributes dock follows the selection; only gestures open it.** `#attr-dock` (`js/core/feature-attributes.js`) re-targets via `App.syncAttrDock()` on every selection change and closes on an empty selection; user gestures (map/list click, finishing a drawing) call `App.openAttrDock()`. Multi-select editing follows the rules in `js/core/attr-bulk.js` (a field is shared when every selected type has its key; `bulk: false` = identity field, `bulk: "replace"` = complex editor, `skipIf` = per-feature exclusion), set as flags on `ATTR_FIELDS`, never per type pair. Never call `openAttrDock` from a programmatic selection, and close it (`App.closeAttrDock({keepSelection: true})`) before any delete, since deletes shift indices. A new popover drawn above the dock must stop Escape in the capture phase. Tests: `test/browser/attr-dock.test.mjs`, `test/browser/attr-dock-multi.test.mjs`, golden `test/cases/attr-bulk.mjs`.
 - **Drawn Points render in two layers — never use `points-layer` literally for hit-testing or paint.** `properties._pointIcon` (cascade: per-point > `App.featureSettings.pointIcon` > `"dot"`) is stamped as `resolvedIcon`; Dot is the original circle layer `points-layer`, every other icon is the symbol layer `points-icon-layer` right above it. Use `App.pointLayerIds()` / `App.isPointLayerId(id)`; any code that builds point GeoJSON itself (drag previews, highlight sources) must call `App.stampPointIcon(props, feature, color)` or the icon turns into a dot. Write the icon only through `App.setFeaturePointIcon` / `App.setTypePointIcon`. Adding an icon is a one-entry edit in `js/core/point-icons.js` (`ICONS`, plus a `GLYPHS` path for a new symbol); bump nothing else. The only allowed bare `"points-layer"` literals are the `firstUserLayer()` insert-below anchors. Test: `test/browser/point-icons.test.mjs`.
-- **Drawn Lines/Routes render in three style layers — never use `lines-layer`/`routes-layer` literally for hit-testing or paint.** `properties._lineStyle` (`"dashed"`/`"dotted"`, anything else = solid) splits each source into `lines-layer` (solid) + `-dashed` + `-dotted`, because MapLibre's `line-dasharray` cannot be a data expression. Use `App.lineStyleLayerIds(type?)`, `App.lineStyleLayerType(layerId)`, `App.addLineStyleLayers(map, type, sourceId, paint)` and `App.setFeatureLineStyle(type, index, style)`. The only allowed bare literals are the `firstUserLayer()` insert-below anchors in `gtfs.js`/`walk-audit.js`/`network-connectors.js` (the solid layer is always lowest). Test: `test/browser/line-style.test.mjs`.
+- **Drawn Lines/Routes render in three style layers — never use `lines-layer`/`routes-layer` literally for hit-testing or paint.** `properties._lineStyle` (`"dashed"`/`"dotted"`, anything else = solid) splits each source into `lines-layer` (solid) + `-dashed` + `-dotted`, because MapLibre's `line-dasharray` cannot be a data expression. Use `App.lineStyleLayerIds(type?)`, `App.lineStyleLayerType(layerId)`, `App.addLineStyleLayers(map, type, sourceId, paint)` and `App.setFeatureLineStyle(type, index, style)`. The only allowed bare literals are the `firstUserLayer()` insert-below anchors in `gtfs.js`/`walk-audit.js`/`network-connectors.js` (the solid layer is always lowest); new code uses the shared `App.firstUserLayer()` (network-connectors.js) instead of another copy. Test: `test/browser/line-style.test.mjs`.
 
 ## Testing
 
@@ -66,7 +70,7 @@ One line per file. Detail (behavior, invariants, public API) lives in the refere
 
 ```
 index.html                  App shell: toolbar, map, Features/Layers panel, module-panel container, script tags   [core-app]
-css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gpkg-)   [core-app]
+css/style.css               All live styles, namespaced per module (.tpi-, .rf-, .fta-, .tvi-, .cs-, .rc-, .tb-, .gtfs-, .lp-, .fa-, .fm-, .ad-, .gp-)   [core-app]
 css/sidebar-v2.css          Dormant legacy sidebar styles   [core-app]
 js/app.js                   Startup, module registry, toolbar menus, keyboard shortcuts, renderModuleState/renderModuleInputs   [core-app]
 js/core/
@@ -79,12 +83,15 @@ js/core/
   layer-palettes.js         window.LayerPalette + App layer-color cascade   [layers-and-styling]
   network-store.js          IndexedDB cache of the road network   [road-network]
   gtfs-store.js             IndexedDB cache of the loaded GTFS feed's ZIP   [gtfs]
+  gpkg-store.js             IndexedDB cache of imported GeoPackage files   [layers-and-styling]
   road-network.js           Overpass download → graph → Dijkstra; walksheds, cost maps, connectors overlay   [road-network]
   network-connectors.js     Walk-network layer, connector Lines, join markers, street exclusion   [road-network]
   walk-audit.js             window.WalkAudit — sidewalk coverage classification + layer   [road-network]
   travelshed.js             window.Travelshed — transit travelshed math (pure)   [road-network]
   connector-graph.js        window.ConnectorGraph — connector planarization (pure)   [road-network]
   walk-shape.js             window.WalkShape — walkshed boundary (travel-time contour isochrones; turf at call time)   [road-network]
+  gpkg-reader.js            window.GpkgReader — GeoPackage blob/WKB + projection rules (pure)   [layers-and-styling]
+  gpkg-filter.js            window.GpkgFilter — layer filter rules and MapLibre expressions (pure)   [layers-and-styling]
   point-icons.js            window.PointIcons — point icon registry (pure) + icon drawing, picker, setters   [drawing-and-features]
   points.js / lines.js / routes.js / polygons.js   Drawing, buffers, rendering per type   [drawing-and-features]
   labels.js / textboxes.js  Map label and text-box annotations (DOM markers)
@@ -99,8 +106,9 @@ js/core/
   feature-attributes.js     Attributes dock (left edge, follows selection), ATTR_FIELDS, shared editors   [drawing-and-features]
   merge.js / split.js       Feature Merge/Unmerge and Split   [drawing-and-features]
   layers-panel.js           Layers tab: drawn/analysis/reference bands, style drawers, GTFS browser   [layers-and-styling]
-  geopackage.js             window.GeoPackage — .gpkg geometry decoding (pure)   [layers-and-styling]
-  gpkg-import.js            Read-only GeoPackage viewer: reference layers, popups, table viewer   [layers-and-styling]
+  gpkg-layers.js            GeoPackage import: lazy sql.js/proj4, picker, reference layers, color ramp, tables, click popup, restore   [layers-and-styling]
+  gpkg-table.js             Attribute-table window for GeoPackage layers and tables   [layers-and-styling]
+  gpkg-filter-ui.js         Fill and Filter controls for a GeoPackage layer's style drawer   [layers-and-styling]
   census.js / lodes.js      TIGERweb + ACS fetch/aggregation; LODES employment   [core-app]
   projections.js            Population-projection CSV additions
   cache.js                  Session save/restore/import/export, schema migrations   [core-app]
@@ -135,14 +143,13 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 
 ## Script Load Order
 
-Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `geopackage`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
+Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `gpkg-reader`, `gpkg-filter`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
-config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → road-network
-→ network-connectors → walk-audit → travelshed → connector-graph → walk-shape → point-icons → points → lines → routes → polygons
+config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → gpkg-store → road-network
+→ network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → gpkg-filter → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
-→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → geopackage → gpkg-import
-→ census → lodes → projections
+→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → gpkg-filter-ui → census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
@@ -155,15 +162,15 @@ Hard ordering rules: `config.js` first (map.js/census.js read the keys at init);
 
 ## Conventions
 
-- **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js; sql.js is injected by `gpkg-import.js` only when a `.gpkg` is opened).
-- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.GeoPackage`).
+- **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js, sql.js and proj4 (lazy-loaded by gpkg-layers.js)).
+- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.GpkgReader`, `window.GpkgFilter`).
 - **Module-local state stays private** inside the IIFE closure (`_lastResult`, `_stale`, `_running`, …), never on `App`.
 - **Dormant sidebar.** `#sidebar-wrap`, `sidebar-v2.css` and `js/core/sidebar.js` ship hidden and unused. Data actions live in the toolbar Add Data menu and analyses in the toolbar Analysis menu. Never describe the sidebar as live.
 - **Analysis panels** are non-modal floating panels over a live map, managed by `App.popup` (load, init/open/close, Escape, docking, collapse). Single-step modules declare `panelWidths` and call `App.popup.setLayoutMode("setup" | "results" | "workspace")`; a successful run collapses Inputs via `App.renderModuleInputs()` (failed runs leave them open). Keep movable input sections in `data-input-group` wrappers and Run buttons in `.module-input-actions`. Width rules: `docs/reference/analysis-modules.md`.
 - **Inputs vs. Settings.** Required selections (buffer, checklist, geography, year) sit inline and collapse after a run; optional/expert tuning sits behind a button, modal or `<details>`.
 - **Tabbed popups** (Ridership Forecasting, FTA, Title VI) use a `[data-tab]` tab bar and a module `switchTab(id)`; state is kept in the closure across tab switches.
 - **Inline help** is a `<button class="rf-info-btn">ⓘ</button>` toggling a sibling `<div>` in `init()`. No tooltip libraries.
-- **CSS namespacing.** Each module's styles use its prefix (`.tpi-`, `.rf-`, `.fta-`, `.tvi-`, …) in `css/style.css`. **Exception:** `.rf-status*` and `.rf-info-box` are deliberately shared by every module through `App.renderModuleState()`; do not rename or fork them.
+- **CSS namespacing.** Each module's styles use its prefix (`.tpi-`, `.rf-`, `.fta-`, `.tvi-`, `.gp-`, …) in `css/style.css`. **Exception:** `.rf-status*` and `.rf-info-box` are deliberately shared by every module through `App.renderModuleState()`; do not rename or fork them.
 - **Standardized module state.** Every module renders its stale banner (with a working Re-run button via `onRerun`) and its empty/onboarding hint through `App.renderModuleState()`, usually via thin local `setStatus`, `showStale()` and `emptyHint()` → `{need, action}` wrappers. New modules follow this pattern, never a bespoke banner.
 - **Design tokens.** Chrome colors use the semantic tokens in `:root` / `body.dark-mode` (`--bg`, `--surface*`, `--text-*`, `--border*`, `--accent`, status tokens); no raw hex for chrome. Data encodings (feature colors, ramps, pills, legend swatches, map symbols) are exempt. Spacing uses `--space-*`; typography uses the `:root` font variables (Inter only). Extend the shared primitives (`.form-field`, `.form-section`, `.btn-row`, `.rf-select`, `.rf-number-input`, `.rf-action-primary`, `.rf-btn-sm`, `.u-*`) rather than adding module copies.
 - **Comments explain why, not what.** Keep invariants, past-bug reasons and quirks; no plan-phase history ("Phase 3 added…") in code comments. Module detail goes in `docs/reference/`, not `CLAUDE.md`; finished plans go in `docs/archive/`.

@@ -1316,7 +1316,9 @@
       // Unload only: Clear removes map content, not the downloaded streets.
       if (typeof App.unloadRoadNetwork === "function") App.unloadRoadNetwork();
       if (typeof App.osmClearLayers === "function") App.osmClearLayers();
-      if (typeof App.clearGeoPackages === "function") App.clearGeoPackages();
+      // Same as GTFS, which clearModules() removes: Clear empties the map of
+      // loaded data too, not only drawn features.
+      if (typeof App.gpkgClearAll === "function") App.gpkgClearAll();
       if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
       if (typeof App.clearCensusOverlay === "function") App.clearCensusOverlay();
       App.setStatus("Cleared");
@@ -1482,6 +1484,21 @@
       importFileInput.click();
     });
 
+    // GeoPackage menu item → its own hidden file input, so the picked file goes straight
+    // to the GeoPackage loader and never through the extension router
+    var gpkgFileInput = document.getElementById("ad-gpkg-file");
+    document.getElementById("ad-gpkg").addEventListener("click", function () {
+      addDataDropdown.style.display = "none";
+      gpkgFileInput.value = "";
+      gpkgFileInput.click();
+    });
+    gpkgFileInput.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (typeof App.gpkgOpenFile === "function") App.gpkgOpenFile(file);
+      e.target.value = "";
+    });
+
     // Municipal Boundaries toggle
     var _muniBoundariesActive = false;
     // Any caller that hides the boundaries (the Layers panel's Remove layer, too)
@@ -1511,6 +1528,16 @@
     var _EYESVG_CLOSED = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 6s2.5-4 5-4 5 4 5 4-2.5 4-5 4-5-4-5-4z"/><circle cx="6" cy="6" r="1.5"/><line x1="2" y1="10" x2="10" y2="2"/></svg>';
 
     var _adClrCfgs = [
+      {
+        // One Add Data row for every GeoPackage import: the eye toggles them
+        // all, × removes them all; the Layers panel handles them one by one.
+        btnId: "ad-gpkg",
+        isLoaded: function () { return typeof App.gpkgLoaded === "function" && App.gpkgLoaded(); },
+        clear: function () { if (typeof App.gpkgClearAll === "function") App.gpkgClearAll(); },
+        hasEye: true,
+        isVisible: function () { return typeof App.gpkgVisible === "function" && App.gpkgVisible(); },
+        setVisible: function (v) { if (typeof App.gpkgSetVisible === "function") App.gpkgSetVisible(v); }
+      },
       {
         btnId: "gtfs-load-btn",
         isLoaded: function () {
@@ -1677,9 +1704,9 @@
         if (typeof App.loadRoadNetworkFromFile === "function") App.loadRoadNetworkFromFile(file);
         return;
       }
-      // GeoPackage opens as read-only reference layers, never drawn features.
+      // A GeoPackage is read directly by gpkg-layers.js and does not need App.cache
       if (ext === "gpkg") {
-        if (typeof App.importGeoPackage === "function") App.importGeoPackage(file);
+        if (typeof App.gpkgOpenFile === "function") App.gpkgOpenFile(file);
         return;
       }
       if (typeof App.cache === "undefined") return;
@@ -2016,6 +2043,11 @@
         console.warn("GTFS cache restore failed:", e);
       });
     }
+
+    // GeoPackage imports, same approach: original file bytes in IndexedDB,
+    // re-opened through the normal import path (App.restoreCachedGpkg in
+    // js/core/gpkg-layers.js). Reference layers only, so nothing else waits on it.
+    if (typeof App.restoreCachedGpkg === "function") App.restoreCachedGpkg();
 
     // "Start fresh" link in view-only banner
     var _viewOnlyFreshBtn = document.getElementById("view-only-start-fresh");

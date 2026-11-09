@@ -170,22 +170,40 @@
   var _refOrder = REFERENCE.map(function (e) { return e.id; });
   var _analysisOrder = ANALYSIS.map(function (e) { return e.id; });
 
-  // Runtime reference rows (GeoPackage layers from gpkg-import.js). Same entry
-  // shape as REFERENCE; a new row goes to the top of the band, matching where
-  // its importer inserts the map layer (directly under the drawn features).
-  // Both arrays are mutated in place because rendered rows hold references.
-  function registerReferenceLayer(entry) {
-    if (!entry || !entry.id || !entry.layers) return;
-    unregisterReferenceLayer(entry.id, true);
-    REFERENCE.push(entry);
-    _refOrder.unshift(entry.id);
-    refreshLayersPanel();
+  // The static REFERENCE entries plus GeoPackage imports, whose rows come and
+  // go at run time. A new import's id is slotted into _refOrder where its
+  // layers actually sit on the map (other reference layers can be added above
+  // or below it later), so the panel order keeps matching the map order;
+  // removed imports' ids are dropped.
+  function referenceEntries() {
+    var dyn = (typeof App.gpkgReferenceEntries === "function") ? App.gpkgReferenceEntries() : [];
+    var live = {};
+    dyn.forEach(function (e) { live[e.id] = true; });
+    for (var k = _refOrder.length - 1; k >= 0; k--) {
+      if (_refOrder[k].indexOf("gpkg-") === 0 && !live[_refOrder[k]]) _refOrder.splice(k, 1);
+    }
+    var all = REFERENCE.concat(dyn);
+    var styleIds = null;
+    dyn.forEach(function (e) {
+      if (_refOrder.indexOf(e.id) >= 0) return;
+      // getStyle() serializes the whole style: read the id list once.
+      if (!styleIds) styleIds = App.map.getStyle().layers.map(function (l) { return l.id; });
+      var top = entryTopIndex(e, styleIds);
+      var at = _refOrder.length;
+      for (var i = 0; i < _refOrder.length; i++) {
+        var other = all.filter(function (x) { return x.id === _refOrder[i]; })[0];
+        if (other && entryPresent(other) && entryTopIndex(other, styleIds) < top) { at = i; break; }
+      }
+      _refOrder.splice(at, 0, e.id);
+    });
+    return all;
   }
-  function unregisterReferenceLayer(id, skipRefresh) {
-    for (var i = REFERENCE.length - 1; i >= 0; i--) if (REFERENCE[i].id === id) REFERENCE.splice(i, 1);
-    var k = _refOrder.indexOf(id);
-    if (k >= 0) _refOrder.splice(k, 1);
-    if (!skipRefresh) refreshLayersPanel();
+
+  // Style index of an entry's topmost layer (-1 when none is on the map).
+  function entryTopIndex(entry, ids) {
+    var top = -1;
+    entry.layers.forEach(function (L) { var i = ids.indexOf(L.id); if (i > top) top = i; });
+    return top;
   }
 
   function orderedPresent(entries, order) {
@@ -418,9 +436,26 @@
     '<circle cx="3" cy="3" r="1.1"/><circle cx="7" cy="3" r="1.1"/><circle cx="3" cy="7" r="1.1"/>' +
     '<circle cx="7" cy="7" r="1.1"/><circle cx="3" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>';
 
-  // Fit the map to a layer entry by reading its GeoJSON source data.
+  // Fit the map to a layer entry by reading its GeoJSON source data. An entry
+  // with a bbox() hook (a filtered GeoPackage layer, whose source also holds
+  // hidden features) supplies its own extent; null means nothing is shown,
+  // undefined that no extent could be worked out.
+  function fitBbox(map, bb, pad, minZoom) {
+    if (bb[0] === bb[2] && bb[1] === bb[3]) {
+      map.easeTo({ center: [bb[0], bb[1]], zoom: Math.max(map.getZoom(), minZoom), duration: 600 });
+    } else {
+      map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: pad, duration: 600 });
+    }
+  }
   function zoomToEntry(entry) {
     var map = App.map;
+    if (typeof entry.bbox === "function") {
+      var own;
+      try { own = entry.bbox(); } catch (e) { own = undefined; }
+      if (own && own.every(function (n) { return isFinite(n); })) { fitBbox(map, own, 40, 14); return; }
+      if (typeof App.setStatus === "function") App.setStatus(own === null ? "No features match this layer's filter" : "Could not determine layer extent.");
+      return;
+    }
     for (var i = 0; i < entry.layers.length; i++) {
       var sl = map.getLayer(entry.layers[i].id);
       if (!sl) continue;
@@ -430,11 +465,7 @@
       try {
         var bb = turf.bbox(data);
         if (bb && bb.every(function (n) { return isFinite(n); })) {
-          if (bb[0] === bb[2] && bb[1] === bb[3]) {
-            map.easeTo({ center: [bb[0], bb[1]], zoom: Math.max(map.getZoom(), 14), duration: 600 });
-          } else {
-            map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 40, duration: 600 });
-          }
+          fitBbox(map, bb, 40, 14);
           return;
         }
       } catch (e) { /* fall through */ }
@@ -815,6 +846,12 @@
       });
     }
 
+    // Run-time specs (GeoPackage imports) may add their own rows below the
+    // color controls; the spec owns them, this drawer only hosts them.
+    if (typeof spec.extraControls === "function") {
+      try { spec.extraControls(body, rerender); } catch (e) { /* the color rows still work */ }
+    }
+
     return body;
   }
 
@@ -930,7 +967,11 @@
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
-    name.textContent = entry.label;
+    // displayLabel: an optional shorter text with the distinguishing part
+    // first, for rows whose full label starts with a long shared prefix (a
+    // GeoPackage file name); the full label stays available on hover.
+    name.textContent = entry.displayLabel || entry.label;
+    if (entry.displayLabel) name.title = entry.label;
     row.appendChild(name);
 
     if (typeof entry.badge === "function") {
@@ -2008,7 +2049,7 @@
     }
 
     // Reference / imported (only those currently on the map)
-    var getRef = function () { return orderedPresent(REFERENCE, _refOrder); };
+    var getRef = function () { return orderedPresent(referenceEntries(), _refOrder); };
     var refPresent = getRef();
     if (refPresent.length) {
       var rBand = buildBand("Reference / Imported");
@@ -2042,6 +2083,4 @@
   }
 
   App.refreshLayersPanel = refreshLayersPanel;
-  App.registerReferenceLayer = registerReferenceLayer;
-  App.unregisterReferenceLayer = unregisterReferenceLayer;
 })();

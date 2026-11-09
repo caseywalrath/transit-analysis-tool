@@ -2,7 +2,7 @@
 
 Plain `<script>` tags in `index.html`, in this order (verified against `index.html`). Order matters: a file may only use, **at load time**, what earlier files defined. Most files touch `App.*` only inside functions.
 
-CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js is not a script tag: `gpkg-import.js` injects it the first time a `.gpkg` is opened.
+CDN libraries load first: MapLibre GL, Turf, pako, PapaParse, JSZip, shapefile. sql.js and proj4 are not script tags: `gpkg-layers.js` loads them from cdnjs the first time a `.gpkg` is opened.
 
 ```
 js/core/
@@ -15,12 +15,15 @@ walk-cost.js         pure, no deps; window.WalkCost (before road-network.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
+gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
 road-network.js      needs App.map, turf, window.WalkCost, App.networkStore (optional, guarded)
 network-connectors.js needs road-network.js; App.refreshWalkNetworkLayer etc.
 walk-audit.js        pure window.WalkAudit + App block (call time); after road-network/network-connectors
 travelshed.js        pure; window.Travelshed
 connector-graph.js   pure; window.ConnectorGraph
 walk-shape.js        window.WalkShape; reads turf at CALL time only (road-network.js calls it for both boundary shapes)
+gpkg-reader.js       pure window.GpkgReader; no App, DOM, map or sql.js use at any time; before gpkg-layers.js, which calls it at call time
+gpkg-filter.js       pure window.GpkgFilter; no App, DOM or map use at any time; before gpkg-layers.js, which calls it at call time
 point-icons.js      pure window.PointIcons + App block (call time); before points.js, whose rendering calls App.stampPointIcon
 points.js / lines.js / routes.js / polygons.js   need App.map, turf
 labels.js            App.labels, addLabel/removeLabel/…
@@ -37,9 +40,10 @@ attr-bulk.js         window.AttrBulk (pure multi-select field rules; no App at l
 feature-attributes.js needs window.AttrBulk in multi mode; App.openAttrDock/closeAttrDock/syncAttrDock/isAttrDockOpen/getAttrDockFeature
 merge.js             App.mergeGeom/mergeAttrs/merge; must precede attribute-summary.js (uses App.mergeAttrs.fieldHasValue)
 split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, App.split
-layers-panel.js      App.refreshLayersPanel, App.registerReferenceLayer/unregisterReferenceLayer
-geopackage.js        window.GeoPackage (pure .gpkg geometry decoding; no App at load)
-gpkg-import.js       GeoPackage viewer; uses window.GeoPackage, App.registerReferenceLayer, App.popup (all at call time); lazy-loads sql.js from cdnjs
+layers-panel.js      App.refreshLayersPanel
+gpkg-layers.js       needs App (var App at load); App.map, window.GpkgReader, window.LayerPalette, App.registerLayerStyle, App.firstUserLayer, App.cache, App.gpkgStore at call time; sql.js and proj4 lazy-loaded from cdnjs
+gpkg-table.js        needs App (assigns App.gpkgOpenTable/gpkgCloseTable at load); App.popup and window.GpkgReader at call time only; after gpkg-layers.js, which calls App.gpkgOpenTable only at call time, behind a typeof guard
+gpkg-filter-ui.js    needs App (assigns App.gpkgBuildLayerControls at load); App.buildScrubber and window.GpkgFilter at call time only; gpkg-layers.js calls it only at call time, behind a typeof guard
 census.js            needs App.bboxStringFromFeature, App.getMeta, turf
 lodes.js             needs App.bufferUnionPolygon, pako, turf
 projections.js       population-projection CSV (App.parseProjectionsCSV/setProjectionsData/projGrowthFactors/…)

@@ -184,6 +184,8 @@
     }
     return undefined;
   }
+  // Shared with gpkg-layers.js so the anchor list is not copied again.
+  App.firstUserLayer = firstUserLayer;
 
   function segmentsToGeoJSON(segments) {
     var features = new Array(segments.length);

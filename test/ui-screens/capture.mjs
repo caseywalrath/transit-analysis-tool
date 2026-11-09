@@ -557,6 +557,26 @@ async function captureTheme(browser, theme, port) {
     record(theme + "_appearance-popover", "fail", e.message);
   }
 
+  // ---- GeoPackage layer picker (Add Data → GeoPackage → #gp-dialog) ----
+  // Fed through the hidden Add Data input with the committed fixture; Escape
+  // closes it again so the later captures see the page as before.
+  try {
+    await page.evaluate(() => { document.getElementById("ad-gpkg-file").value = ""; });
+    await page.setInputFiles("#ad-gpkg-file", join(HERE, "..", "fixtures", "sample.gpkg"));
+    await shootLocator(page, "#gp-dialog", join(OUT_DIR, theme + "_gpkg-dialog.png"), theme + "_gpkg-dialog");
+  } catch (e) {
+    record(theme + "_gpkg-dialog", "fail", e.message);
+  } finally {
+    // Runs even when the capture failed, so a stuck dialog cannot leak into the
+    // later captures. Its own errors are ignored so they do not hide the original failure.
+    try {
+      await page.keyboard.press("Escape");
+      await page.locator("#gp-dialog").waitFor({ state: "hidden", timeout: 5000 });
+    } catch {
+      /* Still open after 5 s or page gone; the next capture reports whatever it sees. */
+    }
+  }
+
   // ---- Line style control + dashed/dotted lines (Phase 3) ----
   try {
     await page.evaluate(() => {
