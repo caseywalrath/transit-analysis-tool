@@ -91,6 +91,7 @@ js/core/
   connector-graph.js        window.ConnectorGraph — connector planarization (pure)   [road-network]
   walk-shape.js             window.WalkShape — walkshed boundary (travel-time contour isochrones; turf at call time)   [road-network]
   gpkg-reader.js            window.GpkgReader — GeoPackage blob/WKB + projection rules (pure)   [layers-and-styling]
+  gpkg-filter.js            window.GpkgFilter — layer filter rules and MapLibre expressions (pure)   [layers-and-styling]
   point-icons.js            window.PointIcons — point icon registry (pure) + icon drawing, picker, setters   [drawing-and-features]
   points.js / lines.js / routes.js / polygons.js   Drawing, buffers, rendering per type   [drawing-and-features]
   labels.js / textboxes.js  Map label and text-box annotations (DOM markers)
@@ -107,6 +108,7 @@ js/core/
   layers-panel.js           Layers tab: drawn/analysis/reference bands, style drawers, GTFS browser   [layers-and-styling]
   gpkg-layers.js            GeoPackage import: lazy sql.js/proj4, picker, reference layers, color ramp, tables, click popup, restore   [layers-and-styling]
   gpkg-table.js             Attribute-table window for GeoPackage layers and tables   [layers-and-styling]
+  gpkg-filter-ui.js         Fill and Filter controls for a GeoPackage layer's style drawer   [layers-and-styling]
   census.js / lodes.js      TIGERweb + ACS fetch/aggregation; LODES employment   [core-app]
   projections.js            Population-projection CSV additions
   cache.js                  Session save/restore/import/export, schema migrations   [core-app]
@@ -141,13 +143,13 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 
 ## Script Load Order
 
-Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `gpkg-reader`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
+Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `gpkg-reader`, `gpkg-filter`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
 config → utils → sidebar → map → search → walk-cost → layer-palettes → network-store → gtfs-store → gpkg-store → road-network
-→ network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → point-icons → points → lines → routes → polygons
+→ network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → gpkg-filter → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
-→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → census → lodes → projections
+→ feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → gpkg-filter-ui → census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
@@ -161,7 +163,7 @@ Hard ordering rules: `config.js` first (map.js/census.js read the keys at init);
 ## Conventions
 
 - **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js, sql.js and proj4 (lazy-loaded by gpkg-layers.js)).
-- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.GpkgReader`).
+- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.GpkgReader`, `window.GpkgFilter`).
 - **Module-local state stays private** inside the IIFE closure (`_lastResult`, `_stale`, `_running`, …), never on `App`.
 - **Dormant sidebar.** `#sidebar-wrap`, `sidebar-v2.css` and `js/core/sidebar.js` ship hidden and unused. Data actions live in the toolbar Add Data menu and analyses in the toolbar Analysis menu. Never describe the sidebar as live.
 - **Analysis panels** are non-modal floating panels over a live map, managed by `App.popup` (load, init/open/close, Escape, docking, collapse). Single-step modules declare `panelWidths` and call `App.popup.setLayoutMode("setup" | "results" | "workspace")`; a successful run collapses Inputs via `App.renderModuleInputs()` (failed runs leave them open). Keep movable input sections in `data-input-group` wrappers and Run buttons in `.module-input-actions`. Width rules: `docs/reference/analysis-modules.md`.

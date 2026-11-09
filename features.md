@@ -149,6 +149,11 @@ Open a GeoPackage via Add Data (+) → GeoPackage (.gpkg)… or → Spatial Data
 
 A layer with a travel-time or cost column (named like `time`, `minutes`, `seconds`, `secs` or `cost`, with numbers) is colored green → red over that column's range, and rows without a value are gray. The layer's ⋯ menu opens **View attribute table**, a window with a filter box, up to 500 rows and a count line; clicking a row zooms to that feature and opens its popup. Attribute tables and feature tables with no geometry are listed in the import picker as "Table (no map layer)" and open from any layer's ⋯ menu as "View table: <name>".
 
+- **Layer filters.** A GeoPackage feature layer can show only the features that match one or more conditions, such as `polygon_id is denver-25ft-blocks_2020`. Conditions are set in the layer's color drawer. The badge shows `N of M`, and Zoom to layer, Copy to drawn features and the attribute table follow the filter. Filters come back after a page refresh.
+- **Show matching on map.** The attribute table's "Show matching on map" button adds its search text to the layer's filter as a condition on any column, so the map shows the rows that match the search.
+- **Duplicate layer and Rename.** A GeoPackage layer's ⋯ menu can duplicate it as a second view of the same data, with its own color, filter and fill, without loading the file twice. Rename… sets the name a view shows.
+- **Fill transparency.** A polygon layer's fill can be made clear or partly clear in its color drawer, while its outline stays solid.
+
 ### Floating attributes popup — Implemented
 Feature attributes open in a floating draggable popup (`#fp-attr-popup`, 320px, clamped to viewport, Escape/X to close, auto-updates on selection change). Opened via the row's gear icon (⚙) or right-click → "Attributes".
 
