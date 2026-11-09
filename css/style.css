@@ -7146,7 +7146,12 @@ body.present-mode .box-select-bar { display: none; }
 /* GeoPackage layer filter controls (gpkg-filter-ui.js) */
 .gp-filter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--text-2xs); color: var(--muted); margin-top: var(--space-2); }
 .gp-filter-count { color: var(--text-secondary); }
-.gp-filter-cond { display: flex; align-items: center; gap: 3px; min-width: 0; }
-.gp-filter-cond .gp-filter-field { flex: 1 1 0; min-width: 0; }
-.gp-filter-cond .gp-filter-op { flex: 0 0 auto; }
-.gp-filter-value { flex: 1 1 0; min-width: 0; font-size: var(--text-xs); min-height: var(--ctl-height-sm); padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-primary); }
+/* Two lines per condition (field + operator, then the value), so each control
+   keeps a readable width inside the 250px panel. */
+.gp-filter-cond { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 16px; gap: 3px; align-items: center; padding-bottom: var(--space-1); border-bottom: 1px solid var(--border); }
+.gp-filter-cond .lp-basemap-select { width: 100%; min-width: 0; max-width: none; }
+.gp-filter-cond .gp-filter-field { grid-column: 1; grid-row: 1; }
+.gp-filter-cond .gp-filter-op { grid-column: 2; grid-row: 1; }
+.gp-filter-cond .gp-filter-value { grid-column: 1 / span 2; grid-row: 2; }
+.gp-filter-cond .lp-style-clear { grid-column: 3; grid-row: 1; }
+.gp-filter-value { box-sizing: border-box; width: 100%; min-width: 0; font-size: var(--text-xs); min-height: var(--ctl-height-sm); padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-primary); }

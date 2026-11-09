@@ -620,6 +620,23 @@
   // from gpkg-filter-ui.js; until that file is loaded this adds nothing.
   function _drawerControls(rec, body, rerender) {
     if (typeof App.gpkgBuildLayerControls !== "function") return;
+    var st = App.gpkgGetLayerState(rec.id);
+    if (!st) return;
+    st.styleLabel = rec.fileName + " · " + _viewName(rec);
+    st.fieldValues = function (f) { return App.gpkgFieldValues(rec.id, f); };
+    // The scrubber keeps its own value, so a fill change needs no re-render.
+    st.onFillAlpha = function (a) { if (_find(rec.id) >= 0) _setFillAlpha(rec, a); };
+    // The rows commit on every field/operator change, and a half-filled row
+    // normalizes to the filter already applied. Re-rendering then would rebuild
+    // the drawer and throw away the row being typed, so only a real change goes on.
+    st.onFilter = function (f) {
+      var next = _normFilter(f);
+      if (JSON.stringify(next) === JSON.stringify(rec.filter)) return;
+      // gpkgSetLayerFilter re-renders the Layers panel, which rebuilds this
+      // drawer; calling rerender() as well would only build it twice.
+      App.gpkgSetLayerFilter(rec.id, next);
+    };
+    App.gpkgBuildLayerControls(body, st);
   }
 
   // One write per file once a burst of changes (a scrubber drag, typing)
@@ -652,16 +669,27 @@
     rec.filter = _normFilter(filter);
     _applyFilter(rec);
     _afterChange();
+    // A table showing this layer's rows must follow the filter; this is the one
+    // place that reopens it, so callers (drawer, table button) never do.
+    if (_openTableRecId === rec.id) _openLayerTable(rec);
     if (!_addingRestored) _schedulePersist(rec.fileKey);
     return true;
   };
 
-  App.gpkgSetFillAlpha = function (id, a) {
-    var rec = _recById(id);
-    if (!rec) return false;
+  function _setFillAlpha(rec, a) {
     rec.fillAlpha = _clampAlpha(a);
     _repaint(rec);
     if (!_addingRestored) _schedulePersist(rec.fileKey);
+  }
+
+  // Re-renders the panel so an open drawer shows the new value. The drawer's
+  // own scrubber calls _setFillAlpha instead: a re-render mid-drag would
+  // rebuild the scrubber under the pointer.
+  App.gpkgSetFillAlpha = function (id, a) {
+    var rec = _recById(id);
+    if (!rec) return false;
+    _setFillAlpha(rec, a);
+    _afterChange();
     return true;
   };
 
@@ -953,14 +981,25 @@
 
   function _openLayerTable(rec) {
     if (typeof App.gpkgOpenTable !== "function") return;
-    var feats = _sourceFeatures(rec);
+    var feats = _matchingFeatures(rec);
     _openTableKey = rec.fileKey;
     _openTableRecId = rec.id;
     App.gpkgOpenTable({
       title: rec.layerName + " — " + rec.fileName,
-      columns: _columnsOf(feats),
+      // Columns come from the whole source so the list does not shrink when a
+      // filter matches nothing.
+      columns: _columnsOf(_sourceFeatures(rec)),
       rows: feats.map(function (f) { return f.properties || {}; }),
       total: feats.length,
+      note: rec.filter && window.GpkgFilter ? "map filter: " + window.GpkgFilter.describe(rec.filter) : undefined,
+      // The button's disabled state lags the table's debounced redraw, so empty
+      // text can arrive here. App.gpkgSetLayerFilter reopens this table itself.
+      onApplyFilter: function (text) {
+        if (!text || !String(text).trim() || _find(rec.id) < 0) return;
+        var conds = rec.filter ? rec.filter.conditions.slice() : [];
+        conds.push({ field: "*", op: "contains", value: text });
+        App.gpkgSetLayerFilter(rec.id, { conditions: conds });
+      },
       // A removed layer's window is closed, but guard anyway: never fly to a
       // feature that is no longer drawn.
       onRowClick: function (i) { if (feats[i] && _find(rec.id) >= 0) _zoomToFeature(rec, feats[i]); }

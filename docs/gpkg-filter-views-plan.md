@@ -553,3 +553,18 @@ The log records the names the tests in Card E rely on.
 - Note for Card D: the table's apply button updates its disabled state on the 150 ms debounced redraw, so `onApplyFilter` can receive `""` and must ignore it.
 - Hand-off: `App.gpkgBuildLayerControls(body, ctx)` with `ctx` exactly as in Card B; `App.gpkgOpenTable` opts gain `onApplyFilter(text)` and `note`.
 
+### Phase 4 — done (Sonnet, Card D)
+- Accepted. All four gpkg browser tests pass; the extra scratch checks pass (drawer filter via the real controls; table "Show matching on map" with `nor` → `1 of 3` and `map filter: any column contains nor`; zero matches → `0 rows · map filter: name is zzz` with all 5 columns).
+- Deviation (accepted, a real fix the card missed): `onFilter` ignores a normalized filter equal to the current one. Choosing a field commits a half-filled row, which normalizes to the existing filter. Re-rendering then would have wiped the row being typed.
+  - Remaining edge, logged: editing an existing condition into an invalid state (e.g. switching `is` to `is greater than` with text in the box) drops that row on the re-render.
+- Review fixes by Opus:
+  - Removed the redundant `rerender()` in `onFilter`: `gpkgSetLayerFilter` already re-renders the panel, so the drawer was built twice.
+  - Reverted the agent's `\u2014` / `\u00b7` escapes to the literal characters the file uses.
+  - Bug found by screenshot: `App.gpkgSetFillAlpha` did not re-render, so an open drawer showed a stale Fill value. It now calls `_afterChange`; the drawer's scrubber uses the private `_setFillAlpha(rec, a)`, which does not re-render, so a drag is not interrupted.
+  - Layout found by screenshot: in a 250px panel, field, operator and value on one line left the value box ~20px wide. `.gp-filter-cond` is now a two-line grid (field + operator, then a full-width value), checked in light and dark mode.
+- Lesson: card B's "Done when" proved the controls work but not that they fit. UI cards should include a screenshot step for the orchestrator.
+- Hand-off for phase 5:
+  - `_drawerControls` builds `ctx` from `App.gpkgGetLayerState`, with `styleLabel` = `rec.fileName + " · " + _viewName(rec)`;
+  - `App.gpkgSetLayerFilter` reopens the table when `_openTableRecId === rec.id`;
+  - `_openLayerTable` uses `_matchingFeatures`, takes its columns from `_columnsOf(_sourceFeatures(rec))`, and passes `note` and `onApplyFilter`.
+
