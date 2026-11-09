@@ -707,24 +707,31 @@
 
   // Adds one layer's features to the map and the registry. Returns the import
   // id, or null when the collection has no features.
-  // meta: { fileName, layerName, color? }. Layers are added bottom-to-top
-  // (fill, outline, line, point), each directly below the drawn features, so
-  // the first one is the lowest: applyBandOrder in layers-panel.js relies on that.
+  // meta: { fileName, layerName, color?, filter?, fillAlpha?, label?, shareFrom? }.
+  // Layers are added bottom-to-top (fill, outline, line, point), each directly
+  // below the drawn features, so the first one is the lowest: applyBandOrder in
+  // layers-panel.js relies on that.
+  // meta.shareFrom: an existing record of the same table. The new record is a
+  // second view of it (Duplicate layer): it draws from the same GeoJSON source
+  // and shares its data and ramp, so the features are not loaded twice.
   function _addLayerToMap(featureCollection, meta) {
+    var share = meta.shareFrom || null;
     // Nothing drawable (every row empty, NULL or skipped): no source, no
     // registry entry, so no invisible import the panel cannot show or remove.
-    if (!featureCollection.features.length) return null;
+    if (!share && !featureCollection.features.length) return null;
     var map = App.map;
     _wireClick();
     var id = "gpkg" + (++_counter);
-    var sourceId = "gpkg-src-" + id;
-    var kinds = _geomKinds(featureCollection);
     var color = meta.color || _nextColor();
     var styleKey = _styleKey(id);
 
     var layers = [];
-    var rec = {
-      id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: kinds,
+    var rec = share ? {
+      id: id, fileName: share.fileName, layerName: share.layerName, geomKinds: share.geomKinds,
+      fileKey: share.fileKey, savedColor: color, featureCount: share.featureCount, color: color,
+      ramp: share.ramp, columns: share.columns.slice(), sourceId: share.sourceId, data: share.data
+    } : {
+      id: id, fileName: meta.fileName, layerName: meta.layerName, geomKinds: _geomKinds(featureCollection),
       // Store key: name plus byte size, so two different files that share a
       // name never merge into one stored record.
       fileKey: meta.fileKey || meta.fileName,
@@ -733,15 +740,17 @@
       ramp: _pickRamp(featureCollection, meta.columns),
       // Column names the filter and the table offer, in table order.
       columns: (meta.columns && meta.columns.length) ? meta.columns.slice() : _columnsOf(featureCollection.features),
-      filter: _normFilter(meta.filter),
-      fillAlpha: _clampAlpha(meta.fillAlpha != null ? meta.fillAlpha : FILL_ALPHA),
-      // Display name chosen by the user; null shows the table name.
-      label: meta.label || null,
-      sourceId: sourceId, styleKey: styleKey, layers: layers,
+      sourceId: "gpkg-src-" + id,
       // Kept only when the layer is small enough to copy to drawn features;
       // a large layer's geometry lives in the map source alone.
       data: _drawnPartCount(featureCollection) <= COPY_LIMIT ? featureCollection : null
     };
+    rec.filter = _normFilter(meta.filter);
+    rec.fillAlpha = _clampAlpha(meta.fillAlpha != null ? meta.fillAlpha : FILL_ALPHA);
+    // Display name chosen by the user; null shows the table name.
+    rec.label = meta.label || null;
+    rec.styleKey = styleKey;
+    rec.layers = layers;
     try {
       // A fresh import starts at its own color: a style left in App.layerStyles
       // under this key (ids restart at gpkg1 each page load) belongs to an
@@ -749,7 +758,7 @@
       delete App.layerStyles[styleKey];
       _addMapLayers(rec, featureCollection);
       App.registerLayerStyle(styleKey, {
-        label: meta.layerName, kind: "solid", defaultColors: [color],
+        label: rec.layerName, kind: "solid", defaultColors: [color],
         extraControls: function (body, rerender) { _drawerControls(rec, body, rerender); }
       }, function () { _repaint(rec); _colorMaybeChanged(rec); });
     } catch (e) {
@@ -769,7 +778,8 @@
     var sourceId = rec.sourceId;
     var kinds = rec.geomKinds;
     var layers = rec.layers;
-    map.addSource(sourceId, { type: "geojson", data: featureCollection });
+    // A duplicate draws from its original's source, which is already there.
+    if (!map.getSource(sourceId)) map.addSource(sourceId, { type: "geojson", data: featureCollection });
     var before = App.firstUserLayer();
     var polyFilter = ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false];
     var lineFilter = ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false];
@@ -814,8 +824,11 @@
     return -1;
   }
 
+  // The source goes only with the last record drawing from it: a duplicate
+  // and its original share one (see _addLayerToMap).
   function _removeOne(rec) {
     var map = App.map;
+    var shared = _registry.some(function (r) { return r !== rec && r.sourceId === rec.sourceId; });
     // Layers before the source: MapLibre refuses to remove a source in use.
     for (var i = rec.layers.length - 1; i >= 0; i--) {
       map.off("mouseenter", rec.layers[i].id, _onEnter);
@@ -823,7 +836,7 @@
       if (map.getLayer(rec.layers[i].id)) map.removeLayer(rec.layers[i].id);
     }
     if (_popup && _popupImportId === rec.id) _popup.remove();
-    if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+    if (!shared && map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
     App.unregisterLayerStyle(rec.styleKey);
   }
 
@@ -853,8 +866,10 @@
     _tables = [];
     _closeTableFor();
     if (!_registry.length) return;
-    _registry.forEach(_removeOne);
+    // Emptied first, so _removeOne sees no other record sharing a source.
+    var all = _registry;
     _registry = [];
+    all.forEach(_removeOne);
     _afterChange();
   };
 
@@ -985,7 +1000,7 @@
     _openTableKey = rec.fileKey;
     _openTableRecId = rec.id;
     App.gpkgOpenTable({
-      title: rec.layerName + " — " + rec.fileName,
+      title: _viewName(rec) + " — " + rec.fileName,
       // Columns come from the whole source so the list does not shrink when a
       // filter matches nothing.
       columns: _columnsOf(_sourceFeatures(rec)),
@@ -1004,6 +1019,38 @@
       // feature that is no longer drawn.
       onRowClick: function (i) { if (feats[i] && _find(rec.id) >= 0) _zoomToFeature(rec, feats[i]); }
     });
+  }
+
+  // A second view of the same table, above the original, with its filter and
+  // fill and the next free color; named "<table> (n)" until renamed.
+  function _duplicateLayer(rec) {
+    if (_find(rec.id) < 0) return null;
+    // The lowest number no view of this table shows, so removing "(2)" and
+    // duplicating again never gives two rows the same name.
+    var names = _registry.filter(function (r) { return r.fileKey === rec.fileKey; }).map(_viewName);
+    var n = 2;
+    while (names.indexOf(rec.layerName + " (" + n + ")") >= 0) n++;
+    var id = _addLayerToMap(null, { shareFrom: rec, filter: rec.filter, fillAlpha: rec.fillAlpha,
+      label: rec.layerName + " (" + n + ")" });
+    _persist(rec.fileKey);
+    _status("Added " + rec.layerName + " (" + n + ")");
+    return id;
+  }
+
+  function _renameLayer(rec) {
+    var name = window.prompt("Layer name (leave empty for the table name)", _viewName(rec));
+    if (name === null || _find(rec.id) < 0) return;
+    name = name.trim();
+    rec.label = (name && name !== rec.layerName) ? name : null;
+    _afterChange();
+    _persist(rec.fileKey);
+  }
+
+  function _viewMenuItems(rec) {
+    return [
+      { label: "Duplicate layer", action: function () { _duplicateLayer(rec); } },
+      { label: "Rename…", action: function () { _renameLayer(rec); } }
+    ];
   }
 
   function _tableMenuItems(rec) {
@@ -1027,7 +1074,7 @@
         layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
         styleKey: r.styleKey,
         clear: function () { App.gpkgRemoveLayer(r.id); },
-        menuItems: function () { return _tableMenuItems(r).concat(_copyMenuItems(r)); },
+        menuItems: function () { return _tableMenuItems(r).concat(_viewMenuItems(r), _copyMenuItems(r)); },
         // Zoom to layer fits what is shown: the source also holds the
         // features a filter hides. null = nothing matches; undefined = no extent.
         bbox: function () {
@@ -1124,7 +1171,7 @@
     root.className = "gp-popup";
     var title = document.createElement("div");
     title.className = "gp-popup-title";
-    title.textContent = rec.fileName + " · " + rec.layerName;
+    title.textContent = rec.fileName + " · " + _viewName(rec);
     root.appendChild(title);
     var keys = Object.keys(props || {}).filter(function (k) { return !_isInternalKey(k); });
     if (!keys.length) {
@@ -1579,7 +1626,24 @@
 
   // Restores one table; a failure skips that table only. view: the stored
   // display state for a feature layer, or null for a record without views.
-  function _restoreTable(libs, db, layers, rec, table, view) {
+  // bases: this file's restored records by table, so a later view of the same
+  // table is added as a duplicate of the first instead of read again.
+  function _restoreTable(libs, db, layers, rec, table, view, bases) {
+    if (view && bases[table] && _find(bases[table].id) >= 0) {
+      _addingRestored = true;
+      try {
+        var dupId = _addLayerToMap(null, { shareFrom: bases[table], color: view.base,
+          filter: view.filter, fillAlpha: view.fillAlpha, label: view.label });
+        var dup = _registry[_find(dupId)];
+        if (view.color && view.color !== dup.color) App.setLayerStyle(dup.styleKey, { color: view.color });
+        dup.savedColor = _currentColor(dup);
+        return true;
+      } catch (e) {
+        return false;
+      } finally {
+        _addingRestored = false;
+      }
+    }
     var layer = layers.filter(function (l) { return l.table === table && l.supported; })[0];
     if (!layer) return false;
     if (layer.tableOnly) {
@@ -1606,6 +1670,7 @@
       });
       if (!id) return false;
       var reg = _registry[_find(id)];
+      bases[table] = reg;
       if (saved.color && saved.color !== reg.color) App.setLayerStyle(reg.styleKey, { color: saved.color });
       reg.savedColor = _currentColor(reg);
       return true;
@@ -1617,15 +1682,14 @@
   }
 
   // What to restore for one stored file, in order. A record with views lists
-  // each layer as shown; tables without geometry are in `layers` only. A
-  // second view of one table is a duplicate, which needs the first view's
-  // source and is not restored here yet.
+  // each layer as shown, duplicates included; tables without geometry are in
+  // `layers` only.
   function _restoreItems(rec) {
     var names = rec.layers || [];
     if (!Array.isArray(rec.views)) return names.map(function (t) { return { table: t, view: null }; });
     var items = [], seen = {};
     rec.views.forEach(function (v) {
-      if (!v || typeof v.table !== "string" || seen[v.table]) return;
+      if (!v || typeof v.table !== "string") return;
       seen[v.table] = true;
       items.push({ table: v.table, view: v });
     });
@@ -1661,10 +1725,11 @@
             var layers;
             try { layers = _inspect(libs, db).layers; } catch (e) { layers = []; }
             var step = Promise.resolve();
+            var bases = {};
             _restoreItems(rec).forEach(function (item) {
               step = step.then(_yield).then(function () {
                 if (gen !== _restoreGen) return;
-                if (_restoreTable(libs, db, layers, rec, item.table, item.view)) restored++;
+                if (_restoreTable(libs, db, layers, rec, item.table, item.view, bases)) restored++;
               });
             });
             return step.then(function () {

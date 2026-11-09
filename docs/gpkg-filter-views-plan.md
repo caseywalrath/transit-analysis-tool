@@ -568,3 +568,18 @@ The log records the names the tests in Card E rely on.
   - `App.gpkgSetLayerFilter` reopens the table when `_openTableRecId === rec.id`;
   - `_openLayerTable` uses `_matchingFeatures`, takes its columns from `_columnsOf(_sourceFeatures(rec))`, and passes `note` and `onApplyFilter`.
 
+### Phase 5 — done (Opus)
+- **Duplicate layer.** `_addLayerToMap(null, { shareFrom: rec, … })` creates a second record that shares the original's `sourceId`, `data`, `ramp` and `columns`. `_addMapLayers` skips `addSource` when the source exists. The duplicate copies the filter and fill, takes the next free color, is named `<table> (n)` (lowest unused n), and appears on top.
+- **Shared sources.** `_removeOne` removes the source only when no other record uses it. `gpkgClearAll` empties `_registry` before removing, so the last record of each source removes it.
+- **Rename.** "Rename…" uses `window.prompt`. Empty input, or the table's own name, stores `label: null`. The popup title, table title and row label all use `_viewName(rec)`.
+- **Restore.** `_restoreItems` now lists every view. `_restoreTable(…, view, bases)` adds a later view of an already-restored table as a duplicate of `bases[table]`. The phase 2 deferred finding is resolved: duplicates restore before any save runs (saves are deferred until restore ends).
+- **Menu order:** View attribute table, View table: …, Duplicate layer, Rename…, Copy to drawn features, then the panel's own Remove layer.
+- **Tests:** gpkg-cache 12/12 (new 3d: a renamed, filtered, recolored duplicate comes back after a reload sharing its original's source; new 3e: removing the original keeps the duplicate's source and features drawn). gpkg-import 42/42, gpkg-table 12/12, gpkg-store 10/10. Scratch: two duplicates plus an open table, then Clear, leaves no `gpkg-` sources and no errors.
+- **Review** (inline, all angles): two fixes — the duplicate's style spec label was `undefined` (it read `meta.layerName`), and the "(n)" numbering could repeat a name after a removal.
+- **Hand-off for Card E:**
+  - menu labels `Duplicate layer` and `Rename…`;
+  - the default duplicate name is `<table> (2)`;
+  - the prompt is stubbed by assigning `window.prompt`;
+  - a duplicate's row label is `<file> · <label>`;
+  - the shared source is read via `App.map.getLayer(entry.layers[0].id).source`.
+

@@ -9,6 +9,8 @@
 //     with their colors, and no extra layers
 //   - a recolored layer keeps its new color across a reload
 //   - a layer's filter and fill transparency come back after a reload
+//   - a renamed, filtered duplicate comes back sharing its original's source, and
+//     removing the original keeps the duplicate drawn
 //   - Remove layer on one: after a reload only the other comes back
 //   - removing a file's last layer deletes its stored copy
 //   - toolbar Clear empties the store
@@ -142,6 +144,60 @@ async function load(page, url) {
       polyState.fillAlpha === 0 && polyState.matchCount === 1 && polyState.badge === "1 of 2" &&
       JSON.stringify(polyState.filter) === '{"conditions":[{"field":"label","op":"eq","value":"holed"}]}',
       JSON.stringify({ polyId, polyState }));
+
+    // A duplicate with its own name, filter and color comes back after a reload.
+    await page.evaluate(() => {
+      window.prompt = () => "Two only";
+      const e = App.gpkgReferenceEntries().find((x) => x.label.endsWith("polys_utm"));
+      e.menuItems().find((m) => m.label === "Duplicate layer").action();
+      const d = App.gpkgReferenceEntries().find((x) => x.label.endsWith("polys_utm (2)"));
+      d.menuItems().find((m) => m.label === "Rename…").action();
+      App.gpkgSetLayerFilter(d.styleKey.replace(/^gpkg-/, ""), { conditions: [{ field: "label", op: "eq", value: "two" }] });
+    });
+    for (let t = 0; t < 50; t++) {
+      const ok = await page.evaluate(async () => {
+        const r = (await App.gpkgStore.list())[0];
+        return !!(r && r.views && r.views.some((v) => v.label === "Two only" && v.filter));
+      });
+      if (ok) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const dupBefore = await page.evaluate(() => App.gpkgReferenceEntries().map((e) => e.label + "|" + e.badge().text));
+    await load(page, url);
+    await waitImports(page, 3);
+    const dupAfter = await page.evaluate(() => {
+      const list = App.gpkgReferenceEntries();
+      const o = list.find((x) => x.label.endsWith("polys_utm"));
+      const d = list.find((x) => x.label.endsWith("Two only"));
+      const src = (e) => e && App.map.getLayer(e.layers[0].id).source;
+      return { labels: list.map((e) => e.label + "|" + e.badge().text), sameSource: !!(o && d) && src(o) === src(d),
+        colors: o && d ? [App.map.getPaintProperty(o.layers[1].id, "line-color"), App.map.getPaintProperty(d.layers[1].id, "line-color")] : null };
+    });
+    check("3d. a renamed, filtered duplicate comes back after a reload, sharing its original's source",
+      JSON.stringify(dupAfter.labels) === JSON.stringify(dupBefore) && dupAfter.sameSource &&
+      dupAfter.colors && dupAfter.colors[0] !== dupAfter.colors[1] &&
+      dupAfter.labels.some((l) => l === "sample.gpkg · Two only|1 of 2"),
+      JSON.stringify({ dupBefore, dupAfter }));
+
+    // Removing the original keeps the duplicate drawn. Renaming the duplicate
+    // back to the table name then lets the steps below treat it as polys_utm.
+    const afterOrigRemoved = await page.evaluate(async () => {
+      const o = App.gpkgReferenceEntries().find((x) => x.label.endsWith("polys_utm"));
+      o.clear();
+      const d = App.gpkgReferenceEntries().find((x) => x.label.endsWith("Two only"));
+      const srcId = App.map.getLayer(d.layers[0].id).source;
+      const bb = d.bbox();
+      App.map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { duration: 0, padding: 80 });
+      await new Promise((res) => { const f = () => (App.map.loaded() && !App.map.isMoving() ? res() : setTimeout(f, 50)); setTimeout(f, 100); });
+      const hits = App.map.queryRenderedFeatures({ layers: d.layers.map((L) => L.id) });
+      window.prompt = () => "";
+      d.menuItems().find((m) => m.label === "Rename…").action();
+      return { source: !!App.map.getSource(srcId), drawn: hits.length > 0,
+        labels: App.gpkgReferenceEntries().map((e) => e.label) };
+    });
+    check("3e. removing the original keeps its duplicate's source and features drawn",
+      afterOrigRemoved.source && afterOrigRemoved.drawn &&
+      afterOrigRemoved.labels.includes("sample.gpkg · polys_utm"), JSON.stringify(afterOrigRemoved));
 
     // Remove the polygon layer through the Layers panel.
     await page.evaluate(() => {
