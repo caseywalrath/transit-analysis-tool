@@ -607,6 +607,7 @@ The log records the names the tests in Card E rely on.
   - Entries may now carry `displayLabel`; GeoPackage rows show `<layer> · <file>`, with the full label as hover text.
   - Two tests that read the row text now read `title || textContent`. One commit's Verified line wrongly claimed passing tests before this; the follow-up commit corrects it.
 - **Review:** each phase had a gate (code-review `high` in phase 2; inline reviews in phases 4 and 5). The final additions are the label change and the tests.
+- **Final tests:** all 25 browser test files pass in a clean full run (`bash test/browser/run-browser.sh`), including the new `gpkg-filter` (14/14) and `hidden-features` (138/138). An earlier `hidden-features` crash happened only while other browser runs competed for the machine. Golden 744/744; doc-coverage 461/464 (3 older missing names).
 - **Turf note for future scripts:** this app's Turf 6.5 `difference`/`intersect`/`union` take two geometries, and its clipper threw "Unable to find segment" on this file's near-coincident vertices. Point sampling worked.
 
 ## Summary
