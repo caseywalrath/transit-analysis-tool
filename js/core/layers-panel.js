@@ -967,7 +967,11 @@
 
     var name = document.createElement("span");
     name.className = "lp-row-label";
-    name.textContent = entry.label;
+    // displayLabel: an optional shorter text with the distinguishing part
+    // first, for rows whose full label starts with a long shared prefix (a
+    // GeoPackage file name); the full label stays available on hover.
+    name.textContent = entry.displayLabel || entry.label;
+    if (entry.displayLabel) name.title = entry.label;
     row.appendChild(name);
 
     if (typeof entry.badge === "function") {

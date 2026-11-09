@@ -1071,6 +1071,9 @@
       return {
         id: r.styleKey,
         label: r.fileName + " · " + _viewName(r),
+        // The layer name first: several layers of one file share the file
+        // name, which would otherwise fill the narrow row and hide the rest.
+        displayLabel: _viewName(r) + " · " + r.fileName,
         layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
         styleKey: r.styleKey,
         clear: function () { App.gpkgRemoveLayer(r.id); },
