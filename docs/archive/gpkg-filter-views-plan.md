@@ -1,6 +1,6 @@
 # GeoPackage layer filters, views and fill transparency — plan
 
-**Status:** planned, not started. Branch `claude/stoic-volta-0ts0fp`.
+**Status:** complete (archived). Branch `claude/stoic-volta-0ts0fp`. Summary at the end.
 
 **Goal:** make imported GeoPackage layers inspectable the way a GIS viewer is:
 
@@ -582,4 +582,50 @@ The log records the names the tests in Card E rely on.
   - the prompt is stubbed by assigning `window.prompt`;
   - a duplicate's row label is `<file> · <label>`;
   - the shared source is read via `App.map.getLayer(entry.layers[0].id).source`.
+
+### Phase 6 — done (Haiku ×2 in parallel, `high`, Cards E and F)
+- **Card E (browser test):** accepted on the first attempt. `test/browser/gpkg-filter.test.mjs` passes 14/14, twice.
+  - Deviations (accepted): the drawer commit steps run as setup for check 2, so check 3 re-checks after reopening; menu items are clicked through the DOM; rendered-feature checks poll from Node.
+- **Card F (docs):** accepted on the first attempt; doc-coverage unchanged at the 3 older missing names.
+  - The agent also fixed three stale lines in layers-and-styling.md (store shape, save triggers, `gpkgStore` signature).
+  - Opus added `gpkg-filter.js`/`gpkg-filter-ui.js` to features.md's file list, which the agent had flagged but left alone.
+- Card note that worked: telling both agents about the async `waitForFunction` pitfall up front. Neither hit it.
+
+### Phase 7 — done (Opus)
+- **Walkthrough with the user's `comparison.gpkg`** (user data, not committed), driven through the app's filters, duplicate and fill in a scratch script:
+  - **Step 1:** four layers load (11,511 / 11 / 3,608 / 189 features) in Denver.
+  - **Steps 2–4:** 25 ft and 50 ft corridors as two filtered views with clear fills and contrasting outlines.
+    - Sampled at ~13 ft spacing (36,358 points), no part of the narrow corridor lies outside the wide one.
+    - 645 sample points inside the narrow corridor are all within 30 ft of a reached line.
+    - Holes: 667 (narrow) and 344 (wide).
+    - Geodesic areas are 143.507 / 194.872 acres, against the stated 143.216 / 194.476. That is 0.2 % apart, consistent with geodesic vs projected area.
+  - **Step 5 (barriers):** not possible here, because basemap tiles cannot load in the test sandbox. Left to the user.
+  - **Step 6:** the hull row shows `sample_kind = negative_control_no_allocation` and `allocation_allowed = false`.
+  - **Step 7:** with the ACS vintage and set filters, each of the 15 points matches exactly one Census polygon by `source_id`. Each point is inside its polygon, `intersection_area_sqft ≤ source_area_sqft`, and `representative_covered` agrees with the corridor test in 15 of 15 cases. All 15 polygons extend beyond the corridor.
+  - **Step 9:** A and B overlap. `unique` equals their union at a sampled grid (0 mismatches), and its area is below A + B.
+- **Found in screenshots and fixed:** with four layers from one file, every Layers row read "ad1955c9-compariso…".
+  - Entries may now carry `displayLabel`; GeoPackage rows show `<layer> · <file>`, with the full label as hover text.
+  - Two tests that read the row text now read `title || textContent`. One commit's Verified line wrongly claimed passing tests before this; the follow-up commit corrects it.
+- **Review:** each phase had a gate (code-review `high` in phase 2; inline reviews in phases 4 and 5). The final additions are the label change and the tests.
+- **Turf note for future scripts:** this app's Turf 6.5 `difference`/`intersect`/`union` take two geometries, and its clipper threw "Unable to find segment" on this file's near-coincident vertices. Point sampling worked.
+
+## Summary
+
+| Phase | Class | Result |
+|---|---|---|
+| 1 Filter engine | Haiku | First attempt; 47 golden cases |
+| 2 Registry, persistence, hooks | Opus | 7 review findings: 5 fixed, 2 deferred and later closed |
+| 3 Drawer controls; table button | Haiku ×2 | First attempt each; one card error (check f order) |
+| 4 Wiring | Sonnet | Accepted; caught a real re-render bug the card missed |
+| 5 Duplicate and rename | Opus | 2 self-review fixes |
+| 6 Browser test; docs | Haiku ×2 | First attempt each |
+| 7 Final gate | Opus | Label readability fix; walkthrough of the user's checklist |
+
+**Lessons:**
+- Haiku handled every structural card here: a pure engine, DOM builders, a 14-check browser test and docs. Each time the card named exact selectors, contracts and expected values.
+- Gaps came from the cards, not the agents:
+  - a check order that could not pass;
+  - no screenshot step for UI cards, which is why a cramped layout and a stale Fill value were found only by the orchestrator;
+  - a re-render interaction across two cards, which Sonnet caught.
+- Put a screenshot review in every UI card's gate, and give the integration card (Sonnet/Opus) any behavior that spans two Haiku cards.
 
