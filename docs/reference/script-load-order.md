@@ -23,6 +23,7 @@ travelshed.js        pure; window.Travelshed
 connector-graph.js   pure; window.ConnectorGraph
 walk-shape.js        window.WalkShape; reads turf at CALL time only (road-network.js calls it for both boundary shapes)
 gpkg-reader.js       pure window.GpkgReader; no App, DOM, map or sql.js use at any time; before gpkg-layers.js, which calls it at call time
+gpkg-filter.js       pure window.GpkgFilter; no App, DOM or map use at any time; before gpkg-layers.js, which calls it at call time
 point-icons.js      pure window.PointIcons + App block (call time); before points.js, whose rendering calls App.stampPointIcon
 points.js / lines.js / routes.js / polygons.js   need App.map, turf
 labels.js            App.labels, addLabel/removeLabel/…
