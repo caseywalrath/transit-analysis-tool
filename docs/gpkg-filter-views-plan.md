@@ -96,7 +96,7 @@ Settled here so no card has to make them.
 | 3 | Haiku ∥ Haiku | Card B: drawer controls UI. Card C: table-window "Show matching on map" option | B: new `js/core/gpkg-filter-ui.js`, `css/style.css`, `index.html`. C: `js/core/gpkg-table.js`, `test/browser/gpkg-table.test.mjs` |
 | 4 | Sonnet | Card D: wire B and C into `gpkg-layers.js` | `js/core/gpkg-layers.js` |
 | 5 | Opus | Duplicate, Rename, shared sources, `views` restore of duplicates | `js/core/gpkg-layers.js` |
-| 6 | Haiku ∥ Haiku | Card E: browser test of the whole feature. Card F: docs | E: new `test/browser/gpkg-filter.test.mjs`. F: `docs/reference/layers-and-styling.md`, `features.md`, `CLAUDE.md` |
+| 6 | Haiku ∥ Haiku | Card E: browser test of the whole feature. Card F: docs | E: new `test/browser/gpkg-filter.test.mjs`. F: `docs/reference/layers-and-styling.md`, `features.md` (root), `CLAUDE.md` |
 | 7 | Opus | Final review, full test run, walkthrough with the user's file, archive plan | — |
 
 Phase 3's two cards touch disjoint files and run in parallel. So do phase 6's.
@@ -494,8 +494,8 @@ The log records the names the tests in Card E rely on.
 ## Phase 6 — Card F (Haiku, `high`): docs
 
 **Files you may change:**
-- `docs/reference/layers-and-styling.md`: in the GeoPackage section, add subsections **Filters**, **Fill transparency**, **Duplicates and names** and **Persistence of views**, from D2–D6 and the phase logs, and add the numeric-text and text-search limitations to the limitations list;
-- `docs/reference/features.md`: one bullet per user-facing feature;
+- `docs/reference/layers-and-styling.md`: in the GeoPackage section, add subsections **Filters**, **Fill transparency**, **Duplicates and names** and **Persistence of views**, from D2–D6 and the phase logs, and add the numeric-text and text-search limitations to the **Known limitations** list;
+- `features.md` (repository root): one bullet per user-facing feature;
 - `CLAUDE.md`: add `gpkg-filter.js` and `gpkg-filter-ui.js` to the File Map (after `gpkg-reader.js` and after `gpkg-table.js`) and the Script Load Order, and add `window.GpkgFilter` to the pure-engine lists in Script Load Order and Conventions.
 
 **Done when:**
