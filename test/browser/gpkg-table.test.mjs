@@ -9,7 +9,9 @@
 //   - a row click reports its row index and marks that row active
 //   - keys typed in the filter do not reach the app's shortcuts
 //   - a second open replaces the window and hides the row-click hint; close removes it
-//   - no uncaught page errors occurred
+//   - "Show matching on map" is disabled on an empty filter, shows the note on the
+//     count line, and reports the filter text when clicked
+//   - no uncaught page errors occurred (checked last, so it covers the checks above)
 //
 // Shared plumbing lives in test/browser/harness.mjs. USAGE: see
 // test/browser/README.md (NODE_PATH points at a Playwright install).
@@ -116,6 +118,56 @@ function check(name, pass, detail) {
     await page.evaluate(() => App.gpkgCloseTable());
     const windows7 = await page.locator(WIDGET).count();
     check("gpkgCloseTable removes the window", windows7 === 0, "windows=" + windows7);
+
+    // ---- 9-12. "Show matching on map" button, in a table opened after the close ----
+    await page.evaluate(async () => {
+      const rows = [];
+      for (let i = 0; i < 20; i++) rows.push({ id: i, name: "row " + i });
+      window.__applied = [];
+      await App.gpkgOpenTable({
+        title: "Filter table — test.gpkg",
+        columns: ["id", "name"],
+        rows: rows,
+        total: 20,
+        onRowClick: null,
+        onApplyFilter: function (text) { window.__applied.push(text); },
+        note: "map filter: id is 3"
+      });
+    });
+
+    // ---- 9. Button present and disabled while the filter is empty ----
+    const s9 = await page.evaluate(() => {
+      const b = document.querySelector('.floating-widget[data-widget-id="gpkg-table"] .gp-table-apply');
+      return { present: !!b, disabled: !!(b && b.disabled), text: b ? b.textContent : null };
+    });
+    check("apply button present and disabled when the filter is empty",
+      s9.present && s9.disabled && s9.text === "Show matching on map", JSON.stringify(s9));
+
+    // ---- 10. Count line ends with the note ----
+    const count10 = await page.locator(WIDGET + " .gp-table-count").textContent();
+    check("count line ends with the note",
+      count10 === "20 rows · map filter: id is 3", JSON.stringify(count10));
+
+    // ---- 11. Typing 'row 1' enables the button and updates the count ----
+    await page.fill(WIDGET + " .gp-table-filter", "row 1");
+    // The filter waits for typing to pause before redrawing.
+    await page.waitForFunction((w) => {
+      const c = document.querySelector(w + " .gp-table-count");
+      return c && c.textContent.indexOf("matching") >= 0;
+    }, WIDGET, { timeout: 3000 }).catch(() => {});
+    const s11 = await page.evaluate(() => {
+      const b = document.querySelector('.floating-widget[data-widget-id="gpkg-table"] .gp-table-apply');
+      const c = document.querySelector('.floating-widget[data-widget-id="gpkg-table"] .gp-table-count');
+      return { disabled: !!(b && b.disabled), count: c ? c.textContent : null };
+    });
+    check("typing 'row 1' enables the button and the count reads '11 matching rows · map filter: id is 3'",
+      s11.disabled === false && s11.count === "11 matching rows · map filter: id is 3", JSON.stringify(s11));
+
+    // ---- 12. Clicking the button reports the filter text ----
+    await page.locator(WIDGET + " .gp-table-apply").click();
+    const s12 = await page.evaluate(() => window.__applied);
+    check("clicking the button reports 'row 1'",
+      JSON.stringify(s12) === '["row 1"]', JSON.stringify(s12));
 
     // ---- 8. No page errors ----
     check("no uncaught page errors occurred",

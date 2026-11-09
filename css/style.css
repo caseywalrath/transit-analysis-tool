@@ -3076,6 +3076,10 @@ body.present-mode .module-popup {
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }
+.gp-table-apply {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .gp-table-scroll {
   max-height: 34vh;
   overflow: auto;
