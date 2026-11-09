@@ -10,6 +10,7 @@
 //   - remove() drops one file
 //   - the MAX_BYTES cap evicts the oldest file, and a file over the cap is refused
 //   - the bytes come back intact and size is recorded
+//   - views round-trip through save and update; update without views drops them
 //   - clear() empties the store
 //
 // Shared plumbing lives in test/browser/harness.mjs. USAGE: see
@@ -114,6 +115,23 @@ function check(name, pass, detail) {
     });
     check("bytes and size round-trip",
       JSON.stringify(s8.bytes) === "[1,2,3]" && s8.size === 3, JSON.stringify(s8));
+
+    // ---- 8b. views round-trip; update without views drops them ----
+    const s8b = await page.evaluate(async () => {
+      await App.gpkgStore.clear();
+      const v1 = [{ table: "t1", label: null, base: "#111111", color: "#111111",
+        filter: { conditions: [{ field: "a", op: "eq", value: "x" }] }, fillAlpha: 0 }];
+      await App.gpkgStore.save("v", new Uint8Array([1]), ["t1"], {}, v1);
+      const a = (await App.gpkgStore.list())[0].views;
+      const v2 = v1.concat([{ table: "t1", label: "Copy", base: "#222222", color: "#222222", filter: null, fillAlpha: 0.35 }]);
+      await App.gpkgStore.update("v", ["t1"], {}, v2);
+      const b = (await App.gpkgStore.list())[0].views;
+      await App.gpkgStore.update("v", ["t1"], {});
+      const c = (await App.gpkgStore.list())[0];
+      return { a: JSON.stringify(a) === JSON.stringify(v1), b: JSON.stringify(b) === JSON.stringify(v2), c: !("views" in c) };
+    });
+    check("views round-trip through save and update; update without views drops them",
+      s8b.a && s8b.b && s8b.c, JSON.stringify(s8b));
 
     // ---- 9. clear() empties the store ----
     const s9 = await page.evaluate(async () => {

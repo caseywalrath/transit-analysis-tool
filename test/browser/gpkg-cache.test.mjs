@@ -8,6 +8,7 @@
 //   - import two layers through the real picker, reload: both come back,
 //     with their colors, and no extra layers
 //   - a recolored layer keeps its new color across a reload
+//   - a layer's filter and fill transparency come back after a reload
 //   - Remove layer on one: after a reload only the other comes back
 //   - removing a file's last layer deletes its stored copy
 //   - toolbar Clear empties the store
@@ -111,6 +112,36 @@ async function load(page, url) {
     check("3b. after a reload, resetting a recolored layer returns to its original color",
       reset === firstPt, JSON.stringify({ reset, firstPt }));
     await page.evaluate((k) => App.setLayerStyle(k, { color: "#123456" }), pt.styleKey);
+
+    // A filter and a fill transparency set on a layer come back after a reload.
+    const polyId = await page.evaluate(() => {
+      const e = App.gpkgReferenceEntries().find((x) => x.label.endsWith("polys_utm"));
+      const id = e.styleKey.replace(/^gpkg-/, "");
+      App.gpkgSetLayerFilter(id, { conditions: [{ field: "label", op: "eq", value: "holed" }] });
+      App.gpkgSetFillAlpha(id, 0);
+      return id;
+    });
+    // Polled from here: waitForFunction treats an async predicate's promise as truthy.
+    for (let t = 0; t < 50; t++) {
+      const ok = await page.evaluate(async () => {
+        const r = (await App.gpkgStore.list())[0];
+        const v = r && r.views && r.views.find((x) => x.table === "polys_utm");
+        return !!(v && v.filter && v.fillAlpha === 0);
+      });
+      if (ok) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await load(page, url);
+    await waitImports(page, 2);
+    const polyState = await page.evaluate(() => {
+      const e = App.gpkgReferenceEntries().find((x) => x.label.endsWith("polys_utm"));
+      const st = App.gpkgGetLayerState(e.styleKey.replace(/^gpkg-/, ""));
+      return { filter: st && st.filter, fillAlpha: st && st.fillAlpha, matchCount: st && st.matchCount, badge: e.badge().text };
+    });
+    check("3c. a layer's filter and fill transparency come back after a reload",
+      polyState.fillAlpha === 0 && polyState.matchCount === 1 && polyState.badge === "1 of 2" &&
+      JSON.stringify(polyState.filter) === '{"conditions":[{"field":"label","op":"eq","value":"holed"}]}',
+      JSON.stringify({ polyId, polyState }));
 
     // Remove the polygon layer through the Layers panel.
     await page.evaluate(() => {

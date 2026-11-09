@@ -5,8 +5,8 @@
  * carry it. This store keeps the ORIGINAL file bytes instead of the parsed layers:
  * restoring a file re-runs the same open path as a fresh import, so a restored
  * layer can never differ from one the user just opened. The only state kept beside
- * the bytes is which layers the user chose to show and their colors, because those
- * are choices rather than file contents.
+ * the bytes is which layers the user chose to show and how each is displayed,
+ * because those are choices rather than file contents.
  *
  * Same stance as js/core/gtfs-store.js and js/core/network-store.js: this is strictly
  * a convenience. Imported layers already draw whether or not a write lands, and
@@ -21,7 +21,11 @@
  * it would still leave nothing stored.
  *
  * Record: { name, savedAt, size, bytes (ArrayBuffer), layers: [table names],
- *           colors: { table: { base: "#hex", color: "#hex" } } }  (base = reset color)
+ *           colors: { table: { base: "#hex", color: "#hex" } },  (base = reset color)
+ *           views: [{ table, label, base, color, filter, fillAlpha }] }   (optional)
+ * `views` lists every layer shown, oldest first, including duplicates of one table;
+ * `layers` and `colors` are still written beside it so a record stays readable
+ * without it. A record with no `views` predates it and restores from `layers`.
  * Every transaction goes through _withStore, which is subject to the
  * TransactionInactiveError rule documented in network-store.js: requests must be
  * issued synchronously or from another request's onsuccess, never after an await.
@@ -105,7 +109,7 @@
   // Store one file, then trim back to MAX_ENTRIES and MAX_BYTES. A failed write
   // (quota is the realistic case) retries exactly once after dropping every OTHER
   // stored file; a second failure is logged and ignored.
-  async function save(name, bytes, layers, colors) {
+  async function save(name, bytes, layers, colors, views) {
     if (!supported() || !name || !bytes) return false;
     var size = bytes.byteLength || 0;
     if (size > MAX_BYTES) return false;
@@ -117,6 +121,7 @@
       layers: layers || [],
       colors: colors || {}
     };
+    if (Array.isArray(views)) record.views = views;
     try {
       await _put(record);
     } catch (e) {
@@ -150,8 +155,8 @@
 
   // Replace the layer choice and colors of a stored file, keeping its bytes and
   // savedAt. An empty layers list means nothing is shown any more, so the file is
-  // removed. Missing file resolves false.
-  async function update(name, layers, colors) {
+  // removed. Missing file resolves false. Omitting views drops any stored ones.
+  async function update(name, layers, colors, views) {
     if (!supported() || !name || !Array.isArray(layers)) return false;
     try {
       return await _withStore("readwrite", function (store) {
@@ -164,7 +169,9 @@
           if (!layers.length) {
             store.delete(name);
           } else {
-            store.put(Object.assign({}, rec, { layers: layers, colors: colors || {} }));
+            var next = Object.assign({}, rec, { layers: layers, colors: colors || {} });
+            if (Array.isArray(views)) next.views = views; else delete next.views;
+            store.put(next);
           }
         };
         return function () { return found; };

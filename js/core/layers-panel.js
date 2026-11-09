@@ -436,9 +436,26 @@
     '<circle cx="3" cy="3" r="1.1"/><circle cx="7" cy="3" r="1.1"/><circle cx="3" cy="7" r="1.1"/>' +
     '<circle cx="7" cy="7" r="1.1"/><circle cx="3" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>';
 
-  // Fit the map to a layer entry by reading its GeoJSON source data.
+  // Fit the map to a layer entry by reading its GeoJSON source data. An entry
+  // with a bbox() hook (a filtered GeoPackage layer, whose source also holds
+  // hidden features) supplies its own extent; null means nothing is shown,
+  // undefined that no extent could be worked out.
+  function fitBbox(map, bb, pad, minZoom) {
+    if (bb[0] === bb[2] && bb[1] === bb[3]) {
+      map.easeTo({ center: [bb[0], bb[1]], zoom: Math.max(map.getZoom(), minZoom), duration: 600 });
+    } else {
+      map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: pad, duration: 600 });
+    }
+  }
   function zoomToEntry(entry) {
     var map = App.map;
+    if (typeof entry.bbox === "function") {
+      var own;
+      try { own = entry.bbox(); } catch (e) { own = undefined; }
+      if (own && own.every(function (n) { return isFinite(n); })) { fitBbox(map, own, 40, 14); return; }
+      if (typeof App.setStatus === "function") App.setStatus(own === null ? "No features match this layer's filter" : "Could not determine layer extent.");
+      return;
+    }
     for (var i = 0; i < entry.layers.length; i++) {
       var sl = map.getLayer(entry.layers[i].id);
       if (!sl) continue;
@@ -448,11 +465,7 @@
       try {
         var bb = turf.bbox(data);
         if (bb && bb.every(function (n) { return isFinite(n); })) {
-          if (bb[0] === bb[2] && bb[1] === bb[3]) {
-            map.easeTo({ center: [bb[0], bb[1]], zoom: Math.max(map.getZoom(), 14), duration: 600 });
-          } else {
-            map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 40, duration: 600 });
-          }
+          fitBbox(map, bb, 40, 14);
           return;
         }
       } catch (e) { /* fall through */ }
@@ -831,6 +844,12 @@
           ovColors[i] ? function () { App.setLayerClassColor(styleKey, i, null); rerender(); } : null
         ));
       });
+    }
+
+    // Run-time specs (GeoPackage imports) may add their own rows below the
+    // color controls; the spec owns them, this drawer only hosts them.
+    if (typeof spec.extraControls === "function") {
+      try { spec.extraControls(body, rerender); } catch (e) { /* the color rows still work */ }
     }
 
     return body;

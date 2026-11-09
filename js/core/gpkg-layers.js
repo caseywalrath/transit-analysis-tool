@@ -554,7 +554,7 @@
   // the style drawer replaces the ramp; resetting it brings the ramp back.
   function _paintColor(rec, kind) {
     var ov = App.layerStyles && App.layerStyles[rec.styleKey];
-    var alpha = kind === "fill" ? FILL_ALPHA : 1;
+    var alpha = kind === "fill" ? rec.fillAlpha : 1;
     if (rec.ramp && !(ov && ov.color)) return _rampExpr(rec.ramp, alpha);
     var colors = App.resolveLayerColors ? App.resolveLayerColors(rec.styleKey) : null;
     var c = (colors && colors[0]) || rec.color;
@@ -571,6 +571,111 @@
       if (map.getLayer(L.id)) map.setPaintProperty(L.id, PAINT_PROP[L.kind], _paintColor(rec, L.kind));
     });
   }
+
+  // ---- Filter and fill transparency ----
+  // Both live on the record, not in App.layerStyles: the color drawer's reset
+  // deletes a layer's whole App.layerStyles entry, and setLayerStyle keeps
+  // only the fields it knows. They are saved with the file instead (_fileState).
+
+  function _normFilter(f) {
+    return (f && window.GpkgFilter) ? window.GpkgFilter.normalize(f) : null;
+  }
+
+  // Steps of 5 %, so a stored value always matches what the drawer can show.
+  function _clampAlpha(a) {
+    var n = (a === null || a === undefined || a === "") ? FILL_ALPHA : Number(a);
+    if (!isFinite(n)) n = FILL_ALPHA;
+    return Math.round(Math.max(0, Math.min(1, n)) * 20) / 20;
+  }
+
+  function _layerFilter(rec, kindFilter) {
+    var expr = rec.filter && window.GpkgFilter ? window.GpkgFilter.toExpression(rec.filter, rec.columns) : null;
+    return expr ? ["all", kindFilter, expr] : kindFilter;
+  }
+
+  function _applyFilter(rec) {
+    var map = App.map;
+    rec.layers.forEach(function (L) {
+      if (map.getLayer(L.id)) map.setFilter(L.id, _layerFilter(rec, L.kindFilter));
+    });
+    // The open popup may describe a feature the new filter hides; closing it
+    // is simpler than tracking which feature it shows.
+    if (rec.filter && _popup && _popupImportId === rec.id) _popup.remove();
+  }
+
+  // The features the map draws for this record, in source order. Uses the same
+  // rules as the map expression (GpkgFilter keeps the two in step). Cached per
+  // filter object: the badge asks on every panel render, and the source never
+  // changes, so only a new filter (always a new object) needs a rescan.
+  function _matchingFeatures(rec) {
+    var feats = _sourceFeatures(rec);
+    if (!rec.filter || !window.GpkgFilter) return feats;
+    if (rec._match && rec._match.filter === rec.filter) return rec._match.list;
+    var list = feats.filter(function (f) { return window.GpkgFilter.matches(f.properties, rec.filter, rec.columns); });
+    rec._match = { filter: rec.filter, list: list };
+    return list;
+  }
+
+  // Hook for the style drawer's Fill and Filter rows. The rows themselves come
+  // from gpkg-filter-ui.js; until that file is loaded this adds nothing.
+  function _drawerControls(rec, body, rerender) {
+    if (typeof App.gpkgBuildLayerControls !== "function") return;
+  }
+
+  // One write per file once a burst of changes (a scrubber drag, typing)
+  // settles: update() rewrites the whole record, file bytes included.
+  var _persistTimers = {};
+  function _schedulePersist(fileKey) {
+    clearTimeout(_persistTimers[fileKey]);
+    _persistTimers[fileKey] = setTimeout(function () { _persist(fileKey); }, 400);
+  }
+
+  function _recById(id) {
+    var i = _find(id);
+    return i >= 0 ? _registry[i] : null;
+  }
+
+  App.gpkgGetLayerState = function (id) {
+    var rec = _recById(id);
+    if (!rec) return null;
+    return {
+      id: rec.id, label: rec.label, table: rec.layerName, fileName: rec.fileName,
+      columns: rec.columns.slice(), filter: rec.filter, fillAlpha: rec.fillAlpha,
+      hasPolygons: !!rec.geomKinds.polygon, featureCount: rec.featureCount,
+      matchCount: _matchingFeatures(rec).length
+    };
+  };
+
+  App.gpkgSetLayerFilter = function (id, filter) {
+    var rec = _recById(id);
+    if (!rec) return false;
+    rec.filter = _normFilter(filter);
+    _applyFilter(rec);
+    _afterChange();
+    if (!_addingRestored) _schedulePersist(rec.fileKey);
+    return true;
+  };
+
+  App.gpkgSetFillAlpha = function (id, a) {
+    var rec = _recById(id);
+    if (!rec) return false;
+    rec.fillAlpha = _clampAlpha(a);
+    _repaint(rec);
+    if (!_addingRestored) _schedulePersist(rec.fileKey);
+    return true;
+  };
+
+  App.gpkgFieldValues = function (id, field) {
+    var rec = _recById(id);
+    if (!rec || !window.GpkgFilter) return { values: [], more: false };
+    // Per field, once: the drawer asks for every condition row on each render.
+    rec._fieldValues = rec._fieldValues || {};
+    if (!Object.prototype.hasOwnProperty.call(rec._fieldValues, field)) {
+      rec._fieldValues[field] = window.GpkgFilter.distinctValues(
+        _sourceFeatures(rec).map(function (f) { return f.properties || {}; }), field, 200);
+    }
+    return rec._fieldValues[field];
+  };
 
   // Adds one layer's features to the map and the registry. Returns the import
   // id, or null when the collection has no features.
@@ -598,6 +703,12 @@
       savedColor: color,
       featureCount: featureCollection.features.length, color: color,
       ramp: _pickRamp(featureCollection, meta.columns),
+      // Column names the filter and the table offer, in table order.
+      columns: (meta.columns && meta.columns.length) ? meta.columns.slice() : _columnsOf(featureCollection.features),
+      filter: _normFilter(meta.filter),
+      fillAlpha: _clampAlpha(meta.fillAlpha != null ? meta.fillAlpha : FILL_ALPHA),
+      // Display name chosen by the user; null shows the table name.
+      label: meta.label || null,
       sourceId: sourceId, styleKey: styleKey, layers: layers,
       // Kept only when the layer is small enough to copy to drawn features;
       // a large layer's geometry lives in the map source alone.
@@ -609,8 +720,10 @@
       // earlier, unrelated import.
       delete App.layerStyles[styleKey];
       _addMapLayers(rec, featureCollection);
-      App.registerLayerStyle(styleKey, { label: meta.layerName, kind: "solid", defaultColors: [color] },
-        function () { _repaint(rec); _colorMaybeChanged(rec); });
+      App.registerLayerStyle(styleKey, {
+        label: meta.layerName, kind: "solid", defaultColors: [color],
+        extraControls: function (body, rerender) { _drawerControls(rec, body, rerender); }
+      }, function () { _repaint(rec); _colorMaybeChanged(rec); });
     } catch (e) {
       // Undo whatever got onto the map, so a half-added import never draws
       // shapes that have no Layers-panel row to remove them.
@@ -636,8 +749,12 @@
     function add(kind, op, def) {
       def.id = "gpkg-" + id + "-" + kind;
       def.source = sourceId;
+      // The geometry-type filter is kept apart so a user filter can be
+      // swapped in and out on top of it.
+      var kindFilter = def.filter;
+      def.filter = _layerFilter(rec, kindFilter);
       map.addLayer(def, before);
-      layers.push({ id: def.id, op: op, kind: kind });
+      layers.push({ id: def.id, op: op, kind: kind, kindFilter: kindFilter });
       map.on("mouseenter", def.id, _onEnter);
       map.on("mouseleave", def.id, _onLeave);
     }
@@ -752,9 +869,15 @@
 
   function _copyMenuItems(rec) {
     if (!rec.data || !App.cache || typeof App.cache.appendGeoJSONFeatures !== "function") return [];
-    return [{ label: "Copy to drawn features", action: function () {
+    // A filtered layer copies what it shows, never its hidden features.
+    var label = rec.filter
+      ? "Copy " + _plural(_matchingFeatures(rec).length, "shown feature") + " to drawn features"
+      : "Copy to drawn features";
+    return [{ label: label, action: function () {
+      var feats = _matchingFeatures(rec);
+      if (!feats.length) { _status("No features match this layer's filter"); return; }
       // The importer's own properties (the ramp value) are not file data.
-      var r = App.cache.appendGeoJSONFeatures(rec.data.features.map(function (f) {
+      var r = App.cache.appendGeoJSONFeatures(feats.map(function (f) {
         var p = {};
         Object.keys(f.properties || {}).forEach(function (k) { if (!_isInternalKey(k)) p[k] = f.properties[k]; });
         return { type: "Feature", geometry: f.geometry, properties: p };
@@ -852,6 +975,8 @@
     return items;
   }
 
+  function _viewName(rec) { return rec.label || rec.layerName; }
+
   // Layers-panel manifest entries, newest first. Same shape as the static
   // REFERENCE entries in layers-panel.js, so the panel builds the rows,
   // visibility, opacity, reorder, Zoom to layer and Remove with no special case.
@@ -859,20 +984,31 @@
     return _registry.slice().reverse().map(function (r) {
       return {
         id: r.styleKey,
-        label: r.fileName + " · " + r.layerName,
+        label: r.fileName + " · " + _viewName(r),
         layers: r.layers.map(function (L) { return { id: L.id, op: L.op }; }),
         styleKey: r.styleKey,
         clear: function () { App.gpkgRemoveLayer(r.id); },
         menuItems: function () { return _tableMenuItems(r).concat(_copyMenuItems(r)); },
+        // Zoom to layer fits what is shown: the source also holds the
+        // features a filter hides. null = nothing matches; undefined = no extent.
+        bbox: function () {
+          var feats = _matchingFeatures(r);
+          if (!feats.length) return null;
+          if (typeof turf === "undefined") return undefined;
+          return turf.bbox({ type: "FeatureCollection", features: feats });
+        },
         badge: function () {
-          var title = r.featureCount.toLocaleString() + " features";
+          var shown = r.filter ? _matchingFeatures(r).length : r.featureCount;
+          var text = r.filter ? shown.toLocaleString() + " of " + r.featureCount.toLocaleString() : r.featureCount.toLocaleString();
+          var title = (r.filter ? shown.toLocaleString() + " of " : "") + r.featureCount.toLocaleString() + " features";
+          if (r.filter && window.GpkgFilter) title += " · filter: " + window.GpkgFilter.describe(r.filter);
           var ov = App.layerStyles && App.layerStyles[r.styleKey];
           if (r.ramp && !(ov && ov.color)) {
             var fmt = window.GpkgReader.formatValue;
             title += " · colored by " + r.ramp.field + " (" + fmt(r.ramp.min) + " green → " +
               fmt(r.ramp.max) + " red; gray = no value)";
           }
-          return { text: r.featureCount.toLocaleString(), title: title };
+          return { text: text, title: title };
         }
       };
     });
@@ -1334,18 +1470,24 @@
     return (c && c[0]) || r.color;
   }
 
+  // views: every layer on screen, oldest first, with how it is displayed.
+  // layers/colors keep the older per-table shape beside it (gpkg-store.js).
   function _fileState(fileKey) {
-    var layers = [], colors = {};
+    var layers = [], colors = {}, views = [];
     _registry.forEach(function (r) {
       if (r.fileKey !== fileKey) return;
-      if (layers.indexOf(r.layerName) < 0) layers.push(r.layerName);
-      colors[r.layerName] = { base: r.color, color: _currentColor(r) };
+      if (layers.indexOf(r.layerName) < 0) {
+        layers.push(r.layerName);
+        colors[r.layerName] = { base: r.color, color: _currentColor(r) };
+      }
+      views.push({ table: r.layerName, label: r.label, base: r.color, color: _currentColor(r),
+        filter: r.filter, fillAlpha: r.fillAlpha });
     });
     // Tables are stored only alongside a layer; see gpkgRemoveLayer.
     if (layers.length) {
       _tablesOf(fileKey).forEach(function (t) { if (layers.indexOf(t.name) < 0) layers.push(t.name); });
     }
-    return { layers: layers, colors: colors };
+    return { layers: layers, colors: colors, views: views };
   }
 
   function _storeOk() { return !!(App.gpkgStore && App.gpkgStore.supported()); }
@@ -1359,7 +1501,7 @@
     }
     var st = _fileState(fileKey);
     _registry.forEach(function (r) { if (r.fileKey === fileKey) r.savedColor = _currentColor(r); });
-    App.gpkgStore.save(fileKey, bytes, st.layers, st.colors).catch(function () { /* convenience only */ });
+    App.gpkgStore.save(fileKey, bytes, st.layers, st.colors, st.views).catch(function () { /* convenience only */ });
   }
 
   // Removing a file's last layer passes [] to update(), which deletes the record.
@@ -1369,20 +1511,17 @@
     // writing now would drop them from the record. Write once restore ends.
     if (_restoreActive) { _deferredPersist[fileKey] = true; return; }
     var st = _fileState(fileKey);
-    App.gpkgStore.update(fileKey, st.layers, st.colors).catch(function () { /* convenience only */ });
+    App.gpkgStore.update(fileKey, st.layers, st.colors, st.views).catch(function () { /* convenience only */ });
   }
 
   // Every style change anywhere runs every repainter, so this writes only when
-  // this layer's own color really changed, and only once a drag settles:
-  // update() rewrites the whole record, file bytes included.
-  var _persistTimers = {};
+  // this layer's own color really changed (debounced by _schedulePersist).
   function _colorMaybeChanged(rec) {
     if (_addingRestored) return;
     var c = _currentColor(rec);
     if (c === rec.savedColor) return;
     rec.savedColor = c;
-    clearTimeout(_persistTimers[rec.fileKey]);
-    _persistTimers[rec.fileKey] = setTimeout(function () { _persist(rec.fileKey); }, 400);
+    _schedulePersist(rec.fileKey);
   }
 
   // _addingRestored: true only while a restored table is being added (its
@@ -1399,8 +1538,9 @@
     return i > 0 ? key.slice(0, i) : key;
   }
 
-  // Restores one table; a failure skips that table only.
-  function _restoreTable(libs, db, layers, rec, table) {
+  // Restores one table; a failure skips that table only. view: the stored
+  // display state for a feature layer, or null for a record without views.
+  function _restoreTable(libs, db, layers, rec, table, view) {
     var layer = layers.filter(function (l) { return l.table === table && l.supported; })[0];
     if (!layer) return false;
     if (layer.tableOnly) {
@@ -1417,10 +1557,14 @@
     _addingRestored = true;
     try {
       var r = _readLayer(libs, db, layer);
-      var saved = (rec.colors && rec.colors[table]) || {};
+      var saved = view || (rec.colors && rec.colors[table]) || {};
       var base = typeof saved === "string" ? saved : saved.base;
-      var id = _addLayerToMap(r.featureCollection,
-        { fileName: _nameFromKey(rec.name), fileKey: rec.name, layerName: table, color: base, columns: r.columns });
+      var id = _addLayerToMap(r.featureCollection, {
+        fileName: _nameFromKey(rec.name), fileKey: rec.name, layerName: table, color: base, columns: r.columns,
+        filter: view ? view.filter : null,
+        fillAlpha: view && view.fillAlpha != null ? view.fillAlpha : null,
+        label: view ? view.label : null
+      });
       if (!id) return false;
       var reg = _registry[_find(id)];
       if (saved.color && saved.color !== reg.color) App.setLayerStyle(reg.styleKey, { color: saved.color });
@@ -1431,6 +1575,23 @@
     } finally {
       _addingRestored = false;
     }
+  }
+
+  // What to restore for one stored file, in order. A record with views lists
+  // each layer as shown; tables without geometry are in `layers` only. A
+  // second view of one table is a duplicate, which needs the first view's
+  // source and is not restored here yet.
+  function _restoreItems(rec) {
+    var names = rec.layers || [];
+    if (!Array.isArray(rec.views)) return names.map(function (t) { return { table: t, view: null }; });
+    var items = [], seen = {};
+    rec.views.forEach(function (v) {
+      if (!v || typeof v.table !== "string" || seen[v.table]) return;
+      seen[v.table] = true;
+      items.push({ table: v.table, view: v });
+    });
+    names.forEach(function (t) { if (!seen[t]) items.push({ table: t, view: null }); });
+    return items;
   }
 
   // Called once at startup from app.js, after the session and GTFS restores.
@@ -1460,12 +1621,11 @@
             }
             var layers;
             try { layers = _inspect(libs, db).layers; } catch (e) { layers = []; }
-            var tables = rec.layers || [];
             var step = Promise.resolve();
-            tables.forEach(function (table) {
+            _restoreItems(rec).forEach(function (item) {
               step = step.then(_yield).then(function () {
                 if (gen !== _restoreGen) return;
-                if (_restoreTable(libs, db, layers, rec, table)) restored++;
+                if (_restoreTable(libs, db, layers, rec, item.table, item.view)) restored++;
               });
             });
             return step.then(function () {

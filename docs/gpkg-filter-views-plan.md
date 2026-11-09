@@ -518,4 +518,28 @@ The log records the names the tests in Card E rely on.
 
 ## Progress log
 
-_(empty — append one entry per phase: tasks and models, send-backs, deviations, hand-off names and signatures)_
+### Phase 1 — done (Haiku, `high`, Card A)
+- Accepted on the first attempt; no send-back. 47 golden cases, each recorded value checked against the card by the agent and spot-checked at review; golden 744/744.
+- Deviations (accepted):
+  - row values are read as own properties only (`cell()`), matching MapLibre's `["get"]` for a column named like an `Object.prototype` member;
+  - ran `--update gpkg-filter` instead of bare `--update`, so no other golden file was re-recorded. Later cards should name the filtered form.
+- Card lesson: the agent caught a card gap (bare `--update` re-records every golden file) and chose the safe form. Name the exact command in future cards.
+- Hand-off: `window.GpkgFilter` = `{ OPS, textOf, normalize, isActive, matches, toExpression, describe, distinctValues }` exactly as in Card A. `OPS[i]` = `{ id, label, needsValue, numeric }`.
+
+### Phase 2 — done (Opus)
+- Implemented as planned in `js/core/gpkg-layers.js`, `js/core/layers-panel.js` and `js/core/gpkg-store.js`.
+- Agreement check: a scratch script applied 13 filters (every operator, `*` contains, AND, zero matches) to `sample.gpkg`. For each, the map's rendered features equalled `matchCount`, and there were no expression errors.
+- Review (code-review `high`): 7 findings.
+  - Fixed: match list cached per filter object (`rec._match`); field values cached per field (`rec._fieldValues`); `bbox()` returns `undefined` when there is no extent and `zoomToEntry` treats a throw as `undefined`, so "No features match" appears only for a real empty match; `_clampAlpha` treats `null`/`""` as the default; hook comment clarified.
+  - Deferred to phase 5: restore skips a second view of one table, so the next save would drop it. Phase 5 must restore duplicates before any save runs; nothing creates duplicates before then.
+  - Deferred to phase 7: badge width for `N of M` (screenshot check).
+- Test fix during the phase: `waitForFunction` with an async predicate resolves at once (a promise is truthy); `gpkg-cache` 3c polls from Node instead. Later test cards should be told this.
+- Docs: the four new API names were added to `docs/reference/layers-and-styling.md` now, to keep doc-coverage at the 3 older missing names. Card F expands this section.
+- **Hand-off (exact names):**
+  - Record fields: `rec.filter` (normalized or `null`), `rec.fillAlpha`, `rec.label` (`null` = table name), `rec.columns`; layer entries carry `kindFilter`.
+  - Private helpers: `_layerFilter(rec, kindFilter)`, `_applyFilter(rec)`, `_matchingFeatures(rec)`, `_viewName(rec)`, `_schedulePersist(fileKey)`, `_recById(id)`, `_restoreItems(rec)`, and `_restoreTable(libs, db, layers, rec, table, view)`.
+  - Drawer hook: `_drawerControls(rec, body, rerender)` is the stub that Card D fills. It is called from the spec's `extraControls`.
+  - API: `App.gpkgGetLayerState(id)`, `App.gpkgSetLayerFilter(id, filter)` (returns `true`/`false`), `App.gpkgSetFillAlpha(id, a)`, `App.gpkgFieldValues(id, field)`. `id` is the import id `gpkgN`, i.e. the entry's `styleKey` without the leading `gpkg-`.
+  - Manifest entry: `bbox()` returns `[w, s, e, n]`, `null` (nothing matches) or `undefined`. The badge text is `N of M` when filtered; its title adds `· filter: <describe>`.
+  - Store: `save(name, bytes, layers, colors, views)` and `update(name, layers, colors, views)`. A view is `{ table, label, base, color, filter, fillAlpha }`, oldest first.
+
