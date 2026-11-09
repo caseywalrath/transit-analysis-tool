@@ -43,6 +43,7 @@ split.js             after merge.js (uses App.merge._dialogKit); App.splitGeom, 
 layers-panel.js      App.refreshLayersPanel
 gpkg-layers.js       needs App (var App at load); App.map, window.GpkgReader, window.LayerPalette, App.registerLayerStyle, App.firstUserLayer, App.cache, App.gpkgStore at call time; sql.js and proj4 lazy-loaded from cdnjs
 gpkg-table.js        needs App (assigns App.gpkgOpenTable/gpkgCloseTable at load); App.popup and window.GpkgReader at call time only; after gpkg-layers.js, which calls App.gpkgOpenTable only at call time, behind a typeof guard
+gpkg-filter-ui.js    needs App (assigns App.gpkgBuildLayerControls at load); App.buildScrubber and window.GpkgFilter at call time only; gpkg-layers.js calls it only at call time, behind a typeof guard
 census.js            needs App.bboxStringFromFeature, App.getMeta, turf
 lodes.js             needs App.bufferUnionPolygon, pako, turf
 projections.js       population-projection CSV (App.parseProjectionsCSV/setProjectionsData/projGrowthFactors/…)

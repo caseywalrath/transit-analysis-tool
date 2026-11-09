@@ -543,3 +543,13 @@ The log records the names the tests in Card E rely on.
   - Manifest entry: `bbox()` returns `[w, s, e, n]`, `null` (nothing matches) or `undefined`. The badge text is `N of M` when filtered; its title adds `· filter: <describe>`.
   - Store: `save(name, bytes, layers, colors, views)` and `update(name, layers, colors, views)`. A view is `{ table, label, base, color, filter, fillAlpha }`, oldest first.
 
+### Phase 3 — done (Haiku ×2 in parallel, `high`, Cards B and C)
+- Card C (table window): accepted on the first attempt; gpkg-table 12/12. Checks 9–12 sit before the page-error check so it still covers them.
+- Card B (drawer controls): accepted on the first attempt. Its scratch checks a–h pass, plus extras i–k (Enter commits, keys stop at the value box, Fill 50 → 0.5).
+  - Card error, not an agent error: check f as written ran after e had made the blank row valid, so it could not return `null`. The agent ran f on a fresh build and reported it; the card should have said so.
+  - Deviations (accepted): the datalist sits inside its row; aria-labels use `ctx.styleLabel`; one click-stop on the scrubber wrapper.
+  - Agent questions, answered: a field missing from `ctx.columns` cannot occur, because a record's columns never change. The `more` hint for >200 values is not shown; this is acceptable and listed for the docs.
+- Docs added now to keep doc-coverage clean: `App.gpkgBuildLayerControls` in layers-and-styling.md, and the `gpkg-filter-ui.js` line in script-load-order.md.
+- Note for Card D: the table's apply button updates its disabled state on the 150 ms debounced redraw, so `onApplyFilter` can receive `""` and must ignore it.
+- Hand-off: `App.gpkgBuildLayerControls(body, ctx)` with `ctx` exactly as in Card B; `App.gpkgOpenTable` opts gain `onApplyFilter(text)` and `note`.
+

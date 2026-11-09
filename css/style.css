@@ -7142,3 +7142,11 @@ body.present-mode .box-select-bar { display: none; }
 .gp-popup-wrap.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--surface); }
 .gp-popup-wrap.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--surface); }
 .gp-popup-wrap .maplibregl-popup-close-button { color: var(--text-secondary); }
+
+/* GeoPackage layer filter controls (gpkg-filter-ui.js) */
+.gp-filter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--text-2xs); color: var(--muted); margin-top: var(--space-2); }
+.gp-filter-count { color: var(--text-secondary); }
+.gp-filter-cond { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.gp-filter-cond .gp-filter-field { flex: 1 1 0; min-width: 0; }
+.gp-filter-cond .gp-filter-op { flex: 0 0 auto; }
+.gp-filter-value { flex: 1 1 0; min-width: 0; font-size: var(--text-xs); min-height: var(--ctl-height-sm); padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-primary); }
