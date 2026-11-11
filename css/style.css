@@ -135,7 +135,8 @@ body { margin: 0; font-family: var(--font-sans); background: var(--bg); -webkit-
    view-actions and search are absolutely positioned, so nothing may push the in-flow controls rightward). */
 .app-brand { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .app-brand strong { font-size: var(--text-lg); font-weight: 700; color: var(--text-primary); }
-.app-brand__mark { width: 18px; height: 18px; border-radius: 4px; background: var(--accent); flex: none; }
+/* Inline SVG so the logo takes the theme accent via currentColor. */
+.app-brand__mark { width: 25px; height: 24px; color: var(--accent); flex: none; }
 @media (max-width: 1500px) {
   .app-brand { position: static; transform: none; flex: none; }
   #toolbar { justify-content: flex-start; }
