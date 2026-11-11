@@ -130,6 +130,16 @@ body { margin: 0; font-family: var(--font-sans); background: var(--bg); -webkit-
   background: var(--panel);
   flex-shrink: 0;
 }
+/* Pinned to the toolbar's upper-left on wide screens, where the controls are centered. Below 1500px
+   the controls start at the left edge instead, so the brand joins the flow ahead of them (the right-hand
+   view-actions and search are absolutely positioned, so nothing may push the in-flow controls rightward). */
+.app-brand { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.app-brand strong { font-size: var(--text-lg); font-weight: 700; color: var(--text-primary); }
+.app-brand__mark { width: 18px; height: 18px; border-radius: 4px; background: var(--accent); flex: none; }
+@media (max-width: 1500px) {
+  .app-brand { position: static; transform: none; flex: none; }
+  #toolbar { justify-content: flex-start; }
+}
 #file-actions {
   display: flex;
   gap: 4px;
