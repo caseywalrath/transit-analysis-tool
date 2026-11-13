@@ -12,10 +12,12 @@ sidebar.js           dormant legacy sidebar
 map.js               creates App.map + basemap switcher; reads App.CARTO_API_KEY
 search.js            needs App.map
 walk-cost.js         pure, no deps; window.WalkCost (before road-network.js)
+walk-tiles.js        pure, no deps; window.WalkTiles (before walk-tiles-source.js and road-network.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
 gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
+walk-tiles-source.js reads WalkTiles at call time; App.walkTilesSource + FLM dialog wiring (before road-network.js)
 road-network.js      needs App.map, turf, window.WalkCost, App.networkStore (optional, guarded)
 network-connectors.js needs road-network.js; App.refreshWalkNetworkLayer etc.
 walk-audit.js        pure window.WalkAudit + App block (call time); after road-network/network-connectors

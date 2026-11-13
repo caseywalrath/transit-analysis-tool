@@ -1,6 +1,6 @@
 # Plan B Stage 2 design brief: FLM walk tiles as a street source in the transit analysis tool
 
-Status: approved for hand-off by the project lead, November 13, 2026; folder-location decision recorded in section 6. Written against `transit-analysis-tool` at commit `58abc0f` (merge of PR 38) and the FLM tile contract `contracts/walk-tiles/v0/` in `flm_walkshed_index`. Line numbers below are from those versions and will drift; the search strings will not.
+Status: **implemented November 13, 2026 (phases 1 to 5); the manual check with real Denver tiles (section 9) is still open.** Sections 13 and 14 record where the build differs from this brief. Originally: approved for hand-off by the project lead, November 13, 2026; folder-location decision recorded in section 6. Written against `transit-analysis-tool` at commit `58abc0f` (merge of PR 38) and the FLM tile contract `contracts/walk-tiles/v0/` in `flm_walkshed_index`. Line numbers below are from those versions and will drift; the search strings will not.
 
 Audience: the Opus-class planner in the `transit-analysis-tool` repository, who turns the phases below into task cards per that repository's `AGENTS.md`, launches Haiku or Sonnet agents, and reviews. Follow `CLAUDE.md` and `AGENTS.md` there; this brief adds the FLM-specific decisions and does not override them.
 
@@ -399,3 +399,9 @@ Where the brief and the code disagreed, the code won. These override the section
 - **Review findings left for the lead (not changed):** no size prompt before a very large tile load (section 8 item 9 says do not cap); every tile load is written to the three-slot network store and can push out stored downloads; the "is a tile source active" test is repeated in four files.
 - **Hand-off notes:** `App.loadRoadNetworkFromTiles(extentPolygon)`, `App.roadNetworkTileRelease()`, `App.walkTilesLastError()`, `App.walkTilesExtentBeyondPrepared(extentPolygon)`; stored records use `source: "walk-tiles"`, `label: <release_id>`, id `bbox:…`.
 - **Not done here:** the manual Denver check (real tiles are not in either repository) and the directory-handle folder picker in a real Chrome or Edge.
+
+### Phase 5 (November 13, 2026)
+
+- **Planner:** `docs/reference/road-network.md` section "FLM walk tiles", `CLAUDE.md` file map, load order and namespace list, `docs/reference/script-load-order.md`, `features.md` entry. `node test/doc-coverage.mjs` no longer lists any name from this work (the three names still listed predate it).
+- **Which class did what well:** both Haiku cards (pure engine with golden cases; verbatim markup) passed review with no send-back, because every decision and expected value was in the card. Both Sonnet cards also passed first time; every later fix came from interactions between files that no single card covered (label refresh across modules, attempt counter vs in-flight reads, a panel element that never existed).
+- **Open for the lead:** manual Denver check (section 9); the directory-handle folder picker in Chrome or Edge; the three review findings listed under Phase 4.

@@ -58,6 +58,57 @@ Overpass/file import → graph → Dijkstra. Graph weights are **km**; `budgetKm
 
 **Reset Session (`App.cache.reset`)** first restores `App.networkSettings` crossing seconds and snap tolerance to their defaults and calls `App.setExcludedWays([])`, before wiping localStorage (that call saves the session).
 
+## FLM walk tiles: walk-tiles.js (`window.WalkTiles`) and walk-tiles-source.js (`App.walkTilesSource`)
+
+A third street source beside the Overpass download and the GeoJSON file import. The First-Last Mile (FLM) walkshed project prepares a filtered pedestrian network offline and publishes it as a folder of small JSON tiles ("walk tiles", contract `contracts/walk-tiles/v0/` in the `flm_walkshed_index` repository). When a tile source is set, a walkshed that needs streets reads the few tiles covering its area instead of calling OpenStreetMap. Snapping, routing, contour shape, Census summaries and export are the same code as for any other network.
+
+**Format in one paragraph.** A release folder holds `manifest.json` and `network/<col>_<row>.json`. Cells are 0.01 degrees; `col = floor((lon + 180) / 0.01)`, `row = floor((lat + 90) / 0.01)`. A segment is stored whole in every cell it touches, so neighbouring tiles repeat it: segments are deduplicated by `id` and copies must agree in every field.
+
+**`window.WalkTiles` (pure; loads in the golden sandbox).**
+
+| Function | Returns |
+|---|---|
+| `cellOf(lon, lat)` | `{ col, row }`, clamped to the grid; `null` for non-numbers |
+| `cellsForBbox([w, s, e, n])` | every cell the box touches, by col then row; cells are closed, so an exact west or south edge also takes the neighbour; `[]` for bad input |
+| `bboxOfCells(cells)` | `[w, s, e, n]` covering the cells exactly; `null` for an empty list |
+| `validateManifest(obj)` | `{ ok: true, manifest }` or `{ ok: false, error: "<field>: <reason>" }`; checks only the fields the tool reads and accepts unknown extra fields |
+| `tilesForCells(manifest, cells)` | manifest tile entries for those cells, in manifest order |
+| `mergeTiles(tileObjects)` | `{ ok: true, segments, copies }` or `{ ok: false, error }`; validates all eleven segment fields; differing copies of one id are an error; one bad record stops the merge |
+| `toRoadGeoJSON(segments)` | the LineString FeatureCollection `buildGraph` accepts |
+
+`toRoadGeoJSON` always sets `foot: "yes"` (the FLM rules already decided walkability; `isPedForbidden` would otherwise block a `trunk` segment FLM accepted) and makes `wayId` a number when the id is a safe integer (street exclusion compares numeric ids). It also carries `flmId`, `lenFt` and `dir`, which the graph does not use.
+
+**`App.walkTilesSource`.** Knows where the release folder is and reads files from it; knows nothing about graphs.
+
+- `useUrl(url)` and `useFolder({ handle } | { files })` resolve `{ ok }` or `{ ok: false, error }` and never throw. A failed attempt leaves the current source working.
+- `readTile(path)` rejects with the complete user text `FLM tile <path> could not be read: <reason>`. Reads of one path in flight share one promise; up to 64 parsed tiles are cached.
+- `isActive()`, `manifest()`, `releaseId()`, `describe()`, `clear()`, `restore()`, `renderInfo()`.
+- **The setting is per browser, never in the session file.** A session file is shared with other people and a folder on one person's disk means nothing to them. An address is remembered in `localStorage` key `mat-walk-tiles-source`; a picked folder is not remembered (re-pick each session), and picking one removes a remembered address.
+- The folder picker uses `window.showDirectoryPicker` where it exists (Chrome, Edge) and the hidden `webkitdirectory` input elsewhere. Picking the parent of exactly one release folder works; a parent of several fails with "Pick the release folder itself, not its parent."
+- Every real source change fires a `walk-tiles-source-changed` event on `document`. Walkshed and Transit Travelshed relabel their button from it. It is deliberately not `App.notifyProject()`, which would mark results stale although the loaded streets did not change.
+- Tile data is not cleared for redistribution, so it is never committed to this repository. Same-origin is the simplest address: put the release under the app folder (Git-ignored) and serve both with one local server. A separate data server must send CORS headers.
+
+**In road-network.js.**
+
+- `App.fetchRoadNetworkForExtent(extent)`: with an active source it calls `loadNetworkFromTiles` (exported as `App.loadRoadNetworkFromTiles`) and never tries the store or Overpass. The toolbar's "Area Roads for Street Routing" is unchanged and still downloads from OpenStreetMap.
+- `loadNetworkFromTiles` uses the same tail as a download (`_roadGeoJSON`, `rebuildNetwork()`, extent, `updateUI(true)`, `persistNetwork`). **The recorded extent is the rectangle of requested cells, not of tiles found.** It always contains the required extent, so both modules' coverage checks pass unchanged; a cell with no tile has no exported streets.
+- Because of that, `App.walkTilesExtentBeyondPrepared(extent)` exists: true when the live tile network's release is the active one and the extent reaches past the manifest's `coverage.bbox`. The panels use it for a soft "may be clipped" warning. The manifest itself says its box is not a guarantee of complete streets.
+- Any failure (no tile for the extent, one unreadable tile, conflicting copies, source changed mid-load) leaves the live network untouched, sets the status and is kept in `App.walkTilesLastError()`. An unreadable listed tile is a failure, never an empty cell.
+- `App.roadNetworkTileRelease()` is the release id when the live network was built from tiles, else `""`. An active source does not prove the live network is from tiles (a stored download may be loaded), so status text uses this, not `isActive()`.
+- Stored records: `source: "walk-tiles"`, `label: <release_id>`, and a plain `bbox:` id, because `findCovering` only considers ids of that form. `restoreNetworkCovering` refuses a record that is not the active release while a source is active, so a stored download never silently replaces the FLM source.
+
+**Accepted differences from the tile contract** (deliberate; do not "fix"):
+
+| Contract | Tool |
+|---|---|
+| Join segments only where `from`/`to` node ids match | Joins wherever coordinates match to six decimals |
+| Use `len_ft` for cost | Recomputes length with `turf.distance` |
+| `dir` restricts direction | Walking is undirected (Denver has no one-way segments) |
+| Snap limit 500 ft | 500 m, with the panel's 50 ft default |
+| Default speed 2.8 mph | Panel default stays 3.1 mph; the dialog shows 2.8 and the user sets speed per run |
+
+**Tests.** Golden `test/cases/walk-tiles.mjs` (fixture release in `test/fixtures/walk-tiles/fixture-release/`); behaviour `test/browser/walk-tiles.test.mjs`. The directory-handle picker cannot run headless and is checked by hand. Design record and progress log: `docs/flm-walk-tiles-plan.md` (moves to `docs/archive/` once the manual check with real Denver tiles is done).
+
 ## network-connectors.js
 App-level connector orchestration (see `docs/archive/network-connectors-plan.md`).
 - `App.refreshWalkNetworkLayer()` — rebuilds the "Walk network" reference layer (source `walk-network`, layer `walk-network-line`, `#94a3b8` w1 op0.45, inserted below drawn features via `firstUserLayer()`) from `App.getWalkNetworkSegments()`; removes it when no network. Called from `updateUI()` and after every overlay rebuild. At the top of every call it re-syncs its report from `App.getLastConnectorOverlayReport()` (a base reload bypasses `setNetworkConnectors`; otherwise markers go stale), and at the end calls `refreshJoinMarkers()`.
