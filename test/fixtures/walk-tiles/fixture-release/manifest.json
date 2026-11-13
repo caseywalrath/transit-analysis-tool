@@ -1,0 +1,62 @@
+{
+  "format": "walk-tiles",
+  "version": 0,
+  "release_id": "fixture-release",
+  "source_release_id": "fixture-source",
+  "grid": {
+    "cell_size_degrees": 0.01,
+    "origin": [-180, -90],
+    "coordinate_scale": 10000000,
+    "cell_size_scaled": 100000,
+    "coordinate_rounding": "none; exact decimal input, maximum seven places",
+    "segment_membership": "closed cells; whole segment in every touched cell",
+    "point_index": "floor((lon+180)/0.01), floor((lat+90)/0.01) using exact decimal arithmetic"
+  },
+  "crs": "EPSG:4326",
+  "coordinate_order": "longitude_latitude",
+  "length_unit": "international_foot",
+  "default_speed_mph": 2.8,
+  "coverage": {
+    "bbox": [-105.006, 39.755, -104.994, 39.755],
+    "readiness": "not_established",
+    "meaning": "extent of included source geometry, not a guarantee of complete walkable streets"
+  },
+  "tiles": [
+    {
+      "col": 7499,
+      "row": 12975,
+      "path": "network/7499_12975.json",
+      "segments": 2,
+      "bytes": 658
+    },
+    {
+      "col": 7500,
+      "row": 12975,
+      "path": "network/7500_12975.json",
+      "segments": 2,
+      "bytes": 652
+    }
+  ],
+  "source": {
+    "osm_data_timestamp": "2026-11-01T21:21:36Z",
+    "download_date": "2026-11-02",
+    "walking_rule_version": "pedestrian-policy-0.3",
+    "selection": "existing included segments; no re-extraction or reclassification"
+  },
+  "counts": {
+    "included": 3,
+    "excluded": 0,
+    "unknown_left_out": 0,
+    "nodes": 4,
+    "directed_arcs": 6,
+    "tiles": 2,
+    "segment_copies": 4,
+    "total_length_ft": 3369.3
+  },
+  "attribution": "© OpenStreetMap contributors",
+  "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution_url": "https://www.openstreetmap.org/copyright",
+  "distribution_status": "local_experimental_not_cleared_for_redistribution",
+  "limitations": ["Hand-written test fixture; not real street data."]
+}

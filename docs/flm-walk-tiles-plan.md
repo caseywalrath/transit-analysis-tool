@@ -367,3 +367,11 @@ Where the brief and the code disagreed, the code won. These override the section
 5. **Phase order.** Phases 1 and 2 ran in parallel (disjoint files), then 3 and 4 in parallel against the fixed contracts in section 5; each phase is still its own commit after its review gate.
 
 ## 14. Progress log
+
+### Phases 1 and 2 (November 13, 2026)
+
+- **Phase 1, Haiku at high effort:** `js/core/walk-tiles.js`, fixture release, `test/cases/walk-tiles.mjs`, golden file. Passed review first time, no send-back. 25 cases (the nine in section 9 plus edge cases 3 to 7). Agent additions accepted: `bboxOfCells` returns `null` for a malformed cell; `toRoadGeoJSON` skips non-object entries. Planner edit: header comment now points at the reference doc instead of this plan.
+- **Phase 2, Haiku at high effort:** markup and CSS exactly as the card gave them; no send-back.
+- **Left open from the agent's questions:** `validateManifest` accepts an empty `limitations` list and does not check the `release_id` character pattern (the tool only checks what it reads); `cellsForBbox` has no cap on cell count (section 8 item 9 says do not cap).
+- **Brief vs code:** `js/core/cache.js` has no File System Access API precedent (section 6 row C says it does); the folder picker is new code.
+- **Hand-off notes:** `window.WalkTiles` = `{ CELL_DEG, cellOf, cellsForBbox, bboxOfCells, validateManifest, tilesForCells, mergeTiles, toRoadGeoJSON }`, signatures as in section 5.1; `validateManifest` errors read `"<field>: <reason>"`. Dialog ids: `ad-walk-tiles`, `walk-tiles-popup`, `walk-tiles-popup-close`, `wtUrl`, `wtUseUrl`, `wtPickFolder`, `wtFolderInput`, `wtInfo`, `wtClear`. Fixture URL in tests: `/test/fixtures/walk-tiles/fixture-release`.

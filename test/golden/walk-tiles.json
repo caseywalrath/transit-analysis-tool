@@ -1,0 +1,517 @@
+{
+  "cell-of-inside": {
+    "col": 7499,
+    "row": 12975
+  },
+  "cell-of-origin": {
+    "col": 0,
+    "row": 0
+  },
+  "cell-of-max-clamped": {
+    "col": 35999,
+    "row": 17999
+  },
+  "cell-of-nan-null": null,
+  "cells-bbox-two-cells": [
+    {
+      "col": 7499,
+      "row": 12975
+    },
+    {
+      "col": 7500,
+      "row": 12975
+    }
+  ],
+  "cells-bbox-shared-edge": [
+    {
+      "col": 7499,
+      "row": 12975
+    },
+    {
+      "col": 7500,
+      "row": 12975
+    }
+  ],
+  "cells-bbox-south-edge": [
+    {
+      "col": 7499,
+      "row": 12974
+    },
+    {
+      "col": 7499,
+      "row": 12975
+    }
+  ],
+  "cells-bbox-inverted-empty": [],
+  "bbox-of-cells-two": [
+    -105.01,
+    39.75,
+    -104.99,
+    39.76
+  ],
+  "bbox-of-cells-empty-null": null,
+  "manifest-fixture-ok": {
+    "ok": true,
+    "manifest": {
+      "format": "walk-tiles",
+      "version": 0,
+      "release_id": "fixture-release",
+      "source_release_id": "fixture-source",
+      "grid": {
+        "cell_size_degrees": 0.01,
+        "origin": [
+          -180,
+          -90
+        ],
+        "coordinate_scale": 10000000,
+        "cell_size_scaled": 100000,
+        "coordinate_rounding": "none; exact decimal input, maximum seven places",
+        "segment_membership": "closed cells; whole segment in every touched cell",
+        "point_index": "floor((lon+180)/0.01), floor((lat+90)/0.01) using exact decimal arithmetic"
+      },
+      "crs": "EPSG:4326",
+      "coordinate_order": "longitude_latitude",
+      "length_unit": "international_foot",
+      "default_speed_mph": 2.8,
+      "coverage": {
+        "bbox": [
+          -105.006,
+          39.755,
+          -104.994,
+          39.755
+        ],
+        "readiness": "not_established",
+        "meaning": "extent of included source geometry, not a guarantee of complete walkable streets"
+      },
+      "tiles": [
+        {
+          "col": 7499,
+          "row": 12975,
+          "path": "network/7499_12975.json",
+          "segments": 2,
+          "bytes": 658
+        },
+        {
+          "col": 7500,
+          "row": 12975,
+          "path": "network/7500_12975.json",
+          "segments": 2,
+          "bytes": 652
+        }
+      ],
+      "source": {
+        "osm_data_timestamp": "2026-11-01T21:21:36Z",
+        "download_date": "2026-11-02",
+        "walking_rule_version": "pedestrian-policy-0.3",
+        "selection": "existing included segments; no re-extraction or reclassification"
+      },
+      "counts": {
+        "included": 3,
+        "excluded": 0,
+        "unknown_left_out": 0,
+        "nodes": 4,
+        "directed_arcs": 6,
+        "tiles": 2,
+        "segment_copies": 4,
+        "total_length_ft": 3369.3
+      },
+      "attribution": "© OpenStreetMap contributors",
+      "license": "ODbL-1.0",
+      "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "attribution_url": "https://www.openstreetmap.org/copyright",
+      "distribution_status": "local_experimental_not_cleared_for_redistribution",
+      "limitations": [
+        "Hand-written test fixture; not real street data."
+      ]
+    }
+  },
+  "manifest-version-1-fails": {
+    "ok": false,
+    "error": "version: expected 0"
+  },
+  "manifest-extra-field-ok": {
+    "ok": true,
+    "manifest": {
+      "format": "walk-tiles",
+      "version": 0,
+      "release_id": "fixture-release",
+      "source_release_id": "fixture-source",
+      "grid": {
+        "cell_size_degrees": 0.01,
+        "origin": [
+          -180,
+          -90
+        ],
+        "coordinate_scale": 10000000,
+        "cell_size_scaled": 100000,
+        "coordinate_rounding": "none; exact decimal input, maximum seven places",
+        "segment_membership": "closed cells; whole segment in every touched cell",
+        "point_index": "floor((lon+180)/0.01), floor((lat+90)/0.01) using exact decimal arithmetic"
+      },
+      "crs": "EPSG:4326",
+      "coordinate_order": "longitude_latitude",
+      "length_unit": "international_foot",
+      "default_speed_mph": 2.8,
+      "coverage": {
+        "bbox": [
+          -105.006,
+          39.755,
+          -104.994,
+          39.755
+        ],
+        "readiness": "not_established",
+        "meaning": "extent of included source geometry, not a guarantee of complete walkable streets"
+      },
+      "tiles": [
+        {
+          "col": 7499,
+          "row": 12975,
+          "path": "network/7499_12975.json",
+          "segments": 2,
+          "bytes": 658
+        },
+        {
+          "col": 7500,
+          "row": 12975,
+          "path": "network/7500_12975.json",
+          "segments": 2,
+          "bytes": 652
+        }
+      ],
+      "source": {
+        "osm_data_timestamp": "2026-11-01T21:21:36Z",
+        "download_date": "2026-11-02",
+        "walking_rule_version": "pedestrian-policy-0.3",
+        "selection": "existing included segments; no re-extraction or reclassification"
+      },
+      "counts": {
+        "included": 3,
+        "excluded": 0,
+        "unknown_left_out": 0,
+        "nodes": 4,
+        "directed_arcs": 6,
+        "tiles": 2,
+        "segment_copies": 4,
+        "total_length_ft": 3369.3
+      },
+      "attribution": "© OpenStreetMap contributors",
+      "license": "ODbL-1.0",
+      "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "attribution_url": "https://www.openstreetmap.org/copyright",
+      "distribution_status": "local_experimental_not_cleared_for_redistribution",
+      "limitations": [
+        "Hand-written test fixture; not real street data."
+      ],
+      "extra_unknown": 1
+    }
+  },
+  "manifest-missing-tiles-fails": {
+    "ok": false,
+    "error": "tiles: expected a non-empty list"
+  },
+  "manifest-empty-tiles-fails": {
+    "ok": false,
+    "error": "tiles: expected a non-empty list"
+  },
+  "tiles-for-both-cells": [
+    {
+      "col": 7499,
+      "row": 12975,
+      "path": "network/7499_12975.json",
+      "segments": 2,
+      "bytes": 658
+    },
+    {
+      "col": 7500,
+      "row": 12975,
+      "path": "network/7500_12975.json",
+      "segments": 2,
+      "bytes": 652
+    }
+  ],
+  "tiles-for-outside-cell": [],
+  "merge-both-tiles": {
+    "ok": true,
+    "segments": [
+      {
+        "id": "way/1/segment/0",
+        "from": "n1",
+        "to": "n2",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.006,
+            39.755
+          ],
+          [
+            -105.002,
+            39.755
+          ]
+        ],
+        "way_id": "1",
+        "hwy": "residential",
+        "name": "A Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/2/segment/0",
+        "from": "n2",
+        "to": "n3",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.002,
+            39.755
+          ],
+          [
+            -104.998,
+            39.755
+          ]
+        ],
+        "way_id": "2",
+        "hwy": "residential",
+        "name": "B Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/3/segment/0",
+        "from": "n3",
+        "to": "n4",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -104.998,
+            39.755
+          ],
+          [
+            -104.994,
+            39.755
+          ]
+        ],
+        "way_id": "3",
+        "hwy": "trunk",
+        "name": "C Street",
+        "sidewalk": "",
+        "footway": ""
+      }
+    ],
+    "copies": 4
+  },
+  "merge-conflicting-name": {
+    "ok": false,
+    "error": "conflicting copies of segment way/2/segment/0"
+  },
+  "merge-same-coords-different-ids-kept": {
+    "ok": true,
+    "segments": [
+      {
+        "id": "way/1/segment/0",
+        "from": "n1",
+        "to": "n2",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.006,
+            39.755
+          ],
+          [
+            -105.002,
+            39.755
+          ]
+        ],
+        "way_id": "1",
+        "hwy": "residential",
+        "name": "A Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/9/segment/0",
+        "from": "n1",
+        "to": "n2",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.006,
+            39.755
+          ],
+          [
+            -105.002,
+            39.755
+          ]
+        ],
+        "way_id": "1",
+        "hwy": "residential",
+        "name": "A Street",
+        "sidewalk": "",
+        "footway": ""
+      }
+    ],
+    "copies": 2
+  },
+  "merge-missing-field": {
+    "ok": false,
+    "error": "segment way/1/segment/0: missing hwy"
+  },
+  "merge-bad-len": {
+    "ok": false,
+    "error": "segment way/1/segment/0: invalid len_ft"
+  },
+  "to-geojson-merged": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -105.006,
+              39.755
+            ],
+            [
+              -105.002,
+              39.755
+            ]
+          ]
+        },
+        "properties": {
+          "highway": "residential",
+          "foot": "yes",
+          "name": "A Street",
+          "sidewalk": "",
+          "footway": "",
+          "wayId": 1,
+          "flmId": "way/1/segment/0",
+          "lenFt": 1123.1,
+          "dir": "both"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -105.002,
+              39.755
+            ],
+            [
+              -104.998,
+              39.755
+            ]
+          ]
+        },
+        "properties": {
+          "highway": "residential",
+          "foot": "yes",
+          "name": "B Street",
+          "sidewalk": "",
+          "footway": "",
+          "wayId": 2,
+          "flmId": "way/2/segment/0",
+          "lenFt": 1123.1,
+          "dir": "both"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -104.998,
+              39.755
+            ],
+            [
+              -104.994,
+              39.755
+            ]
+          ]
+        },
+        "properties": {
+          "highway": "trunk",
+          "foot": "yes",
+          "name": "C Street",
+          "sidewalk": "",
+          "footway": "",
+          "wayId": 3,
+          "flmId": "way/3/segment/0",
+          "lenFt": 1123.1,
+          "dir": "both"
+        }
+      }
+    ]
+  },
+  "to-geojson-non-integer-way-id": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -105.006,
+              39.755
+            ],
+            [
+              -105.002,
+              39.755
+            ]
+          ]
+        },
+        "properties": {
+          "highway": "residential",
+          "foot": "yes",
+          "name": "A Street",
+          "sidewalk": "",
+          "footway": "",
+          "wayId": "abc",
+          "flmId": "way/1/segment/0",
+          "lenFt": 1123.1,
+          "dir": "both"
+        }
+      }
+    ]
+  },
+  "to-geojson-unsafe-way-id": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -105.006,
+              39.755
+            ],
+            [
+              -105.002,
+              39.755
+            ]
+          ]
+        },
+        "properties": {
+          "highway": "residential",
+          "foot": "yes",
+          "name": "A Street",
+          "sidewalk": "",
+          "footway": "",
+          "wayId": "99999999999999999999",
+          "flmId": "way/1/segment/0",
+          "lenFt": 1123.1,
+          "dir": "both"
+        }
+      }
+    ]
+  }
+}
