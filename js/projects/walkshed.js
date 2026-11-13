@@ -842,23 +842,29 @@
   // Travelshed's: just a walk circle per selected point).
 
   var _pendingDownloadExtent = null; // Feature<Polygon> | null, consumed by #wsDownloadBtn
+  var _pendingPieces = null; // [[w, s, e, n], ...] one box per selected point, set with _pendingDownloadExtent
 
   // Rectangle covering everything the flood could touch: a circle of the full
   // walk budget around each selected point. Coarse but safe — it only ever asks
   // for MORE coverage than strictly needed, never less.
   function computeRequiredExtent(targets) {
+    _pendingPieces = null;
     if (!targets.length) return null;
     var budgets = activeBudgets();
     var maxMinutes = budgets[budgets.length - 1]; // size the circle from the LARGEST budget
     var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (maxMinutes / 60);
     var pieces = [];
+    var boxes = [];
     targets.forEach(function (pf) {
       var c = pf.geometry && pf.geometry.coordinates;
       if (!c) return;
-      pieces.push(turf.circle(c, budgetKm, { units: "kilometers", steps: 16 }));
+      var circle = turf.circle(c, budgetKm, { units: "kilometers", steps: 16 });
+      pieces.push(circle);
+      boxes.push(turf.bbox(circle));
     });
     if (!pieces.length) return null;
     var union = App.foldAnalysisUnion ? App.foldAnalysisUnion(pieces) : pieces[0];
+    _pendingPieces = boxes;
     return union ? turf.bboxPolygon(turf.bbox(union)) : null;
   }
 
@@ -879,7 +885,7 @@
     // Repeated here because the coverage warning sits with the inputs, which
     // collapse after a successful run.
     var beyond = typeof App.walkTilesExtentBeyondPrepared === "function" &&
-      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent);
+      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent, _pendingPieces);
     return " Streets: FLM tiles " + rel + "." +
       (beyond ? " Part of this area is outside the prepared FLM area, so results may be clipped there." : "");
   }
@@ -900,7 +906,7 @@
 
   function beyondPreparedWarn() {
     return typeof App.walkTilesExtentBeyondPrepared === "function" &&
-      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent)
+      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent, _pendingPieces)
       ? "Part of this walk budget is outside the prepared FLM area \u2014 walksheds may be clipped there." : null;
   }
 
@@ -908,6 +914,13 @@
     var btn = document.getElementById("wsDownloadBtn");
     labelDownloadBtn();
     if (btn) btn.style.display = show ? "" : "none";
+  }
+
+  function networkCovers() {
+    if (typeof App.roadNetworkCoversExtent === "function") {
+      return App.roadNetworkCoversExtent(_pendingDownloadExtent, _pendingPieces);
+    }
+    return turf.booleanContains(App.getRoadDownloadExtent(), _pendingDownloadExtent);
   }
 
   // Returns true when the analysis may proceed. Otherwise it has already put the
@@ -927,7 +940,7 @@
       showDownloadBtn(false);
       return true;
     }
-    if (_pendingDownloadExtent && !turf.booleanContains(downloaded, _pendingDownloadExtent)) {
+    if (_pendingDownloadExtent && !networkCovers()) {
       setCoverageWarn(tilesActive() ? "Loaded FLM tiles don't cover this walk budget." : "Loaded streets don't cover this walk budget.");
       showDownloadBtn(true);
       return false;
@@ -947,7 +960,7 @@
     var tiles = tilesActive();
     setStatus(tiles ? "Loading FLM tiles\u2026" : "Downloading streets\u2026", "running");
     try {
-      var ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent);
+      var ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent, _pendingPieces);
       if (ok) { updateComputeAvailability(); runWalkshed(); }
       else if (tiles) setStatus((typeof App.walkTilesLastError === "function" && App.walkTilesLastError()) || "FLM tiles could not be loaded for this area.", "error");
       else setStatus("Street download failed or was cancelled.", "error");
@@ -976,6 +989,7 @@
     if (!checkNetworkCoverage(targets)) {
       if (afterRestore !== true && _pendingDownloadExtent && typeof App.restoreNetworkCovering === "function") {
         var extent = _pendingDownloadExtent;
+        var pieces = _pendingPieces;
         var tiles = tilesActive() && typeof App.fetchRoadNetworkForExtent === "function";
         var failMsg = function () {
           return tiles
@@ -984,7 +998,7 @@
         };
         _running = true;
         setStatus(tiles ? "Loading FLM tiles\u2026" : "Loading stored streets\u2026", "running");
-        (tiles ? App.fetchRoadNetworkForExtent(extent) : App.restoreNetworkCovering(extent)).then(function (ok) {
+        (tiles ? App.fetchRoadNetworkForExtent(extent, pieces) : App.restoreNetworkCovering(extent)).then(function (ok) {
           _running = false;
           if (ok) {
             if (typeof App.notifyProject === "function") App.notifyProject();

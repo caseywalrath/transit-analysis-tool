@@ -508,6 +508,11 @@
     return union ? turf.bboxPolygon(turf.bbox(union)) : null;
   }
 
+  function networkCovers(extent) {
+    if (typeof App.roadNetworkCoversExtent === "function") return App.roadNetworkCoversExtent(extent);
+    return turf.booleanContains(App.getRoadDownloadExtent(), extent);
+  }
+
   function setCoverageWarn(msg) {
     var el = document.getElementById("tsCoverageWarn");
     if (!el) return;
@@ -1071,7 +1076,7 @@
     // Before offering a download, look for a stored network that covers this
     // area (e.g. one the user only removed from the map).
     if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
-        (!netLoaded || (downloadedExtent && !turf.booleanContains(downloadedExtent, requiredExtent)))) {
+        (!netLoaded || (downloadedExtent && !networkCovers(requiredExtent)))) {
       if (await App.restoreNetworkCovering(requiredExtent)) {
         if (typeof App.notifyProject === "function") App.notifyProject();
         return runTravelshed(true);
@@ -1086,7 +1091,7 @@
       // File-imported network — extent unknown. Soft warning; proceed anyway.
       setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
       showDownloadBtn(false);
-    } else if (requiredExtent && !turf.booleanContains(downloadedExtent, requiredExtent)) {
+    } else if (requiredExtent && !networkCovers(requiredExtent)) {
       setCoverageWarn(tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
       showDownloadBtn(true);
       return;

@@ -34,6 +34,7 @@
   var _downloadedBboxPolygon = null; // turf Polygon of the last Overpass download extent (for the on-map outline)
   var _tileRelease = "";   // release id when the live network was built from FLM walk tiles, else ""
   var _lastTileError = ""; // user text of the last failed tile load, "" after a success
+  var _tileCells = null;  // lookup "col_row" -> true of the cells the live tile load asked for; null for every other network
 
   // ---- Network Connectors overlay state ----
   // Plain geometry only — never reads App.lines or attributes (network-connectors.js
@@ -735,6 +736,7 @@
       rebuildNetwork();
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
       _tileRelease = "";
+      _tileCells = null;
 
       updateUI(true);
       persistNetwork(extentCacheId(extentPolygon), "overpass", "");
@@ -769,10 +771,30 @@
 
   function tileSourceActive() { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); }
 
+  function cellLookup(keys) {
+    var o = Object.create(null);
+    for (var i = 0; i < keys.length; i++) o[keys[i]] = true;
+    return o;
+  }
+
+  // Outline of a tile load: the union of each piece's rectangle of cells.
+  // Display only. Coverage is answered from _tileCells, so a union that
+  // fails can only leave the outline incomplete.
+  function tileOutline(boxes) {
+    var rects = WalkTiles.cellRectsForBboxes(boxes);
+    var out = null;
+    for (var i = 0; i < rects.length; i++) {
+      var poly = turf.bboxPolygon(rects[i]);
+      if (!out) { out = poly; continue; }
+      try { out = turf.union(out, poly) || out; } catch (e) { /* keep what we have */ }
+    }
+    return out;
+  }
+
   // Loads the FLM tiles covering extentPolygon and makes them the live network
   // through the same tail a download uses. Returns Promise<boolean>, never
   // rejects; on any failure the previously loaded network is left untouched.
-  async function loadNetworkFromTiles(extentPolygon) {
+  async function loadNetworkFromTiles(extentPolygon, pieces) {
     function fail(msg) { _lastTileError = msg; App.setStatus(msg); return false; }
     try {
       if (!tileSourceActive() || typeof WalkTiles === "undefined" || !extentPolygon) {
@@ -780,7 +802,10 @@
       }
       var manifest = App.walkTilesSource.manifest();
       var rel = App.walkTilesSource.releaseId();
-      var cells = WalkTiles.cellsForBbox(turf.bbox(extentPolygon));
+      // One box per selected point when the caller supplies them, so two distant
+      // points read only their own tiles and not every tile between them.
+      var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
+      var cells = WalkTiles.cellsForBboxes(boxes);
       var entries = WalkTiles.tilesForCells(manifest, cells);
       function outsideMsg() {
         var cb = manifest.coverage.bbox;
@@ -817,16 +842,16 @@
 
       _roadGeoJSON = geojson;
       rebuildNetwork();
-      // The rectangle of REQUESTED cells, not of tiles found: it always contains
-      // the required extent, so the modules' coverage checks pass unchanged. A
-      // cell with no tile has no exported streets, per the tile contract.
-      _downloadedBboxPolygon = turf.bboxPolygon(WalkTiles.bboxOfCells(cells));
+      // The cells ASKED FOR, not the tiles found: a cell with no tile has no
+      // exported streets, per the tile contract, so it still counts as covered.
+      _tileCells = cellLookup(WalkTiles.cellKeys(cells));
+      _downloadedBboxPolygon = tileOutline(boxes);
       _tileRelease = rel;
       _lastTileError = "";
       updateUI(true);
-      // A plain "bbox:" id: network-store's findCovering only considers ids of
-      // that form, so a tile network can be restored by area like a download.
-      persistNetwork(extentCacheId(_downloadedBboxPolygon), "walk-tiles", rel);
+      // Not a "bbox:" id: network-store matches those by rectangle, and a load
+      // of separate pieces must never claim the gap between them. One slot per release.
+      persistNetwork("tiles:" + rel, "walk-tiles", rel, WalkTiles.cellKeys(cells));
       App.setStatus(merged.segments.length.toLocaleString() + " FLM tile segments loaded from " + entries.length + " tiles (" + rel + ") — local routing enabled");
       return true;
     } catch (e) {
@@ -850,6 +875,7 @@
         rebuildNetwork();
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         _tileRelease = "";
+        _tileCells = null;
         updateUI(true);
         persistNetwork("file:" + file.name, "file", file.name);
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
@@ -890,7 +916,7 @@
     return "bbox:" + bb.map(function (v) { return v.toFixed(3); }).join(",");
   }
 
-  function persistNetwork(id, source, label) {
+  function persistNetwork(id, source, label, tileCells) {
     if (!App.networkStore || !App.networkStore.supported() || !_roadGeoJSON) return;
     var geojson = _roadGeoJSON;
     var extent = _downloadedBboxPolygon;
@@ -911,6 +937,7 @@
         label: label || "",
         featureCount: count,
         extent: extent || null,
+        tileCells: tileCells || null,
         geojson: json
       });
     }, 0);
@@ -944,6 +971,7 @@
     rebuildNetwork();
     _downloadedBboxPolygon = rec.extent || null;
     _tileRelease = rec.source === "walk-tiles" ? (rec.label || "") : "";
+    _tileCells = (rec.source === "walk-tiles" && Array.isArray(rec.tileCells)) ? cellLookup(rec.tileCells) : null;
     updateUI(true);
 
     if (rec.source === "walk-tiles") {
@@ -996,6 +1024,7 @@
     _networkEpoch++;
     _downloadedBboxPolygon = null;
     _tileRelease = "";
+    _tileCells = null;
     _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
   }
@@ -1431,30 +1460,53 @@
   App.nodeKeyToCoord     = keyToCoord;
   App.contourSamples     = contourSamples;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
-  App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon>|null
-  App.loadRoadNetworkFromTiles = loadNetworkFromTiles;       // (extentPolygon) -> Promise<boolean>
+  App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon|MultiPolygon>|null — for a tile network, display only; use App.roadNetworkCoversExtent to test coverage
+  App.loadRoadNetworkFromTiles = loadNetworkFromTiles;       // (extentPolygon, pieces?) -> Promise<boolean>
   App.roadNetworkTileRelease = function () { return _tileRelease; }; // "" unless the live network came from FLM walk tiles
   App.walkTilesLastError = function () { return _lastTileError; };   // user text of the last failed tile load
   // true when the live network came from the active tile release and
-  // extentPolygon reaches past that release's prepared area. The recorded
-  // extent is the rectangle of requested cells, so the ordinary coverage check
-  // passes there; this is what lets a panel warn that results may be clipped.
-  App.walkTilesExtentBeyondPrepared = function (extentPolygon) {
+  // extentPolygon (or any of the per-point boxes in `pieces`) reaches past that
+  // release's prepared area. Requested cells count as covered even where no
+  // tile exists, so the ordinary coverage check passes there; this is what
+  // lets a panel warn that results may be clipped.
+  App.walkTilesExtentBeyondPrepared = function (extentPolygon, pieces) {
     if (!extentPolygon || !_tileRelease || !tileSourceActive()) return false;
     if (App.walkTilesSource.releaseId() !== _tileRelease) return false;
     var cb = App.walkTilesSource.manifest().coverage.bbox;
-    var eb = turf.bbox(extentPolygon);
-    return eb[0] < cb[0] || eb[1] < cb[1] || eb[2] > cb[2] || eb[3] > cb[3];
+    var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
+    for (var i = 0; i < boxes.length; i++) {
+      var eb = boxes[i];
+      if (eb[0] < cb[0] || eb[1] < cb[1] || eb[2] > cb[2] || eb[3] > cb[3]) return true;
+    }
+    return false;
+  };
+
+  // Are the streets this run needs loaded? A tile network answers by cells
+  // (its outline can be several separate rectangles, which
+  // turf.booleanContains cannot test); any other network by its rectangle.
+  App.roadNetworkCoversExtent = function (extentPolygon, pieces) {
+    if (!_graph || !extentPolygon) return false;
+    if (_tileCells && typeof WalkTiles !== "undefined") {
+      var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
+      var keys = WalkTiles.cellKeys(WalkTiles.cellsForBboxes(boxes));
+      if (!keys.length) return false;
+      for (var i = 0; i < keys.length; i++) {
+        if (!_tileCells[keys[i]]) return false;
+      }
+      return true;
+    }
+    if (!_downloadedBboxPolygon) return false;
+    try { return turf.booleanContains(_downloadedBboxPolygon, extentPolygon); } catch (e) { return false; }
   };
 
   // Caller-supplied-extent download (e.g. Transit Travelshed); see fetchNetworkForBounds().
   // A stored network that already covers the extent is restored instead of
   // re-downloading — Overpass is slow and unreliable, and the user may have
   // only removed the network from the map.
-  App.fetchRoadNetworkForExtent = async function (extentPolygon) {
+  App.fetchRoadNetworkForExtent = async function (extentPolygon, pieces) {
     // An active FLM tile source replaces the download: local files, no Overpass,
     // and no stored-network lookup first (reading tiles is as fast as a restore).
-    if (tileSourceActive()) return loadNetworkFromTiles(extentPolygon);
+    if (tileSourceActive()) return loadNetworkFromTiles(extentPolygon, pieces);
     if (await restoreNetworkCovering(extentPolygon)) return true;
     var bb = turf.bbox(extentPolygon); // [w, s, e, n]
     return fetchNetworkForBounds({ s: bb[1], w: bb[0], n: bb[3], e: bb[2] }, turf.bboxPolygon(bb));
