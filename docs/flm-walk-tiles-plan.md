@@ -375,3 +375,10 @@ Where the brief and the code disagreed, the code won. These override the section
 - **Left open from the agent's questions:** `validateManifest` accepts an empty `limitations` list and does not check the `release_id` character pattern (the tool only checks what it reads); `cellsForBbox` has no cap on cell count (section 8 item 9 says do not cap).
 - **Brief vs code:** `js/core/cache.js` has no File System Access API precedent (section 6 row C says it does); the folder picker is new code.
 - **Hand-off notes:** `window.WalkTiles` = `{ CELL_DEG, cellOf, cellsForBbox, bboxOfCells, validateManifest, tilesForCells, mergeTiles, toRoadGeoJSON }`, signatures as in section 5.1; `validateManifest` errors read `"<field>: <reason>"`. Dialog ids: `ad-walk-tiles`, `walk-tiles-popup`, `walk-tiles-popup-close`, `wtUrl`, `wtUseUrl`, `wtPickFolder`, `wtFolderInput`, `wtInfo`, `wtClear`. Fixture URL in tests: `/test/fixtures/walk-tiles/fixture-release`.
+
+### Phase 3 (November 13, 2026)
+
+- **Sonnet:** `js/core/walk-tiles-source.js` (URL backend with `localStorage`, folder backend by directory handle with `webkitdirectory` fallback, tile cache, dialog wiring, `restore()`) and its script tag. No send-back. The agent's 19 scratch checks passed (URL, fallback-input folder, parent folder, two releases, in-flight sharing, clear).
+- **Planner fix (direct, about ten lines):** the agent used one counter both for "a newer source choice superseded this manifest read" and for "the source changed, drop in-flight tile reads", so a *failed* `useUrl` cancelled tile reads of the still-active source. Split into `_attempt` and `_gen`.
+- **Not exercised by any automated check:** the directory-handle picker (headless Chromium has none), the 64-tile cache cap, a throwing `localStorage`. The handle path needs the lead's manual check in Chrome or Edge.
+- **Additions to section 5.2:** `describe()` and `renderInfo()`; `clear()` sets the "forgotten" status itself; `readTile` rejects with the complete user text `FLM tile <path> could not be read: <reason>`; choosing a folder removes a remembered address.
