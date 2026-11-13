@@ -17,7 +17,7 @@
   "length_unit": "international_foot",
   "default_speed_mph": 2.8,
   "coverage": {
-    "bbox": [-105.006, 39.755, -104.994, 39.755],
+    "bbox": [-105.006, 39.755, -104.944, 39.755],
     "readiness": "not_established",
     "meaning": "extent of included source geometry, not a guarantee of complete walkable streets"
   },
@@ -35,6 +35,13 @@
       "path": "network/7500_12975.json",
       "segments": 2,
       "bytes": 652
+    },
+    {
+      "col": 7505,
+      "row": 12975,
+      "path": "network/7505_12975.json",
+      "segments": 1,
+      "bytes": 355
     }
   ],
   "source": {
@@ -44,14 +51,14 @@
     "selection": "existing included segments; no re-extraction or reclassification"
   },
   "counts": {
-    "included": 3,
+    "included": 4,
     "excluded": 0,
     "unknown_left_out": 0,
-    "nodes": 4,
-    "directed_arcs": 6,
-    "tiles": 2,
-    "segment_copies": 4,
-    "total_length_ft": 3369.3
+    "nodes": 6,
+    "directed_arcs": 8,
+    "tiles": 3,
+    "segment_copies": 5,
+    "total_length_ft": 3930.8
   },
   "attribution": "© OpenStreetMap contributors",
   "license": "ODbL-1.0",

@@ -127,6 +127,58 @@
     ];
   }
 
+  // Cells touched by any of several boxes, each cell once. Sorted so the same
+  // set of points always yields the same list, which keeps stored records and
+  // golden values stable. A box that is not usable adds no cells.
+  function cellsForBboxes(bboxes) {
+    if (!Array.isArray(bboxes)) return [];
+    var seen = Object.create(null);
+    var out = [];
+    for (var i = 0; i < bboxes.length; i++) {
+      var cells = cellsForBbox(bboxes[i]);
+      for (var j = 0; j < cells.length; j++) {
+        var key = cellKey(cells[j].col, cells[j].row);
+        if (seen[key] === true) continue;
+        seen[key] = true;
+        out.push(cells[j]);
+      }
+    }
+    out.sort(function (a, b) { return (a.col - b.col) || (a.row - b.row); });
+    return out;
+  }
+
+  // One rectangle of whole cells per box, in first-seen order. Two points
+  // whose boxes fall in the same cells give one rectangle, not two copies,
+  // so the map outline never draws the same box twice.
+  function cellRectsForBboxes(bboxes) {
+    if (!Array.isArray(bboxes)) return [];
+    var seen = Object.create(null);
+    var out = [];
+    for (var i = 0; i < bboxes.length; i++) {
+      var cells = cellsForBbox(bboxes[i]);
+      if (cells.length === 0) continue;
+      var rect = bboxOfCells(cells);
+      if (!rect) continue;
+      var id = rect.join(",");
+      if (seen[id] === true) continue;
+      seen[id] = true;
+      out.push(rect);
+    }
+    return out;
+  }
+
+  // The "col_row" keys of a cell list, in the given order. These are the
+  // keys stored with a tile load, so the answer to "is this cell loaded"
+  // never depends on how the cells were produced.
+  function cellKeys(cells) {
+    if (!Array.isArray(cells)) return [];
+    var out = [];
+    for (var i = 0; i < cells.length; i++) {
+      if (isPlainObject(cells[i])) out.push(cellKey(cells[i].col, cells[i].row));
+    }
+    return out;
+  }
+
   function validBbox(b) {
     if (!Array.isArray(b) || b.length !== 4) return false;
     for (var k = 0; k < 4; k++) {
@@ -321,6 +373,9 @@
     cellOf: cellOf,
     cellsForBbox: cellsForBbox,
     bboxOfCells: bboxOfCells,
+    cellsForBboxes: cellsForBboxes,
+    cellRectsForBboxes: cellRectsForBboxes,
+    cellKeys: cellKeys,
     validateManifest: validateManifest,
     tilesForCells: tilesForCells,
     mergeTiles: mergeTiles,

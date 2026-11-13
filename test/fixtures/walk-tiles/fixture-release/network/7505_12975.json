@@ -1,0 +1,19 @@
+{
+  "col": 7505,
+  "row": 12975,
+  "segments": [
+    {
+      "id": "way/4/segment/0",
+      "from": "n5",
+      "to": "n6",
+      "len_ft": 561.5,
+      "dir": "both",
+      "coords": [[-104.946, 39.755], [-104.944, 39.755]],
+      "way_id": "4",
+      "hwy": "residential",
+      "name": "D Street",
+      "sidewalk": "",
+      "footway": ""
+    }
+  ]
+}

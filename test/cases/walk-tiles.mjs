@@ -2,7 +2,9 @@
 // No deps: js/core/walk-tiles.js is geometry-library, DOM and app-state free,
 // so it loads in the vm sandbox. The fixture release under
 // test/fixtures/walk-tiles/fixture-release/ is hand-written: two cells, three
-// segments (A in the first cell, B across the shared edge, C in the second).
+// segments (A in the first cell, B across the shared edge, C in the second),
+// plus a third cell far to the east with one segment (D), so a load of two
+// distant points has a gap of unloaded cells between them.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,12 +22,20 @@ const readJson = (rel) => JSON.parse(readFileSync(join(FIXTURE, rel), "utf8"));
 const fixtureManifest = readJson("manifest.json");
 const tileA = readJson("network/7499_12975.json");
 const tileB = readJson("network/7500_12975.json");
+const tileD = readJson("network/7505_12975.json");
 const segA = tileA.segments[0];
 const segB = tileA.segments[1];
 const segC = tileB.segments[1];
 
 const cellA = { col: 7499, row: 12975 };
 const cellB = { col: 7500, row: 12975 };
+
+// Two points at opposite ends of the fixture: the first covers cells A and B,
+// the second covers cell D, and the cells between them are not touched.
+const twoFarBoxes = [
+  [-105.0074, 39.7516, -104.9986, 39.7584],
+  [-104.9494, 39.7516, -104.9406, 39.7584],
+];
 
 // Tile B with its copy of segment B renamed, for the conflict case.
 const tileBRenamed = JSON.parse(JSON.stringify(tileB));
@@ -147,6 +157,37 @@ export default {
       id: "to-geojson-unsafe-way-id",
       call: "WalkTiles.toRoadGeoJSON",
       args: [[{ ...segA, way_id: "99999999999999999999" }]],
+    },
+
+    // ---- cellsForBboxes / cellRectsForBboxes / cellKeys ---------------------
+    { id: "cells-bboxes-two-far", call: "WalkTiles.cellsForBboxes", args: [twoFarBoxes] },
+    {
+      id: "cells-bboxes-overlap-deduped",
+      call: "WalkTiles.cellsForBboxes",
+      args: [[[-105.005, 39.755, -104.995, 39.755], [-105.005, 39.755, -105.004, 39.755]]],
+    },
+    {
+      id: "cells-bboxes-skips-invalid",
+      call: "WalkTiles.cellsForBboxes",
+      args: [[["x", 1, 2, 3], [-105.005, 39.755, -105.005, 39.755]]],
+    },
+    { id: "cells-bboxes-not-array", call: "WalkTiles.cellsForBboxes", args: ["nope"] },
+    { id: "cell-rects-two-far", call: "WalkTiles.cellRectsForBboxes", args: [twoFarBoxes] },
+    {
+      id: "cell-rects-duplicates-removed",
+      call: "WalkTiles.cellRectsForBboxes",
+      args: [[twoFarBoxes[0], twoFarBoxes[0]]],
+    },
+    {
+      id: "cell-keys",
+      call: "WalkTiles.cellKeys",
+      args: [[{ col: 7499, row: 12975 }, { col: 7505, row: 12975 }]],
+    },
+    { id: "cell-keys-not-array", call: "WalkTiles.cellKeys", args: ["nope"] },
+    {
+      id: "merge-three-tiles",
+      call: "WalkTiles.mergeTiles",
+      args: [[tileA, tileB, tileD]],
     },
   ],
 };

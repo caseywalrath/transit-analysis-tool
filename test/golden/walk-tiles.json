@@ -77,7 +77,7 @@
         "bbox": [
           -105.006,
           39.755,
-          -104.994,
+          -104.944,
           39.755
         ],
         "readiness": "not_established",
@@ -97,6 +97,13 @@
           "path": "network/7500_12975.json",
           "segments": 2,
           "bytes": 652
+        },
+        {
+          "col": 7505,
+          "row": 12975,
+          "path": "network/7505_12975.json",
+          "segments": 1,
+          "bytes": 355
         }
       ],
       "source": {
@@ -106,14 +113,14 @@
         "selection": "existing included segments; no re-extraction or reclassification"
       },
       "counts": {
-        "included": 3,
+        "included": 4,
         "excluded": 0,
         "unknown_left_out": 0,
-        "nodes": 4,
-        "directed_arcs": 6,
-        "tiles": 2,
-        "segment_copies": 4,
-        "total_length_ft": 3369.3
+        "nodes": 6,
+        "directed_arcs": 8,
+        "tiles": 3,
+        "segment_copies": 5,
+        "total_length_ft": 3930.8
       },
       "attribution": "© OpenStreetMap contributors",
       "license": "ODbL-1.0",
@@ -156,7 +163,7 @@
         "bbox": [
           -105.006,
           39.755,
-          -104.994,
+          -104.944,
           39.755
         ],
         "readiness": "not_established",
@@ -176,6 +183,13 @@
           "path": "network/7500_12975.json",
           "segments": 2,
           "bytes": 652
+        },
+        {
+          "col": 7505,
+          "row": 12975,
+          "path": "network/7505_12975.json",
+          "segments": 1,
+          "bytes": 355
         }
       ],
       "source": {
@@ -185,14 +199,14 @@
         "selection": "existing included segments; no re-extraction or reclassification"
       },
       "counts": {
-        "included": 3,
+        "included": 4,
         "excluded": 0,
         "unknown_left_out": 0,
-        "nodes": 4,
-        "directed_arcs": 6,
-        "tiles": 2,
-        "segment_copies": 4,
-        "total_length_ft": 3369.3
+        "nodes": 6,
+        "directed_arcs": 8,
+        "tiles": 3,
+        "segment_copies": 5,
+        "total_length_ft": 3930.8
       },
       "attribution": "© OpenStreetMap contributors",
       "license": "ODbL-1.0",
@@ -513,5 +527,157 @@
         }
       }
     ]
+  },
+  "cells-bboxes-two-far": [
+    {
+      "col": 7499,
+      "row": 12975
+    },
+    {
+      "col": 7500,
+      "row": 12975
+    },
+    {
+      "col": 7505,
+      "row": 12975
+    }
+  ],
+  "cells-bboxes-overlap-deduped": [
+    {
+      "col": 7499,
+      "row": 12975
+    },
+    {
+      "col": 7500,
+      "row": 12975
+    }
+  ],
+  "cells-bboxes-skips-invalid": [
+    {
+      "col": 7499,
+      "row": 12975
+    }
+  ],
+  "cells-bboxes-not-array": [],
+  "cell-rects-two-far": [
+    [
+      -105.01,
+      39.75,
+      -104.99,
+      39.76
+    ],
+    [
+      -104.95,
+      39.75,
+      -104.94,
+      39.76
+    ]
+  ],
+  "cell-rects-duplicates-removed": [
+    [
+      -105.01,
+      39.75,
+      -104.99,
+      39.76
+    ]
+  ],
+  "cell-keys": [
+    "7499_12975",
+    "7505_12975"
+  ],
+  "cell-keys-not-array": [],
+  "merge-three-tiles": {
+    "ok": true,
+    "segments": [
+      {
+        "id": "way/1/segment/0",
+        "from": "n1",
+        "to": "n2",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.006,
+            39.755
+          ],
+          [
+            -105.002,
+            39.755
+          ]
+        ],
+        "way_id": "1",
+        "hwy": "residential",
+        "name": "A Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/2/segment/0",
+        "from": "n2",
+        "to": "n3",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -105.002,
+            39.755
+          ],
+          [
+            -104.998,
+            39.755
+          ]
+        ],
+        "way_id": "2",
+        "hwy": "residential",
+        "name": "B Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/3/segment/0",
+        "from": "n3",
+        "to": "n4",
+        "len_ft": 1123.1,
+        "dir": "both",
+        "coords": [
+          [
+            -104.998,
+            39.755
+          ],
+          [
+            -104.994,
+            39.755
+          ]
+        ],
+        "way_id": "3",
+        "hwy": "trunk",
+        "name": "C Street",
+        "sidewalk": "",
+        "footway": ""
+      },
+      {
+        "id": "way/4/segment/0",
+        "from": "n5",
+        "to": "n6",
+        "len_ft": 561.5,
+        "dir": "both",
+        "coords": [
+          [
+            -104.946,
+            39.755
+          ],
+          [
+            -104.944,
+            39.755
+          ]
+        ],
+        "way_id": "4",
+        "hwy": "residential",
+        "name": "D Street",
+        "sidewalk": "",
+        "footway": ""
+      }
+    ],
+    "copies": 5
   }
 }
