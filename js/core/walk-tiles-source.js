@@ -161,6 +161,9 @@
         // quietly offer an OpenStreetMap download instead.
         console.warn("FLM tile source not restored: " + (read.ok ? validation.error : read.error));
         setStatus("FLM tile address could not be read (" + url + "). Open Add Data \u2192 FLM Walk Tiles to retry.");
+        // Kept in the dialog as well: another startup message can replace the
+        // status line before anyone reads it.
+        _lastError = read.ok ? "This folder is not a walk-tiles release: " + validation.error : read.error;
         renderInfo();
         return false;
       }
@@ -401,7 +404,9 @@
     var urlInput = document.getElementById("wtUrl");
     var info = document.getElementById("wtInfo");
     var d = describe();
-    if (urlInput && d && d.kind === "url") urlInput.value = d.url;
+    // Not after a failed attempt: the field then holds what the user just
+    // typed, and replacing it would make them retype the whole address.
+    if (urlInput && d && d.kind === "url" && !_lastError) urlInput.value = d.url;
     // A remembered address that failed to load is offered back for a retry.
     if (urlInput && !d && !urlInput.value) {
       var remembered = readSetting();
@@ -459,6 +464,9 @@
   // ---- Dialog wiring ----
 
   function report(result) {
+    // A superseded attempt says nothing: the newer choice has already
+    // reported, and its outcome is the one the dialog should keep showing.
+    if (result === SUPERSEDED) return;
     _lastError = result.ok ? "" : result.error;
     if (result.ok) setStatus("FLM tile source set: " + releaseId());
     else setStatus(result.error);
@@ -513,7 +521,9 @@
           handle = await window.showDirectoryPicker({ mode: "read" });
         } catch (e) {
           if (e && e.name === "AbortError") return;
-          setStatus("Could not open the folder: " + messageOf(e));
+          _lastError = "Could not open the folder: " + messageOf(e);
+          setStatus(_lastError);
+          renderInfo();
           return;
         }
         report(await useFolder({ handle: handle }));

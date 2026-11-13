@@ -12,6 +12,8 @@
 //   - the recorded extent is the rectangle of requested cells (so the modules'
 //     coverage checks pass) and the run's status names the tile release
 //   - the tile network is stored as a "walk-tiles" record
+//   - two distant points read only their own tiles, and a refresh keeps the
+//     cells the restored network covers
 //   - an extent with no tile reports "Outside the prepared FLM area" and
 //     leaves the live network alone
 //   - while the source is active, a stored Overpass network never silently
@@ -71,7 +73,7 @@ async function storedRecords(page) {
       if (!db.objectStoreNames.contains("networks")) { db.close(); return resolve([]); }
       const r = db.transaction("networks", "readonly").objectStore("networks").getAll();
       r.onsuccess = () => {
-        const out = r.result.map((x) => ({ id: x.id, source: x.source, label: x.label }));
+        const out = r.result.map((x) => ({ id: x.id, source: x.source, label: x.label, tileCells: x.tileCells || null }));
         db.close();
         resolve(out);
       };
@@ -178,6 +180,21 @@ async function setInput(page, id, value) {
       failInfo.includes("Could not read manifest.json") && failInfo.includes("fixture-release") &&
       await page.evaluate(() => App.walkTilesSource.isActive()), failInfo.slice(0, 120));
 
+    // A folder that is not a release: the message must name the folder and
+    // list what is in it, so the user can see which folder they picked.
+    const wrongFolder = await page.evaluate(async () => {
+      const mk = (path) => {
+        const f = new File(["{}"], path.split("/").pop());
+        Object.defineProperty(f, "webkitRelativePath", { value: path });
+        return f;
+      };
+      return App.walkTilesSource.useFolder({ files: [mk("step3/export-manifest.json"), mk("step3/denver.geojson")] });
+    });
+    check("a folder without manifest.json is named and its contents listed",
+      wrongFolder.ok === false &&
+      wrongFolder.error === 'This folder is not a walk-tiles release: manifest.json not found in "step3". It contains: denver.geojson, export-manifest.json.',
+      JSON.stringify(wrongFolder));
+
     await page.click("#walk-tiles-popup-close");
     check("dialog closes",
       await page.evaluate(() => document.getElementById("walk-tiles-popup").style.display === "none"));
@@ -228,8 +245,47 @@ async function setInput(page, id, value) {
 
     const recs = await waitForStored(page, (r) => r.some((x) => x.source === "walk-tiles"));
     const tileRec = recs.find((x) => x.source === "walk-tiles");
-    check("tile network stored as a walk-tiles record with an area id",
-      !!tileRec && tileRec.label === "fixture-release" && tileRec.id.indexOf("bbox:") === 0, JSON.stringify(recs));
+    check("tile network stored under its release id with its cells",
+      !!tileRec && tileRec.id === "tiles:fixture-release" && tileRec.label === "fixture-release" &&
+      JSON.stringify(tileRec.tileCells) === JSON.stringify(["7499_12975", "7500_12975"]), JSON.stringify(recs));
+
+    // ---- 2b. A second, distant point reads only its own tiles ----
+    await page.evaluate(() => App.addPoint(-104.945, 39.755));
+    // App.addPoint alone does not rebuild the Walkshed checklist; the drawing
+    // path calls App.notifyProject() after placing a point, so do the same.
+    await page.evaluate(() => App.notifyProject());
+    await waitFor(page, "document.querySelectorAll('#wsPointList input[type=checkbox]').length === 2", 10000);
+    const ticked = await page.evaluate(() => {
+      const boxes = Array.from(document.querySelectorAll("#wsPointList input[type=checkbox]"));
+      let changed = 0;
+      for (const cb of boxes) {
+        if (!cb.checked) { cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true })); changed++; }
+      }
+      return { total: boxes.length, changed };
+    });
+    console.log("  info  Walkshed checklist rows: " + ticked.total + ", ticked by the test: " + ticked.changed);
+    await page.evaluate(() => { window.__statusLog.length = 0; });
+    await page.evaluate(() => document.getElementById("wsComputeBtn").click());
+    const twoStatus = await waitStatus(page, "FLM tile segments loaded");
+    check("two distant points load three tiles",
+      twoStatus === "4 FLM tile segments loaded from 3 tiles (fixture-release) — local routing enabled", String(twoStatus));
+    check("only the new tile was requested",
+      tileRequests.length === 3 && tileRequests[2].endsWith("/network/7505_12975.json"), tileRequests.join(" "));
+
+    const cover = await page.evaluate(() => {
+      const ex = App.getRoadDownloadExtent();
+      return {
+        type: ex ? ex.geometry.type : null,
+        gap: App.roadNetworkCoversExtent(turf.bboxPolygon([-104.975, 39.754, -104.973, 39.756])),
+        first: App.roadNetworkCoversExtent(turf.bboxPolygon([-105.004, 39.754, -105.002, 39.756])),
+        second: App.roadNetworkCoversExtent(turf.bboxPolygon([-104.946, 39.754, -104.944, 39.756])),
+      };
+    });
+    check("outline is two separate rectangles", cover.type === "MultiPolygon", String(cover.type));
+    check("the gap between the points is not reported as covered", cover.gap === false, String(cover.gap));
+    check("both points' areas are covered", cover.first === true && cover.second === true, JSON.stringify(cover));
+    check("still no Overpass request after the second point", overpassHits === 0, "hits=" + overpassHits);
+    await waitFor(page, "/Calculated|No walksheds produced/.test(document.getElementById('wsStatusText').textContent)", 30000);
 
     // ---- 3. An extent with no tile ----
     const outside = await page.evaluate(async () => {
@@ -238,7 +294,7 @@ async function setInput(page, id, value) {
     });
     check("extent outside the release reports the prepared area",
       outside.ok === false &&
-      outside.err === "Outside the prepared FLM area (fixture-release). Prepared area: -105.006, 39.755 to -104.994, 39.755.",
+      outside.err === "Outside the prepared FLM area (fixture-release). Prepared area: -105.006, 39.755 to -104.944, 39.755.",
       JSON.stringify(outside));
     check("a failed tile load leaves the live network alone", outside.loaded && outside.rel === "fixture-release");
 
@@ -248,8 +304,8 @@ async function setInput(page, id, value) {
       const ok = await App.restoreNetworkCovering(turf.bboxPolygon([-105.004, 39.754, -105.002, 39.756]));
       return { ok, rel: App.roadNetworkTileRelease() };
     });
-    check("a stored tile network of the active release restores by area",
-      restoreTile.ok === true && restoreTile.rel === "fixture-release", JSON.stringify(restoreTile));
+    check("a stored tile network is never matched by area",
+      restoreTile.ok === false, JSON.stringify(restoreTile));
 
     const guard = await page.evaluate(async () => {
       App.unloadRoadNetwork();
@@ -309,6 +365,28 @@ async function setInput(page, id, value) {
     check("URL source restored after page refresh",
       await waitFor(page, "App.walkTilesSource.isActive() && App.walkTilesSource.releaseId() === 'fixture-release'", 10000));
 
+    // ---- 6b. A two-piece load keeps its cells through a refresh ----
+    const twoPieces = await page.evaluate(() => App.fetchRoadNetworkForExtent(
+      turf.bboxPolygon([-105.0074, 39.7516, -104.9406, 39.7584]),
+      [[-105.0074, 39.7516, -104.9986, 39.7584], [-104.9494, 39.7516, -104.9406, 39.7584]]));
+    check("a load of two pieces succeeds", twoPieces === true, String(twoPieces));
+    const hasThreeCells = (x) => x.source === "walk-tiles" && !!x.tileCells && x.tileCells.length === 3;
+    const recs2 = await waitForStored(page, (r) => r.some(hasThreeCells));
+    check("the stored record lists the three cells", recs2.some(hasThreeCells), JSON.stringify(recs2));
+    await page.reload({ waitUntil: "load" });
+    await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
+    const back = await waitFor(page, "App.roadNetworkLoaded()", 15000);
+    const refreshed = await page.evaluate(() => ({
+      rel: App.roadNetworkTileRelease(),
+      gap: App.roadNetworkCoversExtent(turf.bboxPolygon([-104.975, 39.754, -104.973, 39.756])),
+      first: App.roadNetworkCoversExtent(turf.bboxPolygon([-105.004, 39.754, -105.002, 39.756])),
+      diag: { log: window.__statusLog, active: App.walkTilesSource.isActive(), ls: localStorage.getItem("mat-walk-tiles-source") },
+    }));
+    check("after a refresh the restored tile network still knows its cells",
+      back && refreshed.rel === "fixture-release" && refreshed.gap === false && refreshed.first === true,
+      JSON.stringify({ back, ...refreshed }));
+    await page.evaluate(() => App.unloadRoadNetwork());
+
     // ---- 7. An unreadable tile fails the whole load ----
     breakTile = true;
     const broken = await page.evaluate(async () => {
@@ -325,9 +403,14 @@ async function setInput(page, id, value) {
     await page.evaluate((u) => localStorage.setItem("mat-walk-tiles-source", JSON.stringify({ kind: "url", url: u })), badUrl);
     await page.reload({ waitUntil: "load" });
     await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
-    const unreadable = await waitStatus(page, "FLM tile address could not be read", 10000);
+    // Asserted on the dialog, not the status line: the observer behind
+    // __statusLog reads the text once per batch of changes, so a startup
+    // message that another status replaces in the same batch is never logged.
+    const reported = await waitFor(page,
+      "document.getElementById('wtInfo').textContent.includes('Could not read manifest.json at')", 10000);
+    const unreadable = await page.evaluate(() => document.getElementById("wtInfo").textContent);
     check("an unreadable remembered address is reported at startup",
-      !!unreadable && unreadable.includes(badUrl) && !(await page.evaluate(() => App.walkTilesSource.isActive())), String(unreadable));
+      reported && unreadable.includes(badUrl) && !(await page.evaluate(() => App.walkTilesSource.isActive())), unreadable.slice(0, 160));
     await page.click("#add-data-btn");
     await page.click("#ad-walk-tiles");
     check("the dialog offers the remembered address back for a retry",

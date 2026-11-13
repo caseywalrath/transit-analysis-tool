@@ -723,7 +723,9 @@
     }
     if (!App.roadNetworkLoaded || !App.roadNetworkLoaded()) {
       return { need: "Choose points and click Calculate.",
-               action: "No street network is loaded yet — Calculate will offer to download one for just the area these points need." };
+               action: tilesActive()
+                 ? "No street network is loaded yet — Calculate will read the FLM tiles around these points."
+                 : "No street network is loaded yet — Calculate will offer to download one for just the area these points need." };
     }
     return { need: "Choose points and click Calculate.", action: "A walkshed is the true street-network area reachable on foot within your time budget." };
   }
@@ -954,7 +956,9 @@
   // success. The walkshed cache keys include the network epoch, which
   // fetchRoadNetworkForExtent bumps, so cached polygons invalidate themselves.
   async function downloadNetworkForPendingExtent() {
-    if (!_pendingDownloadExtent || !App.fetchRoadNetworkForExtent) return;
+    // _running: Calculate may already be loading tiles for this extent, and a
+    // second load would rebuild the network under the run that follows it.
+    if (_running || !_pendingDownloadExtent || !App.fetchRoadNetworkForExtent) return;
     var btn = document.getElementById("wsDownloadBtn");
     if (btn) btn.disabled = true;
     var tiles = tilesActive();

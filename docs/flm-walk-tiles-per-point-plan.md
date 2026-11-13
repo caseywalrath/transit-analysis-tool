@@ -1,5 +1,7 @@
 # Plan: load FLM tiles per point, not for the whole rectangle between points
 
+Status: **implemented November 13, 2026; the manual check with real Denver tiles (Review gate) is still open.** See the progress log at the end.
+
 Repository `transit-analysis-tool`, branch `claude/jolly-hamilton-64dask` (clean, pushed, at `15efc3d`).
 Follow `CLAUDE.md` and `AGENTS.md`. Three Haiku task cards (run at `high` effort), then an Opus review gate.
 
@@ -309,3 +311,13 @@ checks until Card C; report its output, do not edit it.) Paste `git diff js/core
 - Any change to `js/core/network-store.js` or the tile format.
 
 ## Progress log
+
+### November 13, 2026
+
+- **Card A, Haiku at high effort:** three pure helpers, third fixture tile, nine golden cases (34 in the module). Passed review first time. Two golden cases that echo the manifest were re-recorded on purpose.
+- **Card B, Haiku at high effort:** `road-network.js`, `walkshed.js`, `transit-travelshed.js`, code inserted verbatim from the card. Passed review first time. Planner edit: two stale comments.
+- **Card C, Haiku at high effort:** behaviour test, nine new checks. The agent found that `App.addPoint` does not rebuild Walkshed's point list (only the drawing path does), so the test calls `App.notifyProject()` after it, as the drawing path does.
+- **Review gate (planner):** `code-review` at high; full browser suite, one file at a time, 26 files pass (`walk-tiles` 43/43); golden 778/778. Fixed directly: a superseded attempt could leave a stale red error in the dialog; a failed attempt overwrote the address just typed; a failed startup restore and a failed folder picker are now kept in the dialog; the Walkshed button cannot start a second load while Calculate is loading; `features.md` and Walkshed's empty hint described the old button flow; test for the "not a release folder" message.
+- **Test flakes:** `walk-tiles.test.mjs` failed two post-refresh checks once in 14 runs. The failing run overlapped the Card C agent's own last run on a memory-short machine; 13 solo runs passed. The startup-failure check now reads the dialog, not the status log (the log's observer reads text once per batch of changes and can miss a message another status replaces).
+- **Left as is, for the lead:** with a tile source set, Calculate replaces whatever street network is loaded with only the tiles this run needs (a large Transit Travelshed network is dropped by a later Walkshed run that needs a cell outside it); Transit Travelshed still loads one rectangle with no size prompt.
+- **Hand-off notes:** `App.fetchRoadNetworkForExtent(extent, pieces?)`, `App.loadRoadNetworkFromTiles(extent, pieces?)`, `App.roadNetworkCoversExtent(extent, pieces?)`, `App.walkTilesExtentBeyondPrepared(extent, pieces?)`; `WalkTiles.cellsForBboxes`, `cellRectsForBboxes`, `cellKeys`; stored tile record id `tiles:<release>` with `tileCells`.
