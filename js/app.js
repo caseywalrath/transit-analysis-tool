@@ -1359,6 +1359,7 @@
     // ---- LODES handlers (Add Data dropdown → LODES popup) ----
     var lodesFileInput = document.getElementById("lodesFile");
     var lodesPopup = document.getElementById("lodes-popup");
+    var walkTilesPopup = document.getElementById("walk-tiles-popup");
 
     // Build state checkbox list once
     var LODES_STATES = [
@@ -1407,11 +1408,24 @@
     // Open/close LODES popup
     document.getElementById("lodes-employment-btn").addEventListener("click", function () {
       addDataDropdown.style.display = "none";
+      if (walkTilesPopup) walkTilesPopup.style.display = "none";
       lodesPopup.style.display = lodesPopup.style.display === "none" ? "block" : "none";
     });
     document.getElementById("lodes-popup-close").addEventListener("click", function () {
       lodesPopup.style.display = "none";
     });
+
+    // ---- FLM walk tiles source dialog (behaviour lives in js/core/walk-tiles-source.js) ----
+    var walkTilesBtn = document.getElementById("ad-walk-tiles");
+    if (walkTilesBtn && walkTilesPopup) {
+      walkTilesBtn.addEventListener("click", function () {
+        addDataDropdown.style.display = "none";
+        lodesPopup.style.display = "none";
+        var opening = walkTilesPopup.style.display === "none";
+        walkTilesPopup.style.display = opening ? "block" : "none";
+        if (opening && App.walkTilesSource) App.walkTilesSource.renderInfo();
+      });
+    }
 
     // Download
     document.getElementById("lodes-popup-download").addEventListener("click", function () {
@@ -1537,6 +1551,13 @@
         hasEye: true,
         isVisible: function () { return typeof App.gpkgVisible === "function" && App.gpkgVisible(); },
         setVisible: function (v) { if (typeof App.gpkgSetVisible === "function") App.gpkgSetVisible(v); }
+      },
+      {
+        // × forgets the tile source only; streets already loaded from it stay
+        // (Area Roads × unloads those).
+        btnId: "ad-walk-tiles",
+        isLoaded: function () { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); },
+        clear: function () { if (App.walkTilesSource) App.walkTilesSource.clear(); }
       },
       {
         btnId: "gtfs-load-btn",
@@ -1786,6 +1807,8 @@
       exportDropdown.style.display = "none";
       if (analysisDropdown) analysisDropdown.style.display = "none";
       if (saveStateDropdown) saveStateDropdown.style.display = "none";
+      // The tile dialog opens at the menu's own position, so the two would overlap.
+      if (walkTilesPopup) walkTilesPopup.style.display = "none";
       var isOpen = addDataDropdown.style.display !== "none";
       addDataDropdown.style.display = isOpen ? "none" : "block";
       // Highlight active category
@@ -2029,6 +2052,12 @@
       }).catch(function (e) {
         console.warn("Road network cache restore failed:", e);
       });
+    }
+
+    // The FLM tile source is a per-browser setting (a URL), not session data, so
+    // it restores on its own; the source refreshes the menu and open panels itself.
+    if (App.walkTilesSource && typeof App.walkTilesSource.restore === "function") {
+      App.walkTilesSource.restore();
     }
 
     // Same idea for the GTFS feed: the session autosave holds only the stop

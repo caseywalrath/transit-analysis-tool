@@ -87,6 +87,10 @@
     resetCaches();
     renderInfo();
     if (typeof App.updateAddDataClearIcons === "function") App.updateAddDataClearIcons();
+    // Open analysis panels relabel their "load streets" button from this. Not
+    // App.notifyProject(): that marks results stale, and the loaded streets
+    // have not changed.
+    try { document.dispatchEvent(new CustomEvent("walk-tiles-source-changed")); } catch (e) { /* no DOM events */ }
   }
 
   function invalid(validation) {
@@ -115,10 +119,12 @@
   }
 
   async function useUrl(rawUrl) {
+    // Checked before the attempt counter moves: an empty submit must not
+    // cancel a good manifest read (e.g. the startup restore) still in flight.
+    var url = normaliseUrl(rawUrl);
+    if (!url) return { ok: false, error: "Enter the tile folder address first." };
     var attempt = ++_attempt;
     try {
-      var url = normaliseUrl(rawUrl);
-      if (!url) return { ok: false, error: "Enter the tile folder address first." };
       var read = await fetchManifest(url);
       if (attempt !== _attempt) return SUPERSEDED;
       if (!read.ok) return read;
@@ -146,7 +152,11 @@
       var validation = read.ok ? window.WalkTiles.validateManifest(read.json) : null;
       if (!read.ok || !validation.ok) {
         // The stored setting stays: the server may simply not be running yet.
+        // Said on screen too, because without the source the analysis panels
+        // quietly offer an OpenStreetMap download instead.
         console.warn("FLM tile source not restored: " + (read.ok ? validation.error : read.error));
+        setStatus("FLM tile address could not be read (" + url + "). Open Add Data \u2192 FLM Walk Tiles to retry.");
+        renderInfo();
         return false;
       }
       _source = { kind: "url", url: url };
@@ -358,6 +368,11 @@
     var info = document.getElementById("wtInfo");
     var d = describe();
     if (urlInput && d && d.kind === "url") urlInput.value = d.url;
+    // A remembered address that failed to load is offered back for a retry.
+    if (urlInput && !d && !urlInput.value) {
+      var remembered = readSetting();
+      if (remembered) urlInput.value = remembered.url;
+    }
     if (!info) return;
     while (info.firstChild) info.removeChild(info.firstChild);
     if (!d) return;
@@ -426,7 +441,8 @@
     }
 
     async function submitUrl() {
-      if (!urlInput || !useBtn) return;
+      // The disabled check also stops Enter from starting a second read.
+      if (!urlInput || !useBtn || useBtn.disabled) return;
       useBtn.disabled = true;
       try {
         setStatus("Reading FLM tile manifest…");

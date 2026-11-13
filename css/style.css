@@ -5531,7 +5531,6 @@ body.dark-mode .add-data-clr:hover { color: #aaa; }
 
 /* ---- LODES popup dark mode ---- */
 body.dark-mode #lodes-popup { background: #1e1e2e; border-color: #444; }
-body.dark-mode #walk-tiles-popup { background: #1e1e2e; border-color: #444; }
 body.dark-mode .lodes-popup-header { color: #a0aec0; border-color: #444; }
 body.dark-mode .lodes-popup-x { color: #a0aec0; }
 body.dark-mode .lodes-popup-label { color: #a0aec0; }

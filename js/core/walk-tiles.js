@@ -247,7 +247,8 @@
   function mergeTiles(tileObjects) {
     if (!Array.isArray(tileObjects)) return reject("tiles: expected a list");
     var segments = [];
-    // id -> canonical text of the first copy seen.
+    // id -> first copy seen. Canonical text is built only when an id repeats
+    // (segments crossing a cell edge), not for every record of a large load.
     var seen = Object.create(null);
     var copies = 0;
     for (var t = 0; t < tileObjects.length; t++) {
@@ -260,13 +261,13 @@
         copies++;
         var problem = segmentProblem(rec);
         if (problem) return reject(problem);
-        var text = canonicalText(rec);
-        if (typeof seen[rec.id] === "string") {
-          if (seen[rec.id] !== text) {
+        var first = seen[rec.id];
+        if (first) {
+          if (canonicalText(first) !== canonicalText(rec)) {
             return reject("conflicting copies of segment " + rec.id);
           }
         } else {
-          seen[rec.id] = text;
+          seen[rec.id] = rec;
           segments.push(rec);
         }
       }

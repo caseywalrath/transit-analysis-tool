@@ -382,3 +382,20 @@ Where the brief and the code disagreed, the code won. These override the section
 - **Planner fix (direct, about ten lines):** the agent used one counter both for "a newer source choice superseded this manifest read" and for "the source changed, drop in-flight tile reads", so a *failed* `useUrl` cancelled tile reads of the still-active source. Split into `_attempt` and `_gen`.
 - **Not exercised by any automated check:** the directory-handle picker (headless Chromium has none), the 64-tile cache cap, a throwing `localStorage`. The handle path needs the lead's manual check in Chrome or Edge.
 - **Additions to section 5.2:** `describe()` and `renderInfo()`; `clear()` sets the "forgotten" status itself; `readTile` rejects with the complete user text `FLM tile <path> could not be read: <reason>`; choosing a folder removes a remembered address.
+
+### Phase 4 (November 13, 2026)
+
+- **Sonnet:** `road-network.js` tile branch (card 4A), Walkshed and Transit Travelshed text, `app.js` menu entry, dialog opening and startup restore. No send-back; the `road-network.js` diff was read line by line and matched the card.
+- **Planner (Opus-class work):** `test/browser/walk-tiles.test.mjs`, 33 checks.
+- **Review gate:** `code-review` at high on everything since `58abc0f`. Fixed directly by the planner:
+  1. A load that reaches past the prepared area still records the full rectangle of requested cells (by design, section 5.3), so nothing said results might be clipped. New `App.walkTilesExtentBeyondPrepared(extentPolygon)`; both panels show a soft warning and repeat it in the result status.
+  2. Transit Travelshed showed nothing in its panel when a tile load failed; it now shows `App.walkTilesLastError()` like Walkshed.
+  3. A remembered address that cannot be read at startup is now said in the status line, and the dialog offers the address back.
+  4. The panels' button label did not follow a source change while the button was on screen. The source now fires a `walk-tiles-source-changed` document event; the panels relabel from it (not `notifyProject()`, which marks results stale).
+  5. An empty "Use this address" could cancel the startup restore; Enter could start a second read.
+  6. `mergeTiles` built canonical text for every record; now only when an id repeats.
+  7. Removed a redundant raw-hex dark-mode rule.
+- **Found while testing, pre-existing:** `projects/walkshed-popup.html` had no `#wsCoverageWarn` element, so Walkshed's coverage warnings ("No street network loaded.", the imported-network caution) were never visible. Added the element, copied from Transit Travelshed's.
+- **Review findings left for the lead (not changed):** no size prompt before a very large tile load (section 8 item 9 says do not cap); every tile load is written to the three-slot network store and can push out stored downloads; the "is a tile source active" test is repeated in four files.
+- **Hand-off notes:** `App.loadRoadNetworkFromTiles(extentPolygon)`, `App.roadNetworkTileRelease()`, `App.walkTilesLastError()`, `App.walkTilesExtentBeyondPrepared(extentPolygon)`; stored records use `source: "walk-tiles"`, `label: <release_id>`, id `bbox:…`.
+- **Not done here:** the manual Denver check (real tiles are not in either repository) and the directory-handle folder picker in a real Chrome or Edge.
