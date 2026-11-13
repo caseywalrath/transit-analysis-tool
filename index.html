@@ -83,6 +83,7 @@
               <div class="add-data-heading">LOCAL</div>
               <button id="import-file-btn">Spatial Data</button>
               <button id="ad-gpkg">GeoPackage (.gpkg)…</button>
+              <button id="ad-walk-tiles">FLM Walk Tiles…</button>
               <button id="gtfs-load-btn">GTFS Feed</button>
               <button id="lodes-employment-btn">LODES Employment</button>
               <div class="add-data-divider"></div>
@@ -120,10 +121,33 @@
                 <button id="lodes-popup-add">Add to Map</button>
               </div>
             </div>
+            <div id="walk-tiles-popup" style="display:none;">
+              <div class="lodes-popup-header">
+                <span>FLM Walk Tiles</span>
+                <button id="walk-tiles-popup-close" class="lodes-popup-x" aria-label="Close FLM walk tiles dialog">&#10005;</button>
+              </div>
+              <div class="lodes-popup-body">
+                <label class="lodes-popup-label" for="wtUrl">Tile folder address (URL)</label>
+                <input id="wtUrl" type="text" class="rf-number-input" style="width:100%;box-sizing:border-box;" placeholder="http://localhost:8000/walk-tiles/&lt;release-id&gt;" />
+                <div class="lodes-popup-footer" style="padding:6px 0 0;border-top:none;">
+                  <button id="wtUseUrl" type="button">Use this address</button>
+                </div>
+                <div class="lodes-popup-label" style="text-align:center;margin:8px 0 2px;">or</div>
+                <div class="lodes-popup-footer" style="padding:0;border-top:none;">
+                  <button id="wtPickFolder" type="button">Choose folder…</button>
+                </div>
+                <div class="lodes-loaded-info">A chosen folder is remembered only until the page is reloaded; an address is remembered in this browser.</div>
+                <div id="wtInfo" class="lodes-loaded-info"></div>
+              </div>
+              <div class="lodes-popup-footer">
+                <button id="wtClear" type="button">Forget source</button>
+              </div>
+            </div>
             <input id="lodesFile" type="file" accept=".gz,.csv.gz" style="display:none" />
             <input id="fp-import-file" type="file" accept=".json,.csv,.kml,.kmz,.shp,.zip,.geojson,.gpkg" style="display:none" />
             <input id="gtfs-file-input" type="file" accept=".zip" style="display:none" />
             <input id="ad-gpkg-file" type="file" accept=".gpkg" style="display:none" />
+            <input id="wtFolderInput" type="file" webkitdirectory style="display:none" />
           </div>
           <div class="export-wrapper">
             <button id="export-btn" title="Export" aria-label="Export data">
@@ -399,6 +423,7 @@
     <script src="js/core/map.js"></script>
     <script src="js/core/search.js"></script>
     <script src="js/core/walk-cost.js"></script>
+    <script src="js/core/walk-tiles.js"></script>
     <script src="js/core/layer-palettes.js"></script>
     <script src="js/core/network-store.js"></script>
     <script src="js/core/gtfs-store.js"></script>
