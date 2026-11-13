@@ -35,6 +35,11 @@
   var _attempt = 0;
   var _gen = 0;
 
+  // Text of the last failed attempt from the dialog. Kept on screen in the
+  // dialog, because the status line clears itself after a few seconds and a
+  // missed failure looks exactly like "the tiles are not being used".
+  var _lastError = "";
+
   var _tileCache = new Map();
   var _inflight = new Map();
 
@@ -197,8 +202,27 @@
       }
     }
     if (found.length > 1) return { error: NOT_RELEASE_ITSELF };
-    if (found.length === 0) return { error: NOT_FOUND };
+    if (found.length === 0) {
+      return { error: NOT_FOUND + " in \"" + handle.name + "\"" + (await listing(handle)) };
+    }
     return found[0];
+  }
+
+  // " It contains: a, b, c." for a folder that turned out not to be a release,
+  // so the user can see which folder they are actually in.
+  function describeNames(names) {
+    if (!names.length) return ". The folder is empty.";
+    var shown = names.slice(0, 8).join(", ");
+    return ". It contains: " + shown + (names.length > 8 ? ", \u2026" : "") + ".";
+  }
+
+  async function listing(handle) {
+    var names = [];
+    try {
+      for await (var entry of handle.values()) names.push(entry.name);
+    } catch (e) { return "."; }
+    names.sort();
+    return describeNames(names);
   }
 
   async function openHandle(handle) {
@@ -235,7 +259,16 @@
     var prefix = twoPart;
     if (!prefix) {
       if (threePart.length > 1) return { ok: false, error: NOT_RELEASE_ITSELF };
-      if (threePart.length === 0) return { ok: false, error: NOT_FOUND };
+      if (threePart.length === 0) {
+        var seen = Object.create(null);
+        var top = "";
+        for (var rp2 in lookup) {
+          var p2 = rp2.split("/");
+          top = p2[0];
+          if (p2.length > 1) seen[p2[1]] = true;
+        }
+        return { ok: false, error: NOT_FOUND + " in \"" + top + "\"" + describeNames(Object.keys(seen).sort()) };
+      }
       prefix = threePart[0];
     }
     var json;
@@ -346,6 +379,7 @@
 
   function clear() {
     _attempt++;
+    _lastError = "";
     var wasActive = isActive();
     removeSetting();
     _source = null;
@@ -375,7 +409,15 @@
     }
     if (!info) return;
     while (info.firstChild) info.removeChild(info.firstChild);
-    if (!d) return;
+    if (_lastError) {
+      var err = addLine(info, _lastError);
+      err.style.color = "var(--danger)";
+      err.style.marginBottom = "4px";
+    }
+    if (!d) {
+      addLine(info, "No tile source is set. Streets are downloaded from OpenStreetMap until one is.");
+      return;
+    }
 
     var m = _manifest;
     addLine(info, "Release: " + m.release_id +
@@ -417,8 +459,10 @@
   // ---- Dialog wiring ----
 
   function report(result) {
+    _lastError = result.ok ? "" : result.error;
     if (result.ok) setStatus("FLM tile source set: " + releaseId());
     else setStatus(result.error);
+    renderInfo();
   }
 
   function releaseId() {

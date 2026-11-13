@@ -970,24 +970,32 @@
     // Missing or insufficient street coverage is an offer to download, not a
     // dead end — checkNetworkCoverage has already explained and armed the button.
     // A stored network covering the area (e.g. one only removed from the map)
-    // is tried first, so no download is offered when none is needed.
+    // is tried first, so no download is offered when none is needed. With an
+    // FLM tile source set, the tiles for this area are read straight away
+    // instead: they are local files, so there is nothing to ask the user about.
     if (!checkNetworkCoverage(targets)) {
       if (afterRestore !== true && _pendingDownloadExtent && typeof App.restoreNetworkCovering === "function") {
         var extent = _pendingDownloadExtent;
+        var tiles = tilesActive() && typeof App.fetchRoadNetworkForExtent === "function";
+        var failMsg = function () {
+          return tiles
+            ? ((typeof App.walkTilesLastError === "function" && App.walkTilesLastError()) || "FLM tiles could not be loaded for this area.")
+            : needStreetsMsg();
+        };
         _running = true;
-        setStatus("Loading stored streets\u2026", "running");
-        App.restoreNetworkCovering(extent).then(function (ok) {
+        setStatus(tiles ? "Loading FLM tiles\u2026" : "Loading stored streets\u2026", "running");
+        (tiles ? App.fetchRoadNetworkForExtent(extent) : App.restoreNetworkCovering(extent)).then(function (ok) {
           _running = false;
           if (ok) {
             if (typeof App.notifyProject === "function") App.notifyProject();
             updateComputeAvailability();
             runWalkshed(true);
           } else {
-            setStatus(needStreetsMsg(), "error");
+            setStatus(failMsg(), "error");
           }
         }, function () {
           _running = false;
-          setStatus(needStreetsMsg(), "error");
+          setStatus(failMsg(), "error");
         });
         return;
       }

@@ -7,8 +7,8 @@
 // release in test/fixtures/walk-tiles/fixture-release/ and asserts:
 //
 //   - the source is configured through the Add Data dialog by URL
-//   - a Walkshed run offers "Load FLM tiles for this area" and loading makes
-//     the tiles the live network with NO Overpass request
+//   - a Walkshed run reads the tiles for its area by itself and makes them
+//     the live network with NO Overpass request
 //   - the recorded extent is the rectangle of requested cells (so the modules'
 //     coverage checks pass) and the run's status names the tile release
 //   - the tile network is stored as a "walk-tiles" record
@@ -168,6 +168,16 @@ async function setInput(page, id, value) {
       info.includes("fixture-release") && info.includes("-105.006") && info.includes("Hand-written test fixture"), info.slice(0, 160));
     const stored = await page.evaluate(() => localStorage.getItem("mat-walk-tiles-source"));
     check("URL remembered for this browser", stored === JSON.stringify({ kind: "url", url: fixtureUrl }), String(stored));
+    // A failed attempt must stay readable in the dialog (the status line clears
+    // itself) and must leave the working source in place.
+    await page.fill("#wtUrl", base + "/test/fixtures");
+    await page.click("#wtUseUrl");
+    await waitFor(page, "document.getElementById('wtInfo').textContent.includes('Could not read manifest.json')", 10000);
+    const failInfo = await page.evaluate(() => document.getElementById("wtInfo").textContent);
+    check("a failed attempt is shown in the dialog and keeps the working source",
+      failInfo.includes("Could not read manifest.json") && failInfo.includes("fixture-release") &&
+      await page.evaluate(() => App.walkTilesSource.isActive()), failInfo.slice(0, 120));
+
     await page.click("#walk-tiles-popup-close");
     check("dialog closes",
       await page.evaluate(() => document.getElementById("walk-tiles-popup").style.display === "none"));
@@ -179,12 +189,8 @@ async function setInput(page, id, value) {
     await setInput(page, "wsMinutes", "5");
     await setInput(page, "wsMinutes2", "");
     await setInput(page, "wsSpeed", "2.8");
+    // With a source set, Calculate reads the tiles itself: no second button.
     await page.locator("#wsComputeBtn").click();
-    const offered = await waitFor(page, "document.getElementById('wsDownloadBtn').style.display !== 'none'", 10000);
-    const btnText = await page.evaluate(() => document.getElementById("wsDownloadBtn").textContent.trim());
-    check("Walkshed offers to load FLM tiles", offered && btnText === "Load FLM tiles for this area", btnText);
-
-    await page.locator("#wsDownloadBtn").click();
     const loadedStatus = await waitStatus(page, "FLM tile segments loaded");
     check("tiles loaded status",
       loadedStatus === "3 FLM tile segments loaded from 2 tiles (fixture-release) — local routing enabled", String(loadedStatus));
