@@ -162,6 +162,12 @@
         if (timedOut) return { error: "CDOT road download failed: layer " + layerId + " page " + n + " timed out after 60 s" };
         return { error: "CDOT road download failed: layer " + layerId + " page " + n + ": response is not JSON" };
       }
+      // ArcGIS reports many query errors as HTTP 200 with an error body; its
+      // message says far more than "not a FeatureCollection".
+      if (page && page.error && typeof page.error === "object") {
+        return { error: "CDOT road download failed: layer " + layerId + " page " + n + ": server error " +
+          (page.error.code != null ? page.error.code + " " : "") + (page.error.message || "") };
+      }
       return { page: page };
     } finally {
       clearTimeout(timer);
@@ -215,7 +221,9 @@
             return null;
           }
           n++;
-          offset += window.CdotRoads.PAGE_SIZE;
+          // By what the page held, not the page size: a server that cuts a page
+          // short and still sets the flag would otherwise make us skip features.
+          offset += r.page.features.length || window.CdotRoads.PAGE_SIZE;
         }
       }
       return { layerId: layerId, features: all };
@@ -246,7 +254,9 @@
     var useBtn = document.getElementById("cdotUse");
     if (useBtn) {
       useBtn.textContent = _active
-        ? "Using CDOT — switch back to OpenStreetMap"
+        ? (App.walkTilesSource && App.walkTilesSource.hasSource && App.walkTilesSource.hasSource()
+          ? "Using CDOT — switch back to FLM tiles"
+          : "Using CDOT — switch back to OpenStreetMap")
         : "Use CDOT for street downloads";
     }
     var info = document.getElementById("cdotInfo");

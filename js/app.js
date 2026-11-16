@@ -1572,7 +1572,7 @@
         // × forgets the tile source only; streets already loaded from it stay
         // (Area Roads × unloads those).
         btnId: "ad-walk-tiles",
-        isLoaded: function () { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); },
+        isLoaded: function () { return !!(App.walkTilesSource && App.walkTilesSource.hasSource()); },
         clear: function () { if (App.walkTilesSource) App.walkTilesSource.clear(); }
       },
       {

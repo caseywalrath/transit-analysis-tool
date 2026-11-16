@@ -230,9 +230,12 @@
             name: text(props.ROUTENAME) || text(props.ROUTE) || "",
             sidewalk: "",
             footway: "",
-            // The layer offset keeps ids from layers 14 and 17 apart, and the
-            // numeric form is what the street-exclusion set compares.
-            wayId: lid * 100000000 + oid,
+            // The layer offset keeps ids from layers 14 and 17 apart; the 1e10
+            // scale keeps them far above real OpenStreetMap way ids (about 1.4e9),
+            // because street exclusions persist across network loads and must
+            // not hit a street from the other source. Numeric, as the exclusion
+            // set compares numbers. Still a safe integer.
+            wayId: lid * 10000000000 + oid,
             cdotId: key + "/" + oid,
             gisId: text(props.GISID),
             cdotClass: cdotClass,

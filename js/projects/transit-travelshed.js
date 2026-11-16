@@ -521,10 +521,14 @@
   }
 
   function tilesActive() { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); }
+  function cdotActive() { return !!(App.cdotSource && App.cdotSource.isActive()); }
 
   // Names the street source only when the live network really came from FLM tiles:
   // an active tile source does not prove that (a stored download may be loaded).
   function streetsSuffix() {
+    if (typeof App.roadNetworkSource === "function" && App.roadNetworkSource() === "cdot") {
+      return " Streets: CDOT " + App.roadNetworkCdotLayers() + ".";
+    }
     var rel = typeof App.roadNetworkTileRelease === "function" ? App.roadNetworkTileRelease() : "";
     if (!rel) return "";
     // Repeated here because the coverage warning sits with the inputs, which
@@ -537,11 +541,15 @@
 
   function labelDownloadBtn() {
     var btn = document.getElementById("tsDownloadBtn");
-    if (btn) btn.textContent = tilesActive() ? "Load FLM tiles for this area" : "Download streets for this area";
+    if (btn) {
+      btn.textContent = cdotActive() ? "Download CDOT streets for this area"
+        : tilesActive() ? "Load FLM tiles for this area" : "Download streets for this area";
+    }
   }
   // The label must follow the source even while the button is already showing:
   // the click does whatever the source says at that moment.
   document.addEventListener("walk-tiles-source-changed", labelDownloadBtn);
+  document.addEventListener("street-source-changed", labelDownloadBtn);
 
   function showDownloadBtn(show) {
     var btn = document.getElementById("tsDownloadBtn");
@@ -557,10 +565,12 @@
     var btn = document.getElementById("tsDownloadBtn");
     if (btn) btn.disabled = true;
     var tiles = tilesActive();
+    var cdot = cdotActive();
     try {
       var ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent);
       if (ok) runTravelshed();
       // The reason is otherwise only in the global status line, which clears itself.
+      else if (cdot) setStatus((typeof App.cdotLastError === "function" && App.cdotLastError()) || "CDOT streets could not be loaded for this area.", "error");
       else if (tiles) setStatus((typeof App.walkTilesLastError === "function" && App.walkTilesLastError()) || "FLM tiles could not be loaded for this area.", "error");
     } finally {
       if (btn) btn.disabled = false;
@@ -1092,7 +1102,8 @@
       setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
       showDownloadBtn(false);
     } else if (requiredExtent && !networkCovers(requiredExtent)) {
-      setCoverageWarn(tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
+      setCoverageWarn(cdotActive() ? "Loaded CDOT streets don't cover this analysis area."
+        : tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
       showDownloadBtn(true);
       return;
     } else {

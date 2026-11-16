@@ -35,6 +35,10 @@
   var _tileRelease = "";   // release id when the live network was built from FLM walk tiles, else ""
   var _lastTileError = ""; // user text of the last failed tile load, "" after a success
   var _tileCells = null;  // lookup "col_row" -> true of the cells the live tile load asked for; null for every other network
+  var _networkSource = null; // "overpass" | "file" | "walk-tiles" | "cdot" | null — where the live network came from
+  var _cdotBoxes = null;  // [[w,s,e,n], ...] the boxes the live CDOT load asked for; null for every other network
+  var _cdotLayers = "";   // layersKey of the live CDOT network
+  var _lastCdotError = "";
 
   // ---- Network Connectors overlay state ----
   // Plain geometry only — never reads App.lines or attributes (network-connectors.js
@@ -737,6 +741,9 @@
       _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
       _tileRelease = "";
       _tileCells = null;
+      _networkSource = "overpass";
+      _cdotBoxes = null;
+      _cdotLayers = "";
 
       updateUI(true);
       persistNetwork(extentCacheId(extentPolygon), "overpass", "");
@@ -770,6 +777,7 @@
   }
 
   function tileSourceActive() { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); }
+  function cdotSourceActive() { return !!(App.cdotSource && App.cdotSource.isActive()); }
 
   function cellLookup(keys) {
     var o = Object.create(null);
@@ -777,11 +785,10 @@
     return o;
   }
 
-  // Outline of a tile load: the union of each piece's rectangle of cells.
-  // Display only. Coverage is answered from _tileCells, so a union that
+  // Outline of a piecewise load: the union of each rectangle. Display only.
+  // Coverage is answered from _tileCells / _cdotBoxes, so a union that
   // fails can only leave the outline incomplete.
-  function tileOutline(boxes) {
-    var rects = WalkTiles.cellRectsForBboxes(boxes);
+  function boxesOutline(rects) {
     var out = null;
     for (var i = 0; i < rects.length; i++) {
       var poly = turf.bboxPolygon(rects[i]);
@@ -789,6 +796,10 @@
       try { out = turf.union(out, poly) || out; } catch (e) { /* keep what we have */ }
     }
     return out;
+  }
+
+  function tileOutline(boxes) {
+    return boxesOutline(WalkTiles.cellRectsForBboxes(boxes));
   }
 
   // Loads the FLM tiles covering extentPolygon and makes them the live network
@@ -847,6 +858,9 @@
       _tileCells = cellLookup(WalkTiles.cellKeys(cells));
       _downloadedBboxPolygon = tileOutline(boxes);
       _tileRelease = rel;
+      _networkSource = "walk-tiles";
+      _cdotBoxes = null;
+      _cdotLayers = "";
       _lastTileError = "";
       updateUI(true);
       // Not a "bbox:" id: network-store matches those by rectangle, and a load
@@ -856,6 +870,61 @@
       return true;
     } catch (e) {
       return fail("FLM tiles could not be loaded: " + (e.message || e));
+    }
+  }
+
+  // Loads CDOT road layers for the given boxes and makes them the live network
+  // through the same tail a download uses. Returns Promise<boolean>, never
+  // rejects; on any failure the previously loaded network is left untouched.
+  async function loadNetworkFromCdot(extentPolygon, pieces) {
+    function fail(msg) { _lastCdotError = msg; App.setStatus(msg); return false; }
+    try {
+      if (!cdotSourceActive() || typeof CdotRoads === "undefined" || !extentPolygon) {
+        return fail("CDOT road download failed: CDOT is not the street source");
+      }
+      // One box per selected point when the caller supplies them, so two distant
+      // points download only their own roads and not every road between them.
+      var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
+      var areaKm2 = 0;
+      for (var i = 0; i < boxes.length; i++) areaKm2 += turf.area(turf.bboxPolygon(boxes[i])) / 1e6;
+      if (areaKm2 > MAX_AREA_WARN_KM2) {
+        var proceed = window.confirm(
+          "This will download CDOT roads for ~" + Math.round(areaKm2).toLocaleString() + " km\u00b2.\n\n" +
+          "That may be a large, slow download. Continue?");
+        if (!proceed) return fail("Road network download cancelled");
+      }
+
+      var key = App.cdotSource.layersKey();
+      var res = await App.cdotSource.fetchExtent(boxes, App.setStatus);
+      if (!res.ok) return fail(res.error);
+      if (!cdotSourceActive() || App.cdotSource.layersKey() !== key) {
+        return fail("CDOT source changed while loading; nothing was loaded.");
+      }
+      var nFeatures = res.geojson.features.length;
+      if (nFeatures === 0) return fail("No CDOT roads found in this area (layers " + key + ").");
+
+      _roadGeoJSON = res.geojson;
+      rebuildNetwork();
+      _cdotBoxes = boxes.map(function (b) { return b.slice(); });
+      _downloadedBboxPolygon = boxesOutline(_cdotBoxes);
+      _tileRelease = "";
+      _tileCells = null;
+      _networkSource = "cdot";
+      _cdotLayers = key;
+      _lastCdotError = "";
+      updateUI(true);
+      // Not a "bbox:" id: network-store matches those by rectangle, so a load of
+      // separate boxes must never claim the gap between them.
+      persistNetwork("cdot:" + key, "cdot", key, null, _cdotBoxes);
+      var msg = nFeatures.toLocaleString() + " CDOT road segments loaded (layers " + key + ") \u2014 local routing enabled";
+      var unclassified = res.report && res.report.unclassified;
+      if (unclassified > 0) {
+        msg += " " + unclassified + " segments had no recognised class and were treated as unclassified streets.";
+      }
+      App.setStatus(msg);
+      return true;
+    } catch (e) {
+      return fail("CDOT road download failed: " + (e.message || e));
     }
   }
 
@@ -876,6 +945,9 @@
         _downloadedBboxPolygon = null; // imported file has no "download area" — draw no outline
         _tileRelease = "";
         _tileCells = null;
+        _networkSource = "file";
+        _cdotBoxes = null;
+        _cdotLayers = "";
         updateUI(true);
         persistNetwork("file:" + file.name, "file", file.name);
         App.setStatus(_featureCount.toLocaleString() + " road segments loaded from " + file.name);
@@ -916,7 +988,7 @@
     return "bbox:" + bb.map(function (v) { return v.toFixed(3); }).join(",");
   }
 
-  function persistNetwork(id, source, label, tileCells) {
+  function persistNetwork(id, source, label, tileCells, boxes) {
     if (!App.networkStore || !App.networkStore.supported() || !_roadGeoJSON) return;
     var geojson = _roadGeoJSON;
     var extent = _downloadedBboxPolygon;
@@ -938,6 +1010,7 @@
         featureCount: count,
         extent: extent || null,
         tileCells: tileCells || null,
+        boxes: boxes || null,
         geojson: json
       });
     }, 0);
@@ -972,8 +1045,15 @@
     _downloadedBboxPolygon = rec.extent || null;
     _tileRelease = rec.source === "walk-tiles" ? (rec.label || "") : "";
     _tileCells = (rec.source === "walk-tiles" && Array.isArray(rec.tileCells)) ? cellLookup(rec.tileCells) : null;
+    _networkSource = rec.source || null;
+    _cdotBoxes = (rec.source === "cdot" && Array.isArray(rec.boxes)) ? rec.boxes : null;
+    _cdotLayers = rec.source === "cdot" ? (rec.label || "") : "";
     updateUI(true);
 
+    if (rec.source === "cdot") {
+      App.setStatus(_featureCount.toLocaleString() + " CDOT road segments restored from cache (layers " + (rec.label || "") + ").");
+      return true;
+    }
     if (rec.source === "walk-tiles") {
       // Tiles do not change within a release, so no age and no re-download nudge.
       App.setStatus(_featureCount.toLocaleString() + " FLM tile segments restored from cache (" + (rec.label || "") + ").");
@@ -983,7 +1063,8 @@
     var stale = (Date.now() - (rec.savedAt || 0)) > NET_CACHE_FRESH_MS;
     App.setStatus(
       _featureCount.toLocaleString() + " road segments restored from cache — downloaded " +
-      age + " ago." + (stale ? " Re-download to refresh." : ""));
+      age + " ago." + (stale ? " Re-download to refresh." : "") +
+      (rec.source === "overpass" ? " Source: OpenStreetMap." : ""));
     return true;
   }
 
@@ -1003,10 +1084,13 @@
     if (!extentPolygon || !App.networkStore || !App.networkStore.supported()) return false;
     var rec = null;
     try { rec = await App.networkStore.findCovering(turf.bbox(extentPolygon)); } catch (e) { rec = null; }
-    // A stored Overpass network (or another release) must not silently replace
-    // the FLM source the user chose.
-    if (rec && tileSourceActive() &&
-        (rec.source !== "walk-tiles" || rec.label !== App.walkTilesSource.releaseId())) return false;
+    // The record must come from the source a fresh load would use (and the same
+    // release or layers): a comparison between sources is meaningless if they
+    // swap silently.
+    var want = tileSourceActive() ? "walk-tiles" : cdotSourceActive() ? "cdot" : "overpass";
+    if (rec && rec.source !== want) return false;
+    if (rec && want === "walk-tiles" && rec.label !== App.walkTilesSource.releaseId()) return false;
+    if (rec && want === "cdot" && rec.label !== App.cdotSource.layersKey()) return false;
     return loadStoredRecord(rec);
   }
 
@@ -1025,6 +1109,9 @@
     _downloadedBboxPolygon = null;
     _tileRelease = "";
     _tileCells = null;
+    _networkSource = null;
+    _cdotBoxes = null;
+    _cdotLayers = "";
     _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
   }
@@ -1460,9 +1547,14 @@
   App.nodeKeyToCoord     = keyToCoord;
   App.contourSamples     = contourSamples;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
-  App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon|MultiPolygon>|null — for a tile network, display only; use App.roadNetworkCoversExtent to test coverage
+  App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon|MultiPolygon>|null — for a tile or CDOT network, display only; use App.roadNetworkCoversExtent to test coverage
   App.loadRoadNetworkFromTiles = loadNetworkFromTiles;       // (extentPolygon, pieces?) -> Promise<boolean>
   App.roadNetworkTileRelease = function () { return _tileRelease; }; // "" unless the live network came from FLM walk tiles
+  App.loadRoadNetworkFromCdot = loadNetworkFromCdot;         // (extentPolygon, pieces?) -> Promise<boolean>
+  App.roadNetworkSource = function () { return _networkSource; };
+  App.roadNetworkCdotLayers = function () { return _cdotLayers; }; // "" unless the live network came from CDOT
+  App.cdotLastError = function () { return _lastCdotError; };
+  App.ROAD_SNAP_MAX_KM = SNAP_MAX_KM; // read-only use: sizing areas so the snapped start street is always inside
   App.walkTilesLastError = function () { return _lastTileError; };   // user text of the last failed tile load
   // true when the live network came from the active tile release and
   // extentPolygon (or any of the per-point boxes in `pieces`) reaches past that
@@ -1486,6 +1578,21 @@
   // turf.booleanContains cannot test); any other network by its rectangle.
   App.roadNetworkCoversExtent = function (extentPolygon, pieces) {
     if (!_graph || !extentPolygon) return false;
+    if (_cdotBoxes) {
+      // Other layers ticked since this load: not the network the run asks for.
+      if (cdotSourceActive() && _cdotLayers !== App.cdotSource.layersKey()) return false;
+      var need = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
+      if (!need.length) return false;
+      for (var n = 0; n < need.length; n++) {
+        var b = need[n], inside = false;
+        for (var j = 0; j < _cdotBoxes.length && !inside; j++) {
+          var L = _cdotBoxes[j];
+          inside = b[0] >= L[0] && b[1] >= L[1] && b[2] <= L[2] && b[3] <= L[3];
+        }
+        if (!inside) return false;
+      }
+      return true;
+    }
     if (_tileCells && typeof WalkTiles !== "undefined") {
       var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
       var keys = WalkTiles.cellKeys(WalkTiles.cellsForBboxes(boxes));
@@ -1507,6 +1614,9 @@
     // An active FLM tile source replaces the download: local files, no Overpass,
     // and no stored-network lookup first (reading tiles is as fast as a restore).
     if (tileSourceActive()) return loadNetworkFromTiles(extentPolygon, pieces);
+    // Same for CDOT: a stored CDOT record is never area-matched, and a fresh
+    // query is the comparison the user asked for.
+    if (cdotSourceActive()) return loadNetworkFromCdot(extentPolygon, pieces);
     if (await restoreNetworkCovering(extentPolygon)) return true;
     var bb = turf.bbox(extentPolygon); // [w, s, e, n]
     return fetchNetworkForBounds({ s: bb[1], w: bb[0], n: bb[3], e: bb[2] }, turf.bboxPolygon(bb));

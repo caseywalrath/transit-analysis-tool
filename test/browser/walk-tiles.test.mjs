@@ -32,9 +32,9 @@ import { loadPlaywright, launchBrowser, routeVendoredAssets, startStaticServer }
 const { chromium } = loadPlaywright("test/browser/walk-tiles.test.mjs");
 
 const FIXTURE_PATH = "/test/fixtures/walk-tiles/fixture-release";
-// On fixture segment A, in cell 7499_12975. A 5-minute walk at 2.8 mph reaches
-// about 0.0044 degrees of longitude, so the required extent crosses the
-// -105.00 cell edge and both fixture tiles are needed.
+// On fixture segment A, in cell 7499_12975. A 5-minute walk at 2.8 mph (0.38 km)
+// plus the 0.5 km snap distance spans a 3 x 3 block of cells, two of which
+// hold fixture tiles.
 const POINT = { lng: -105.003, lat: 39.755 };
 
 const results = [];
@@ -223,8 +223,8 @@ async function setInput(page, id, value) {
     }, POINT);
     const near = (a, b) => Math.abs(a - b) < 1e-9;
     check("recorded extent is the rectangle of requested cells and contains the point",
-      !!extent && extent.contains && near(extent.bbox[0], -105.01) && near(extent.bbox[1], 39.75) &&
-      near(extent.bbox[2], -104.99) && near(extent.bbox[3], 39.76), JSON.stringify(extent));
+      !!extent && extent.contains && near(extent.bbox[0], -105.02) && near(extent.bbox[1], 39.74) &&
+      near(extent.bbox[2], -104.99) && near(extent.bbox[3], 39.77), JSON.stringify(extent));
 
     // The run restarts by itself after the load; wait for it to finish.
     const finished = await waitFor(page,
@@ -247,7 +247,7 @@ async function setInput(page, id, value) {
     const tileRec = recs.find((x) => x.source === "walk-tiles");
     check("tile network stored under its release id with its cells",
       !!tileRec && tileRec.id === "tiles:fixture-release" && tileRec.label === "fixture-release" &&
-      JSON.stringify(tileRec.tileCells) === JSON.stringify(["7499_12975", "7500_12975"]), JSON.stringify(recs));
+      JSON.stringify(tileRec.tileCells) === JSON.stringify(["7498_12974", "7498_12975", "7498_12976", "7499_12974", "7499_12975", "7499_12976", "7500_12974", "7500_12975", "7500_12976"]), JSON.stringify(recs));
 
     // ---- 2b. A second, distant point reads only its own tiles ----
     await page.evaluate(() => App.addPoint(-104.945, 39.755));

@@ -1,6 +1,6 @@
 # Plan: CDOT road layers as a live street source
 
-Status: planning, not started. Source brief: `cdot-rest-source-design-brief.md` (approved by the lead
+Status: implemented on branch `claude/jolly-hamilton-64dask`; awaiting the lead's live check and comparison table. Source brief: `cdot-rest-source-design-brief.md` (approved by the lead
 November 13, 2026; kept outside the repository). This plan follows the brief except where the sections
 below say otherwise. Where the brief and this plan disagree, this plan wins; where this plan and the code
 disagree, the code wins and the difference is reported.
@@ -117,3 +117,25 @@ requests for Transit Travelshed; the single multi-part query (1.2).
   once over Phases 1 to 4 together at the Phase 4 gate.
 - Deviation from 1.4 (orchestrator): no stored "pause" flag. `App.walkTilesSource.isActive()` is false while
   `App.cdotSource.isActive()` is true; the tile choice stays. Choosing a tile source turns CDOT off.
+- 2026-11-16, Phase 3 (Sonnet): `js/core/cdot-source.js` (`App.cdotSource`: isActive, layers, layersKey,
+  setActive, setLayers, fetchExtent(boxes, progress), restore, renderInfo, `_timeoutMs`), dialog wiring,
+  `App.walkTilesSource.hasSource()` with `isActive()` false while CDOT is on, app.js menu/× /startup restore.
+  Verified with a scratch vm test against the fixtures; no live request from a browser.
+- 2026-11-16, Phase 4 (Sonnet, in parallel with Phase 3 on disjoint files): CDOT branch in road-network.js
+  (`loadNetworkFromCdot`, `_cdotBoxes`, `_cdotLayers`, `_networkSource`, `App.roadNetworkSource`,
+  `App.roadNetworkCdotLayers`, `App.cdotLastError`, `App.ROAD_SNAP_MAX_KM`, generalised store guard), module
+  strings and auto-load in walkshed.js / transit-travelshed.js, snap buffer in `computeRequiredExtent`.
+  Behaviour test `test/browser/cdot-source.test.mjs` written by the orchestrator (31 checks).
+  `walk-tiles.test.mjs` expectations updated by the orchestrator for the snap buffer (prepared rectangle now
+  3 x 3 cells; deliberate, plan 1.3).
+- Review gate (code-review, high, over Phases 1–4). Fixed by the orchestrator: next page offset advances by
+  features returned, not page size; CDOT record id `cdot:<layersKey>` (one slot per layer set; the brief's
+  area-keyed id would push OSM records out of the 3-slot store); the download button holds `_running`;
+  coverage requires the loaded layers to match the setting; ArcGIS `{error}` bodies reported with the server
+  message; active-button text says "switch back to FLM tiles" when a tile source is paused; the tiles ×
+  follows `hasSource()`; **`wayId` scale changed from `layer * 1e8` to `layer * 1e10` + OBJECTID** (the brief's
+  ids overlap real OSM way ids, and exclusions persist across sources; golden ids re-seeded, nothing else
+  moved). Not fixed, accepted: a run needing one more box re-downloads all boxes; the duplicate source-changed
+  events; the hard-coded "60 s" text.
+- Phase 5 (orchestrator): reference section "CDOT road layers", load order, CLAUDE.md, features.md,
+  `docs/cdot-comparison.md` template.

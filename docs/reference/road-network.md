@@ -114,6 +114,53 @@ A third street source beside the Overpass download and the GeoJSON file import. 
 
 **Tests.** Golden `test/cases/walk-tiles.mjs` (fixture release in `test/fixtures/walk-tiles/fixture-release/`); behaviour `test/browser/walk-tiles.test.mjs`. The directory-handle picker cannot run headless and is checked by hand. Design record and progress log: `docs/flm-walk-tiles-plan.md` (moves to `docs/archive/` once the manual check with real Denver tiles is done).
 
+## CDOT road layers: cdot-roads.js (`window.CdotRoads`) and cdot-source.js (`App.cdotSource`)
+
+A fourth street source beside the Overpass download, the GeoJSON import and FLM tiles: the Colorado DOT public
+ArcGIS FeatureServer (`https://dtdapps.codot.gov/server/rest/services/Webapps/open_data_sde/FeatureServer`),
+queried live. Exists for comparison runs: CDOT layers are road centerlines only (no sidewalks, paths or
+pedestrian bridges). Plan and decisions: `docs/cdot-roads-plan.md`; source brief
+`docs/cdot-rest-source-design-brief.md` (classification table in its section 4 is lead-approved; changing it
+needs the lead again).
+
+- **Layers.** 14 Local Roads and 17 Major Roads (on by default; already split at intersections, endpoints
+  shared) and 7 Highways (off; its lines do not join 14/17). Classes are matched on the leading digit of
+  `FUNCCLASSID` / `FUNCCLASS` (CDOT writes `"7  Local"` with two spaces); layer 7 `ACCESS_` `F-W`/`E-X` wins
+  over `FUNCCLASS`. Mapped to OSM `highway` values with `foot: ""`, so `isPedForbidden` stays the one
+  walkability rule (freeways map to `motorway`/`trunk` and are blocked).
+- **`window.CdotRoads`** (pure, ES5, golden-tested in `test/cases/cdot-roads.mjs`): `SERVICE`, `PAGE_SIZE`
+  (2000, the server's maxRecordCount), `LAYERS`, `pageUrl(layer, bbox, offset)` (throws for an unknown layer
+  or bad bbox), `hasMore(page)` (`exceededTransferLimit` top-level or under `properties`),
+  `validatePage(page)`, `classify(layer, props)`, `toRoadGeoJSON([{layerId, features}])` (dedupes by layer +
+  `OBJECTID`; report `{perLayer, unclassified, duplicates, skipped}`). `wayId = layer * 1e10 + OBJECTID`: numeric
+  for the exclusion set, and far above real OSM way ids (~1.4e9) because exclusions persist across loads.
+  `cdotId` `"<layer>/<OBJECTID>"` and `gisId` are kept for display/export.
+- **`App.cdotSource`**: `isActive`, `layers`, `layersKey` (string sort: `"14+17"`, `"14+17+7"`), `setActive`,
+  `setLayers` (refuses an empty set), `fetchExtent(boxes, progress)` and `restore`, `renderInfo`. Setting
+  `{active, layers}` in localStorage `mat-cdot-source` (per browser, never the session file). `fetchExtent`
+  never rejects: layers in parallel, boxes and pages sequential within a layer, the next offset advances by
+  the features the page held, 60 s timeout per page (`_timeoutMs`), 50-page cap per layer per box, stops on the
+  first non-2xx, unreadable JSON, ArcGIS `{error}` body or `validatePage` failure. Error texts: brief section 7.
+  Fires document events `street-source-changed` and `walk-tiles-source-changed`.
+- **Exactly one non-Overpass source.** `App.walkTilesSource.isActive()` is false while CDOT is active; the tile
+  choice is kept (`hasSource()`), and its dialog says it is paused. Choosing a tile source turns CDOT off.
+- **road-network.js.** `App.fetchRoadNetworkForExtent(extent, pieces)`: tiles branch, then CDOT
+  (`loadNetworkFromCdot`, no stored-network lookup first), then Overpass. A CDOT load queries one box per
+  piece, keeps `_cdotBoxes` and `_cdotLayers`, outlines the union of boxes (display only), and saves record
+  `cdot:<layersKey>` (one slot per layer set, never area-matched) with `boxes`. `App.roadNetworkCoversExtent`
+  answers for CDOT by boxes: every needed box inside one loaded box, and the layers must match the current
+  setting. `restoreNetworkCovering` only restores a record from the source a fresh load would use (and the same
+  tile release / layer set). `App.roadNetworkSource()` returns `"overpass" | "file" | "walk-tiles" | "cdot" |
+  null`; also `App.roadNetworkCdotLayers()`, `App.cdotLastError()`, `App.loadRoadNetworkFromCdot`,
+  `App.ROAD_SNAP_MAX_KM`.
+- **Walkshed** downloads CDOT streets on Calculate (like tiles); "Download CDOT streets for this area" stays
+  as a fallback and holds `_running` so a Calculate press meanwhile does not start a second download. Each
+  point's box radius is walk speed x largest minutes + `App.ROAD_SNAP_MAX_KM` for every source.
+  Transit Travelshed uses one rectangle.
+- **Known limits.** A run that needs one more box re-downloads every box; a needed box straddling two loaded
+  boxes counts as uncovered (it reloads). Browser CORS from GitHub Pages is unverified until deployed.
+  Test: `test/browser/cdot-source.test.mjs` (CDOT host answered from `test/fixtures/cdot/`).
+
 ## network-connectors.js
 App-level connector orchestration (see `docs/archive/network-connectors-plan.md`).
 - `App.refreshWalkNetworkLayer()` — rebuilds the "Walk network" reference layer (source `walk-network`, layer `walk-network-line`, `#94a3b8` w1 op0.45, inserted below drawn features via `firstUserLayer()`) from `App.getWalkNetworkSegments()`; removes it when no network. Called from `updateUI()` and after every overlay rebuild. At the top of every call it re-syncs its report from `App.getLastConnectorOverlayReport()` (a base reload bypasses `setNetworkConnectors`; otherwise markers go stale), and at the end calls `refreshJoinMarkers()`.
