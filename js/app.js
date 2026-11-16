@@ -1360,6 +1360,7 @@
     var lodesFileInput = document.getElementById("lodesFile");
     var lodesPopup = document.getElementById("lodes-popup");
     var walkTilesPopup = document.getElementById("walk-tiles-popup");
+    var cdotPopup = document.getElementById("cdot-popup");
 
     // Build state checkbox list once
     var LODES_STATES = [
@@ -1409,6 +1410,7 @@
     document.getElementById("lodes-employment-btn").addEventListener("click", function () {
       addDataDropdown.style.display = "none";
       if (walkTilesPopup) walkTilesPopup.style.display = "none";
+      if (cdotPopup) cdotPopup.style.display = "none";
       lodesPopup.style.display = lodesPopup.style.display === "none" ? "block" : "none";
     });
     document.getElementById("lodes-popup-close").addEventListener("click", function () {
@@ -1421,9 +1423,23 @@
       walkTilesBtn.addEventListener("click", function () {
         addDataDropdown.style.display = "none";
         lodesPopup.style.display = "none";
+        if (cdotPopup) cdotPopup.style.display = "none";
         var opening = walkTilesPopup.style.display === "none";
         walkTilesPopup.style.display = opening ? "block" : "none";
         if (opening && App.walkTilesSource) App.walkTilesSource.renderInfo();
+      });
+    }
+
+    // ---- CDOT road layers dialog (behaviour lives in js/core/cdot-source.js) ----
+    var cdotBtn = document.getElementById("ad-cdot-roads");
+    if (cdotBtn && cdotPopup) {
+      cdotBtn.addEventListener("click", function () {
+        addDataDropdown.style.display = "none";
+        lodesPopup.style.display = "none";
+        if (walkTilesPopup) walkTilesPopup.style.display = "none";
+        var opening = cdotPopup.style.display === "none";
+        cdotPopup.style.display = opening ? "block" : "none";
+        if (opening && App.cdotSource) App.cdotSource.renderInfo();
       });
     }
 
@@ -1558,6 +1574,13 @@
         btnId: "ad-walk-tiles",
         isLoaded: function () { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); },
         clear: function () { if (App.walkTilesSource) App.walkTilesSource.clear(); }
+      },
+      {
+        // × switches CDOT back off (OpenStreetMap or tiles supply streets again);
+        // streets already loaded stay.
+        btnId: "ad-cdot-roads",
+        isLoaded: function () { return !!(App.cdotSource && App.cdotSource.isActive()); },
+        clear: function () { if (App.cdotSource) App.cdotSource.setActive(false); }
       },
       {
         btnId: "gtfs-load-btn",
@@ -2052,6 +2075,11 @@
       }).catch(function (e) {
         console.warn("Road network cache restore failed:", e);
       });
+    }
+
+    // CDOT first, so the tile dialog knows at once that it is paused.
+    if (App.cdotSource && typeof App.cdotSource.restore === "function") {
+      App.cdotSource.restore();
     }
 
     // The FLM tile source is a per-browser setting (a URL), not session data, so

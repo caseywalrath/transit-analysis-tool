@@ -76,12 +76,19 @@
     _inflight = new Map();
   }
 
-  function isActive() {
+  // A source is set (the choice survives CDOT being switched on).
+  function hasSource() {
     return !!(_source && _manifest);
   }
 
+  // Tiles answer street requests only while no CDOT source is in charge. The
+  // source and manifest stay loaded meanwhile, so switching CDOT off needs no re-read.
+  function isActive() {
+    return hasSource() && !(App.cdotSource && App.cdotSource.isActive());
+  }
+
   function describe() {
-    if (!isActive()) return null;
+    if (!hasSource()) return null;
     if (_source.kind === "url") return { kind: "url", url: _source.url };
     return { kind: "folder", name: _source.name };
   }
@@ -96,6 +103,12 @@
     // App.notifyProject(): that marks results stale, and the loaded streets
     // have not changed.
     try { document.dispatchEvent(new CustomEvent("walk-tiles-source-changed")); } catch (e) { /* no DOM events */ }
+  }
+
+  // Choosing tiles means the user wants tiles. Not done by restore(): a
+  // startup must not undo a setting the user saved.
+  function stopCdot() {
+    if (App.cdotSource && App.cdotSource.isActive()) App.cdotSource.setActive(false);
   }
 
   function invalid(validation) {
@@ -139,6 +152,7 @@
       _manifest = validation.manifest;
       writeSetting(url);
       afterChange();
+      stopCdot();
       return { ok: true };
     } catch (e) {
       return { ok: false, error: messageOf(e) };
@@ -308,6 +322,7 @@
       // A reload must not silently bring back an older address.
       removeSetting();
       afterChange();
+      stopCdot();
       return { ok: true };
     } catch (e) {
       return { ok: false, error: messageOf(e) };
@@ -346,7 +361,7 @@
   }
 
   function readTile(path) {
-    if (!isActive()) return Promise.reject(fail(path, "no tile source is set"));
+    if (!hasSource()) return Promise.reject(fail(path, "no tile source is set"));
     if (typeof path !== "string" || !TILE_PATH_RE.test(path)) {
       return Promise.reject(fail(path, "not a valid tile path"));
     }
@@ -383,7 +398,7 @@
   function clear() {
     _attempt++;
     _lastError = "";
-    var wasActive = isActive();
+    var wasActive = hasSource();
     removeSetting();
     _source = null;
     _manifest = null;
@@ -418,6 +433,9 @@
       var err = addLine(info, _lastError);
       err.style.color = "var(--danger)";
       err.style.marginBottom = "4px";
+    }
+    if (d && App.cdotSource && App.cdotSource.isActive()) {
+      addLine(info, "Paused while CDOT supplies streets. Switch CDOT off (Add Data \u2192 CDOT Roads) to use these tiles.");
     }
     if (!d) {
       addLine(info, "No tile source is set. Streets are downloaded from OpenStreetMap until one is.");
@@ -474,7 +492,7 @@
   }
 
   function releaseId() {
-    return isActive() ? _manifest.release_id : "";
+    return hasSource() ? _manifest.release_id : "";
   }
 
   function wireDialog() {
@@ -545,7 +563,8 @@
 
   App.walkTilesSource = {
     isActive: isActive,
-    manifest: function () { return isActive() ? _manifest : null; },
+    hasSource: hasSource,
+    manifest: function () { return hasSource() ? _manifest : null; },
     releaseId: releaseId,
     describe: describe,
     useUrl: useUrl,
