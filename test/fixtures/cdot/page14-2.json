@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 54875,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.00745432162181,
+            39.74958284069589
+          ],
+          [
+            -105.00750200562939,
+            39.74975737747628
+          ],
+          [
+            -105.00673856906671,
+            39.75009117200771
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 54875,
+        "GISID": "20000WEWATTA  ST  677",
+        "ROUTENAME": "WEWATTA ST",
+        "FUNCCLASSID": "7  Local"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 182818,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.00478854191256,
+            39.750230254407825
+          ],
+          [
+            -105.00382269292544,
+            39.75098771067312
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 182818,
+        "GISID": "20000WEWATTA  ST 1301",
+        "ROUTENAME": "WEWATTA ST",
+        "FUNCCLASSID": "7  Local"
+      }
+    }
+  ]
+}

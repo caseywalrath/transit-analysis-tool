@@ -508,6 +508,11 @@
     return union ? turf.bboxPolygon(turf.bbox(union)) : null;
   }
 
+  function networkCovers(extent) {
+    if (typeof App.roadNetworkCoversExtent === "function") return App.roadNetworkCoversExtent(extent);
+    return turf.booleanContains(App.getRoadDownloadExtent(), extent);
+  }
+
   function setCoverageWarn(msg) {
     var el = document.getElementById("tsCoverageWarn");
     if (!el) return;
@@ -515,8 +520,40 @@
     else { el.style.display = "none"; }
   }
 
+  function tilesActive() { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); }
+  function cdotActive() { return !!(App.cdotSource && App.cdotSource.isActive()); }
+
+  // Names the street source only when the live network really came from FLM tiles:
+  // an active tile source does not prove that (a stored download may be loaded).
+  function streetsSuffix() {
+    if (typeof App.roadNetworkSource === "function" && App.roadNetworkSource() === "cdot") {
+      return " Streets: CDOT " + App.roadNetworkCdotLayers() + ".";
+    }
+    var rel = typeof App.roadNetworkTileRelease === "function" ? App.roadNetworkTileRelease() : "";
+    if (!rel) return "";
+    // Repeated here because the coverage warning sits with the inputs, which
+    // collapse after a successful run.
+    var beyond = typeof App.walkTilesExtentBeyondPrepared === "function" &&
+      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent);
+    return " Streets: FLM tiles " + rel + "." +
+      (beyond ? " Part of this area is outside the prepared FLM area, so results may be clipped there." : "");
+  }
+
+  function labelDownloadBtn() {
+    var btn = document.getElementById("tsDownloadBtn");
+    if (btn) {
+      btn.textContent = cdotActive() ? "Download CDOT streets for this area"
+        : tilesActive() ? "Load FLM tiles for this area" : "Download streets for this area";
+    }
+  }
+  // The label must follow the source even while the button is already showing:
+  // the click does whatever the source says at that moment.
+  document.addEventListener("walk-tiles-source-changed", labelDownloadBtn);
+  document.addEventListener("street-source-changed", labelDownloadBtn);
+
   function showDownloadBtn(show) {
     var btn = document.getElementById("tsDownloadBtn");
+    labelDownloadBtn();
     if (btn) btn.style.display = show ? "" : "none";
   }
 
@@ -527,9 +564,14 @@
     if (!_pendingDownloadExtent || !App.fetchRoadNetworkForExtent) return;
     var btn = document.getElementById("tsDownloadBtn");
     if (btn) btn.disabled = true;
+    var tiles = tilesActive();
+    var cdot = cdotActive();
     try {
       var ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent);
       if (ok) runTravelshed();
+      // The reason is otherwise only in the global status line, which clears itself.
+      else if (cdot) setStatus((typeof App.cdotLastError === "function" && App.cdotLastError()) || "CDOT streets could not be loaded for this area.", "error");
+      else if (tiles) setStatus((typeof App.walkTilesLastError === "function" && App.walkTilesLastError()) || "FLM tiles could not be loaded for this area.", "error");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -1044,7 +1086,7 @@
     // Before offering a download, look for a stored network that covers this
     // area (e.g. one the user only removed from the map).
     if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
-        (!netLoaded || (downloadedExtent && !turf.booleanContains(downloadedExtent, requiredExtent)))) {
+        (!netLoaded || (downloadedExtent && !networkCovers(requiredExtent)))) {
       if (await App.restoreNetworkCovering(requiredExtent)) {
         if (typeof App.notifyProject === "function") App.notifyProject();
         return runTravelshed(true);
@@ -1059,12 +1101,15 @@
       // File-imported network — extent unknown. Soft warning; proceed anyway.
       setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
       showDownloadBtn(false);
-    } else if (requiredExtent && !turf.booleanContains(downloadedExtent, requiredExtent)) {
-      setCoverageWarn("Loaded streets don't cover this analysis area.");
+    } else if (requiredExtent && !networkCovers(requiredExtent)) {
+      setCoverageWarn(cdotActive() ? "Loaded CDOT streets don't cover this analysis area."
+        : tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
       showDownloadBtn(true);
       return;
     } else {
-      setCoverageWarn(null);
+      setCoverageWarn(typeof App.walkTilesExtentBeyondPrepared === "function" &&
+        App.walkTilesExtentBeyondPrepared(requiredExtent)
+        ? "Part of this analysis area is outside the prepared FLM area \u2014 results may be clipped there." : null);
       showDownloadBtn(false);
     }
 
@@ -1245,7 +1290,7 @@
       setExportEnabled(true);
       var renderedBands = rings.filter(function (r) { return r.ring; }).length;
       setStatus("Calculated travelshed — " + renderedBands + " band(s), " +
-        engineResult.stats.nodesReached + " nodes reached.", "done");
+        engineResult.stats.nodesReached + " nodes reached." + streetsSuffix(), "done");
       // Collapse only on success — a run that bailed out (no origin, no
       // coverage, no active band) leaves the inputs open where they're needed.
       renderInputs(true);

@@ -723,7 +723,11 @@
     }
     if (!App.roadNetworkLoaded || !App.roadNetworkLoaded()) {
       return { need: "Choose points and click Calculate.",
-               action: "No street network is loaded yet — Calculate will offer to download one for just the area these points need." };
+               action: cdotActive()
+                 ? "No street network is loaded yet — Calculate will download CDOT streets around these points."
+                 : tilesActive()
+                 ? "No street network is loaded yet — Calculate will read the FLM tiles around these points."
+                 : "No street network is loaded yet — Calculate will offer to download one for just the area these points need." };
     }
     return { need: "Choose points and click Calculate.", action: "A walkshed is the true street-network area reachable on foot within your time budget." };
   }
@@ -842,23 +846,32 @@
   // Travelshed's: just a walk circle per selected point).
 
   var _pendingDownloadExtent = null; // Feature<Polygon> | null, consumed by #wsDownloadBtn
+  var _pendingPieces = null; // [[w, s, e, n], ...] one box per selected point, set with _pendingDownloadExtent
 
   // Rectangle covering everything the flood could touch: a circle of the full
   // walk budget around each selected point. Coarse but safe — it only ever asks
   // for MORE coverage than strictly needed, never less.
   function computeRequiredExtent(targets) {
+    _pendingPieces = null;
     if (!targets.length) return null;
     var budgets = activeBudgets();
     var maxMinutes = budgets[budgets.length - 1]; // size the circle from the LARGEST budget
-    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (maxMinutes / 60);
+    // Walking along streets is never shorter than the straight line, so the
+    // walk reach circle holds every reachable street. The snap distance is
+    // added because the start may snap to a street up to that far outside it.
+    var budgetKm = _settings.walkSpeedMph * KM_PER_MILE * (maxMinutes / 60) + (App.ROAD_SNAP_MAX_KM || 0.5);
     var pieces = [];
+    var boxes = [];
     targets.forEach(function (pf) {
       var c = pf.geometry && pf.geometry.coordinates;
       if (!c) return;
-      pieces.push(turf.circle(c, budgetKm, { units: "kilometers", steps: 16 }));
+      var circle = turf.circle(c, budgetKm, { units: "kilometers", steps: 16 });
+      pieces.push(circle);
+      boxes.push(turf.bbox(circle));
     });
     if (!pieces.length) return null;
     var union = App.foldAnalysisUnion ? App.foldAnalysisUnion(pieces) : pieces[0];
+    _pendingPieces = boxes;
     return union ? turf.bboxPolygon(turf.bbox(union)) : null;
   }
 
@@ -869,9 +882,69 @@
     else { el.style.display = "none"; }
   }
 
+  function tilesActive() { return !!(App.walkTilesSource && App.walkTilesSource.isActive()); }
+  function cdotActive() { return !!(App.cdotSource && App.cdotSource.isActive()); }
+  // Both are local-or-fast sources that load on Calculate without asking.
+  function autoSource() { return tilesActive() || cdotActive(); }
+
+  // Last failure text of whichever source is active, "" when it left none.
+  function sourceError() {
+    if (cdotActive()) return (typeof App.cdotLastError === "function" && App.cdotLastError()) || "CDOT streets could not be loaded for this area.";
+    return (typeof App.walkTilesLastError === "function" && App.walkTilesLastError()) || "FLM tiles could not be loaded for this area.";
+  }
+
+  // Names the street source only when the live network really came from FLM tiles:
+  // an active tile source does not prove that (a stored download may be loaded).
+  function streetsSuffix() {
+    if (typeof App.roadNetworkSource === "function" && App.roadNetworkSource() === "cdot") {
+      return " Streets: CDOT " + App.roadNetworkCdotLayers() + ".";
+    }
+    var rel = typeof App.roadNetworkTileRelease === "function" ? App.roadNetworkTileRelease() : "";
+    if (!rel) return "";
+    // Repeated here because the coverage warning sits with the inputs, which
+    // collapse after a successful run.
+    var beyond = typeof App.walkTilesExtentBeyondPrepared === "function" &&
+      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent, _pendingPieces);
+    return " Streets: FLM tiles " + rel + "." +
+      (beyond ? " Part of this area is outside the prepared FLM area, so results may be clipped there." : "");
+  }
+
+  function needStreetsMsg() {
+    if (cdotActive()) return "Street network doesn't cover these points \u2014 download CDOT streets to continue.";
+    return tilesActive()
+      ? "Street network doesn't cover these points \u2014 load FLM tiles to continue."
+      : "Street network doesn't cover these points \u2014 download to continue.";
+  }
+
+  function labelDownloadBtn() {
+    var btn = document.getElementById("wsDownloadBtn");
+    if (btn) {
+      btn.textContent = cdotActive() ? "Download CDOT streets for this area"
+        : tilesActive() ? "Load FLM tiles for this area" : "Download streets for this area";
+    }
+  }
+  // The label must follow the source even while the button is already showing:
+  // the click does whatever the source says at that moment.
+  document.addEventListener("walk-tiles-source-changed", labelDownloadBtn);
+  document.addEventListener("street-source-changed", labelDownloadBtn);
+
+  function beyondPreparedWarn() {
+    return typeof App.walkTilesExtentBeyondPrepared === "function" &&
+      App.walkTilesExtentBeyondPrepared(_pendingDownloadExtent, _pendingPieces)
+      ? "Part of this walk budget is outside the prepared FLM area \u2014 walksheds may be clipped there." : null;
+  }
+
   function showDownloadBtn(show) {
     var btn = document.getElementById("wsDownloadBtn");
+    labelDownloadBtn();
     if (btn) btn.style.display = show ? "" : "none";
+  }
+
+  function networkCovers() {
+    if (typeof App.roadNetworkCoversExtent === "function") {
+      return App.roadNetworkCoversExtent(_pendingDownloadExtent, _pendingPieces);
+    }
+    return turf.booleanContains(App.getRoadDownloadExtent(), _pendingDownloadExtent);
   }
 
   // Returns true when the analysis may proceed. Otherwise it has already put the
@@ -891,12 +964,13 @@
       showDownloadBtn(false);
       return true;
     }
-    if (_pendingDownloadExtent && !turf.booleanContains(downloaded, _pendingDownloadExtent)) {
-      setCoverageWarn("Loaded streets don't cover this walk budget.");
+    if (_pendingDownloadExtent && !networkCovers()) {
+      setCoverageWarn(cdotActive() ? "Loaded CDOT streets don't cover this walk budget."
+        : tilesActive() ? "Loaded FLM tiles don't cover this walk budget." : "Loaded streets don't cover this walk budget.");
       showDownloadBtn(true);
       return false;
     }
-    setCoverageWarn(null);
+    setCoverageWarn(beyondPreparedWarn());
     showDownloadBtn(false);
     return true;
   }
@@ -905,17 +979,26 @@
   // success. The walkshed cache keys include the network epoch, which
   // fetchRoadNetworkForExtent bumps, so cached polygons invalidate themselves.
   async function downloadNetworkForPendingExtent() {
-    if (!_pendingDownloadExtent || !App.fetchRoadNetworkForExtent) return;
+    // _running: Calculate may already be loading tiles for this extent, and a
+    // second load would rebuild the network under the run that follows it.
+    if (_running || !_pendingDownloadExtent || !App.fetchRoadNetworkForExtent) return;
     var btn = document.getElementById("wsDownloadBtn");
     if (btn) btn.disabled = true;
-    setStatus("Downloading streets\u2026", "running");
+    var tiles = autoSource();
+    setStatus(cdotActive() ? "Downloading CDOT streets\u2026" : tiles ? "Loading FLM tiles\u2026" : "Downloading streets\u2026", "running");
+    // Held while downloading so a Calculate press meanwhile does not start a
+    // second, full CDOT download of the same areas.
+    _running = true;
+    var ok = false;
     try {
-      var ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent);
-      if (ok) { updateComputeAvailability(); runWalkshed(); }
-      else setStatus("Street download failed or was cancelled.", "error");
+      ok = await App.fetchRoadNetworkForExtent(_pendingDownloadExtent, _pendingPieces);
     } finally {
+      _running = false;
       if (btn) btn.disabled = false;
     }
+    if (ok) { updateComputeAvailability(); runWalkshed(); }
+    else if (tiles) setStatus(sourceError(), "error");
+    else setStatus("Street download failed or was cancelled.", "error");
   }
 
   // ---- Run (compute for target set) ----
@@ -932,28 +1015,35 @@
     // Missing or insufficient street coverage is an offer to download, not a
     // dead end — checkNetworkCoverage has already explained and armed the button.
     // A stored network covering the area (e.g. one only removed from the map)
-    // is tried first, so no download is offered when none is needed.
+    // is tried first, so no download is offered when none is needed. With an
+    // FLM tile source set, the tiles for this area are read straight away
+    // instead: they are local files, so there is nothing to ask the user about.
     if (!checkNetworkCoverage(targets)) {
       if (afterRestore !== true && _pendingDownloadExtent && typeof App.restoreNetworkCovering === "function") {
         var extent = _pendingDownloadExtent;
+        var pieces = _pendingPieces;
+        var tiles = autoSource() && typeof App.fetchRoadNetworkForExtent === "function";
+        var failMsg = function () {
+          return tiles ? sourceError() : needStreetsMsg();
+        };
         _running = true;
-        setStatus("Loading stored streets\u2026", "running");
-        App.restoreNetworkCovering(extent).then(function (ok) {
+        setStatus(tiles ? (cdotActive() ? "Downloading CDOT streets\u2026" : "Loading FLM tiles\u2026") : "Loading stored streets\u2026", "running");
+        (tiles ? App.fetchRoadNetworkForExtent(extent, pieces) : App.restoreNetworkCovering(extent, pieces)).then(function (ok) {
           _running = false;
           if (ok) {
             if (typeof App.notifyProject === "function") App.notifyProject();
             updateComputeAvailability();
             runWalkshed(true);
           } else {
-            setStatus("Street network doesn't cover these points — download to continue.", "error");
+            setStatus(failMsg(), "error");
           }
         }, function () {
           _running = false;
-          setStatus("Street network doesn't cover these points — download to continue.", "error");
+          setStatus(failMsg(), "error");
         });
         return;
       }
-      setStatus("Street network doesn't cover these points — download to continue.", "error");
+      setStatus(needStreetsMsg(), "error");
       return;
     }
 
@@ -1008,9 +1098,9 @@
         if (!ok) {
           setStatus("No walksheds produced — " + bad + " point(s) skipped.", "error");
         } else if (bad) {
-          setStatus("Calculated " + ok + " walkshed(s); " + bad + " skipped.", "done");
+          setStatus("Calculated " + ok + " walkshed(s); " + bad + " skipped." + streetsSuffix(), "done");
         } else {
-          setStatus("Calculated " + ok + " walkshed(s).", "done");
+          setStatus("Calculated " + ok + " walkshed(s)." + streetsSuffix(), "done");
         }
 
         // Collapse the inputs only on a run that produced something — a failed
@@ -1025,7 +1115,7 @@
         // Unflagged-only runs skip this, so they cause no extra notify pass.
         if (walkshedSignature() !== sigBefore) {
           if (typeof App.refreshBuffers === "function") App.refreshBuffers();
-          var doneMsg = "Calculated " + ok + " walkshed(s)" + (bad ? "; " + bad + " skipped." : ".");
+          var doneMsg = "Calculated " + ok + " walkshed(s)" + (bad ? "; " + bad + " skipped." : ".") + streetsSuffix();
           // notifyProject awaits each module's update() in turn, so ours runs after
           // this tick; wait for it, then undo its stale mark — our results are fresh.
           Promise.resolve(typeof App.notifyProject === "function" ? App.notifyProject() : null)
@@ -1330,7 +1420,7 @@
     var btn = document.getElementById("wsComputeBtn");
     if (btn) btn.disabled = false;
     var loaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
-    if (loaded) { setCoverageWarn(null); showDownloadBtn(false); }
+    if (loaded) { setCoverageWarn(beyondPreparedWarn()); showDownloadBtn(false); }
   }
 
   function clearAll() {

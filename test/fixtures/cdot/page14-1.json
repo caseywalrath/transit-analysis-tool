@@ -1,0 +1,94 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 54875,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.00745432162181,
+            39.74958284069589
+          ],
+          [
+            -105.00750200562939,
+            39.74975737747628
+          ],
+          [
+            -105.00673856906671,
+            39.75009117200771
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 54875,
+        "GISID": "20000WEWATTA  ST  677",
+        "ROUTENAME": "WEWATTA ST",
+        "FUNCCLASSID": "7  Local"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 54924,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.01403660100577,
+            39.742426376908206
+          ],
+          [
+            -105.0139893558892,
+            39.74229273085214
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 54924,
+        "GISID": "200001ST      ST 1396",
+        "ROUTENAME": "1ST ST",
+        "FUNCCLASSID": "7  Local"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 55584,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.0082261628193,
+            39.74011211146373
+          ],
+          [
+            -105.00822849508263,
+            39.74010808148247
+          ],
+          [
+            -105.00836511020587,
+            39.74002491537415
+          ],
+          [
+            -105.00852577158675,
+            39.73992986174832
+          ],
+          [
+            -105.0086245131519,
+            39.73988889404421
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 55584,
+        "GISID": "20000WCOLFAX  AV 1561",
+        "ROUTENAME": "W COLFAX AVE",
+        "FUNCCLASSID": "7  Local"
+      }
+    }
+  ],
+  "exceededTransferLimit": true,
+  "properties": {
+    "exceededTransferLimit": true
+  }
+}

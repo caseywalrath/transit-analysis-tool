@@ -25,7 +25,7 @@ Everything is an optimization: failures are swallowed and callers fall back to a
 ## road-network.js
 Overpass/file import → graph → Dijkstra. Graph weights are **km**; `budgetKm = walkSpeedKmh * minutes / 60` (Walkshed's UI is mph and converts first).
 
-**Public API:** `App.roadNetworkLoaded()` (bool), `roadNetworkEpoch()` (int, bumped on every (re)build/clear — epoch-keyed module caches use it), `findLocalRoute(waypoints)` (driving), `fetchRoadNetwork()`, `loadRoadNetworkFromFile(file)`, `exportRoadNetwork()`, `unloadRoadNetwork()`, `clearRoadNetwork()`, `restoreNetworkCovering(extentPolygon)`, `clearRoadDownloadArea()` (outline only, graph kept — Layers panel), `restoreCachedNetwork()`, `computeWalkshed`, `computeWalkCostMap`, `contourSamples`, `nodeKeyToCoord`, `snapWalk`, `getRoadDownloadExtent`, `fetchRoadNetworkForExtent`, `App.getWalkNetworkSegments()`, `App.setNetworkConnectors`, `App.getLastConnectorOverlayReport`, `App.setExcludedWays`.
+**Public API:** `App.roadNetworkLoaded()` (bool), `roadNetworkEpoch()` (int, bumped on every (re)build/clear — epoch-keyed module caches use it), `findLocalRoute(waypoints)` (driving), `fetchRoadNetwork()`, `loadRoadNetworkFromFile(file)`, `exportRoadNetwork()`, `unloadRoadNetwork()`, `clearRoadNetwork()`, `restoreNetworkCovering(extentPolygon, pieces?)`, `clearRoadDownloadArea()` (outline only, graph kept — Layers panel), `restoreCachedNetwork()`, `computeWalkshed`, `computeWalkCostMap`, `contourSamples`, `nodeKeyToCoord`, `snapWalk`, `getRoadDownloadExtent`, `fetchRoadNetworkForExtent`, `App.getWalkNetworkSegments()`, `App.setNetworkConnectors`, `App.getLastConnectorOverlayReport`, `App.setExcludedWays`.
 
 **Rebuild choke point.** Private `rebuildNetwork()` = `buildGraph(_roadGeoJSON)` → `applyConnectorOverlay()` → one `_networkEpoch++`. Every base load (`fetchNetworkForBounds`/`loadRoadNetworkFromFile`), connector change and exclusion change routes through it, so connectors/exclusions are never merged into `_roadGeoJSON` and re-apply automatically after a re-download. `updateUI()` is the single choke point for map-side refresh (download outline, `App.refreshWalkNetworkLayer()`, `App.refreshSidewalkCoverageLayer()`); `rebuildNetwork()` alone does NOT refresh map sources.
 
@@ -54,9 +54,114 @@ Overpass/file import → graph → Dijkstra. Graph weights are **km**; `budgetKm
 
 **Unload vs. delete.** `App.unloadRoadNetwork()` drops the in-memory graph, segments, layers and download extent and bumps the epoch, but leaves IndexedDB alone; excluded streets and connectors are settings, so they persist and re-apply on the next load. Callers: Layers panel "Walk network" Remove, Add Data × and toolbar Clear. `App.clearRoadNetwork()` = delete the stored copies, then unload; callers: the Layers panel's confirmed "Delete downloaded streets" and Reset Session (so a deleted network does not resurrect on refresh). Neither is confirm-gated by itself; only the "Delete downloaded streets" menu item and the Reset Session button confirm.
 
+**OpenStreetMap by point.** `App.fetchRoadNetworkForExtent(extent, pieces)` sends one Overpass request with one `way[...]` statement per piece when there are 2+ pieces whose summed area is under half the whole rectangle (`usePieces`); otherwise one rectangle as before. A piecewise download sets `_loadedBoxes` (shared with CDOT; `App.roadNetworkCoversExtent` answers by boxes, the CDOT layers check only for `_networkSource === "cdot"`), outlines the union of boxes, and is stored as `osm-boxes:<w,s,e,n of the whole rectangle>` with `boxes`, so `findCovering` never area-matches it. `restoreNetworkCovering(extent, pieces)` also tries the newest record when its `boxes` hold every piece (Walkshed passes its pieces), so Remove then Calculate restores without a download. Accepted limits: the record takes one of the 3 store slots; a new set of points with the same outer rectangle overwrites it; the network has a hole between points for other users of the streets (routes, sidewalk audit); clearing the outline (`clearRoadDownloadArea`) makes Walkshed skip its coverage check, as for tiles and CDOT. Test: `test/browser/osm-pieces.test.mjs`.
+
 **Area-matched restore.** `App.restoreNetworkCovering(extentPolygon)` → `Promise<boolean>` loads `networkStore.findCovering(extent)` through the same private `loadStoredRecord()` as startup restore (epoch bump, extent restored), replacing any live network. Walkshed (`runWalkshed`) and Transit Travelshed (`runTravelshed`) call it when no network is loaded or the loaded one doesn't cover the required extent, before showing the download button, and re-run once on success (an `afterRestore` flag stops a loop). `App.fetchRoadNetworkForExtent` also tries it before Overpass. Test: `test/browser/network-cache.test.mjs` (fails if the run after unload hits Overpass).
 
 **Reset Session (`App.cache.reset`)** first restores `App.networkSettings` crossing seconds and snap tolerance to their defaults and calls `App.setExcludedWays([])`, before wiping localStorage (that call saves the session).
+
+## FLM walk tiles: walk-tiles.js (`window.WalkTiles`) and walk-tiles-source.js (`App.walkTilesSource`)
+
+A third street source beside the Overpass download and the GeoJSON file import. The First-Last Mile (FLM) walkshed project prepares a filtered pedestrian network offline and publishes it as a folder of small JSON tiles ("walk tiles", contract `contracts/walk-tiles/v0/` in the `flm_walkshed_index` repository). When a tile source is set, a walkshed that needs streets reads the few tiles covering its area instead of calling OpenStreetMap. Snapping, routing, contour shape, Census summaries and export are the same code as for any other network.
+
+**Format in one paragraph.** A release folder holds `manifest.json` and `network/<col>_<row>.json`. Cells are 0.01 degrees; `col = floor((lon + 180) / 0.01)`, `row = floor((lat + 90) / 0.01)`. A segment is stored whole in every cell it touches, so neighbouring tiles repeat it: segments are deduplicated by `id` and copies must agree in every field.
+
+**`window.WalkTiles` (pure; loads in the golden sandbox).**
+
+| Function | Returns |
+|---|---|
+| `cellOf(lon, lat)` | `{ col, row }`, clamped to the grid; `null` for non-numbers |
+| `cellsForBbox([w, s, e, n])` | every cell the box touches, by col then row; cells are closed, so an exact west or south edge also takes the neighbour; `[]` for bad input |
+| `bboxOfCells(cells)` | `[w, s, e, n]` covering the cells exactly; `null` for an empty list |
+| `cellsForBboxes(bboxes)` | the union of `cellsForBbox` over several boxes, each cell once, by col then row |
+| `cellRectsForBboxes(bboxes)` | one rectangle of whole cells per box, duplicates removed (the map outline is their union) |
+| `cellKeys(cells)` | `["col_row", …]`, the keys stored with a tile load |
+| `validateManifest(obj)` | `{ ok: true, manifest }` or `{ ok: false, error: "<field>: <reason>" }`; checks only the fields the tool reads and accepts unknown extra fields |
+| `tilesForCells(manifest, cells)` | manifest tile entries for those cells, in manifest order |
+| `mergeTiles(tileObjects)` | `{ ok: true, segments, copies }` or `{ ok: false, error }`; validates all eleven segment fields; differing copies of one id are an error; one bad record stops the merge |
+| `toRoadGeoJSON(segments)` | the LineString FeatureCollection `buildGraph` accepts |
+
+`toRoadGeoJSON` always sets `foot: "yes"` (the FLM rules already decided walkability; `isPedForbidden` would otherwise block a `trunk` segment FLM accepted) and makes `wayId` a number when the id is a safe integer (street exclusion compares numeric ids). It also carries `flmId`, `lenFt` and `dir`, which the graph does not use.
+
+**`App.walkTilesSource`.** Knows where the release folder is and reads files from it; knows nothing about graphs.
+
+- `useUrl(url)` and `useFolder({ handle } | { files })` resolve `{ ok }` or `{ ok: false, error }` and never throw. A failed attempt leaves the current source working.
+- `readTile(path)` rejects with the complete user text `FLM tile <path> could not be read: <reason>`. Reads of one path in flight share one promise; up to 64 parsed tiles are cached.
+- `isActive()`, `manifest()`, `releaseId()`, `describe()`, `clear()`, `restore()`, `renderInfo()`.
+- **The setting is per browser, never in the session file.** A session file is shared with other people and a folder on one person's disk means nothing to them. An address is remembered in `localStorage` key `mat-walk-tiles-source`; a picked folder is not remembered (re-pick each session), and picking one removes a remembered address.
+- The folder picker uses `window.showDirectoryPicker` where it exists (Chrome, Edge) and the hidden `webkitdirectory` input elsewhere. Picking the parent of exactly one release folder works; a parent of several fails with "Pick the release folder itself, not its parent."
+- Every real source change fires a `walk-tiles-source-changed` event on `document`. Walkshed and Transit Travelshed relabel their button from it. It is deliberately not `App.notifyProject()`, which would mark results stale although the loaded streets did not change.
+- Tile data is not cleared for redistribution, so it is never committed to this repository. Same-origin is the simplest address: put the release under the app folder (Git-ignored) and serve both with one local server. A separate data server must send CORS headers.
+
+**In road-network.js.**
+
+- `App.fetchRoadNetworkForExtent(extent, pieces)`: with an active source it calls `loadNetworkFromTiles` (exported as `App.loadRoadNetworkFromTiles`) and never tries the store or Overpass. `pieces` is optional: an array of `[w, s, e, n]` boxes, one per selected point. Walkshed passes it, so two points at opposite ends of a city read only the tiles around each point and not every tile between them. Without `pieces` (Transit Travelshed, any Overpass download) the one rectangle of `extent` is used. The toolbar's "Area Roads for Street Routing" is unchanged and still downloads from OpenStreetMap.
+- `loadNetworkFromTiles` uses the same tail as a download (`_roadGeoJSON`, `rebuildNetwork()`, extent, `updateUI(true)`, `persistNetwork`). It records the **cells asked for** in `_tileCells` (not the tiles found: a cell with no tile has no exported streets and still counts as covered). A new load replaces the previous network; tiles already read come from the source's in-memory cache.
+- **Coverage of a tile network is answered by cells, never by polygon.** `App.roadNetworkCoversExtent(extent, pieces)` is what both panels call: for a tile network every needed cell must be in `_tileCells`; for any other network it is the old `turf.booleanContains` on the rectangle. `App.getRoadDownloadExtent()` for a tile network is the union of the per-point cell rectangles, possibly a MultiPolygon (which `turf.booleanContains` cannot test), and is for the map outline only.
+- Because requested cells count as covered, `App.walkTilesExtentBeyondPrepared(extent, pieces)` exists: true when the live tile network's release is the active one and the extent (or any piece) reaches past the manifest's `coverage.bbox`. The panels use it for a soft "may be clipped" warning. The manifest itself says its box is not a guarantee of complete streets.
+- Walkshed's Calculate calls this itself when a source is set and the loaded streets do not cover the run; Transit Travelshed keeps its "Load FLM tiles for this area" button because its areas can be much larger. A failed attempt to set a source stays visible in the dialog.
+- Any failure (no tile for the extent, one unreadable tile, conflicting copies, source changed mid-load) leaves the live network untouched, sets the status and is kept in `App.walkTilesLastError()`. An unreadable listed tile is a failure, never an empty cell.
+- `App.roadNetworkTileRelease()` is the release id when the live network was built from tiles, else `""`. An active source does not prove the live network is from tiles (a stored download may be loaded), so status text uses this, not `isActive()`.
+- Stored records: id `tiles:<release_id>`, `source: "walk-tiles"`, `label: <release_id>`, `tileCells: ["col_row", …]`. One slot per release, so tile loads do not push out stored downloads. The id is deliberately not a `bbox:` id: `findCovering` matches those by rectangle, and a load of separate pieces must never claim the gap between them, so tile records are restored only at startup (with their cells) and never by area. `restoreNetworkCovering` also refuses any record that is not the active release while a source is active, so a stored download never silently replaces the FLM source. Records saved before per-point loading (`bbox:` id, no `tileCells`) are true rectangles and use the rectangle test.
+
+**Accepted differences from the tile contract** (deliberate; do not "fix"):
+
+| Contract | Tool |
+|---|---|
+| Join segments only where `from`/`to` node ids match | Joins wherever coordinates match to six decimals |
+| Use `len_ft` for cost | Recomputes length with `turf.distance` |
+| `dir` restricts direction | Walking is undirected (Denver has no one-way segments) |
+| Snap limit 500 ft | 500 m, with the panel's 50 ft default |
+| Default speed 2.8 mph | Panel default stays 3.1 mph; the dialog shows 2.8 and the user sets speed per run |
+
+**Tests.** Golden `test/cases/walk-tiles.mjs` (fixture release in `test/fixtures/walk-tiles/fixture-release/`); behaviour `test/browser/walk-tiles.test.mjs`. The directory-handle picker cannot run headless and is checked by hand. Design record and progress log: `docs/flm-walk-tiles-plan.md` (moves to `docs/archive/` once the manual check with real Denver tiles is done).
+
+## CDOT road layers: cdot-roads.js (`window.CdotRoads`) and cdot-source.js (`App.cdotSource`)
+
+A fourth street source beside the Overpass download, the GeoJSON import and FLM tiles: the Colorado DOT public
+ArcGIS FeatureServer (`https://dtdapps.codot.gov/server/rest/services/Webapps/open_data_sde/FeatureServer`),
+queried live. Exists for comparison runs: CDOT layers are road centerlines only (no sidewalks, paths or
+pedestrian bridges). Plan and decisions: `docs/cdot-roads-plan.md`; source brief
+`docs/cdot-rest-source-design-brief.md` (classification table in its section 4 is lead-approved; changing it
+needs the lead again).
+
+- **Layers.** 14 Local Roads and 17 Major Roads (on by default; already split at intersections, endpoints
+  shared) and 7 Highways (off; its lines do not join 14/17). Classes are matched on the leading digit of
+  `FUNCCLASSID` / `FUNCCLASS` (CDOT writes `"7  Local"` with two spaces); layer 7 `ACCESS_` `F-W`/`E-X` wins
+  over `FUNCCLASS`. Mapped to OSM `highway` values with `foot: ""`, so `isPedForbidden` stays the one
+  walkability rule (freeways map to `motorway`/`trunk` and are blocked).
+- **`window.CdotRoads`** (pure, ES5, golden-tested in `test/cases/cdot-roads.mjs`): `SERVICE`, `PAGE_SIZE`
+  (2000, the server's maxRecordCount), `LAYERS`, `pageUrl(layer, bbox, offset)` (throws for an unknown layer
+  or bad bbox), `hasMore(page)` (`exceededTransferLimit` top-level or under `properties`),
+  `validatePage(page)`, `classify(layer, props)`, `toRoadGeoJSON([{layerId, features}])` (dedupes by layer +
+  `OBJECTID`; report `{perLayer, unclassified, duplicates, skipped}`). `wayId = layer * 1e10 + OBJECTID`: numeric
+  for the exclusion set, and far above real OSM way ids (~1.4e9) because exclusions persist across loads.
+  `cdotId` `"<layer>/<OBJECTID>"` and `gisId` are kept for display/export.
+- **`App.cdotSource`**: `isActive`, `layers`, `layersKey` (string sort: `"14+17"`, `"14+17+7"`), `setActive`,
+  `setLayers` (refuses an empty set), `fetchExtent(boxes, progress)` and `restore`, `renderInfo`. Setting
+  `{active, layers}` in localStorage `mat-cdot-source` (per browser, never the session file). `fetchExtent`
+  never rejects: layers in parallel, boxes and pages sequential within a layer, the next offset advances by
+  the features the page held, 60 s timeout per page (`_timeoutMs`), 50-page cap per layer per box, stops on the
+  first non-2xx, unreadable JSON, ArcGIS `{error}` body or `validatePage` failure. Error texts: brief section 7.
+  Fires document events `street-source-changed` and `walk-tiles-source-changed`.
+- **Exactly one non-Overpass source.** `App.walkTilesSource.isActive()` is false while CDOT is active; the tile
+  choice is kept (`hasSource()`), and its dialog says it is paused. Choosing a tile source turns CDOT off.
+- **road-network.js.** `App.fetchRoadNetworkForExtent(extent, pieces)`: tiles branch, then CDOT
+  (`loadNetworkFromCdot`, no stored-network lookup first), then Overpass. A CDOT load queries one box per
+  piece, keeps `_loadedBoxes` and `_cdotLayers`, outlines the union of boxes (display only), and saves record
+  `cdot:<layersKey>` (one slot per layer set, never area-matched) with `boxes`. `App.roadNetworkCoversExtent`
+  answers for CDOT by boxes: every needed box inside one loaded box, and the layers must match the current
+  setting. `restoreNetworkCovering` only restores a record from the source a fresh load would use (and the same
+  tile release / layer set). `App.roadNetworkSource()` returns `"overpass" | "file" | "walk-tiles" | "cdot" |
+  null`; also `App.roadNetworkCdotLayers()`, `App.cdotLastError()`, `App.loadRoadNetworkFromCdot`,
+  `App.ROAD_SNAP_MAX_KM`.
+- **Walkshed** downloads CDOT streets on Calculate (like tiles); "Download CDOT streets for this area" stays
+  as a fallback and holds `_running` so a Calculate press meanwhile does not start a second download. Each
+  point's box radius is walk speed x largest minutes + `App.ROAD_SNAP_MAX_KM` for every source.
+  Transit Travelshed uses one rectangle.
+- **Known limits.** A run that needs one more box re-downloads every box; a needed box straddling two loaded
+  boxes counts as uncovered (it reloads). Browser CORS from GitHub Pages is unverified until deployed.
+  Test: `test/browser/cdot-source.test.mjs` (CDOT host answered from `test/fixtures/cdot/`).
 
 ## network-connectors.js
 App-level connector orchestration (see `docs/archive/network-connectors-plan.md`).

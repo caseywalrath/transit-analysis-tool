@@ -83,6 +83,7 @@
               <div class="add-data-heading">LOCAL</div>
               <button id="import-file-btn">Spatial Data</button>
               <button id="ad-gpkg">GeoPackage (.gpkg)…</button>
+              <button id="ad-walk-tiles">FLM Walk Tiles…</button>
               <button id="gtfs-load-btn">GTFS Feed</button>
               <button id="lodes-employment-btn">LODES Employment</button>
               <div class="add-data-divider"></div>
@@ -91,6 +92,7 @@
               <button data-osm="transit_routes">Transit Routes (Open Street Maps)</button>
               <button id="osm-poi-btn">Points of Interest (OSM)</button>
               <button id="road-net-download">Area Roads for Street Routing</button>
+              <button id="ad-cdot-roads">CDOT Roads for Street Routing…</button>
               <button id="muni-boundaries-btn">Municipal Boundaries</button>
             </div>
             <div id="osm-poi-popup" style="display:none;">
@@ -120,10 +122,51 @@
                 <button id="lodes-popup-add">Add to Map</button>
               </div>
             </div>
+            <div id="walk-tiles-popup" style="display:none;">
+              <div class="lodes-popup-header">
+                <span>FLM Walk Tiles</span>
+                <button id="walk-tiles-popup-close" class="lodes-popup-x" aria-label="Close FLM walk tiles dialog">&#10005;</button>
+              </div>
+              <div class="lodes-popup-body">
+                <label class="lodes-popup-label" for="wtUrl">Tile folder address (URL)</label>
+                <input id="wtUrl" type="text" class="rf-number-input" style="width:100%;box-sizing:border-box;" placeholder="http://localhost:8000/walk-tiles/&lt;release-id&gt;" />
+                <div class="lodes-popup-footer" style="padding:6px 0 0;border-top:none;">
+                  <button id="wtUseUrl" type="button">Use this address</button>
+                </div>
+                <div class="lodes-popup-label" style="text-align:center;margin:8px 0 2px;">or</div>
+                <div class="lodes-popup-footer" style="padding:0;border-top:none;">
+                  <button id="wtPickFolder" type="button">Choose folder…</button>
+                </div>
+                <div class="lodes-loaded-info">A chosen folder is remembered only until the page is reloaded; an address is remembered in this browser.</div>
+                <div id="wtInfo" class="lodes-loaded-info"></div>
+              </div>
+              <div class="lodes-popup-footer">
+                <button id="wtClear" type="button">Forget source</button>
+              </div>
+            </div>
+            <div id="cdot-popup" style="display:none;">
+              <div class="lodes-popup-header">
+                <span>CDOT Road Layers</span>
+                <button id="cdot-popup-close" class="lodes-popup-x" aria-label="Close CDOT road layers dialog">&#10005;</button>
+              </div>
+              <div class="lodes-popup-body">
+                <div class="lodes-loaded-info">Street downloads will come from CDOT's public road layers instead of OpenStreetMap. CDOT layers contain road centerlines only: no sidewalks, paths or pedestrian bridges.</div>
+                <label class="lodes-popup-label" style="display:block;"><input type="checkbox" id="cdotLayer14" checked> Local Roads (layer 14)</label>
+                <label class="lodes-popup-label" style="display:block;"><input type="checkbox" id="cdotLayer17" checked> Major Roads (layer 17)</label>
+                <label class="lodes-popup-label" style="display:block;"><input type="checkbox" id="cdotLayer7"> Highways (layer 7)</label>
+                <div class="lodes-loaded-info">Highway lines do not connect to local streets in this data. Turn on only to inspect them.</div>
+                <div id="cdotLayerMsg" class="lodes-loaded-info" style="display:none;"></div>
+                <div class="lodes-popup-footer" style="padding:6px 0 0;border-top:none;">
+                  <button id="cdotUse" type="button">Use CDOT for street downloads</button>
+                </div>
+                <div id="cdotInfo" class="lodes-loaded-info"></div>
+              </div>
+            </div>
             <input id="lodesFile" type="file" accept=".gz,.csv.gz" style="display:none" />
             <input id="fp-import-file" type="file" accept=".json,.csv,.kml,.kmz,.shp,.zip,.geojson,.gpkg" style="display:none" />
             <input id="gtfs-file-input" type="file" accept=".zip" style="display:none" />
             <input id="ad-gpkg-file" type="file" accept=".gpkg" style="display:none" />
+            <input id="wtFolderInput" type="file" webkitdirectory style="display:none" />
           </div>
           <div class="export-wrapper">
             <button id="export-btn" title="Export" aria-label="Export data">
@@ -399,10 +442,14 @@
     <script src="js/core/map.js"></script>
     <script src="js/core/search.js"></script>
     <script src="js/core/walk-cost.js"></script>
+    <script src="js/core/walk-tiles.js"></script>
+    <script src="js/core/cdot-roads.js"></script>
     <script src="js/core/layer-palettes.js"></script>
     <script src="js/core/network-store.js"></script>
     <script src="js/core/gtfs-store.js"></script>
     <script src="js/core/gpkg-store.js"></script>
+    <script src="js/core/walk-tiles-source.js"></script>
+    <script src="js/core/cdot-source.js"></script>
     <script src="js/core/road-network.js"></script>
     <script src="js/core/network-connectors.js"></script>
     <script src="js/core/walk-audit.js"></script>

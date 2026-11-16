@@ -1,0 +1,32 @@
+{
+  "col": 7500,
+  "row": 12975,
+  "segments": [
+    {
+      "id": "way/2/segment/0",
+      "from": "n2",
+      "to": "n3",
+      "len_ft": 1123.1,
+      "dir": "both",
+      "coords": [[-105.002, 39.755], [-104.998, 39.755]],
+      "way_id": "2",
+      "hwy": "residential",
+      "name": "B Street",
+      "sidewalk": "",
+      "footway": ""
+    },
+    {
+      "id": "way/3/segment/0",
+      "from": "n3",
+      "to": "n4",
+      "len_ft": 1123.1,
+      "dir": "both",
+      "coords": [[-104.998, 39.755], [-104.994, 39.755]],
+      "way_id": "3",
+      "hwy": "trunk",
+      "name": "C Street",
+      "sidewalk": "",
+      "footway": ""
+    }
+  ]
+}
