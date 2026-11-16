@@ -105,3 +105,15 @@ requests for Transit Travelshed; the single multi-part query (1.2).
 
 - 2026-11-16: plan written from the brief; lead approved automatic load on Calculate, per-point requests,
   and the box size "walk reach plus snapping distance".
+- 2026-11-16, Phases 1 and 2 (Haiku, high, in parallel on disjoint files). Phase 1: `js/core/cdot-roads.js`
+  (`window.CdotRoads`: SERVICE, PAGE_SIZE, LAYERS, pageUrl, hasMore, validatePage, classify, toRoadGeoJSON),
+  fixtures `test/fixtures/cdot/` fetched live and trimmed, 32 golden cases. Accepted deviations: test-only
+  `CdotRoads._test.pageUrlError` behind a bare `__MAT_TEST__` check; extra validatePage text "feature <i> has
+  malformed coordinates"; `report.skipped`; the layer-17 class-2 sample (PENA BLVD INBOUND, OBJECTID 176) comes
+  from a wider box because the brief's box had none; page14-2 repeats OBJECTID 54875 on purpose. Live data
+  matched brief section 2. Phase 2: Add Data entry `#ad-cdot-roads`, dialog `#cdot-popup` (ids `cdotLayer14/17/7`,
+  `cdotLayerMsg`, `cdotUse`, `cdotInfo`, `cdot-popup-close`), CSS rule, script tag for `cdot-roads.js`; no tag
+  yet for `cdot-source.js`. Review: diff read in full by the orchestrator; the formal code-review pass is run
+  once over Phases 1 to 4 together at the Phase 4 gate.
+- Deviation from 1.4 (orchestrator): no stored "pause" flag. `App.walkTilesSource.isActive()` is false while
+  `App.cdotSource.isActive()` is true; the tile choice stays. Choosing a tile source turns CDOT off.

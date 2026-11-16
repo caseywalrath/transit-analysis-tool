@@ -1,0 +1,53 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 5377,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.52182519845458,
+            39.74114425748588
+          ],
+          [
+            -105.52126643994218,
+            39.74101486756303
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 5377,
+        "ROUTE": "070A",
+        "FUNCCLASS": "1  Interstate",
+        "ACCESS_": "F-W: Interstate System, Freeway Facils",
+        "ROUTESIGN": "I"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 48706,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.82029416601735,
+            39.95681763538826
+          ],
+          [
+            -105.81985783248166,
+            39.95553772607939
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 48706,
+        "ROUTE": "040A",
+        "FUNCCLASS": "3  Principal Arterial - Other",
+        "ACCESS_": "R-A: Regional Highway",
+        "ROUTESIGN": "U.S."
+      }
+    }
+  ]
+}

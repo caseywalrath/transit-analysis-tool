@@ -1,0 +1,440 @@
+{
+  "page-url-14-offset-0": "https://dtdapps.codot.gov/server/rest/services/Webapps/open_data_sde/FeatureServer/14/query?where=1%3D1&geometry=-105.015000%2C39.740000%2C-104.995000%2C39.755000&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CGISID%2CROUTENAME%2CFUNCCLASSID&outSR=4326&returnGeometry=true&returnZ=false&returnM=false&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000&f=geojson",
+  "page-url-14-offset-2000": "https://dtdapps.codot.gov/server/rest/services/Webapps/open_data_sde/FeatureServer/14/query?where=1%3D1&geometry=-105.015000%2C39.740000%2C-104.995000%2C39.755000&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CGISID%2CROUTENAME%2CFUNCCLASSID&outSR=4326&returnGeometry=true&returnZ=false&returnM=false&orderByFields=OBJECTID&resultOffset=2000&resultRecordCount=2000&f=geojson",
+  "page-url-throws-layer-99": "Unknown CDOT layer 99",
+  "page-url-throws-bbox-3": "Invalid bbox",
+  "page-url-valid-no-error": null,
+  "has-more-flagged-page": true,
+  "has-more-last-page": false,
+  "has-more-under-properties": true,
+  "has-more-null": false,
+  "validate-page-14a-ok": {
+    "ok": true
+  },
+  "validate-page-metre-coordinate": {
+    "ok": false,
+    "error": "feature 0 has a coordinate outside longitude/latitude range"
+  },
+  "validate-page-multiline-ok": {
+    "ok": true
+  },
+  "validate-page-null": {
+    "ok": false,
+    "error": "not a FeatureCollection"
+  },
+  "classify-14-local": {
+    "highway": "residential",
+    "foot": ""
+  },
+  "classify-14-empty-object": {
+    "highway": "unclassified",
+    "foot": ""
+  },
+  "classify-14-null-properties": {
+    "highway": "unclassified",
+    "foot": ""
+  },
+  "classify-17-class-2": {
+    "highway": "trunk",
+    "foot": ""
+  },
+  "classify-17-class-3": {
+    "highway": "primary",
+    "foot": ""
+  },
+  "classify-17-class-4": {
+    "highway": "secondary",
+    "foot": ""
+  },
+  "classify-17-class-5": {
+    "highway": "tertiary",
+    "foot": ""
+  },
+  "classify-17-class-6": {
+    "highway": "tertiary",
+    "foot": ""
+  },
+  "classify-7-access-fw-wins": {
+    "highway": "motorway",
+    "foot": ""
+  },
+  "classify-7-interstate": {
+    "highway": "motorway",
+    "foot": ""
+  },
+  "classify-7-rural-highway": {
+    "highway": "primary",
+    "foot": ""
+  },
+  "classify-7-access-ex-wins": {
+    "highway": "trunk",
+    "foot": ""
+  },
+  "classify-7-fwys-class-2": {
+    "highway": "trunk",
+    "foot": ""
+  },
+  "classify-7-unknown-class": {
+    "highway": "unclassified",
+    "foot": ""
+  },
+  "to-geojson-merged-dedupe": {
+    "geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.00745432162181,
+                39.74958284069589
+              ],
+              [
+                -105.00750200562939,
+                39.74975737747628
+              ],
+              [
+                -105.00673856906671,
+                39.75009117200771
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "residential",
+            "foot": "",
+            "name": "WEWATTA ST",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1400054875,
+            "cdotId": "14/54875",
+            "gisId": "20000WEWATTA  ST  677",
+            "cdotClass": "7  Local",
+            "layerId": 14
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.01403660100577,
+                39.742426376908206
+              ],
+              [
+                -105.0139893558892,
+                39.74229273085214
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "residential",
+            "foot": "",
+            "name": "1ST ST",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1400054924,
+            "cdotId": "14/54924",
+            "gisId": "200001ST      ST 1396",
+            "cdotClass": "7  Local",
+            "layerId": 14
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.0082261628193,
+                39.74011211146373
+              ],
+              [
+                -105.00822849508263,
+                39.74010808148247
+              ],
+              [
+                -105.00836511020587,
+                39.74002491537415
+              ],
+              [
+                -105.00852577158675,
+                39.73992986174832
+              ],
+              [
+                -105.0086245131519,
+                39.73988889404421
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "residential",
+            "foot": "",
+            "name": "W COLFAX AVE",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1400055584,
+            "cdotId": "14/55584",
+            "gisId": "20000WCOLFAX  AV 1561",
+            "cdotClass": "7  Local",
+            "layerId": 14
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.00478854191256,
+                39.750230254407825
+              ],
+              [
+                -105.00382269292544,
+                39.75098771067312
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "residential",
+            "foot": "",
+            "name": "WEWATTA ST",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1400182818,
+            "cdotId": "14/182818",
+            "gisId": "20000WEWATTA  ST 1301",
+            "cdotClass": "7  Local",
+            "layerId": 14
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.00947151447158,
+                39.745013564860685
+              ],
+              [
+                -105.00881350260913,
+                39.74550169701358
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "primary",
+            "foot": "",
+            "name": "AURARIA PKWY",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1700000210,
+            "cdotId": "17/210",
+            "gisId": "20000AURARIAS PY  701",
+            "cdotClass": "3  Principal Arterial - Other",
+            "layerId": 17
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.00265760722766,
+                39.74763368126112
+              ],
+              [
+                -105.00262423781771,
+                39.74763811053175
+              ],
+              [
+                -105.00251204622043,
+                39.74766200580276
+              ],
+              [
+                -105.00229224536602,
+                39.74770195367841
+              ],
+              [
+                -105.00154525263792,
+                39.74783771927492
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "secondary",
+            "foot": "",
+            "name": "MARKET ST",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1700005050,
+            "cdotId": "17/5050",
+            "gisId": "20000MARKET   ST 1301",
+            "cdotClass": "4  Minor Arterial",
+            "layerId": 17
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -104.80238614145348,
+                39.76914784084067
+              ],
+              [
+                -104.80191850633229,
+                39.769047324941695
+              ],
+              [
+                -104.80124836643539,
+                39.768848851307595
+              ],
+              [
+                -104.80068491829802,
+                39.76856984184901
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "trunk",
+            "foot": "",
+            "name": "PENA BLVD INBOUND",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 1700000176,
+            "cdotId": "17/176",
+            "gisId": "20000PENA     BD 3802",
+            "cdotClass": "2  Principal Arterial - Fwys and Expwys",
+            "layerId": 17
+          }
+        }
+      ]
+    },
+    "report": {
+      "perLayer": {
+        "14": 4,
+        "17": 3
+      },
+      "unclassified": 0,
+      "duplicates": 1,
+      "skipped": 0
+    }
+  },
+  "to-geojson-string-input": {
+    "geojson": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "report": {
+      "perLayer": {},
+      "unclassified": 0,
+      "duplicates": 0,
+      "skipped": 0
+    }
+  },
+  "to-geojson-empty-layer-key": {
+    "geojson": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "report": {
+      "perLayer": {
+        "7": 0
+      },
+      "unclassified": 0,
+      "duplicates": 0,
+      "skipped": 0
+    }
+  },
+  "to-geojson-skips-invalid": {
+    "geojson": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "report": {
+      "perLayer": {
+        "14": 0
+      },
+      "unclassified": 0,
+      "duplicates": 0,
+      "skipped": 2
+    }
+  },
+  "to-geojson-layer-7-features": {
+    "geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.52182519845458,
+                39.74114425748588
+              ],
+              [
+                -105.52126643994218,
+                39.74101486756303
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "motorway",
+            "foot": "",
+            "name": "070A",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 700005377,
+            "cdotId": "7/5377",
+            "gisId": "",
+            "cdotClass": "1  Interstate",
+            "layerId": 7
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -105.82029416601735,
+                39.95681763538826
+              ],
+              [
+                -105.81985783248166,
+                39.95553772607939
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "primary",
+            "foot": "",
+            "name": "040A",
+            "sidewalk": "",
+            "footway": "",
+            "wayId": 700048706,
+            "cdotId": "7/48706",
+            "gisId": "",
+            "cdotClass": "3  Principal Arterial - Other",
+            "layerId": 7
+          }
+        }
+      ]
+    },
+    "report": {
+      "perLayer": {
+        "7": 2
+      },
+      "unclassified": 0,
+      "duplicates": 0,
+      "skipped": 0
+    }
+  }
+}

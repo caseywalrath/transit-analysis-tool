@@ -1,0 +1,94 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 210,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.00947151447158,
+            39.745013564860685
+          ],
+          [
+            -105.00881350260913,
+            39.74550169701358
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 210,
+        "GISID": "20000AURARIAS PY  701",
+        "ROUTENAME": "AURARIA PKWY",
+        "FUNCCLASSID": "3  Principal Arterial - Other"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 5050,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -105.00265760722766,
+            39.74763368126112
+          ],
+          [
+            -105.00262423781771,
+            39.74763811053175
+          ],
+          [
+            -105.00251204622043,
+            39.74766200580276
+          ],
+          [
+            -105.00229224536602,
+            39.74770195367841
+          ],
+          [
+            -105.00154525263792,
+            39.74783771927492
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 5050,
+        "GISID": "20000MARKET   ST 1301",
+        "ROUTENAME": "MARKET ST",
+        "FUNCCLASSID": "4  Minor Arterial"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 176,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -104.80238614145348,
+            39.76914784084067
+          ],
+          [
+            -104.80191850633229,
+            39.769047324941695
+          ],
+          [
+            -104.80124836643539,
+            39.768848851307595
+          ],
+          [
+            -104.80068491829802,
+            39.76856984184901
+          ]
+        ]
+      },
+      "properties": {
+        "OBJECTID": 176,
+        "GISID": "20000PENA     BD 3802",
+        "ROUTENAME": "PENA BLVD INBOUND",
+        "FUNCCLASSID": "2  Principal Arterial - Fwys and Expwys"
+      }
+    }
+  ]
+}

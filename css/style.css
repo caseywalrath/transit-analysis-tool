@@ -1547,6 +1547,18 @@ body.dark-mode .pm-title-text { color: #f7fafc; }
 }
 #walk-tiles-popup #wtInfo ul { margin: 4px 0 0; padding-left: 16px; }
 #walk-tiles-popup #wtInfo a { color: var(--accent); }
+#cdot-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  width: 320px;
+  font-size: var(--text-sm);
+}
 
 /* ---- OSM POI category picker ---- */
 #osm-poi-popup {
