@@ -659,9 +659,9 @@
       'living_street|pedestrian|footway|path|steps|cycleway)$"]';
     // One statement per box inside one union: Overpass returns a way once even
     // when two boxes both contain it.
-    var parts = piecewise
-      ? boxes.map(function (b) { return wayFilter + '(' + clampLat(b[1]) + ',' + b[0] + ',' + clampLat(b[3]) + ',' + b[2] + ');'; })
-      : [wayFilter + '(' + bounds.s + ',' + bounds.w + ',' + bounds.n + ',' + bounds.e + ');'];
+    var parts = (piecewise ? boxes : [[bounds.w, bounds.s, bounds.e, bounds.n]]).map(function (b) {
+      return wayFilter + '(' + clampLat(b[1]) + ',' + b[0] + ',' + clampLat(b[3]) + ',' + b[2] + ');';
+    });
     var query = '[out:json][timeout:60];(' + parts.join('') + ');out geom;';
 
     App.setStatus("Downloading road network\u2026");
@@ -812,6 +812,20 @@
       try { out = turf.union(out, poly) || out; } catch (e) { /* keep what we have */ }
     }
     return out;
+  }
+
+  // True when every needed box lies inside one loaded box.
+  function boxesContain(loaded, need) {
+    if (!Array.isArray(loaded) || !loaded.length || !Array.isArray(need) || !need.length) return false;
+    for (var n = 0; n < need.length; n++) {
+      var b = need[n], inside = false;
+      for (var j = 0; j < loaded.length && !inside; j++) {
+        var L = loaded[j];
+        inside = b[0] >= L[0] && b[1] >= L[1] && b[2] <= L[2] && b[3] <= L[3];
+      }
+      if (!inside) return false;
+    }
+    return true;
   }
 
   function tileOutline(boxes) {
@@ -1096,10 +1110,18 @@
   // download extent contains `extentPolygon`. Only called when the live network
   // is missing or doesn't cover the extent, so replacing it is the point.
   // Returns Promise<boolean> — false means the caller should download.
-  async function restoreNetworkCovering(extentPolygon) {
+  // `pieces` (optional, one box per point): a piecewise OpenStreetMap record is
+  // never area-matched by the store, so the newest record is also tried when
+  // its boxes hold every piece (the "removed from the map, run again" case).
+  async function restoreNetworkCovering(extentPolygon, pieces) {
     if (!extentPolygon || !App.networkStore || !App.networkStore.supported()) return false;
     var rec = null;
     try { rec = await App.networkStore.findCovering(turf.bbox(extentPolygon)); } catch (e) { rec = null; }
+    if (!rec && Array.isArray(pieces) && pieces.length && !tileSourceActive() && !cdotSourceActive()) {
+      var last = null;
+      try { last = await App.networkStore.latest(); } catch (e) { last = null; }
+      if (last && last.source === "overpass" && boxesContain(last.boxes, pieces)) rec = last;
+    }
     // The record must come from the source a fresh load would use (and the same
     // release or layers): a comparison between sources is meaningless if they
     // swap silently.
@@ -1598,17 +1620,7 @@
     if (_loadedBoxes) {
       // Other layers ticked since this load: not the network the run asks for.
       if (_networkSource === "cdot" && cdotSourceActive() && _cdotLayers !== App.cdotSource.layersKey()) return false;
-      var need = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
-      if (!need.length) return false;
-      for (var n = 0; n < need.length; n++) {
-        var b = need[n], inside = false;
-        for (var j = 0; j < _loadedBoxes.length && !inside; j++) {
-          var L = _loadedBoxes[j];
-          inside = b[0] >= L[0] && b[1] >= L[1] && b[2] <= L[2] && b[3] <= L[3];
-        }
-        if (!inside) return false;
-      }
-      return true;
+      return boxesContain(_loadedBoxes, (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)]);
     }
     if (_tileCells && typeof WalkTiles !== "undefined") {
       var boxes = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];

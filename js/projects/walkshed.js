@@ -1028,7 +1028,7 @@
         };
         _running = true;
         setStatus(tiles ? (cdotActive() ? "Downloading CDOT streets\u2026" : "Loading FLM tiles\u2026") : "Loading stored streets\u2026", "running");
-        (tiles ? App.fetchRoadNetworkForExtent(extent, pieces) : App.restoreNetworkCovering(extent)).then(function (ok) {
+        (tiles ? App.fetchRoadNetworkForExtent(extent, pieces) : App.restoreNetworkCovering(extent, pieces)).then(function (ok) {
           _running = false;
           if (ok) {
             if (typeof App.notifyProject === "function") App.notifyProject();

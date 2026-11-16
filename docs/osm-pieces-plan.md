@@ -1,6 +1,6 @@
 # Plan: OpenStreetMap streets downloaded per point, not for the rectangle between points
 
-Status: planned, not started. Branch `claude/jolly-hamilton-64dask`, base commit `6663b69`.
+Status: implemented; awaiting the lead's live check. Branch `claude/jolly-hamilton-64dask`, base commit `6663b69`.
 Follow `CLAUDE.md` and `AGENTS.md`. Two Haiku cards (effort `high`), then an Opus review gate and docs.
 Every anchor below was checked against the code at `6663b69`.
 
@@ -212,3 +212,15 @@ selection of points cannot be driven.
 ## Progress log
 
 - 2026-11-16: plan written from the code at `6663b69`.
+- 2026-11-16, Card A (Haiku, high): all steps as written; `usePieces` placed above the comment of
+  `App.fetchRoadNetworkForExtent` rather than between comment and function. Commit `3a2bf4c`.
+- 2026-11-16, Card B (Haiku, high): `test/browser/osm-pieces.test.mjs`, 12 checks, three clean runs; clears the
+  request list just before the download click.
+- Review gate (code-review, high). Fixed by the orchestrator: a removed piecewise network could not come back on
+  Calculate (store never area-matches `osm-boxes:`) → `restoreNetworkCovering(extent, pieces)` also tries the
+  newest record by its boxes, Walkshed passes its pieces (one-line change to `js/projects/walkshed.js`, a
+  deviation from "no walkshed diff"); shared `boxesContain` helper; one query formatter for both paths (the
+  single rectangle now clamps latitude too); test check 13 for Remove-then-restore, last check renamed
+  "no CDOT request". Accepted, not fixed: store slot use, same-outer-rectangle id overwrite, the hole between
+  points for routes and the sidewalk audit, overlapping boxes counted twice in the half-area rule (only makes
+  it fall back to a rectangle), `clearRoadDownloadArea` skipping the Walkshed check (as for tiles/CDOT).
