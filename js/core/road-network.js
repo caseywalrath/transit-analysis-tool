@@ -36,7 +36,7 @@
   var _lastTileError = ""; // user text of the last failed tile load, "" after a success
   var _tileCells = null;  // lookup "col_row" -> true of the cells the live tile load asked for; null for every other network
   var _networkSource = null; // "overpass" | "file" | "walk-tiles" | "cdot" | null — where the live network came from
-  var _cdotBoxes = null;  // [[w,s,e,n], ...] the boxes the live CDOT load asked for; null for every other network
+  var _loadedBoxes = null;  // [[w,s,e,n], ...] the boxes a piecewise load (CDOT, or OpenStreetMap by point) asked for; null otherwise
   var _cdotLayers = "";   // layersKey of the live CDOT network
   var _lastCdotError = "";
 
@@ -628,12 +628,19 @@
   //   bounds        : { s, w, n, e } — Overpass query bbox (south, west, north, east)
   //   extentPolygon : Feature<Polygon> — recorded as the downloaded extent (drives
   //                   the on-map outline and App.getRoadDownloadExtent()).
+  //   boxes         : optional [[w,s,e,n], ...]; when given, one query statement per box replaces bounds
   // REPLACES the loaded network wholesale and bumps _networkEpoch via
   // rebuildNetwork(), so epoch-keyed module caches invalidate. Returns Promise<boolean>.
-  async function fetchNetworkForBounds(bounds, extentPolygon) {
+  async function fetchNetworkForBounds(bounds, extentPolygon, boxes) {
+    var piecewise = Array.isArray(boxes) && boxes.length > 0;
     // Guard against very large downloads. Overpass file size is unknowable up front,
     // so gate on the extent area (km\u00b2): warn and let the user cancel above the threshold.
-    var areaKm2 = turf.area(extentPolygon) / 1e6;
+    var areaKm2 = 0;
+    if (piecewise) {
+      for (var bi = 0; bi < boxes.length; bi++) areaKm2 += turf.area(turf.bboxPolygon(boxes[bi])) / 1e6;
+    } else {
+      areaKm2 = turf.area(extentPolygon) / 1e6;
+    }
     if (areaKm2 > MAX_AREA_WARN_KM2) {
       var proceed = window.confirm(
         "This will download roads for ~" + Math.round(areaKm2).toLocaleString() + " km\u00b2.\n\n" +
@@ -646,13 +653,16 @@
 
     // Vehicle roads AND pedestrian-only ways, so walksheds follow real walking
     // connections; buildGraph() tags each class pedBlocked/carBlocked.
-    var query = '[out:json][timeout:60];(' +
-      'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|' +
+    var wayFilter = 'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|' +
       'residential|unclassified|service|motorway_link|trunk_link|' +
       'primary_link|secondary_link|tertiary_link|' +
-      'living_street|pedestrian|footway|path|steps|cycleway)$"](' +
-      bounds.s + ',' + bounds.w + ',' + bounds.n + ',' + bounds.e + ');' +
-      ');out geom;';
+      'living_street|pedestrian|footway|path|steps|cycleway)$"]';
+    // One statement per box inside one union: Overpass returns a way once even
+    // when two boxes both contain it.
+    var parts = piecewise
+      ? boxes.map(function (b) { return wayFilter + '(' + clampLat(b[1]) + ',' + b[0] + ',' + clampLat(b[3]) + ',' + b[2] + ');'; })
+      : [wayFilter + '(' + bounds.s + ',' + bounds.w + ',' + bounds.n + ',' + bounds.e + ');'];
+    var query = '[out:json][timeout:60];(' + parts.join('') + ');out geom;';
 
     App.setStatus("Downloading road network\u2026");
 
@@ -738,15 +748,21 @@
 
       _roadGeoJSON = geojson;
       rebuildNetwork();
-      _downloadedBboxPolygon = extentPolygon; // record the fetched extent for the on-map outline
+      _downloadedBboxPolygon = piecewise ? boxesOutline(boxes) : extentPolygon; // on-map outline
       _tileRelease = "";
       _tileCells = null;
       _networkSource = "overpass";
-      _cdotBoxes = null;
+      _loadedBoxes = piecewise ? boxes.map(function (b) { return b.slice(); }) : null;
       _cdotLayers = "";
 
       updateUI(true);
-      persistNetwork(extentCacheId(extentPolygon), "overpass", "");
+      // A piecewise download must never be area-matched (it would claim the gap
+      // between points), so it is stored under a non-"bbox:" id.
+      if (piecewise) {
+        persistNetwork("osm-boxes:" + extentCacheId(extentPolygon).slice(5), "overpass", "", null, _loadedBoxes);
+      } else {
+        persistNetwork(extentCacheId(extentPolygon), "overpass", "");
+      }
       App.setStatus(_featureCount.toLocaleString() + " road segments loaded \u2014 local routing enabled");
       return true;
     } catch (e) {
@@ -786,7 +802,7 @@
   }
 
   // Outline of a piecewise load: the union of each rectangle. Display only.
-  // Coverage is answered from _tileCells / _cdotBoxes, so a union that
+  // Coverage is answered from _tileCells / _loadedBoxes, so a union that
   // fails can only leave the outline incomplete.
   function boxesOutline(rects) {
     var out = null;
@@ -859,7 +875,7 @@
       _downloadedBboxPolygon = tileOutline(boxes);
       _tileRelease = rel;
       _networkSource = "walk-tiles";
-      _cdotBoxes = null;
+      _loadedBoxes = null;
       _cdotLayers = "";
       _lastTileError = "";
       updateUI(true);
@@ -905,8 +921,8 @@
 
       _roadGeoJSON = res.geojson;
       rebuildNetwork();
-      _cdotBoxes = boxes.map(function (b) { return b.slice(); });
-      _downloadedBboxPolygon = boxesOutline(_cdotBoxes);
+      _loadedBoxes = boxes.map(function (b) { return b.slice(); });
+      _downloadedBboxPolygon = boxesOutline(_loadedBoxes);
       _tileRelease = "";
       _tileCells = null;
       _networkSource = "cdot";
@@ -915,7 +931,7 @@
       updateUI(true);
       // Not a "bbox:" id: network-store matches those by rectangle, so a load of
       // separate boxes must never claim the gap between them.
-      persistNetwork("cdot:" + key, "cdot", key, null, _cdotBoxes);
+      persistNetwork("cdot:" + key, "cdot", key, null, _loadedBoxes);
       var msg = nFeatures.toLocaleString() + " CDOT road segments loaded (layers " + key + ") \u2014 local routing enabled";
       var unclassified = res.report && res.report.unclassified;
       if (unclassified > 0) {
@@ -946,7 +962,7 @@
         _tileRelease = "";
         _tileCells = null;
         _networkSource = "file";
-        _cdotBoxes = null;
+        _loadedBoxes = null;
         _cdotLayers = "";
         updateUI(true);
         persistNetwork("file:" + file.name, "file", file.name);
@@ -1046,7 +1062,7 @@
     _tileRelease = rec.source === "walk-tiles" ? (rec.label || "") : "";
     _tileCells = (rec.source === "walk-tiles" && Array.isArray(rec.tileCells)) ? cellLookup(rec.tileCells) : null;
     _networkSource = rec.source || null;
-    _cdotBoxes = (rec.source === "cdot" && Array.isArray(rec.boxes)) ? rec.boxes : null;
+    _loadedBoxes = ((rec.source === "cdot" || rec.source === "overpass") && Array.isArray(rec.boxes)) ? rec.boxes : null;
     _cdotLayers = rec.source === "cdot" ? (rec.label || "") : "";
     updateUI(true);
 
@@ -1110,7 +1126,7 @@
     _tileRelease = "";
     _tileCells = null;
     _networkSource = null;
-    _cdotBoxes = null;
+    _loadedBoxes = null;
     _cdotLayers = "";
     _lastOverlayReport = null; // _connectors/_connectorOpts persist — reapplied on next load
     updateUI();
@@ -1575,18 +1591,19 @@
 
   // Are the streets this run needs loaded? A tile network answers by cells
   // (its outline can be several separate rectangles, which
-  // turf.booleanContains cannot test); any other network by its rectangle.
+  // turf.booleanContains cannot test); a CDOT or piecewise OpenStreetMap
+  // network answers by its boxes; any other network by its rectangle.
   App.roadNetworkCoversExtent = function (extentPolygon, pieces) {
     if (!_graph || !extentPolygon) return false;
-    if (_cdotBoxes) {
+    if (_loadedBoxes) {
       // Other layers ticked since this load: not the network the run asks for.
-      if (cdotSourceActive() && _cdotLayers !== App.cdotSource.layersKey()) return false;
+      if (_networkSource === "cdot" && cdotSourceActive() && _cdotLayers !== App.cdotSource.layersKey()) return false;
       var need = (Array.isArray(pieces) && pieces.length) ? pieces : [turf.bbox(extentPolygon)];
       if (!need.length) return false;
       for (var n = 0; n < need.length; n++) {
         var b = need[n], inside = false;
-        for (var j = 0; j < _cdotBoxes.length && !inside; j++) {
-          var L = _cdotBoxes[j];
+        for (var j = 0; j < _loadedBoxes.length && !inside; j++) {
+          var L = _loadedBoxes[j];
           inside = b[0] >= L[0] && b[1] >= L[1] && b[2] <= L[2] && b[3] <= L[3];
         }
         if (!inside) return false;
@@ -1606,6 +1623,16 @@
     try { return turf.booleanContains(_downloadedBboxPolygon, extentPolygon); } catch (e) { return false; }
   };
 
+  // Pieces only pay off when the points are far apart; otherwise one rectangle
+  // is as small and can be reused later by area.
+  function usePieces(extentPolygon, pieces) {
+    if (!Array.isArray(pieces) || pieces.length < 2) return false;
+    var whole = turf.area(turf.bboxPolygon(turf.bbox(extentPolygon)));
+    var sum = 0;
+    for (var i = 0; i < pieces.length; i++) sum += turf.area(turf.bboxPolygon(pieces[i]));
+    return sum < whole / 2;
+  }
+
   // Caller-supplied-extent download (e.g. Transit Travelshed); see fetchNetworkForBounds().
   // A stored network that already covers the extent is restored instead of
   // re-downloading — Overpass is slow and unreliable, and the user may have
@@ -1619,7 +1646,7 @@
     if (cdotSourceActive()) return loadNetworkFromCdot(extentPolygon, pieces);
     if (await restoreNetworkCovering(extentPolygon)) return true;
     var bb = turf.bbox(extentPolygon); // [w, s, e, n]
-    return fetchNetworkForBounds({ s: bb[1], w: bb[0], n: bb[3], e: bb[2] }, turf.bboxPolygon(bb));
+    return fetchNetworkForBounds({ s: bb[1], w: bb[0], n: bb[3], e: bb[2] }, turf.bboxPolygon(bb), usePieces(extentPolygon, pieces) ? pieces : null);
   };
 
 })();
