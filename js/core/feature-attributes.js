@@ -6,7 +6,7 @@
 //   App.openAttrDock([featureType, featureIndex, feature])  (no args = current selection)
 //   App.closeAttrDock([{keepSelection}])  (also clears the selection unless keepSelection)
 //   App.syncAttrDock()   (re-target an open dock to the selection; never opens it)
-//   App.isAttrDockOpen(), App.isAttrDockPinned(), App.attrDockInset()
+//   App.showAttrDockEmpty(), App.isAttrDockOpen(), App.isAttrDockPinned(), App.attrDockInset()
 //   App.getAttrDockFeature()  → { featureType, featureIndex } | null
 
 (function () {
@@ -1035,7 +1035,6 @@
   var _closing = false;  // re-entrance guard: closeAttrDock → clearSelection → syncAttrDock
 
   var LS_PINNED    = "attrDock.pinned";
-  var LS_COLLAPSED = "attrDock.collapsed";
 
   function lsGet(key) {
     try { return window.localStorage.getItem(key) === "1"; } catch (e) { return false; }
@@ -1051,7 +1050,6 @@
   }
 
   var ICON_PIN = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6l-1 5 3 3H5l3-3z"></path><line x1="10" y1="11" x2="10" y2="17"></line></svg>';
-  var ICON_COLLAPSE = '<svg viewBox="0 0 20 20" aria-hidden="true"><polyline points="12,5 7,10 12,15"></polyline></svg>';
 
   function buildDockEl() {
     if (_dockEl) return;
@@ -1109,13 +1107,6 @@
     });
     actions.appendChild(pinBtn);
 
-    var collapseBtn = iconBtn("ad-collapse", ICON_COLLAPSE, "Collapse attributes");
-    collapseBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      setCollapsed(!el.classList.contains("ad-collapsed"));
-    });
-    actions.appendChild(collapseBtn);
-
     var closeBtn = iconBtn("ad-close", "&times;", "Close attributes");
     closeBtn.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -1141,7 +1132,7 @@
     _dockEl = el;
 
     setPinned(lsGet(LS_PINNED));
-    setCollapsed(lsGet(LS_COLLAPSED));
+    syncAppClasses();
   }
 
   function setPinned(on) {
@@ -1149,19 +1140,8 @@
     _dockEl.classList.toggle("ad-pinned", on);
     var b = _dockEl.querySelector(".ad-pin");
     b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.title = on ? "Unpin (map clicks close the panel)" : "Pin open";
+    b.title = on ? "Unpin (empty-map clicks close the panel)" : "Pin open (stays open when nothing is selected)";
     lsSet(LS_PINNED, on);
-  }
-
-  function setCollapsed(on) {
-    if (!_dockEl) return;
-    _dockEl.classList.toggle("ad-collapsed", on);
-    var b = _dockEl.querySelector(".ad-collapse");
-    b.setAttribute("aria-expanded", on ? "false" : "true");
-    b.setAttribute("aria-label", on ? "Expand attributes" : "Collapse attributes");
-    b.title = on ? "Expand" : "Collapse";
-    lsSet(LS_COLLAPSED, on);
-    syncAppClasses();
   }
 
   // #app classes let CSS move left-edge map controls clear of the dock.
@@ -1170,7 +1150,6 @@
     if (!app) return;
     var open = isDockOpen();
     app.classList.toggle("ad-open", open);
-    app.classList.toggle("ad-rail", open && !!_dockEl && _dockEl.classList.contains("ad-collapsed"));
   }
 
   function isDockOpen() { return !!(_dockEl && _dockEl.style.display !== "none"); }
@@ -1734,6 +1713,21 @@
     }
   }
 
+  // Pinned dock with nothing selected: stays open, shows a prompt instead of
+  // a stale feature.
+  function renderEmpty() {
+    _overlaps = null;
+    _cur = null;
+    setHeader("", "Nothing selected", null, null, null);
+    _dockEl.querySelector(".ad-title").placeholder = "Attributes";
+    setToolbar([]);
+    var body = freshBody();
+    var msg = document.createElement("div");
+    msg.className = "ad-empty";
+    msg.textContent = "Select a feature on the map to view and edit its attributes.";
+    body.appendChild(msg);
+  }
+
   function renderMulti(list) {
     _overlaps = null;
     setHeader(list.length + " features selected", "Selection", null, null, null);
@@ -1884,6 +1878,7 @@
     var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
     if (!sel.length) {
       if (_cur && _cur.type === "textbox" && featureFor("textbox", _cur.index) === _cur.feature) return;
+      if (isPinned()) { commitActiveEdit(); renderEmpty(); return; }
       closeAttrDock({ keepSelection: true });
       return;
     }
@@ -1900,11 +1895,22 @@
     renderMulti(sel);
   }
 
+  function isPinned() { return !!(_dockEl && _dockEl.classList.contains("ad-pinned")); }
+
+  // Pinned dock after an empty-map click: drop to the empty prompt (also ends
+  // a text-box dock, which has no selection behind it).
+  function showAttrDockEmpty() {
+    if (!isDockOpen()) return;
+    commitActiveEdit();
+    renderEmpty();
+  }
+
   App.openAttrDock   = openAttrDock;
+  App.showAttrDockEmpty = showAttrDockEmpty;
   App.closeAttrDock  = closeAttrDock;
   App.syncAttrDock   = syncAttrDock;
   App.isAttrDockOpen = isDockOpen;
-  App.isAttrDockPinned = function () { return !!(_dockEl && _dockEl.classList.contains("ad-pinned")); };
+  App.isAttrDockPinned = isPinned;
   // The single feature shown → { featureType, featureIndex }, else null.
   App.getAttrDockFeature = function () {
     if (!isDockOpen() || !_cur || _cur.multi) return null;

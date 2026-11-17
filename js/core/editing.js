@@ -710,7 +710,7 @@
     // handles) and opens the dock; a second click on the selected Line/Route, or
     // on the selected Polygon's outline, inserts a vertex. A Polygon interior or
     // Point second click is a no-op. Buffers count as empty map: clicking empty
-    // map or a buffer clears the selection and closes the dock, unless pinned.
+    // map or a buffer clears the selection and closes the dock; a pinned dock stays open, empty.
     function dockOpen() {
       return typeof App.isAttrDockOpen === "function" && App.isAttrDockOpen();
     }
@@ -727,9 +727,11 @@
       openDock();
     }
     function emptyMapClick() {
-      if (typeof App.isAttrDockPinned === "function" && App.isAttrDockPinned() && dockOpen()) return;
+      var pinned = typeof App.isAttrDockPinned === "function" && App.isAttrDockPinned() && dockOpen();
       if (editState) exitEditMode();
       else if (typeof App.clearSelection === "function") App.clearSelection();
+      // Pinned: the dock stays open but drops to its "nothing selected" prompt.
+      if (pinned) { if (typeof App.showAttrDockEmpty === "function") App.showAttrDockEmpty(); return; }
       // A text-box dock has no selection behind it, so close it explicitly.
       if (typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
     }

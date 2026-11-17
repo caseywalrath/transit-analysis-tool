@@ -56,7 +56,6 @@
 
   /* ---- Layout ---- */
   --ad-width: 320px; /* left-edge attributes dock */
-  --ad-rail: 32px;   /* collapsed dock rail: room for one 26px button */
   --fp-width: 250px;  /* right-hand Features/Layers panel; the module popup's right gutter derives from it */
 
   /* ---- Motion ---- */
@@ -1859,16 +1858,6 @@ body.present-mode #attr-dock { display: none !important; }
 #attr-dock .fp-attr-unit { font-size: var(--text-xs); }
 
 /* Collapsed: a rail with the swatch and the expand / close buttons stacked. */
-#attr-dock.ad-collapsed { width: var(--ad-rail); }
-#attr-dock.ad-collapsed .ad-header { padding: 8px 0; border-bottom: none; }
-#attr-dock.ad-collapsed .ad-head-row { flex-direction: column; gap: var(--space-2); }
-#attr-dock.ad-collapsed .ad-toolbar { display: none; }
-#attr-dock.ad-collapsed .ad-header .ad-swatch-slot { order: 2; }
-#attr-dock.ad-collapsed .ad-actions { flex-direction: column; order: 1; }
-#attr-dock.ad-collapsed .ad-titles,
-#attr-dock.ad-collapsed .ad-pin,
-#attr-dock.ad-collapsed .ad-body { display: none; }
-#attr-dock.ad-collapsed .ad-collapse svg { transform: rotate(180deg); }
 
 /* Header toolbar: compact text actions */
 .ad-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
@@ -1992,11 +1981,9 @@ body.present-mode #attr-dock { display: none !important; }
 
 /* Keep bottom-left map controls (scale bar, north arrow) clear of the dock. */
 #app.ad-open .maplibregl-ctrl-bottom-left { left: var(--ad-width); }
-#app.ad-open.ad-rail .maplibregl-ctrl-bottom-left { left: var(--ad-rail); }
 /* --ad-inset: how much of the map's left edge the dock covers. Bottom-left
    floating widgets (analysis legends) start from it (popup.js). */
 #app.ad-open { --ad-inset: var(--ad-width); }
-#app.ad-open.ad-rail { --ad-inset: var(--ad-rail); }
 body.present-mode #app .maplibregl-ctrl-bottom-left { left: 0; }
 
 .fp-attr-confirm {

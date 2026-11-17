@@ -91,7 +91,7 @@ async function clickAt(page, lng, lat) {
 
     await page.goto("http://127.0.0.1:" + port + "/index.html", { waitUntil: "load" });
     await page.waitForFunction("window.App && window.App.map && window.App.map.loaded()", { timeout: 30000 });
-    await page.evaluate(() => { try { localStorage.removeItem("attrDock.pinned"); localStorage.removeItem("attrDock.collapsed"); } catch (e) {} });
+    await page.evaluate(() => { try { localStorage.removeItem("attrDock.pinned"); } catch (e) {} });
     await loadFixture(page);
     await settle(page);
 
@@ -136,7 +136,11 @@ async function clickAt(page, lng, lat) {
     await page.click("#attr-dock .ad-pin");
     await clickAt(page, LNG + 0.006, LAT - 0.009);
     d = await dock(page);
-    check("pinned: an empty-map click keeps the dock and selection", d.open && d.sel === "point:0", d);
+    const emptyMsg = await page.evaluate(() => { const e = document.querySelector("#attr-dock .ad-empty"); return e ? e.textContent : ""; });
+    check("pinned: an empty-map click clears the selection but keeps the dock open, showing a prompt", d.open && d.sel === "" && /Select a feature/.test(emptyMsg), { d, emptyMsg });
+    await clickAt(page, LNG + 0.012, LAT + 0.004);
+    d = await dock(page);
+    check("pinned: clicking a feature again fills the empty dock", d.open && d.sel === "point:0", d);
     await page.click("#attr-dock .ad-pin");
     await clickAt(page, LNG + 0.006, LAT - 0.009);
     d = await dock(page);
@@ -256,12 +260,9 @@ async function clickAt(page, lng, lat) {
     await page.keyboard.press("Escape");
     await settle(page);
 
-    // ---- Collapse + present mode ----
+    // ---- Present mode ----
     await clickAt(page, LNG + 0.012, LAT + 0.004);
-    await page.click("#attr-dock .ad-collapse");
-    const rail = await page.evaluate(() => document.getElementById("attr-dock").getBoundingClientRect().width);
-    check("collapse shrinks the dock to a rail", rail > 0 && rail <= 40, rail);
-    await page.click("#attr-dock .ad-collapse");
+    check("the dock has no collapse button", await page.evaluate(() => !document.querySelector("#attr-dock .ad-collapse")));
     await page.evaluate(() => App.setPresentMode(true));
     const hidden = await page.evaluate(() => getComputedStyle(document.getElementById("attr-dock")).display === "none");
     check("present mode hides the dock", hidden);
