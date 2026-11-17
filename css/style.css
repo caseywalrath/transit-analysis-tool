@@ -753,10 +753,11 @@ button { cursor: pointer; }
   box-shadow: -2px 0 4px rgba(0,0,0,0.08);
 }
 #fp-collapse-btn:hover { color: var(--accent); background: var(--accent-soft); }
-/* Expanded: chevron points left (←) = click to hide */
-#fp-collapse-btn svg { transform: rotate(180deg); }
-/* Collapsed: chevron points right (→) = click to show */
-#feature-panel.fp-collapsed #fp-collapse-btn svg { transform: rotate(0deg); }
+/* The chevron points the way the panel will move: right (→) when open = click
+   to slide it away, left (←) when collapsed = click to bring it back. The
+   turn uses the same 0.2s as the panel's width slide. */
+#fp-collapse-btn svg { transition: transform 0.2s ease; }
+#feature-panel.fp-collapsed #fp-collapse-btn svg { transform: rotate(180deg); }
 #feature-panel.fp-collapsed { width: 24px; }
 #feature-panel.fp-collapsed .fp-content,
 #feature-panel.fp-collapsed .fp-header { display: none; }

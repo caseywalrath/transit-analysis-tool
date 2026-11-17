@@ -268,6 +268,22 @@ async function clickAt(page, lng, lat) {
     check("present mode hides the dock", hidden);
     await page.evaluate(() => App.setPresentMode(false));
 
+    // ---- Right panel collapse tab: arrow points the way the panel moves ----
+    const tab = () => page.evaluate(() => {
+      var m = new DOMMatrix(getComputedStyle(document.querySelector("#fp-collapse-btn svg")).transform);
+      var p = document.getElementById("feature-panel");
+      return { pointsRight: m.a > 0, collapsed: p.classList.contains("fp-collapsed"),
+        expanded: document.getElementById("fp-collapse-btn").getAttribute("aria-expanded") };
+    });
+    let tb = await tab();
+    check("open panel: tab arrow points right (toward where it hides)", tb.pointsRight && !tb.collapsed && tb.expanded === "true", tb);
+    await page.click("#fp-collapse-btn");
+    await page.waitForTimeout(400);
+    tb = await tab();
+    check("collapsed panel: tab arrow points left (toward where it returns from)", !tb.pointsRight && tb.collapsed && tb.expanded === "false", tb);
+    await page.click("#fp-collapse-btn");
+    await page.waitForTimeout(400);
+
     check("no page errors", pageErrors.length === 0, pageErrors);
   } catch (e) {
     console.error(e);
