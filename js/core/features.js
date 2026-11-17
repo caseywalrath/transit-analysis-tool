@@ -1709,6 +1709,7 @@
       var panel = document.getElementById('feature-panel');
       var collapsed = panel.classList.toggle('fp-collapsed');
       btn.title = collapsed ? 'Show panel' : 'Hide panel';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       btn.setAttribute('aria-label', collapsed ? 'Show feature panel' : 'Hide feature panel');
     });
   })();

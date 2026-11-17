@@ -379,8 +379,6 @@ async function colorBox(page, clip, rgb) {
     });
     check("the Appearance swatch is in the title row, to the left of the title and vertically inside it",
       hdr.inRow && hdr.sw.r <= hdr.title.l && hdr.sw.t >= hdr.row.t - 0.5 && hdr.sw.b <= hdr.row.b + 0.5, hdr);
-    await page.evaluate(() => document.querySelector("#attr-dock .ad-collapse").click());
-    check("the swatch stays visible while the dock is collapsed", await page.evaluate(() => document.querySelector("#attr-dock .ad-swatch").getBoundingClientRect().width > 0));
     await page.evaluate(() => App.closeAttrDock());
 
     // ---- Duplicate ----

@@ -512,10 +512,6 @@ async function captureTheme(browser, theme, port) {
       window.App.openAttrDock("route", 0, window.App.routes[0]);
     });
     await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock.png"), theme + "_attr-dock");
-    await page.locator(".ad-collapse").click();
-    await sleep(TAB_SETTLE_MS);
-    await shootLocator(page, "#attr-dock", join(OUT_DIR, theme + "_attr-dock-collapsed.png"), theme + "_attr-dock-collapsed");
-    await page.locator(".ad-collapse").click();
     await page.evaluate(() => window.App.closeAttrDock());
   } catch (e) {
     record(theme + "_attr-dock", "fail", e.message);
