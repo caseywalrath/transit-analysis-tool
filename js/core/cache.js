@@ -929,32 +929,41 @@
   }
 
   // Re-open a recent project: request permission, read the file, apply it.
-  // Removes the entry and surfaces a clear error if the file was moved or
-  // deleted, or if permission was denied.
-  async function openRecent(id) {
-    var entry = null;
-    try {
-      var ctx = await _idbTx("readonly");
-      entry = await _idbRequest(ctx.store.get(id));
-      ctx.db.close();
-    } catch (e) { /* ignore */ }
+  // `hint` is the entry already listed in the menu. Passing it skips the IDB
+  // read so requestPermission() runs while the click's user activation is
+  // still fresh; Chrome refuses or silently drops the prompt otherwise.
+  // Any failure falls back to the file picker opened in the file's folder,
+  // so a stale handle (moved file, other computer, synced/network drive)
+  // never leaves the click doing nothing.
+  async function openRecent(id, hint) {
+    var entry = (hint && hint.handle) ? hint : null;
+    if (!entry) {
+      try {
+        var ctx = await _idbTx("readonly");
+        entry = await _idbRequest(ctx.store.get(id));
+        ctx.db.close();
+      } catch (e) { console.warn("Read recent failed:", e); }
+    }
     if (!entry || !entry.handle) {
-      alert("Could not open this recent project (missing handle).");
+      App.setStatus("Recent project unavailable; choose the file instead");
       await removeRecent(id);
       if (typeof App.onRecentsChanged === "function") App.onRecentsChanged();
-      return;
+      return _pickStateFile(null);
     }
 
     var handle = entry.handle;
     try {
-      var perm = await handle.queryPermission({ mode: "read" });
+      var perm = (typeof handle.queryPermission === "function")
+        ? await handle.queryPermission({ mode: "read" }) : "granted";
       if (perm !== "granted") {
+        App.setStatus("Allow access to '" + entry.name + "' (check the prompt near the address bar)");
         perm = await handle.requestPermission({ mode: "read" });
       }
       if (perm !== "granted") {
-        alert("Permission to read '" + entry.name + "' was denied.");
-        return;
+        App.setStatus("Permission to read '" + entry.name + "' was not granted");
+        return _pickStateFile(handle);
       }
+      App.setStatus("Loading " + entry.name + "…");
       var file = await handle.getFile();
       importFullState(file, handle);
     } catch (e) {
@@ -962,13 +971,42 @@
       var msg = "Could not open '" + entry.name + "'.";
       if (e && (e.name === "NotFoundError" || /not found/i.test(String(e.message)))) {
         msg += " The file may have been moved, renamed, or deleted.";
+        await removeRecent(id);
+        if (typeof App.onRecentsChanged === "function") App.onRecentsChanged();
       } else if (e && e.message) {
         msg += " " + e.message;
       }
-      if (confirm(msg + "\n\nRemove this entry from Recent Projects?")) {
-        await removeRecent(id);
-        if (typeof App.onRecentsChanged === "function") App.onRecentsChanged();
+      App.setStatus(msg);
+      if (confirm(msg + "\n\nChoose the file to load instead?")) {
+        return _pickStateFile(handle);
       }
+    }
+  }
+
+  // Open the picker, starting in the recent file's folder when the browser
+  // accepts it; startIn with a dead handle throws, so retry without it.
+  async function _pickStateFile(startHandle) {
+    if (typeof window.showOpenFilePicker !== "function") return;
+    var opts = {
+      types: [{ description: "JSON Session File", accept: { "application/json": [".json"] } }],
+      multiple: false
+    };
+    var handles;
+    try {
+      try {
+        handles = await window.showOpenFilePicker(startHandle
+          ? Object.assign({ startIn: startHandle }, opts) : opts);
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        handles = await window.showOpenFilePicker(opts);
+      }
+      var h = handles && handles[0];
+      if (!h) return;
+      importFullState(await h.getFile(), h);
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+      console.warn("Load state failed:", e);
+      App.setStatus("Load state failed: " + (e.message || e));
     }
   }
 
