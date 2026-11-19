@@ -1878,6 +1878,8 @@
       return d.toLocaleDateString([], { month: "short", day: "numeric" });
     }
 
+    var _recentById = {};   // listed entries, so a click has the handle without an IDB await
+
     function renderRecents() {
       if (!saveStateRecents) return;
       if (!_hasFSA || !App.cache || typeof App.cache.listRecents !== "function") {
@@ -1885,6 +1887,8 @@
         return;
       }
       App.cache.listRecents().then(function (entries) {
+        _recentById = {};
+        (entries || []).forEach(function (en) { _recentById[en.id] = en; });
         if (!entries || entries.length === 0) {
           saveStateRecents.style.display = "none";
           saveStateRecents.innerHTML = "";
@@ -1986,7 +1990,7 @@
             var id = parseInt(item.getAttribute("data-id"), 10);
             if (!isNaN(id) && App.cache && typeof App.cache.openRecent === "function") {
               saveStateDropdown.style.display = "none";
-              App.cache.openRecent(id);
+              App.cache.openRecent(id, _recentById[id]);
             }
           }
         });
