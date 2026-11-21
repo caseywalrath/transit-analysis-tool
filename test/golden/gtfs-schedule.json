@@ -6161,5 +6161,1081 @@
     "count": 0,
     "savedSecPerDay": 0,
     "list": []
+  },
+  "a7-health-inline": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260131",
+            "source": "calendar",
+            "daysLeft": 26,
+            "state": "30days"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "stopId": "S4",
+            "shapeId": "SH1",
+            "meters": 1112
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-inline-feedinfo": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260110",
+            "source": "feed_info",
+            "daysLeft": 5,
+            "state": "7days"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "stopId": "S4",
+            "shapeId": "SH1",
+            "meters": 1112
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-expired": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "error",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260131",
+            "source": "calendar",
+            "daysLeft": -1,
+            "state": "expired"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "stopId": "S4",
+            "shapeId": "SH1",
+            "meters": 1112
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-far-future": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "ok",
+        "count": 0,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260131",
+            "source": "calendar",
+            "daysLeft": 395,
+            "state": "ok"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "stopId": "S4",
+            "shapeId": "SH1",
+            "meters": 1112
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-no-shapes": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260131",
+            "source": "calendar",
+            "daysLeft": 26,
+            "state": "30days"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 5,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T1",
+            "routeId": "R_BUS",
+            "shapeId": "SH1"
+          },
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          },
+          {
+            "tripId": "T4",
+            "routeId": "R_FERRY",
+            "shapeId": "SH1"
+          },
+          {
+            "tripId": "T5",
+            "routeId": "R_BUS",
+            "shapeId": "SH1"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "unknown",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "No shapes loaded."
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-zero-examples": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-one-agency": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260131",
+            "source": "calendar",
+            "daysLeft": 26,
+            "state": "30days"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "warning",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "stopId": "S4",
+            "shapeId": "SH1",
+            "meters": 1112
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "warning",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": "One agency: agency_id is recommended (NTD reporting uses it)."
+      }
+    ]
+  },
+  "a7-health-empty-feed": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "unknown",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "No end date in feed_info.txt or the calendar."
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "ok",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "ok",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "ok",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "unknown",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "No shapes loaded."
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "ok",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "ok",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-no-opts": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "unknown",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "No valid today date."
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 5,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T1",
+            "routeId": "R_BUS",
+            "shapeId": "SH1"
+          },
+          {
+            "tripId": "T2",
+            "routeId": "R_BUS",
+            "shapeId": ""
+          },
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "shapeId": "SH_X"
+          },
+          {
+            "tripId": "T4",
+            "routeId": "R_FERRY",
+            "shapeId": "SH1"
+          },
+          {
+            "tripId": "T5",
+            "routeId": "R_BUS",
+            "shapeId": "SH1"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 5,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "S4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "warning",
+        "count": 1,
+        "checked": 5,
+        "examples": [
+          {
+            "tripId": "T3",
+            "routeId": "R_RAIL",
+            "fromStopId": "S2",
+            "toStopId": "S5",
+            "kph": 303.3,
+            "maxKph": 100
+          }
+        ],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "unknown",
+        "count": 0,
+        "checked": 0,
+        "examples": [],
+        "note": "No shapes loaded."
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "error",
+        "count": 1,
+        "checked": 4,
+        "examples": [
+          {
+            "tripId": "T4",
+            "stopSequence": 2,
+            "stopId": "S2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "error",
+        "count": 2,
+        "checked": 3,
+        "examples": [
+          {
+            "routeId": "R_RAIL"
+          },
+          {
+            "routeId": "R_FERRY"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  "a7-health-mini": {
+    "checks": [
+      {
+        "id": "expiry",
+        "label": "Feed expiry",
+        "status": "warning",
+        "count": 1,
+        "checked": 1,
+        "examples": [
+          {
+            "endDate": "20260201",
+            "source": "calendar",
+            "daysLeft": 27,
+            "state": "30days"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "shapes",
+        "label": "Trips without a shape",
+        "status": "warning",
+        "count": 4,
+        "checked": 16,
+        "examples": [
+          {
+            "tripId": "F1_W_FREQ",
+            "routeId": "F1",
+            "shapeId": ""
+          },
+          {
+            "tripId": "F1_W_PM",
+            "routeId": "F1",
+            "shapeId": ""
+          },
+          {
+            "tripId": "F1_W_X",
+            "routeId": "F1",
+            "shapeId": ""
+          },
+          {
+            "tripId": "F1_S_NIGHT",
+            "routeId": "F1",
+            "shapeId": ""
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "wheelchair",
+        "label": "Stops without wheelchair data",
+        "status": "warning",
+        "count": 2,
+        "checked": 6,
+        "examples": [
+          {
+            "stopId": "S3"
+          },
+          {
+            "stopId": "F2"
+          }
+        ],
+        "note": null
+      },
+      {
+        "id": "speed",
+        "label": "Impossible speeds between stops",
+        "status": "ok",
+        "count": 0,
+        "checked": 21,
+        "examples": [],
+        "note": "Frequency-based trips are checked once, on their template times."
+      },
+      {
+        "id": "shapeDistance",
+        "label": "Stops far from their shape",
+        "status": "ok",
+        "count": 0,
+        "checked": 10,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "times",
+        "label": "Times that go backwards",
+        "status": "ok",
+        "count": 0,
+        "checked": 16,
+        "examples": [],
+        "note": null
+      },
+      {
+        "id": "agency",
+        "label": "Routes without agency_id",
+        "status": "ok",
+        "count": 0,
+        "checked": 3,
+        "examples": [],
+        "note": null
+      }
+    ]
   }
 }

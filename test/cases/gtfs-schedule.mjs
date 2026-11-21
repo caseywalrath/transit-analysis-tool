@@ -393,4 +393,41 @@ const A5_END = {
 };
 add("a5-stops-consolidation-other-route-end", inline(A5_END, "consolidationCandidates", D1, { maxFt: 99999 }));
 
+// Feed health (feedHealth): one inline feed where each of the seven checks has a known answer.
+// T5 has no stop times; T2 has a blank shape_id; T3 names a shape that is not in the set.
+const HEALTH = {
+  "agency.txt": "agency_id,agency_name\nA1,One\nA2,Two\n",
+  "routes.txt": "route_id,agency_id,route_short_name,route_type\nR_BUS,A1,10,3\nR_RAIL,,L,0\nR_FERRY, ,F,4\n",
+  "stops.txt": "stop_id,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding\nP1,40.0,-105.0,1,,1\nS1,40.0,-105.0,0,P1,\nS2,40.0,-104.99,0,,2\nS3,40.0,-104.98,,,\nS4,40.01,-104.98,0,,0\nS5,40.5,-104.98,0,,1\n",
+  "calendar.txt": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nSVC,1,1,1,1,1,0,0,20260101,20260131\n",
+  "trips.txt": "route_id,service_id,trip_id,shape_id\nR_BUS,SVC,T1,SH1\nR_BUS,SVC,T2,\nR_RAIL,SVC,T3,SH_X\nR_FERRY,SVC,T4,SH1\nR_BUS,SVC,T5,SH1\n",
+  "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n" +
+    "T1,08:00:00,08:00:00,S1,1\nT1,08:02:00,08:02:00,S2,2\nT1,08:02:00,08:02:00,S3,3\n" +
+    "T2,07:00:00,07:00:00,S1,1\nT2,,,S2,2\nT2,07:04:00,07:04:00,S3,3\n" +
+    "T3,08:10:00,08:10:00,S2,1\nT3,08:20:00,08:20:00,S5,2\n" +
+    "T4,09:00:00,09:00:00,S1,1\nT4,08:59:00,08:59:00,S2,2\nT4,09:05:30,09:05:30,S4,3\n"
+};
+const HEALTH_SHAPES = { SH1: [[-105.0, 40.0], [-104.98, 40.0]] };
+const HEALTH_OPTS = { today: "20260105", shapes: HEALTH_SHAPES };
+// Shapes of the mini feed as {shape_id: [[lon, lat], ...]}, points in shape_pt_sequence order.
+const MINI_SHAPES = (() => {
+  const byId = {};
+  const rows = MINI["shapes.txt"].trim().split(/\r?\n/).slice(1).map((l) => l.split(","));
+  for (const [id, lat, lon, seq] of rows) (byId[id] ||= []).push({ seq: +seq, pt: [+lon, +lat] });
+  const out = {};
+  for (const id in byId) out[id] = byId[id].sort((a, b) => a.seq - b.seq).map((p) => p.pt);
+  return out;
+})();
+
+add("a7-health-inline", inline(HEALTH, "feedHealth", HEALTH_OPTS));
+add("a7-health-inline-feedinfo", inline({ ...HEALTH, "feed_info.txt": "feed_publisher_name,feed_end_date\nP,20260110\n" }, "feedHealth", HEALTH_OPTS));
+add("a7-health-expired", inline(HEALTH, "feedHealth", { today: "20260201", shapes: HEALTH_SHAPES }));
+add("a7-health-far-future", inline(HEALTH, "feedHealth", { today: "20250101", shapes: HEALTH_SHAPES, maxExamples: 1 }));
+add("a7-health-no-shapes", inline(HEALTH, "feedHealth", { today: "20260105" }));
+add("a7-health-zero-examples", inline(HEALTH, "feedHealth", { today: "20260105", shapes: HEALTH_SHAPES, maxExamples: 0 }));
+add("a7-health-one-agency", inline({ ...HEALTH, "agency.txt": "agency_id,agency_name\nA1,One\n" }, "feedHealth", HEALTH_OPTS));
+add("a7-health-empty-feed", inline({}, "feedHealth", { today: "20260105" }));
+add("a7-health-no-opts", inline(HEALTH, "feedHealth"));
+add("a7-health-mini", mini("feedHealth", { today: "20260105", shapes: MINI_SHAPES }));
+
 export default { scripts: ["js/core/gtfs-schedule.js"], cases };

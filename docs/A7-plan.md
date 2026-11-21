@@ -69,3 +69,9 @@ Thresholds are from the MobilityData GTFS validator source (master, read 2026-11
 ## Progress log
 
 - 2026-11-21: gates answered (G7a Option B, G7b Option A); sub-plan and card A7a.1 written (Opus).
+- 2026-11-21: A7a.1 `GtfsSchedule.feedHealth` [Haiku xhigh]: clean first time, every card value matched; 10 golden
+  cases added, none moved. Accepted deviations: the expiry example also obeys `maxExamples`; `maxExamples` floored;
+  non-numeric shape points dropped. Open for the review: zero agencies gets the "One agency" warning note; the
+  calendar fallback end date is not `isRealDate`-checked; `a7-health-mini` values recorded, not hand-checked.
+  Paused here at the usage limit (Opus). **Resume:** launch card `docs/a7-cards/card-a7a.2.md` [Sonnet] with
+  `docs/a7-cards/rules.md`, then review A7a (code-review high on `4e4b446..HEAD`, screenshots), then write A7b's cards.

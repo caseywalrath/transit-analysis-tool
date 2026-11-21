@@ -2122,6 +2122,253 @@
     return { routes: routes, total: total };
   }
 
+  // ---------------------------------------------------------------- feed health
+
+  // Highest plausible speed (km/h) between two stops for a GTFS route_type, from the MobilityData
+  // StopTimeTravelSpeedValidator table. A missing or unrecognised type gets the validator's 200 km/h default.
+  function maxKphForRouteType(routeType) {
+    var t = parseInt(routeType, 10);
+    if (t === 0) return 100;
+    if (t === 1 || t === 3 || t === 11 || t === 12) return 150;
+    if (t === 2) return 500;
+    if (t === 4) return 80;
+    if (t === 5) return 30;
+    if (t === 6 || t === 7) return 50;
+    return 200;
+  }
+
+  // Metres from point p to segment a-b, each a [lon, lat]. Measured on a plane centred on p, which is
+  // accurate at the scale of a stop and its shape. A zero-length segment is measured as a point.
+  function metresToSegment(p, a, b) {
+    var R = 6371008.8, k = Math.PI / 180;
+    var kx = Math.cos(p[1] * k) * R * k, ky = R * k;
+    var ax = (a[0] - p[0]) * kx, ay = (a[1] - p[1]) * ky;
+    var dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky;
+    var len2 = dx * dx + dy * dy;
+    var t = len2 > 0 ? -(ax * dx + ay * dy) / len2 : 0;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    var x = ax + t * dx, y = ay + t * dy;
+    return Math.sqrt(x * x + y * y);
+  }
+
+  // The usable [lon, lat] points of one shape. Anything else (not an array, non-numeric pairs) is dropped,
+  // so bad shape data reads as "no points" rather than throwing.
+  function shapePoints(shapes, id) {
+    var raw = shapes && Object.prototype.hasOwnProperty.call(shapes, id) ? shapes[id] : null;
+    var out = [], i, p;
+    if (!Array.isArray(raw)) return out;
+    for (i = 0; i < raw.length; i++) {
+      p = raw[i];
+      if (p && typeof p[0] === "number" && typeof p[1] === "number" && isFinite(p[0]) && isFinite(p[1])) out.push(p);
+    }
+    return out;
+  }
+
+  // A blank shape_id never counts as having a shape, even if opts.shapes happens to carry a "" key.
+  function hasShape(shapeSet, id) { return id !== "" && shapeSet[id] === true; }
+
+  function hasCoords(s) { return !!s && typeof s.lat === "number" && typeof s.lon === "number"; }
+
+  function healthExpiry(feed, today, max) {
+    var check = { id: "expiry", label: "Feed expiry", status: "unknown", count: 0, checked: 0, examples: [], note: null };
+    var end = null, source = null, fi = feed.tables["feed_info.txt"], range, i, fe, state, daysLeft;
+    // Today is checked first, so a bad today argument is reported even when there is no end date.
+    if (!isRealDate(today)) { check.note = "No valid today date."; return check; }
+    if (fi) {
+      for (i = 0; i < fi.rows.length; i++) {
+        fe = g(fi.rows[i], "feed_end_date");
+        if (isRealDate(fe)) { end = fe; source = "feed_info"; break; }
+      }
+    }
+    if (end === null) {
+      range = dateRange(feed);
+      if (range) { end = range.end; source = "calendar"; }
+    }
+    if (end === null) { check.note = "No end date in feed_info.txt or the calendar."; return check; }
+    check.checked = 1;
+    daysLeft = utcDay(end) - utcDay(today);
+    if (end < today) state = "expired";
+    else if (end < addDays(today, 7)) state = "7days";
+    else if (end < addDays(today, 30)) state = "30days";
+    else state = "ok";
+    check.status = state === "expired" ? "error" : state === "ok" ? "ok" : "warning";
+    check.count = state === "ok" ? 0 : 1;
+    if (max >= 1) check.examples.push({ endDate: end, source: source, daysLeft: daysLeft, state: state });
+    return check;
+  }
+
+  function healthShapes(feed, shapeSet, max) {
+    var trips = feed._trips, i, t;
+    var check = { id: "shapes", label: "Trips without a shape", status: "ok", count: 0, checked: trips.length, examples: [], note: null };
+    for (i = 0; i < trips.length; i++) {
+      t = trips[i];
+      if (hasShape(shapeSet, t.shapeId)) continue;
+      check.count++;
+      if (check.examples.length < max) check.examples.push({ tripId: t.id, routeId: t.routeId, shapeId: t.shapeId });
+    }
+    check.status = check.count > 0 ? "warning" : "ok";
+    return check;
+  }
+
+  function healthWheelchair(feed, max) {
+    var check = { id: "wheelchair", label: "Stops without wheelchair data", status: "ok", count: 0, checked: 0, examples: [], note: null };
+    var stopRows = feed.tables["stops.txt"] ? feed.tables["stops.txt"].rows : [];
+    var seen = Object.create(null), i, sid, s, v, parent;
+    for (i = 0; i < stopRows.length; i++) {
+      sid = g(stopRows[i], "stop_id");
+      if (sid === "" || seen[sid]) continue;
+      seen[sid] = true;
+      s = feed._stops[sid];
+      if (!s || (s.locationType !== "" && s.locationType !== "0")) continue;
+      check.checked++;
+      v = s.wheelchair;
+      parent = s.parent !== "" ? feed._stops[s.parent] : null;
+      if (v !== "1" && v !== "2" && parent) v = parent.wheelchair;
+      if (v === "1" || v === "2") continue;
+      check.count++;
+      if (check.examples.length < max) check.examples.push({ stopId: sid });
+    }
+    check.status = check.count > 0 ? "warning" : "ok";
+    return check;
+  }
+
+  function healthSpeed(feed, max) {
+    var check = { id: "speed", label: "Impossible speeds between stops", status: "ok", count: 0, checked: 0, examples: [],
+      note: "Frequency-based trips are checked once, on their template times." };
+    var st = feed.st, trips = feed._trips, i, r, end, a, b, route, maxKph, sec, kph, trip;
+    for (i = 0; i < trips.length; i++) {
+      trip = trips[i];
+      if (trip.ti < 0) continue;
+      route = feed._routes[trip.routeId];
+      maxKph = maxKphForRouteType(route ? g(route, "route_type") : "");
+      end = st.tripStart[trip.ti + 1];
+      for (r = st.tripStart[trip.ti]; r + 1 < end; r++) {
+        if (st.dep[r] < 0 || st.arr[r + 1] < 0) continue;
+        a = feed._stops[st.stopIds[st.stop[r]]];
+        b = feed._stops[st.stopIds[st.stop[r + 1]]];
+        if (!hasCoords(a) || !hasCoords(b)) continue;
+        check.checked++;
+        // Times given to the whole minute may be rounded, so the true gap can be up to a minute longer
+        // than it looks. A gap of zero or less is the same rounding at work, so it is taken as one minute.
+        sec = st.arr[r + 1] - st.dep[r];
+        if (sec <= 0) sec = 60;
+        else if (st.arr[r + 1] % 60 === 0 && st.dep[r] % 60 === 0) sec += 60;
+        kph = (haversine(a.lat, a.lon, b.lat, b.lon) / 1000) * 3600 / sec;
+        if (kph <= maxKph) continue;
+        check.count++;
+        if (check.examples.length < max) {
+          check.examples.push({ tripId: trip.id, routeId: trip.routeId, fromStopId: a.id, toStopId: b.id,
+            kph: Math.round(kph * 10) / 10, maxKph: maxKph });
+        }
+      }
+    }
+    check.status = check.count > 0 ? "warning" : "ok";
+    return check;
+  }
+
+  function healthShapeDistance(feed, shapeSet, shapeCount, shapes, max) {
+    var check = { id: "shapeDistance", label: "Stops far from their shape", status: "ok", count: 0, checked: 0, examples: [], note: null };
+    if (shapeCount === 0) { check.status = "unknown"; check.note = "No shapes loaded."; return check; }
+    var st = feed.st, trips = feed._trips, seen = Object.create(null), pointsById = Object.create(null);
+    var i, r, j, trip, pts, stopId, key, stop, p, d, dj;
+    for (i = 0; i < trips.length; i++) {
+      trip = trips[i];
+      if (trip.ti < 0 || !hasShape(shapeSet, trip.shapeId)) continue;
+      if (pointsById[trip.shapeId] === undefined) pointsById[trip.shapeId] = shapePoints(shapes, trip.shapeId);
+      pts = pointsById[trip.shapeId];
+      if (pts.length === 0) continue;
+      for (r = st.tripStart[trip.ti]; r < st.tripStart[trip.ti + 1]; r++) {
+        stopId = st.stopIds[st.stop[r]];
+        key = trip.shapeId + "\u0001" + stopId;
+        if (seen[key]) continue;
+        stop = feed._stops[stopId];
+        if (!hasCoords(stop)) continue;
+        seen[key] = true;
+        check.checked++;
+        p = [stop.lon, stop.lat];
+        d = metresToSegment(p, pts[0], pts[0]);
+        for (j = 0; j + 1 < pts.length; j++) {
+          dj = metresToSegment(p, pts[j], pts[j + 1]);
+          if (dj < d) d = dj;
+        }
+        if (d <= 100) continue;
+        check.count++;
+        if (check.examples.length < max) check.examples.push({ stopId: stopId, shapeId: trip.shapeId, meters: Math.round(d) });
+      }
+    }
+    check.status = check.count > 0 ? "warning" : "ok";
+    return check;
+  }
+
+  function healthTimes(feed, max) {
+    var st = feed.st, trips = feed._trips;
+    var check = { id: "times", label: "Times that go backwards", status: "ok", count: 0, checked: 0, examples: [], note: null };
+    var i, r, prevDep, trip;
+    for (i = 0; i < trips.length; i++) {
+      trip = trips[i];
+      if (trip.ti < 0) continue;
+      check.checked++;
+      prevDep = -1;
+      for (r = st.tripStart[trip.ti]; r < st.tripStart[trip.ti + 1]; r++) {
+        if (st.arr[r] >= 0 && prevDep >= 0 && st.arr[r] < prevDep) {
+          check.count++;
+          if (check.examples.length < max) check.examples.push({ tripId: trip.id, stopSequence: st.seq[r], stopId: st.stopIds[st.stop[r]] });
+        }
+        if (st.dep[r] >= 0) prevDep = st.dep[r];
+      }
+    }
+    check.status = check.count > 0 ? "error" : "ok";
+    return check;
+  }
+
+  function healthAgency(feed, max) {
+    var agencyTable = feed.tables["agency.txt"];
+    var routeRows = feed.tables["routes.txt"] ? feed.tables["routes.txt"].rows : [];
+    var agencies = agencyTable ? agencyTable.rows.length : 0;
+    var check = { id: "agency", label: "Routes without agency_id", status: "ok", count: 0, checked: 0, examples: [], note: null };
+    var seen = Object.create(null), i, rid;
+    for (i = 0; i < routeRows.length; i++) {
+      rid = g(routeRows[i], "route_id");
+      if (rid === "" || seen[rid]) continue;
+      seen[rid] = true;
+      check.checked++;
+      if (g(routeRows[i], "agency_id") !== "") continue;
+      check.count++;
+      if (check.examples.length < max) check.examples.push({ routeId: rid });
+    }
+    if (check.count > 0) {
+      if (agencies > 1) check.status = "error";
+      else {
+        check.status = "warning";
+        check.note = "One agency: agency_id is recommended (NTD reporting uses it).";
+      }
+    }
+    return check;
+  }
+
+  // Seven read-only health checks in fixed order. Never throws on odd data: a check that cannot run reports
+  // "unknown", and a bad item is skipped. opts = { today: "YYYYMMDD", shapes: {shapeId: [[lon, lat], ...]}, maxExamples }.
+  function feedHealth(feed, opts) {
+    var o = opts && typeof opts === "object" ? opts : {};
+    var max = typeof o.maxExamples === "number" && isFinite(o.maxExamples) && o.maxExamples >= 0 ? Math.floor(o.maxExamples) : 5;
+    var shapes = o.shapes && typeof o.shapes === "object" ? o.shapes : null;
+    var shapeSet = Object.create(null), shapeCount = 0, k;
+    if (shapes) {
+      for (k in shapes) {
+        if (Object.prototype.hasOwnProperty.call(shapes, k)) { shapeSet[k] = true; shapeCount++; }
+      }
+    }
+    return { checks: [
+      healthExpiry(feed, o.today, max),
+      healthShapes(feed, shapeSet, max),
+      healthWheelchair(feed, max),
+      healthSpeed(feed, max),
+      healthShapeDistance(feed, shapeSet, shapeCount, shapes, max),
+      healthTimes(feed, max),
+      healthAgency(feed, max)
+    ] };
+  }
+
   // ---------------------------------------------------------------- test helper
 
   function evaluate(texts, fnName, args) {
@@ -2156,6 +2403,7 @@
     routeServiceDay: routeServiceDay, serviceYear: serviceYear, calendarDayCounts: calendarDayCounts,
     stopSpacingStats: stopSpacingStats, consolidationCandidates: consolidationCandidates,
     stopServiceTable: stopServiceTable, wheelchairByRoute: wheelchairByRoute,
+    feedHealth: feedHealth,
     _stopTableInvariant: stopTableInvariant,
     dayPartList: dayPartList, partHeadways: partHeadways, pooledHeadway: pooledHeadway,
     isPeakPart: isPeakPart, isOffPeakPart: isOffPeakPart, isStationStop: isStationStop
