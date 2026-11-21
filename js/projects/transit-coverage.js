@@ -20,6 +20,7 @@
   var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
   var _coverageFrom      = "stops";  // "stops" | "line"; new work defaults to stops, a saved session without the key restores as "line"
+  var _apportionMethod   = App.APPORTION_DEFAULT;   // "blockPop" | "area"; a saved session without the key restores as "area"
   var _includeHidden     = false;   // one toggle for BOTH lists (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
@@ -301,6 +302,8 @@
     if (input) input.disabled = _useDisplayBuffers;
     if (toggle) toggle.checked = _useDisplayBuffers;
     var from = document.getElementById("tcCoverageFrom");
+    var ap = document.getElementById("tcApportionMethod");
+    if (ap) ap.value = _apportionMethod;
     if (from) {
       from.value = _coverageFrom;
       from.disabled = _useDisplayBuffers;   // display buffers ignore this setting
@@ -705,11 +708,23 @@
 
       setStatus("Fetching population…", "running");
       var popMap = await App.fetchACSValues(geoLevel, year, "B01003_001E", geoids);
-      var opts = { apportionByArea: true };
-      var popTotal     = App.aggregateWithinUnion(serviceAreaUnion, geos, popMap, "sum", opts).value;
-      var popCovered   = coverageClipped  ? App.aggregateWithinUnion(coverageClipped,  geos, popMap, "sum", opts).value : 0;
+      var apSel = document.getElementById("tcApportionMethod");
+      if (apSel) _apportionMethod = apSel.value === "area" ? "area" : "blockPop";
+      var anyFellBack = false, apportionNote = null;
+      // The block download is cached by geography bbox, so the three unions share one download.
+      async function sumPopInUnion(unionFeat) {
+        var ap = await App.computeApportionFractions(unionFeat, geos, _apportionMethod, {
+          onProgress: function (m) { setStatus(m, "running"); }
+        });
+        if (ap.methodUsed !== _apportionMethod) anyFellBack = true;
+        if (!apportionNote && ap.note) apportionNote = ap.note;
+        return App.aggregateWithinUnion(unionFeat, geos, popMap, "sum", { fractions: ap.fractions }).value;
+      }
+      var popTotal     = await sumPopInUnion(serviceAreaUnion);
+      var popCovered   = coverageClipped ? await sumPopInUnion(coverageClipped) : 0;
       var popThreshold = (thresholdMin == null) ? null
-                       : (thresholdClipped ? App.aggregateWithinUnion(thresholdClipped, geos, popMap, "sum", opts).value : 0);
+                       : (thresholdClipped ? await sumPopInUnion(thresholdClipped) : 0);
+      var apportionMethodUsed = anyFellBack ? "area" : _apportionMethod;
 
       setStatus("Computing LODES employment…", "running");
       async function sumJobsInUnion(unionFeat) {
@@ -735,6 +750,7 @@
       _lastResult = {
         geoLevel: geoLevel, year: year,
         bufferMiles: bufferMiles, useDisplayBuffers: _useDisplayBuffers, coverageFrom: _coverageFrom,
+        apportionMethodUsed: apportionMethodUsed, apportionNote: apportionNote,
         dayType: dayType, thresholdMin: thresholdMin,
         popTotal: popTotal, popCovered: popCovered, popThreshold: popThreshold,
         jobsTotal: jobsTotal, jobsCovered: jobsCovered, jobsThreshold: jobsThreshold,
@@ -796,6 +812,15 @@
     resultsWrap.style.display = "";
 
     var hasThreshold = result.thresholdMin != null;
+
+    var footEl = document.getElementById("tcApportionFootnote");
+    if (footEl) footEl.textContent = "Residents counted by " + Apportion.methodLabel(result.apportionMethodUsed) +
+      "; jobs are counted by whole LODES block.";
+    var apNoteEl = document.getElementById("tcApportionNote");
+    if (apNoteEl) {
+      apNoteEl.textContent = result.apportionNote || "";
+      apNoteEl.style.display = result.apportionNote ? "" : "none";
+    }
 
     var html = '<table class="cs-results-table tc-results-table">' +
       '<thead><tr>' +
@@ -891,7 +916,8 @@
       : (r.coverageFrom === "stops" ? "stops when present, else along the line" : "along the whole line")));
     lines.push("# Day type: "               + r.dayType);
     lines.push("# Headway threshold (min): " + (hasThreshold ? r.thresholdMin : ""));
-    lines.push("# Population is apportioned by area; jobs are counted by whole LODES block.");
+    lines.push("# Residents counted by: " + Apportion.methodLabel(r.apportionMethodUsed));
+    if (r.apportionNote) lines.push("# " + String(r.apportionNote).replace(/[\r\n]+/g, " "));
 
     lines.push("row,population,pop_pct,jobs,jobs_pct");
     lines.push(dataRow("Service area", r.popTotal, r.jobsTotal, r.popTotal, r.jobsTotal));
@@ -1014,6 +1040,11 @@
     var coverageFromSel = document.getElementById("tcCoverageFrom");
     if (coverageFromSel) coverageFromSel.addEventListener("change", function () {
       _coverageFrom = coverageFromSel.value === "stops" ? "stops" : "line";
+      markStale();
+    });
+    var apportionSel = document.getElementById("tcApportionMethod");
+    if (apportionSel) apportionSel.addEventListener("change", function () {
+      _apportionMethod = apportionSel.value === "area" ? "area" : "blockPop";
       markStale();
     });
     syncBufferControl();
@@ -1154,6 +1185,7 @@
       bufferMiles:      null,
       useDisplayBuffers: _useDisplayBuffers,
       coverageFrom:     _coverageFrom,
+      apportionMethod:  _apportionMethod,
       includeHidden:    _includeHidden,   // additive, no schema bump
       dayType:          null,
       headwayThreshold: null,
@@ -1199,6 +1231,8 @@
         bufferMiles:     _lastResult.bufferMiles,
         useDisplayBuffers: _lastResult.useDisplayBuffers,
         coverageFrom:    _lastResult.coverageFrom,
+        apportionMethodUsed: _lastResult.apportionMethodUsed,
+        apportionNote:   _lastResult.apportionNote || null,
         dayType:         _lastResult.dayType,
         thresholdMin:    _lastResult.thresholdMin,
         hiddenIncluded:  _lastResult.hiddenIncluded || 0,
@@ -1254,6 +1288,7 @@
     if (bufferEl && Number.isFinite(settings.bufferMiles)) bufferEl.value = String(settings.bufferMiles);
     if (settings.useDisplayBuffers != null) _useDisplayBuffers = !!settings.useDisplayBuffers;
     _coverageFrom = settings.coverageFrom === "stops" ? "stops" : "line";   // old sessions measured along the line
+    _apportionMethod = settings.apportionMethod === "blockPop" ? "blockPop" : "area";   // old sessions counted by land area
     if (typeof settings.includeHidden === "boolean") _includeHidden = settings.includeHidden;
     var ihRestoreEl = document.getElementById("tcIncludeHidden");
     if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
@@ -1274,6 +1309,8 @@
       bufferMiles:      s.bufferMiles,
       useDisplayBuffers: !!s.useDisplayBuffers,
       coverageFrom:     s.coverageFrom === "stops" ? "stops" : "line",
+      apportionMethodUsed: s.apportionMethodUsed === "blockPop" ? "blockPop" : "area",
+      apportionNote:    s.apportionNote || null,
       dayType:          s.dayType,
       thresholdMin:     s.thresholdMin,
       hiddenIncluded:   s.hiddenIncluded || 0,

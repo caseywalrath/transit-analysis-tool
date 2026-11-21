@@ -76,6 +76,14 @@
       </div>
 
       <div class="form-field">
+        <label class="tiny" for="tcApportionMethod">Count residents of partly covered areas</label>
+        <select id="tcApportionMethod" class="rf-select">
+          <option value="blockPop" selected>by 2020 census-block population</option>
+          <option value="area">by land area</option>
+        </select>
+      </div>
+
+      <div class="form-field">
         <label class="tiny">Day type (peak headway)</label>
         <select id="tcDayType" class="rf-select">
           <option value="weekday" selected>Weekday</option>
@@ -119,8 +127,10 @@
           <button id="tcExportCSV" type="button" class="rf-btn-sm" disabled>Export CSV</button>
         </div>
 
+        <p id="tcApportionNote" class="rf-status rf-status-stale u-mt-2" style="display:none"></p>
+
         <p class="tiny u-mt-2 u-muted">
-          Population is apportioned by area; jobs are counted by whole LODES block (apportionment does not apply to jobs).
+          <span id="tcApportionFootnote">Residents counted by land area; jobs are counted by whole LODES block.</span>
           <span id="tcHiddenNote"></span>
         </p>
       </div>
