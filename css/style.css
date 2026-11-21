@@ -7229,6 +7229,32 @@ body.present-mode .box-select-bar { display: none; }
   margin-top: 0;
 }
 
+/* Export drawn Services as GTFS (.gex-); reuses the .gp-dialog frame. */
+.gex-services {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.gex-svc { display: block; }
+.gex-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+}
+.gex-check { display: block; margin: var(--space-3) 0; }
+/* Labels stack above their inputs so the two columns line up; inputs follow the theme. */
+.gex-grid .form-field { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.gex-grid input {
+  width: 100%; box-sizing: border-box; padding: var(--space-1) var(--space-2);
+  background: var(--surface); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font: inherit; color-scheme: light;
+}
+body.dark-mode .gex-grid input { color-scheme: dark; }
+.gex-status { min-height: 1.2em; font-size: var(--text-sm); }
+.gex-status.is-error { color: var(--danger); }
+
 /* Attribute popup for a clicked GeoPackage feature (a MapLibre popup). Long
    values wrap and the body scrolls, since some layers carry dozens of fields
    or JSON blobs. */
