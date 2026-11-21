@@ -49,3 +49,7 @@ every trip is written one by one.
 ## Progress log
 
 - 2026-11-21: gates answered (G8a Option A, G8b Option A); sub-plan and card A8.1 written (Opus).
+- 2026-11-21: A8.2 `App.gtfsExportInput` written by Opus ahead of the engine (collectProposals gains `withShape`;
+  route_type from the Line's mode text). A8.1 `window.GtfsExport` [Haiku xhigh]: clean first time, 19 golden cases,
+  every card value matched. Accepted readings: null entries skipped; blank directionId read as "0"; the no-shape
+  warning fires only for patterns that write trips.
