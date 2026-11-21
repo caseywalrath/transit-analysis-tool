@@ -67,7 +67,8 @@
 
   // Drawn Services as proposals. A Service with blocking setup warnings, no run time or (unless
   // includeHidden) a hidden pattern is skipped and named in `skipped`.
-  function collectProposals(includeHidden, serviceKeys) {
+  // withShape adds each pattern's line as `shape: [[lon, lat], ...]` (the GTFS export needs it; the network does not).
+  function collectProposals(includeHidden, serviceKeys, withShape) {
     var proposals = [], skipped = [];
     var want = Array.isArray(serviceKeys) ? serviceKeys : null;
     (App.buildTransitServices ? App.buildTransitServices() : []).forEach(function (svc) {
@@ -92,7 +93,8 @@
           },
           runtimeMin: rt,
           lengthMi: line ? turf.length(line, { units: "miles" }) : 0,
-          stops: patternStops(svc.key, pi, p, f, includeHidden, stops)
+          stops: patternStops(svc.key, pi, p, f, includeHidden, stops),
+          shape: withShape && line ? line.geometry.coordinates.slice() : undefined
         });
       });
       if (!patterns.length) {
@@ -103,7 +105,7 @@
       var firstF = featureOf(first);
       var lineMode = firstF && firstF.properties && firstF.properties.attributes && firstF.properties.attributes.mode;
       proposals.push({
-        key: svc.key, name: svc.name, color: first.color || "",
+        key: svc.key, name: svc.name, color: first.color || "", modeText: lineMode || "",
         mode: lineMode && /rail|tram|streetcar|subway|metro|train/i.test(lineMode) ? "rail" : "bus",
         stops: Object.keys(stops).map(function (k) { return stops[k]; }),
         patterns: patterns
@@ -131,6 +133,37 @@
     net.proposalsSkipped = prop.skipped;
     net.notes = prop.proposals.length ? [PROPOSAL_NOTE] : [];
     return net;
+  };
+
+  // GTFS route_type for a Service's free-text mode: light rail, streetcar and tram 0; subway and metro 1;
+  // other rail and trains 2; anything else is a bus (3).
+  function gtfsRouteType(modeText) {
+    var m = String(modeText || "");
+    if (/light|tram|streetcar/i.test(m)) return 0;
+    if (/subway|metro/i.test(m)) return 1;
+    if (/rail|train/i.test(m)) return 2;
+    return 3;
+  }
+
+  // Input for GtfsExport.build from the chosen drawn Services. opts: { includeHidden, agency, startDate, endDate,
+  // frequencies, feedVersion }. Returns { input, skipped: [{key, name, reason}] }. Route ids are the Service keys
+  // with anything but letters, digits, "-" and "_" replaced by "_", so they read cleanly in other tools.
+  App.gtfsExportInput = function (serviceKeys, opts) {
+    var o = opts || {};
+    var prop = collectProposals(!!o.includeHidden, Array.isArray(serviceKeys) ? serviceKeys : null, true);
+    var used = Object.create(null);
+    var routes = prop.proposals.map(function (p) {
+      var id = String(p.key).replace(/[^A-Za-z0-9_\-]/g, "_"), n = 2, base = id;
+      while (used[id]) id = base + "_" + (n++);
+      used[id] = true;
+      return { routeId: id, shortName: "", longName: p.name || id, routeType: gtfsRouteType(p.modeText),
+        color: p.color || "", proposal: p };
+    });
+    return {
+      input: { agency: o.agency || {}, feedVersion: o.feedVersion || "", startDate: o.startDate, endDate: o.endDate,
+        frequencies: o.frequencies !== false, routes: routes },
+      skipped: prop.skipped
+    };
   };
 
   // ---- Schedule travelshed (Transit Travelshed's "Schedule" mode) ----
