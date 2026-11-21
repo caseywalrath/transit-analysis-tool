@@ -497,9 +497,11 @@
       ? App.buildDisplayBufferSet(featureFilter, hiddenOpts)
       : App.buildAnalysisBufferSet(featureFilter, _state.bufferMiles, hiddenOpts);
     var hiddenCount = bufferSet.hiddenCount || { included: 0, skipped: 0 };
-    var gtfsUnion = gtfsPoints.length ? App.buildStopCircleUnion(gtfsPoints, _state.bufferMiles) : null;
+    // Pairwise and yielding: a whole system's stops would freeze the page under a one-at-a-time fold.
+    var gtfsSigAtRun = gtfsPoints.length ? gtfsSig() : null;   // read before the await: the feed may change while it merges
+    var gtfsUnion = gtfsPoints.length ? await App.unionManyPolygons(App.buildStopCircles(gtfsPoints, _state.bufferMiles)) : null;
     _runSnap = {
-      gtfs: gtfsUnion ? gtfsSig() : null,
+      gtfs: gtfsUnion ? gtfsSigAtRun : null,
       geom: featureGeomSig(), hidden: selectedHiddenSig(featureFilter),
       includeHidden: !!_state.includeHidden, filterRefs: getCheckedRefs().filter(function (r) {
         // only refs that were actually in the run filter (enabled boxes)

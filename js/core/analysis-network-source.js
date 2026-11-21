@@ -101,10 +101,10 @@
       }
       var first = svc.patterns[0];
       var firstF = featureOf(first);
-      var lineMode = firstF && firstF.properties && firstF.properties.attributes && firstF.properties.attributes.lineMode;
+      var lineMode = firstF && firstF.properties && firstF.properties.attributes && firstF.properties.attributes.mode;
       proposals.push({
         key: svc.key, name: svc.name, color: first.color || "",
-        mode: lineMode && /rail|tram|subway|metro|train/i.test(lineMode) ? "rail" : "bus",
+        mode: lineMode && /rail|tram|streetcar|subway|metro|train/i.test(lineMode) ? "rail" : "bus",
         stops: Object.keys(stops).map(function (k) { return stops[k]; }),
         patterns: patterns
       });

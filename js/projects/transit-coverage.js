@@ -31,7 +31,7 @@
   var _distanceMode      = "straight";   // "straight" | "streets"
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
-  var _runSnap           = null;    // { geom, hidden, refs: [{type,id}], includeHidden, gtfs: string|null }
+  var _runSnap           = null;    // { geom, hidden, refs: [{type,id}], includeHidden, streets, net: string|null, gtfs: string|null, gtfsPending }
 
   // ---- DOM guard: only touch DOM when popup is open for this module ----
 
@@ -85,13 +85,19 @@
   }
 
   // Everything besides the hidden flag that changes a run and arrives via
-  // notifyProject: feature edits, LODES, display-buffer radii.
+  // notifyProject: feature edits, LODES, display-buffer radii. The street network is NOT here: see netSig.
   function runInputsSig() {
     var fs = App.featureSettings || {};
-    // Street distances depend on the walk network; straight-line runs do not care about it.
-    var net = _distanceMode === "streets" && typeof App.roadNetworkEpoch === "function" ? App.roadNetworkEpoch() : "";
-    return App.featureGeomSignature() + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") + "#net:" + net +
+    // featureGeomSignature always carries the street-network epoch; it is removed here and tracked in netSig
+    // so a straight-line run does not go stale when the network loads.
+    return App.featureGeomSignature().replace(/#epoch:\d+/, "") + "#lodes:" + (App.lodesData ? (App.lodesFileName || "1") : "") +
       "#fs:" + JSON.stringify([fs.bufferRadius, fs.lineBufferRadius, fs.routeBufferRadius]);
+  }
+
+  // Street distances depend on the walk network (a run that asked for streets also goes stale when a
+  // network appears after it fell back to straight line); straight-line runs never do.
+  function netSig() {
+    return typeof App.roadNetworkEpoch === "function" ? String(App.roadNetworkEpoch()) : "";
   }
 
   // What a run's GTFS routes depend on: the feed, the analysis date, hidden routes and the day parts
@@ -105,8 +111,26 @@
   }
   var _feedIds = new WeakMap(), _feedSeq = 0;
 
-  function makeRunSnap(refs) {
-    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs), includeHidden: _includeHidden, gtfs: gtfsSig() };
+  // opts.streets: the run asked for along-streets distance; opts.gtfs: it used GTFS routes. Each signature
+  // is recorded only when the run depends on it, so an unrelated change cannot mark it stale.
+  function makeRunSnap(refs, opts) {
+    opts = opts || {};
+    return { geom: runInputsSig(), refs: refs, hidden: App.hiddenSignature(refs), includeHidden: _includeHidden,
+      streets: !!opts.streets, net: opts.streets ? netSig() : null, gtfs: opts.gtfs ? gtfsSig() : null,
+      gtfsPending: null };
+  }
+
+  // A restored run has no feed signature: the feed loads on its own schedule. Once it is loaded, compare it
+  // with what the run saved (analysis date and each GTFS route still available) one time, then track it
+  // like any other run. A mismatch becomes a signature that never matches, so the run reads as stale.
+  function settleRestoredGtfs() {
+    var p = _runSnap && _runSnap.gtfsPending;
+    if (!p || !feedReady()) return;
+    _runSnap.gtfsPending = null;
+    var avail = Object.create(null);
+    gtfsRoutesOnDate().forEach(function (r) { avail[r.id] = true; });
+    var same = (App.gtfsAnalysisDate.get() || "") === p.date && p.routeIds.every(function (id) { return avail[id]; });
+    _runSnap.gtfs = same ? gtfsSig() : "changed-since-restore";
   }
 
   // True when the last run no longer matches the map: features changed, the hidden
@@ -115,7 +139,10 @@
     if (!_runSnap) return false;
     if (_runSnap.includeHidden !== _includeHidden) return true;
     if (_runSnap.geom !== runInputsSig()) return true;
-    // null = restored from a session: the feed may still be loading, so it says nothing.
+    if (_runSnap.streets !== (_distanceMode === "streets")) return true;
+    // null net = restored from a session: the cached network finishing its load is not a change.
+    if (_runSnap.streets && _runSnap.net !== null && _runSnap.net !== netSig()) return true;
+    settleRestoredGtfs();
     if (_runSnap.gtfs !== null && _runSnap.gtfs !== gtfsSig()) return true;
     return _runSnap.hidden !== App.hiddenSignature(_runSnap.refs);
   }
@@ -641,37 +668,6 @@
   // Lets the browser paint status text between the heavy synchronous steps.
   function tick() { return new Promise(function (resolve) { setTimeout(resolve, 0); }); }
 
-  // Spatial sort key so neighbouring circles are merged first (a Morton code of the first vertex).
-  function mortonKey(poly) {
-    var c = poly.geometry.coordinates;
-    var p = poly.geometry.type === "MultiPolygon" ? c[0][0][0] : c[0][0];
-    var x = Math.max(0, Math.floor((p[0] + 180) * 200)), y = Math.max(0, Math.floor((p[1] + 90) * 200)), r = 0;
-    for (var b = 0; b < 17; b++) r += (((x >> b) & 1) + 2 * ((y >> b) & 1)) * Math.pow(4, b);
-    return r;
-  }
-
-  // Union of many polygons by pairwise merging of spatial neighbours. foldAnalysisUnion folds one
-  // polygon at a time into an ever larger shape, which for a few thousand stop circles takes minutes.
-  // Yields between rounds so a large system leaves the page responsive.
-  async function unionMany(polys) {
-    var a = (polys || []).filter(Boolean);
-    if (a.length < 3) return App.foldAnalysisUnion(a);
-    var keyed = a.map(function (p) { return { p: p, k: mortonKey(p) }; });
-    keyed.sort(function (x, y) { return x.k - y.k; });
-    a = keyed.map(function (e) { return e.p; });
-    var big = a.length > 200;
-    while (a.length > 1) {
-      var next = [];
-      for (var i = 0; i < a.length; i += 2) {
-        if (i + 1 >= a.length) { next.push(a[i]); continue; }
-        try { next.push(turf.union(a[i], a[i + 1])); } catch (e) { next.push(a[i]); }
-      }
-      a = next;
-      if (big) await tick();
-    }
-    return a[0];
-  }
-
   var KM_PER_MILE = 1.609344;
 
   // Area within `miles` of every item ({ id, lng, lat, miles }): circles, or the walking area along
@@ -696,18 +692,23 @@
           res.unsnapped.forEach(function (id) { gone[id] = true; });
           circleItems = group.filter(function (it) { return gone[it.id]; });
           off += circleItems.length;
+        } else {
+          // No street polygon came back: every stop of the group is measured in a straight line.
+          off += circleItems.length;
         }
         await tick();
+      } else if (streets) {
+        off += circleItems.length;
       }
       if (circleItems.length) {
         var circles = [];
         circleItems.forEach(function (it) {
           try { circles.push(turf.circle([it.lng, it.lat], it.miles, { units: "miles", steps: 32 })); } catch (e) { /* skip a bad point */ }
         });
-        parts.push(await unionMany(circles));
+        parts.push(await App.unionManyPolygons(circles));
       }
     }
-    return { union: await unionMany(parts), off: off };
+    return { union: await App.unionManyPolygons(parts), off: off };
   }
 
   function roundMi(n) { return Math.round(n * 1000) / 1000; }
@@ -715,7 +716,7 @@
   // Stops of the selected GTFS routes on the analysis date, buffered by mode (bus / rail), plus the
   // headway-qualifying subset. Everything comes from the schedule (stopServiceTable), one call per route.
   async function buildGtfsCoverage(routeIds, o) {
-    var S = window.GtfsSchedule, feed = App.gtfsSchedule(), date = App.gtfsAnalysisDate.get();
+    var S = window.GtfsSchedule, feed = App.gtfsSchedule(), date = o.date;
     var parts = App.gtfsDayParts.get();
     var meta = Object.create(null);
     gtfsRoutesOnDate().forEach(function (r) { meta[r.id] = r; });
@@ -1026,14 +1027,19 @@
       var noNetwork = _distanceMode === "streets" && !App.roadNetworkLoaded();
       var streets = _distanceMode === "streets" && !noNetwork;
 
+      // Taken before the first await: the signatures and the GTFS date describe the inputs this run reads,
+      // even if the user changes the date or hides a route while it computes.
+      var gtfsDate = gtfsSel.length ? App.gtfsAnalysisDate.get() : null;
+      var snap = makeRunSnap(checkedRefsIn("tcFeatureList").concat(checkedRefsIn("tcAreaList")),
+        { streets: _distanceMode === "streets", gtfs: gtfsSel.length > 0 });
+
       var unions = await buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers, _includeHidden, _coverageFrom, streets);
       var gtfsCov = null;
       if (gtfsSel.length) {
         setStatus(streets ? "Measuring GTFS stops along streets…" : "Buffering GTFS stops…", "running");
         await tick();
-        gtfsCov = await buildGtfsCoverage(gtfsSel, { busMi: busMi, railMi: railMi, thresholdMin: thresholdMin, streets: streets });
+        gtfsCov = await buildGtfsCoverage(gtfsSel, { busMi: busMi, railMi: railMi, thresholdMin: thresholdMin, streets: streets, date: gtfsDate });
       }
-      var snap = makeRunSnap(checkedRefsIn("tcFeatureList").concat(checkedRefsIn("tcAreaList")));
       // Hidden features that took part: route/line from the buffer set, plus hidden service-area polygons.
       var hiddenIncluded = (unions.hiddenCount && unions.hiddenCount.included) || 0;
       if (_includeHidden) {
@@ -1044,10 +1050,10 @@
       }
       setStatus("Combining buffers…", "running");
       await tick();
-      var coverageUnion  = await unionMany(unions.buffers.concat(gtfsCov && gtfsCov.union ? [gtfsCov.union] : []));
+      var coverageUnion  = await App.unionManyPolygons(unions.buffers.concat(gtfsCov && gtfsCov.union ? [gtfsCov.union] : []));
       var thresholdUnion = null;
       if (thresholdMin != null) {
-        thresholdUnion = await unionMany(unions.qualifyingBuffers.concat(gtfsCov && gtfsCov.thresholdUnion ? [gtfsCov.thresholdUnion] : []));
+        thresholdUnion = await App.unionManyPolygons(unions.qualifyingBuffers.concat(gtfsCov && gtfsCov.thresholdUnion ? [gtfsCov.thresholdUnion] : []));
       }
       var headwayRows     = unions.headwayRows.concat(gtfsCov ? gtfsCov.rows : []);
       var offNetwork = unions.off + (gtfsCov ? gtfsCov.off : 0);
@@ -1114,7 +1120,7 @@
         bufferMiles: bufferMiles, useDisplayBuffers: _useDisplayBuffers, coverageFrom: _coverageFrom,
         bufferLabel: bufferLabel, busMi: busMi, railMi: railMi,
         distanceMode: streets ? "streets" : "straight", distanceNote: distanceNote,
-        gtfsDate: gtfsCov ? App.gtfsAnalysisDate.get() : null,
+        gtfsDate: gtfsCov ? gtfsDate : null,
         gtfsStopCount: gtfsCov ? gtfsCov.stopCount : 0, gtfsQualifyCount: gtfsCov ? gtfsCov.qualifyCount : 0,
         apportionMethodUsed: apportionMethodUsed, apportionNote: apportionNote,
         dayType: dayType, thresholdMin: thresholdMin,
@@ -1820,8 +1826,15 @@
         if (ref && !isRefUnchecked(g[0], ref.id)) restoreRefs.push(ref);
       });
     });
-    _runSnap = makeRunSnap(restoreRefs);
-    _runSnap.gtfs = null;   // the feed restores on its own schedule; do not call that a change
+    _runSnap = makeRunSnap(restoreRefs, { streets: false, gtfs: false });
+    // The feed and the street network restore on their own schedule: neither loading is a change.
+    // The street network is left untracked (net null); the feed is compared once when it is loaded.
+    _runSnap.streets = _lastResult.distanceMode === "streets" || /No street network/.test(_lastResult.distanceNote || "");
+    if (_lastResult.gtfsDate) {
+      _runSnap.gtfsPending = { date: _lastResult.gtfsDate, routeIds: (_lastResult.headwayRows || []).filter(function (r) {
+        return r.featureType === "gtfs" && r.routeId;
+      }).map(function (r) { return r.routeId; }) };
+    }
 
     if (isPopupVisible()) {
       renderResults(_lastResult);

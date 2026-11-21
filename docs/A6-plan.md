@@ -113,6 +113,15 @@ network is loaded).
   The high-effort code-review pass was skipped to save usage; run it over A6a's diff (`c6ed9ef..HEAD`) at the
   start of A6b. RTD: whole straight-line run about 3.1 s; along-streets not timed (no RTD street network offline).
 
+- 2026-11-21: A6a review (high) run at the start of A6b: 10 findings, all fixed. Opus: drawn Mode read from
+  `attributes.mode` (Light Rail / Streetcar → rail); street coverage samples the stop's own block from the snap
+  point (a mid-block stop with a short buffer had none); proposal-only networks take the day type from the date.
+  Sonnet (card `card-a6a-fix.md`): pairwise union moved to `App.unionManyPolygons` and keeps both inputs when a
+  merge throws, Feature Area Analysis uses it; Transit Coverage stale rules (snapshot before the first await,
+  restored GTFS runs compare their saved date, epoch / feed signature only when used, off-network note).
+  Golden 1099/1099; browser transit-coverage-gtfs 37/37, multi-walk-flood 11/11, faa-gtfs-stops 14/14,
+  hidden-features 138/138, analysis-network 17/17, walkshed-contour 24/24.
+
 **Hand-off (A6b, A6c):** `App.buildAnalysisNetwork({date, includeHidden, gtfs, proposals})` →
 network (see `docs/reference/modules/gtfs.md` "Analysis network"); `AnalysisNetwork.stopService(network,
 dayParts)` gives per-stop trips and peak headway for the equity test; `App.computeMultiWalkCostMap(origins,

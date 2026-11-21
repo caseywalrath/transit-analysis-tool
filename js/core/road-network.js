@@ -1521,11 +1521,12 @@
   function computeMultiWalkCostMap(origins, budgetKm, opts) {
     if (!_graph || !(budgetKm > 0)) return null;
     var now = function () { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); };
-    var t0 = now(), seeds = [], unsnapped = [], snapped = 0;
+    var t0 = now(), seeds = [], unsnapped = [], snapped = 0, snaps = [];
     for (var i = 0; i < (origins || []).length; i++) {
       var o = origins[i], snap = o && o.lngLat ? snapToNetwork(o.lngLat, "walk") : null;
       if (!snap) { unsnapped.push(o ? o.id : null); continue; }
       snapped++;
+      snaps.push({ coord: snap.coord, a: snap.segStartCoord, b: snap.segEndCoord });
       seeds.push({ key: snap.segStartKey, origin: i,
         dist: turf.distance(turf.point(snap.coord), turf.point(snap.segStartCoord), { units: "kilometers" }) });
       seeds.push({ key: snap.segEndKey, origin: i,
@@ -1534,8 +1535,21 @@
     var t1 = now(), originOf = new Map();
     var distMap = floodFromSeeds(seeds, budgetKm, opts && opts.crossingPenaltyKm, originOf);
     var t2 = now();
-    return { distMap: distMap, originOf: originOf, snapped: snapped, unsnapped: unsnapped,
+    return { distMap: distMap, originOf: originOf, snapped: snapped, unsnapped: unsnapped, snaps: snaps,
       snapMs: Math.round(t1 - t0), floodMs: Math.round(t2 - t1) };
+  }
+
+  function pushSnapSegmentSamples(out, sn, budgetKm, stepKm) {
+    var p = sn.coord, kx = 111.32 * Math.cos(p[1] * Math.PI / 180), ky = 110.574;
+    out.push([p[0], p[1], 0]);
+    [sn.a, sn.b].forEach(function (end) {
+      var L = Math.sqrt(Math.pow((end[0] - p[0]) * kx, 2) + Math.pow((end[1] - p[1]) * ky, 2));
+      var reach = Math.min(L, budgetKm), n = Math.ceil(reach / (stepKm > 0 ? stepKm : 0.025));
+      for (var q = 1; q <= n && L > 0; q++) {
+        var t = reach * q / n;
+        out.push([p[0] + (end[0] - p[0]) * t / L, p[1] + (end[1] - p[1]) * t / L, t]);
+      }
+    });
   }
 
   // Area within budgetKm walking of any origin, traced like computeWalkshed's boundary.
@@ -1550,8 +1564,13 @@
     var polygon = null, gridKmUsed = null;
     if (flood.snapped > 0 && shape && window.WalkShape && window.WalkShape.contour) {
       var gridKm = window.WalkShape.scaledGridKm(shape.gridKm, budgetKm / 1.25);
-      var res = window.WalkShape.contour(
-        contourSamples(flood.distMap, budgetKm, gridKm * window.WalkShape.SAMPLE_STEP_CELLS, 1, true), [budgetKm],
+      var stepKm = gridKm * window.WalkShape.SAMPLE_STEP_CELLS;
+      var samples = contourSamples(flood.distMap, budgetKm, stepKm, 1, true);
+      // The snap point is not a graph node, so contourSamples prices the origin's own segment only
+      // through its two ends (about twice the true cost near the stop, nothing at all on a block longer
+      // than twice the budget). Sample that segment outward from the snap point instead.
+      flood.snaps.forEach(function (sn) { pushSnapSegmentSamples(samples, sn, budgetKm, stepKm); });
+      var res = window.WalkShape.contour(samples, [budgetKm],
         { gridKm: gridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
           holeAcres: shape.holeAcres, roundKm: shape.roundKm });
       polygon = res.bands[0] || null;

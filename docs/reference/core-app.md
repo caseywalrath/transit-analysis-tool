@@ -100,6 +100,8 @@ Feature Area Analysis, Transit Coverage, Transit Propensity, Ridership Forecasti
 
 - `App.ANALYSIS_BUFFER_DEFAULT_MILES` 0.5, `App.ANALYSIS_BUFFER_MIN_MILES` 0.05, `App.ANALYSIS_BUFFER_MAX_MILES` 5.
 - `App.foldAnalysisUnion(polys)` — `turf.union` fold; `null` for empty.
+- `App.unionManyPolygons(list, opts)` — async pairwise union of spatial neighbours (Morton-sorted), yielding between rounds when the list is longer than `opts.yieldMin` (default 200); use it instead of `foldAnalysisUnion` for thousands of polygons (RTD stop circles: seconds, not minutes). `null` for an empty list. A pair whose `turf.union` throws keeps both inputs; if a whole round makes no progress the rest come back as one MultiPolygon, so nothing is dropped. Used by Transit Coverage and Feature Area Analysis (GTFS stop selection).
+- `App.buildStopCircles(points, miles)` — the plain circles (array) behind `App.buildStopCircleUnion`, for feeding `unionManyPolygons`.
 - `App.buildAnalysisBuffer(feature, miles)` — `turf.buffer(..., {units:"miles", steps:64})`, `null` on failure.
 - `App.readAnalysisBufferMiles(elOrId, fallback)` — accepts an id, element, or any `{value}` object (headless-testable); returns `fallback` (default 0.5) when missing, non-numeric or out of `[MIN, MAX]`.
 - `App.buildAnalysisBufferSet(filter, miles, opts)` — `filter = {routeIndices, lineIndices, pointIndices, polygonIndices}` (explicit arrays; never null-means-all) → `{byType: {route, line, point, polygon}, union, get(type, idx), count, hiddenCount}`. Points prefer a cached walkshed (`serviceAreaType === "walkshed"` + `App.getPointWalkshed`) unless `opts.preserveWalksheds === false`. Polygons pass through unbuffered.

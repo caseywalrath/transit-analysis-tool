@@ -191,6 +191,10 @@
     var dayType = "weekday";
     if (feed && date !== "") {
       try { dayType = G.dayType(feed, date).dayType || "weekday"; } catch (e) { dayType = "weekday"; }
+    } else if (/^\d{8}$/.test(date)) {
+      // No feed (proposals only): the calendar weekday still picks the bands.
+      var wd = new Date(Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8))).getUTCDay();
+      dayType = wd === 0 ? "sunday" : wd === 6 ? "saturday" : "weekday";
     }
 
     if (feed && date !== "") {

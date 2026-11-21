@@ -65,6 +65,8 @@ add("a6-net-build-b1", net("build", { date: D1, routeIds: ["B1"], proposals: [] 
 add("a6-net-build-d1-proposal", net("build", { date: D1, routeIds: null, proposals: [PROPOSAL] }));
 // EXPECTED: 4 trips on stops d:A d:B d:C.
 add("a6-net-build-proposals-only", { call: "AnalysisNetwork.build", args: [{ feed: null, date: D1, routeIds: null, proposals: [PROPOSAL] }] });
+// EXPECTED: no feed on Saturday 2026-01-24: dayType saturday, the proposal has no Saturday bands, no trips.
+add("a6-net-build-proposals-only-saturday", { call: "AnalysisNetwork.build", args: [{ feed: null, date: "20260124", routeIds: null, proposals: [PROPOSAL] }] });
 // EXPECTED: sunday, nothing.
 add("a6-net-build-unknown-date", net("build", { date: "20260301", routeIds: null, proposals: [] }));
 add("a6-net-build-empty", { call: "AnalysisNetwork.build", args: [null] });

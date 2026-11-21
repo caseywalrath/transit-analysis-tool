@@ -4082,7 +4082,7 @@ select.fp-attr-input,
   text-transform: uppercase;
   letter-spacing: var(--tracking-sm);
   color: var(--muted);
-  margin: 8px 0 2px;
+  margin: var(--space-2) 0 var(--space-1);
 }
 .rf-feature-check-row input[type="checkbox"] {
   margin: 0;

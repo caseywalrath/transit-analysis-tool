@@ -299,6 +299,54 @@ const STOPS = { S1: [-104.99, 39.74], S2: [-104.98, 39.74], S3: [-104.97, 39.74]
     check("27. un-hiding F1 puts it back, checked", await page.evaluate(() => {
       const cb = document.querySelector('#tcGtfsList input[data-route-id="F1"]'); return !!cb && cb.checked; }));
 
+    // ---- review fixes: union fallback, run snapshot, stale signature ----
+    const uni = await page.evaluate(async () => {
+      const centers = [[-104.99, 39.74], [-104.98, 39.74], [-104.97, 39.74], [-104.96, 39.74], [-104.95, 39.74]];
+      const circles = centers.map((c) => turf.circle(c, 0.25, { units: "miles", steps: 32 }));
+      const sumArea = circles.reduce((n, c) => n + turf.area(c), 0);
+      const real = turf.union;
+      const out = {};
+      try {
+        let calls = 0;
+        turf.union = function () { if (++calls === 1) throw new Error("forced"); return real.apply(turf, arguments); };
+        const one = await App.unionManyPolygons(circles);
+        out.oneInside = centers.every((c) => turf.booleanPointInPolygon(turf.point(c), one));
+        out.oneArea = turf.area(one) / sumArea;
+        turf.union = function () { throw new Error("forced"); };
+        const all = await App.unionManyPolygons(circles);
+        out.allInside = centers.every((c) => turf.booleanPointInPolygon(turf.point(c), all));
+        out.allArea = turf.area(all) / sumArea;
+      } finally { turf.union = real; }
+      return out;
+    });
+    check("27a. a union that throws once keeps both inputs: every circle is inside the result and the area is the sum",
+      uni.oneInside && Math.abs(uni.oneArea - 1) < 0.02, JSON.stringify(uni));
+    check("27b. when every union throws the polygons come back as one MultiPolygon, none dropped",
+      uni.allInside && Math.abs(uni.allArea - 1) < 0.02, JSON.stringify(uni));
+
+    // The run reads the analysis date once, before its first await; a date change mid-run does not leak in.
+    await page.evaluate(() => { document.getElementById("tcRunBtn").click(); App.gtfsAnalysisDate.set("20260113"); });
+    await waitFor(() => /Analyzed coverage|Error/.test(document.getElementById("tcStatus").textContent));
+    const midRun = await page.evaluate(() => document.getElementById("tcResults").textContent);
+    check("27c. a date change while the run computes: the results still name the date the run started with",
+      /2026-01-12/.test(midRun) && !/2026-01-13/.test(midRun), midRun.slice(-250));
+    await page.evaluate(() => App.gtfsAnalysisDate.set("20260112"));
+
+    // A straight-line run ignores the street network; a streets run does not.
+    await run();
+    await page.evaluate(() => { window.__realEpoch = App.roadNetworkEpoch; App.roadNetworkEpoch = () => 98765; App.notifyProject(); });
+    await new Promise((r) => setTimeout(r, 600));
+    check("27d. a straight-line run does not go stale when the street network changes",
+      await page.evaluate(() => !document.querySelector("#tcStatus.rf-status-stale")));
+    await page.evaluate(() => { App.roadNetworkEpoch = window.__realEpoch; });
+    await setVal("#tcDistanceMode", "streets");
+    await run();
+    await page.evaluate(() => { App.roadNetworkEpoch = () => 98766; App.notifyProject(); });
+    check("27e. an along-streets run goes stale when the street network changes",
+      await waitFor(() => !!document.querySelector("#tcStatus.rf-status-stale"), null, 5000));
+    await page.evaluate(() => { App.roadNetworkEpoch = window.__realEpoch; });
+    await setVal("#tcDistanceMode", "straight");
+
     // ---- session ----
     await setChecked(["B1", "F1"]);
     await setVal("#tcBusBufferMi", "0.3");

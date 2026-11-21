@@ -2066,6 +2066,20 @@
       "droppedRows": 0
     }
   },
+  "a6-net-build-proposals-only-saturday": {
+    "date": "20260124",
+    "dayType": "saturday",
+    "stops": [],
+    "stopIndex": {},
+    "routes": {},
+    "routeOrder": [],
+    "trips": [],
+    "counts": {
+      "gtfsTrips": 0,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
   "a6-net-build-unknown-date": {
     "date": "20260301",
     "dayType": "sunday",

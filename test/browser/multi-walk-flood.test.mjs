@@ -86,7 +86,11 @@ function check(name, pass, detail) {
       const big = App.multiWalkPolygon(many, 0.4);
       const ms = performance.now() - t0;
       const none = App.multiWalkPolygon([{ lngLat: far, id: "far" }], km);
-      return { worst, missing, extra, origins, wrongOrigin, snapped: m.snapped, unsnapped: m.unsnapped,
+      // A budget shorter than the distance to either end of the origin's block still covers the stop.
+      const mid = [LNG0 + 4.5 * D, LAT0 + 5 * D];
+      const tiny = App.multiWalkPolygon([{ lngLat: mid, id: "mid" }], 0.05);
+      const midIn = !!(tiny && tiny.polygon) && turf.booleanPointInPolygon(turf.point(mid), tiny.polygon);
+      return { midIn, worst, missing, extra, origins, wrongOrigin, snapped: m.snapped, unsnapped: m.unsnapped,
         inA: inside(A), inB: inside(B), ratio: areaM / areaU, manyN: many.length, manySnapped: big.snapped,
         bigOk: !!big.polygon, ms: Math.round(ms), nonePoly: none.polygon, noneUnsnapped: none.unsnapped };
     }, { LAT0, LNG0, D });
@@ -101,6 +105,7 @@ function check(name, pass, detail) {
     check("polygon area ≈ union of the two single walksheds", r.ratio > 0.9 && r.ratio < 1.1, "ratio " + r.ratio.toFixed(3));
     check("81 origins snap and trace", r.manySnapped === r.manyN && r.bigOk, r.manySnapped + "/" + r.manyN + " in " + r.ms + " ms");
     check("nothing snapped → polygon null, origin listed", r.nonePoly === null && r.noneUnsnapped.length === 1);
+    check("mid-block origin with a short budget still covers its stop", r.midIn);
     check("no page errors", pageErrors.length === 0, pageErrors.join(" | "));
   } catch (e) {
     check("test ran", false, e && e.stack || String(e));
