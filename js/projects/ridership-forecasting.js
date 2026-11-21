@@ -33,6 +33,7 @@
   var _running = false;
   var _initialized = false;
   var _apportionByArea = false;
+  var _apportionMethod = App.APPORTION_DEFAULT;   // "blockPop" | "area"; read only while _apportionByArea is on
   var _bufferMiles = App.ANALYSIS_BUFFER_DEFAULT_MILES; // module-owned analysis distance (Calibrate tab, shared with Demand)
   var _useDisplayBuffers = false;
   var _normalizeByLength = false;
@@ -275,9 +276,14 @@
       buildConfirmRow("Census Geometry",     getSelectText("rfCalibGeoLevel")) +
       buildConfirmRow("ACS Year",            getSelectText("rfCalibYearSelect")) +
       buildConfirmRow("Features Selected",   formatFeatLabel(counts),                  counts.total === 0) +
-      buildConfirmRow("Apportion by Area",   apportionEl && apportionEl.checked ? "Yes" : "No") +
+      buildConfirmRow("Apportion by Area",   apportionEl && apportionEl.checked ? "Yes (" + apportionMethodText("rfCalibApportionMethod") + ")" : "No") +
       buildConfirmRow("Normalize by Length", normEl      && normEl.checked      ? "Yes" : "No") +
       "</table>";
+  }
+
+  function apportionMethodText(selectId) {
+    var el = document.getElementById(selectId);
+    return el && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text : "by land area";
   }
 
   function buildDemandConfirmHTML() {
@@ -302,7 +308,7 @@
       buildConfirmRow("Census Geometry",   getSelectText("rfGeoLevel")) +
       buildConfirmRow("ACS Year",          getSelectText("rfYearSelect")) +
       buildConfirmRow("Features Selected", featsVal) +
-      buildConfirmRow("Apportion by Area", apportionEl && apportionEl.checked ? "Yes" : "No");
+      buildConfirmRow("Apportion by Area", apportionEl && apportionEl.checked ? "Yes (" + apportionMethodText("rfApportionMethod") + ")" : "No");
 
     if (!useSameSystem) {
       html += buildConfirmRow("Shared Pool Normalization",
@@ -423,6 +429,7 @@
       weights: _weights,
       lodesData: App.lodesData,
       apportionByArea: _apportionByArea,
+      apportionMethod: _apportionMethod,
       growthFactors: App.projGrowthFactors(),
       unionPolygon: sharedUnion,
       featureFilter: null,
@@ -501,6 +508,13 @@
         var calibApportioned = _systemResult.tpiResult && _systemResult.tpiResult.apportionByArea;
         if (!!calibApportioned !== !!_apportionByArea)
           mismatches.push("Apportion by Area: calibration " + (calibApportioned ? "on" : "off") + ", demand " + (_apportionByArea ? "on" : "off"));
+        else if (calibApportioned && _apportionByArea) {
+          var calibMethod = _systemResult.tpiResult.apportionMethod || "area";
+          if (calibMethod !== _apportionMethod) {
+            var methodName = function (m) { return window.Apportion ? window.Apportion.methodLabel(m) : m; };
+            mismatches.push("Apportionment method: calibration used " + methodName(calibMethod) + ", demand uses " + methodName(_apportionMethod));
+          }
+        }
         if (mismatches.length > 0) {
           var proceed = confirm("Demand settings differ from calibration:\n\n" +
             mismatches.join("\n") +
@@ -568,6 +582,7 @@
           weights: _weights,
           lodesData: App.lodesData,
           apportionByArea: _apportionByArea,
+          apportionMethod: _apportionMethod,
           growthFactors: App.projGrowthFactors(),
           unionPolygon: customUnion,
           featureFilter: filterToIndices(demandRun),
@@ -602,6 +617,7 @@
           weights: _weights,
           lodesData: App.lodesData,
           apportionByArea: _apportionByArea,
+          apportionMethod: _apportionMethod,
           growthFactors: App.projGrowthFactors(),
           segmentMiles: segLen,
           segmentBufferMiles: _bufferMiles,
@@ -1572,6 +1588,8 @@
       var apportionCb = document.getElementById("rfCalibApportionByArea");
       var apportion = apportionCb ? apportionCb.checked : false;
       _apportionByArea = apportion;
+      var calibMethodSel = document.getElementById("rfCalibApportionMethod");
+      if (calibMethodSel) _apportionMethod = calibMethodSel.value === "blockPop" ? "blockPop" : "area";
       _bufferMiles = App.readAnalysisBufferMiles("rfBufferMiles", App.ANALYSIS_BUFFER_DEFAULT_MILES);
       _useDisplayBuffers = !!(document.getElementById("rfUseDisplayBuffers") || {}).checked;
 
@@ -1593,6 +1611,7 @@
         weights: _weights,
         lodesData: App.lodesData,
         apportionByArea: apportion,
+        apportionMethod: _apportionMethod,
         growthFactors: App.projGrowthFactors(),
         unionPolygon: customUnion,
         featureFilter: filterToIndices(calibRun),
@@ -3223,6 +3242,15 @@
         // Sync to demand tab checkbox
         var demandCb = document.getElementById("rfApportionByArea");
         if (demandCb) demandCb.checked = _apportionByArea;
+        syncApportionMethodSelects();
+        markStale();
+      });
+    }
+    var calibMethodEl = document.getElementById("rfCalibApportionMethod");
+    if (calibMethodEl) {
+      calibMethodEl.addEventListener("change", function () {
+        _apportionMethod = calibMethodEl.value;
+        syncApportionMethodSelects();
         markStale();
       });
     }
@@ -3396,9 +3424,19 @@
         // Sync to calibrate tab checkbox
         var calibCb = document.getElementById("rfCalibApportionByArea");
         if (calibCb) calibCb.checked = _apportionByArea;
+        syncApportionMethodSelects();
         markStale();
       });
     }
+    var demandMethodEl = document.getElementById("rfApportionMethod");
+    if (demandMethodEl) {
+      demandMethodEl.addEventListener("change", function () {
+        _apportionMethod = demandMethodEl.value;
+        syncApportionMethodSelects();
+        markStale();
+      });
+    }
+    syncApportionMethodSelects();
 
     var corridorSel = document.getElementById("rfCorridorSelect");
     if (corridorSel) {
@@ -3576,6 +3614,7 @@
     if (apportionCb) apportionCb.checked = _apportionByArea;
     var calibApportionCb = document.getElementById("rfCalibApportionByArea");
     if (calibApportionCb) calibApportionCb.checked = _apportionByArea;
+    syncApportionMethodSelects();
 
     // Sync buffer distance input + Demand tab note
     var bufferMilesEl = document.getElementById("rfBufferMiles");
@@ -3713,6 +3752,17 @@
   // ---- Session persistence (cache module hooks) ----
 
   // Helper: serialize the tpiResult Maps inside a system/demand result.
+  // Both tabs' method selects mirror _apportionMethod and are disabled while
+  // Apportion is off, exactly like the two checkboxes they sit beside.
+  function syncApportionMethodSelects() {
+    ["rfCalibApportionMethod", "rfApportionMethod"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.value = _apportionMethod;
+      el.disabled = !_apportionByArea;
+    });
+  }
+
   function serializeTpiResult(tpi, mode) {
     if (!tpi) return null;
     var obj = {
@@ -3722,6 +3772,9 @@
       effectiveWeights: tpi.effectiveWeights ? Object.assign({}, tpi.effectiveWeights) : {},
       tractFallbackFactors: tpi.tractFallbackFactors ? tpi.tractFallbackFactors.slice() : [],
       apportionByArea: tpi.apportionByArea || false,
+      apportionMethod: tpi.apportionMethod || "area",
+      apportionMethodUsed: tpi.apportionMethodUsed || (tpi.apportionByArea ? "area" : null),
+      apportionNote: tpi.apportionNote || null,
       scores: App.mapToObj(tpi.scores),
       factorScores: App.nestedMapToObj(tpi.factorScores),
       rawValues: App.nestedMapToObj(tpi.rawValues)
@@ -3743,6 +3796,9 @@
       effectiveWeights: r.effectiveWeights || {},
       tractFallbackFactors: r.tractFallbackFactors || [],
       apportionByArea: r.apportionByArea || false,
+      apportionMethod: r.apportionMethod || "area",
+      apportionMethodUsed: r.apportionMethodUsed || (r.apportionByArea ? "area" : null),
+      apportionNote: r.apportionNote || null,
       scores: App.objToMap(r.scores),
       factorScores: App.nestedObjToMap(r.factorScores),
       rawValues: App.nestedObjToMap(r.rawValues)
@@ -3767,6 +3823,7 @@
       _schemaVersion: 4,
       weights: Object.assign({}, _weights),
       apportionByArea: _apportionByArea,
+      apportionMethod: _apportionMethod,
       bufferMiles: _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
       includeHiddenCalib: _includeHiddenCalib,     // additive, no schema bump
@@ -3820,6 +3877,9 @@
 
     if (data.weights) _weights = Object.assign({}, RF_DEFAULT_WEIGHTS, data.weights);
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
+    // Sessions saved before the method choice existed apportioned by land area.
+    _apportionMethod = data.apportionMethod === "blockPop" ? "blockPop" : "area";
+    syncApportionMethodSelects();
     if (data.bufferMiles != null && Number.isFinite(data.bufferMiles)) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
     if (typeof data.includeHiddenCalib === "boolean") _includeHiddenCalib = data.includeHiddenCalib;

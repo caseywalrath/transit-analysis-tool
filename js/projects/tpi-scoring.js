@@ -486,7 +486,8 @@
   // =========================================================================
   // Main orchestrator: run full TPI computation
   // =========================================================================
-  // options: { geoLevel, year, weights, lodesData, onProgress, apportionByArea, growthFactors }
+  // options: { geoLevel, year, weights, lodesData, onProgress, apportionByArea, apportionMethod, growthFactors }
+  // apportionMethod "blockPop" | "area" is read only when apportionByArea is true; absent means "area".
   // Returns { geos, geoids, scores, factorScores, rawValues, ... }
 
   async function computeTPI(options) {
@@ -496,6 +497,9 @@
     var lodesData = options.lodesData || null;
     var onProgress = options.onProgress || function () {};
     var apportionByArea = !!options.apportionByArea;
+    var apportionMethod = options.apportionMethod === "blockPop" ? "blockPop" : "area";
+    var apportionMethodUsed = apportionByArea ? "area" : null;
+    var apportionNote = null;
     var growthFactors = options.growthFactors || null;
 
     // Build effective weights: use defaults where not overridden
@@ -651,6 +655,20 @@
       var areaResult = computeAreaFractions(geos, unionFeat);
       areaFractions = areaResult.fractions;
       clippedGeos = areaResult.clippedGeos;
+      // Block-population fractions replace the area ones; geos the block pass
+      // leaves out are outside the study area, so they get 0, not their area share.
+      if (apportionMethod === "blockPop" && App.computeApportionFractions) {
+        var ap = await App.computeApportionFractions(unionFeat, geos, "blockPop", { onProgress: onProgress });
+        apportionNote = ap.note || null;
+        if (ap.methodUsed === "blockPop") {
+          var blockFractions = new Map();
+          areaFractions.forEach(function (_v, gid) {
+            blockFractions.set(gid, ap.fractions.has(gid) ? ap.fractions.get(gid) : 0);
+          });
+          areaFractions = blockFractions;
+          apportionMethodUsed = "blockPop";
+        }
+      }
       apportionedRawValues = apportionRawValues(rawValues, areaFractions);
     }
 
@@ -772,6 +790,9 @@
       effectiveWeights: effectiveWeights,
       tractFallbackFactors: tractFallbackFactors,
       apportionByArea: apportionByArea,
+      apportionMethod: apportionMethod,
+      apportionMethodUsed: apportionMethodUsed,
+      apportionNote: apportionNote,
       cachedAcsData: cachedAcsData,
       cachedLodesAgg: lodesAgg
     };
@@ -879,6 +900,9 @@
       effectiveWeights: effectiveWeights,
       tractFallbackFactors: prevResult.tractFallbackFactors,
       apportionByArea: apportionByArea,
+      apportionMethod: prevResult.apportionMethod,
+      apportionMethodUsed: prevResult.apportionMethodUsed,
+      apportionNote: prevResult.apportionNote,
       cachedAcsData: prevResult.cachedAcsData,
       cachedLodesAgg: lodesAgg
     };
