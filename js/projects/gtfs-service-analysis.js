@@ -24,9 +24,10 @@
   var _includeHidden = false;
   var _useStopList = false;
   var _rateOverrides = {};          // route_id -> $/hr (only values that pass sanitizeRate are kept)
-  var _activeTab = "service";
+  var _activeTab = "service";       // "service" | "stops" | "health"
   var _serviceResult = null;        // { feed, sig, inputs, year, calendar, dates }
   var _stopsResult = null;          // { feed, sig, inputs, spacing, candidates, service, wheelchair, date }
+  var _healthResult = null;         // { feed, checks, today, ms }
   var _serviceStale = false, _stopsStale = false;
   var _ui = {};                     // sort, search, expanded rows and open sections, kept across re-renders
   var _initialized = false;
@@ -97,11 +98,16 @@
 
   function checkStale() {
     var f = feed();
-    if ((_serviceResult && _serviceResult.feed !== f) || (_stopsResult && _stopsResult.feed !== f)) {
+    if ((_serviceResult && _serviceResult.feed !== f) || (_stopsResult && _stopsResult.feed !== f) ||
+        (_healthResult && _healthResult.feed !== f)) {
       // Feed removed or replaced: stop ids and routes in the old results may not exist in the new feed.
-      _serviceResult = _stopsResult = null;
+      _serviceResult = _stopsResult = _healthResult = null;
       clearMapLayers();
-      if (isPopupVisible()) { renderServiceResults(byId("gsaServiceResults"), null, _ui); renderStopsResults(byId("gsaStopsResults"), null, _ui); }
+      if (isPopupVisible()) {
+        renderServiceResults(byId("gsaServiceResults"), null, _ui);
+        renderStopsResults(byId("gsaStopsResults"), null, _ui);
+        renderHealthResults(byId("gsaHealthResults"), null);
+      }
     }
     _serviceStale = !!_serviceResult && (_serviceResult.feed !== f || _serviceResult.sig !== serviceSig());
     _stopsStale = !!_stopsResult && (_stopsResult.feed !== f || _stopsResult.sig !== stopsSig());
@@ -230,13 +236,22 @@
 
   // ---- Status, empty hint, stale banner ----
 
+  // Per-tab lookups; a tab id outside this table means "service".
+  var TABS = {
+    service: { hint: { need: "No service summary yet.", action: "Press Summarize service." },
+      result: function () { return _serviceResult; }, stale: function () { return _serviceStale; }, run: function () { runService(); } },
+    stops: { hint: { need: "No stop analysis yet.", action: "Press Analyze stops." },
+      result: function () { return _stopsResult; }, stale: function () { return _stopsStale; }, run: function () { runStops(); } },
+    health: { hint: { need: "No feed check yet.", action: "Press Check feed." },
+      result: function () { return _healthResult; }, stale: function () { return false; }, run: function () { runHealth(); } }
+  };
+  function tabId(id) { return Object.prototype.hasOwnProperty.call(TABS, id) ? id : "service"; }
+
   function emptyHint() {
     if (!feed()) {
       return { need: "Load a GTFS feed to begin.", action: "Use Add Data → GTFS Feed, then reopen this panel." };
     }
-    return _activeTab === "stops"
-      ? { need: "No stop analysis yet.", action: "Press Analyze stops." }
-      : { need: "No service summary yet.", action: "Press Summarize service." };
+    return TABS[_activeTab].hint;
   }
 
   function setStatus(msg, kind) {
@@ -246,8 +261,7 @@
 
   function renderState() {
     if (!isPopupVisible()) return;
-    var res = _activeTab === "stops" ? _stopsResult : _serviceResult;
-    var stale = _activeTab === "stops" ? _stopsStale : _serviceStale;
+    var tab = TABS[_activeTab], res = tab.result(), stale = tab.stale();
     if (!res) {
       App.renderModuleState({ statusEl: "gsaStatus", emptyEl: "gsaEmptyState", empty: true, hint: emptyHint() });
       return;
@@ -255,14 +269,14 @@
     var empty = byId("gsaEmptyState");
     if (empty) empty.style.display = "none";
     if (stale) {
-      App.renderModuleState({ statusEl: "gsaStatus", stale: true, onRerun: _activeTab === "stops" ? runStops : runService });
+      App.renderModuleState({ statusEl: "gsaStatus", stale: true, onRerun: tab.run });
     } else {
       setStatus(null);
     }
   }
 
   function switchTab(id) {
-    _activeTab = id === "stops" ? "stops" : "service";
+    _activeTab = tabId(id);
     var tabs = document.querySelectorAll(".gsa-tabs .rf-tab");
     for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle("rf-tab-active", tabs[i].getAttribute("data-tab") === _activeTab);
     var panes = document.querySelectorAll(".gsa-body > .rf-tab-content");
@@ -321,6 +335,28 @@
     }
     renderStopsResults(byId("gsaStopsResults"), _stopsResult, _ui);
     renderState();
+  }
+
+  function runHealth() {
+    var f = feed(), G = S();
+    if (!f || !G) { renderState(); return; }
+    setStatus("Checking feed…", "running");
+    // Deferred so the status paints before the feed-wide scan blocks the page.
+    setTimeout(function () {
+      if (feed() !== f) { checkStale(); return; }
+      var t0 = Date.now(), today = App.gtfsToday(), checks;
+      try {
+        checks = G.feedHealth(f, { today: today, shapes: App.gtfsShapeCoords(), maxExamples: 20 }).checks;
+      } catch (e) {
+        console.error(e);
+        setStatus("Feed check failed: " + (e && e.message ? e.message : e), "error");
+        return;
+      }
+      _healthResult = { feed: f, checks: checks, today: today, ms: Date.now() - t0 };
+      App.gtfsSetHealth(f, checks);
+      renderHealthResults(byId("gsaHealthResults"), _healthResult);
+      renderState();
+    }, 0);
   }
 
   // ---- Map layers (stop service ramp, consolidation candidates) ----
@@ -1176,6 +1212,134 @@
     if (layers.ramp) H.showServiceRamp(result.service);
   }
 
+  // ---- Feed health ----
+
+  var HEALTH_PILL = { ok: "OK", warning: "Warning", error: "Error", unknown: "Not checked" };
+  function days(n) { return n + (Math.abs(n) === 1 ? " day" : " days"); }
+  function stopRef(id) { return H.stopName(id) + " (" + id + ")"; }
+  // Example columns per check id: [header, cell(example)].
+  var HEALTH_COLS = {
+    expiry: [["End date", function (x) { return isoDate(x.endDate); }],
+      ["Date from", function (x) { return x.source === "feed_info" ? "feed_info.txt" : "calendar"; }],
+      ["Days left", function (x) { return fmtN(x.daysLeft, 0); }]],
+    shapes: [["Trip", function (x) { return x.tripId; }], ["Route", function (x) { return H.routeName(x.routeId); }],
+      ["shape_id", function (x) { return x.shapeId === "" ? "(blank)" : x.shapeId; }]],
+    wheelchair: [["Stop", function (x) { return stopRef(x.stopId); }]],
+    speed: [["Trip", function (x) { return x.tripId; }], ["Route", function (x) { return H.routeName(x.routeId); }],
+      ["From", function (x) { return stopRef(x.fromStopId); }], ["To", function (x) { return stopRef(x.toStopId); }],
+      ["km/h", function (x) { return fmtN(x.kph, 1); }], ["Limit km/h", function (x) { return fmtN(x.maxKph, 0); }]],
+    shapeDistance: [["Stop", function (x) { return stopRef(x.stopId); }], ["shape_id", function (x) { return x.shapeId; }],
+      ["Metres", function (x) { return fmtN(x.meters, 0); }]],
+    times: [["Trip", function (x) { return x.tripId; }], ["Sequence", function (x) { return x.stopSequence; }],
+      ["Stop", function (x) { return stopRef(x.stopId); }]],
+    agency: [["Route", function (x) { return H.routeName(x.routeId); }]]
+  };
+
+  function healthResultText(c) {
+    if (c.status === "unknown") return c.note || "";
+    if (c.id === "expiry") {
+      var x = c.examples[0];
+      if (!x) return "";
+      if (x.state === "expired") return "Ended " + isoDate(x.endDate) + ", " + days(-x.daysLeft) + " ago";
+      if (x.state === "ok") return "Ends " + isoDate(x.endDate) + " (" + days(x.daysLeft) + " left)";
+      return "Ends " + isoDate(x.endDate) + ", in " + days(x.daysLeft);
+    }
+    return c.count === 0 ? "None found" : c.count + " found";
+  }
+
+  function healthDetailRow(c) {
+    var tr = el("tr", "gsa-detail"), cell = td("");
+    cell.colSpan = 4;
+    var cols = HEALTH_COLS[c.id] || [], sub = el("table", "gtfs-dt-table gsa-sub-table");
+    var head = el("tr");
+    cols.forEach(function (col) { head.appendChild(el("th", "", col[0])); });
+    var thead = el("thead");
+    thead.appendChild(head);
+    sub.appendChild(thead);
+    var body = el("tbody");
+    c.examples.forEach(function (x) {
+      var r = el("tr");
+      cols.forEach(function (col) { r.appendChild(td(col[1](x))); });
+      body.appendChild(r);
+    });
+    sub.appendChild(body);
+    cell.appendChild(sub);
+    if (c.count > c.examples.length) {
+      cell.appendChild(note("Showing the first " + c.examples.length + " of " + c.count + "."));
+    }
+    if (c.note) cell.appendChild(note(c.note));
+    tr.appendChild(cell);
+    return tr;
+  }
+
+  function healthCSV(result) {
+    var rows = result.checks.map(function (c) {
+      var ex = c.examples.map(function (x) {
+        return Object.keys(x).map(function (k) { return k + "=" + x[k]; }).join("; ");
+      }).join(" | ");
+      return [c.label, c.status, c.count, c.checked, ex];
+    });
+    return H.csvText(["GTFS feed health", "Checked: " + isoDate(result.today)],
+      ["check", "status", "found", "checked", "examples"], rows);
+  }
+
+  function renderHealthResults(host, result) {
+    if (!host) return;
+    host.textContent = "";
+    if (!result) return;
+    var st = _ui.health = _ui.health || { expanded: {} };
+    var wrap = el("div", "gsa-table-wrap"), tbl = el("table", "gtfs-dt-table gsa-health-table");
+    var thead = el("thead"), hr = el("tr");
+    [["Check", ""], ["Result", ""], ["Found", "num"], ["Checked", "num"]].forEach(function (h) {
+      var th = el("th", h[1], h[0]);
+      th.scope = "col";
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    tbl.appendChild(thead);
+    var body = el("tbody");
+    result.checks.forEach(function (c) {
+      var tr = el("tr", "gsa-health-row");
+      tr.setAttribute("data-check", c.id);
+      var c0 = td("", "gsa-route-cell");
+      if (c.examples.length > 0) {
+        var open = !!st.expanded[c.id], caret = el("button", "gsa-caret", open ? "▾" : "▸");
+        caret.type = "button";
+        caret.setAttribute("aria-expanded", open ? "true" : "false");
+        caret.setAttribute("aria-label", "Show examples for " + c.label);
+        caret.addEventListener("click", function () {
+          st.expanded[c.id] = !st.expanded[c.id];
+          caret.textContent = st.expanded[c.id] ? "▾" : "▸";
+          caret.setAttribute("aria-expanded", st.expanded[c.id] ? "true" : "false");
+          var next = tr.nextSibling;
+          if (st.expanded[c.id]) tr.parentNode.insertBefore(healthDetailRow(c), next);
+          else if (next && next.classList.contains("gsa-detail")) next.parentNode.removeChild(next);
+        });
+        c0.appendChild(caret);
+      }
+      c0.appendChild(document.createTextNode(c.label));
+      tr.appendChild(c0);
+      var c1 = td("");
+      c1.appendChild(el("span", "gsa-health-pill gsa-health-" + c.status, HEALTH_PILL[c.status] || c.status));
+      c1.appendChild(document.createTextNode(healthResultText(c)));
+      tr.appendChild(c1);
+      tr.appendChild(td(fmtN(c.count, 0), "num"));
+      tr.appendChild(td(c.status === "unknown" ? "—" : fmtN(c.checked, 0), "num"));
+      body.appendChild(tr);
+      if (c.examples.length > 0 && st.expanded[c.id]) body.appendChild(healthDetailRow(c));
+    });
+    tbl.appendChild(body);
+    wrap.appendChild(tbl);
+    host.appendChild(wrap);
+    host.appendChild(note("Thresholds follow the MobilityData GTFS validator: stops more than 100 m from their shape; speeds above the validator's limit for the route type; arrival before the previous departure."));
+    var expiry = result.checks[0];
+    if (expiry && expiry.examples[0] && expiry.examples[0].source === "calendar") {
+      host.appendChild(note("The end date comes from the calendar because feed_info.txt has none."));
+    }
+    host.appendChild(note("Checked " + isoDate(result.today) + " in " + result.ms + " ms."));
+    host.appendChild(csvButton(function () { return healthCSV(result); }, "feed-health.csv"));
+  }
+
   // ---- Route details: Cost tab (instant, like the other details tabs) ----
 
   function renderCostTab(el, routeId) {
@@ -1242,6 +1406,7 @@
     var on = function (id, ev, fn) { var el = byId(id); if (el) el.addEventListener(ev, fn); };
     on("gsaRunService", "click", runService);
     on("gsaRunStops", "click", runStops);
+    on("gsaRunHealth", "click", runHealth);
     on("gsaIncludeHidden", "change", function () { _includeHidden = this.checked; saveSession(); checkStale(); });
     on("gsaUseStopList", "change", function () { _useStopList = this.checked; saveSession(); checkStale(); });
     on("gsaDate", "change", function () {
@@ -1266,11 +1431,13 @@
     switchTab(_activeTab);
     renderServiceResults(byId("gsaServiceResults"), _serviceResult, _ui);
     renderStopsResults(byId("gsaStopsResults"), _stopsResult, _ui);
+    renderHealthResults(byId("gsaHealthResults"), _healthResult);
     checkStale();
   }
 
   function clearAll() {
-    _serviceResult = null; _stopsResult = null;
+    _serviceResult = null; _stopsResult = null; _healthResult = null;
+    if (typeof App.gtfsSetHealth === "function") App.gtfsSetHealth(null);
     _serviceStale = _stopsStale = false;
     _rateOverrides = {};
     _ui = {};
@@ -1330,9 +1497,9 @@
         _rateOverrides = {};
         var ro = data.rateOverrides || {};
         Object.keys(ro).forEach(function (k) { var v = sanitizeRate(ro[k]); if (v != null) _rateOverrides[k] = v; });
-        _activeTab = data.activeTab === "stops" ? "stops" : "service";
+        _activeTab = tabId(data.activeTab);
         // Results are not saved: they are recomputed from the feed with one click.
-        _serviceResult = _stopsResult = null;
+        _serviceResult = _stopsResult = _healthResult = null;
         clearMapLayers();
         if (isPopupVisible()) onOpen();
       }

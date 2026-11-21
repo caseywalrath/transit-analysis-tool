@@ -75,3 +75,11 @@ Thresholds are from the MobilityData GTFS validator source (master, read 2026-11
   calendar fallback end date is not `isRealDate`-checked; `a7-health-mini` values recorded, not hand-checked.
   Paused here at the usage limit (Opus). **Resume:** launch card `docs/a7-cards/card-a7a.2.md` [Sonnet] with
   `docs/a7-cards/rules.md`, then review A7a (code-review high on `4e4b446..HEAD`, screenshots), then write A7b's cards.
+- 2026-11-21 (resumed): A7a.2 Feed health tab [Sonnet]: clean, 9/9 browser checks; tabs now table-driven (`TABS`).
+  Opus: the test's dark screenshot waits for the theme transition; engine follow-ups (calendar end date must be a
+  real date; zero agencies get "No agency.txt rows" wording). A7a review done by reading the diff (no defects found).
+  Also committed ahead of A7b (Opus): `GtfsSchedule.serviceDayFromTrips` / `serviceYearFromTrips` (serviceYear now
+  delegates; golden unchanged, new invariant `a7-serviceyear-from-trips-invariant*` equal on mini, plain-trip case
+  hand-checked); `gtfs.js` ZIP reader split (`zipEntries`, `readEntries`) and `App.gtfsReadOtherFeed(file)`;
+  `analysis-network-source.js`: `App.feedServiceSummary`, `App.editedServiceSummary`, `App.serviceSourceRouteId`,
+  `App.countPeopleNearStops` (not yet called).

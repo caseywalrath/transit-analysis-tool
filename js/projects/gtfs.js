@@ -420,66 +420,14 @@
     var restored = !!(opts && opts.restored);
     var seq = ++_loadSeq;
     App.setStatus(restored ? "Restoring GTFS feed\u2026" : "Reading GTFS feed\u2026");
-    try {
-      var zip = await JSZip.loadAsync(file);
-    } catch (e) {
-      App.setStatus("GTFS error: not a valid ZIP file.");
-      return false;
-    }
-
-    var data = new Map();
-    var entries = [];
-
-    // Collect all .txt files (handles top-level or inside a folder)
-    zip.forEach(function (path, entry) {
-      if (entry.dir) return;
-      var name = path.split("/").pop(); // strip any subfolder prefix
-      if (name.endsWith(".txt")) entries.push({ name: name, entry: entry });
-    });
-
-    if (!entries.length) {
-      App.setStatus("GTFS error: no .txt files found in ZIP.");
-      return false;
-    }
-
-    // Require at least one GTFS-spec required file before treating this as a feed.
-    var hasRequired = entries.some(function (e) { return REQUIRED[e.name]; });
-    if (!hasRequired) {
-      App.setStatus("GTFS error: ZIP contains no required GTFS files (stops, routes, trips, stop_times, calendar, calendar_dates, or agency).");
-      return false;
-    }
+    var z = await zipEntries(file);
+    if (z.error) { App.setStatus(z.error); return false; }
+    var entries = z.entries;
 
     App.setStatus("Parsing GTFS files\u2026");
-    var S = window.GtfsSchedule;
-    var tables = {}, stStore = null;
-    for (var i = 0; i < entries.length; i++) {
-      var name  = entries[i].name;
-      var entry = entries[i].entry;
-      try {
-        var text = await entry.async("string");
-        if (seq !== _loadSeq) return false;
-        if (name === "shapes.txt") {
-          data.set(name, await parseShapesAsync(text));
-        } else if (name === "stop_times.txt") {
-          var stHeaders = [];
-          var b = new S.StopTimesBuilder();
-          await streamText(text, new S.CsvStream(function (h) { stHeaders = h; b.header(h); }, function (v) { b.row(v); }));
-          text = null;
-          stStore = b.finish();
-          data.set(name, { headers: stHeaders, rows: null, rowCount: stStore.rowCount, columnar: true });
-        } else {
-          var t = await parseTableAsync(text);
-          tables[name] = t;
-          data.set(name, t);
-        }
-      } catch (e) {
-        console.warn("GTFS: could not parse", name, e);
-      }
-      if (seq !== _loadSeq) return false;
-    }
-
-    // A newer load, or a Remove layer, happened while this one was parsing.
-    if (seq !== _loadSeq) return false;
+    var parsed = await readEntries(entries, function () { return seq === _loadSeq; });
+    if (!parsed || seq !== _loadSeq) return false;
+    var S = window.GtfsSchedule, tables = parsed.tables, stStore = parsed.stStore, data = parsed.data;
 
     if (!(opts && opts.keepHidden) && !restored) { _pendingHidden = null; _pendingDate = null; } // a fresh upload never inherits a session's hidden sets or date
     _feedFileName = file.name || "";
@@ -497,6 +445,64 @@
     }
     return true;
   }
+
+  // The .txt entries of a GTFS ZIP, or a status message when it is not one.
+  async function zipEntries(file) {
+    var zip;
+    try { zip = await JSZip.loadAsync(file); } catch (e) { return { error: "GTFS error: not a valid ZIP file." }; }
+    var entries = [];
+    zip.forEach(function (path, entry) {
+      if (entry.dir) return;
+      var name = path.split("/").pop();
+      if (name.endsWith(".txt")) entries.push({ name: name, entry: entry });
+    });
+    if (!entries.length) return { error: "GTFS error: no .txt files found in ZIP." };
+    if (!entries.some(function (e) { return REQUIRED[e.name]; })) {
+      return { error: "GTFS error: ZIP contains no required GTFS files (stops, routes, trips, stop_times, calendar, calendar_dates, or agency)." };
+    }
+    return { entries: entries };
+  }
+
+  // Parses every entry; null when isCurrent() turns false part way (a newer load superseded this one).
+  async function readEntries(entries, isCurrent) {
+    var S = window.GtfsSchedule;
+    var tables = {}, stStore = null, data = new Map();
+    for (var i = 0; i < entries.length; i++) {
+      var name  = entries[i].name;
+      var entry = entries[i].entry;
+      try {
+        var text = await entry.async("string");
+        if (!isCurrent()) return null;
+        if (name === "shapes.txt") {
+          data.set(name, await parseShapesAsync(text));
+        } else if (name === "stop_times.txt") {
+          var stHeaders = [];
+          var b = new S.StopTimesBuilder();
+          await streamText(text, new S.CsvStream(function (h) { stHeaders = h; b.header(h); }, function (v) { b.row(v); }));
+          text = null;
+          stStore = b.finish();
+          data.set(name, { headers: stHeaders, rows: null, rowCount: stStore.rowCount, columnar: true });
+        } else {
+          var t = await parseTableAsync(text);
+          tables[name] = t;
+          data.set(name, t);
+        }
+      } catch (e) {
+        console.warn("GTFS: could not parse", name, e);
+      }
+      if (!isCurrent()) return null;
+    }
+    return { tables: tables, stStore: stStore, data: data };
+  }
+
+  // A second feed for Build vs No-Build: parsed with the same reader into its own feed object, never put on
+  // the map or into the IndexedDB store. Resolves { feed, name } or throws Error(status text).
+  App.gtfsReadOtherFeed = async function (file) {
+    var z = await zipEntries(file);
+    if (z.error) throw new Error(z.error);
+    var parsed = await readEntries(z.entries, function () { return true; });
+    return { feed: window.GtfsSchedule.buildFeed(parsed.tables, parsed.stStore), name: file.name || "" };
+  };
 
   // Large tables (stop_times, shapes) would block the page for over a second if
   // parsed in one call, so text is fed to the parser a slice at a time and the

@@ -1642,11 +1642,23 @@
 
   // Hours, layover, deadhead and peak for one date and scope. Unknown dates and empty feeds give zero rows.
   function routeServiceDay(feed, date, opts) {
+    var day = dayEntries(feed, date), all = [], i, f = routeFilter(opts || {}), invalid = 0;
+    for (i = 0; i < day.entries.length; i++) all.push(day.entries[i].trip);
+    for (i = 0; i < day.invalid.length; i++) {
+      var tt = feed._tripsById[day.invalid[i]];
+      if (!f || (tt && f[tt.routeId])) invalid++;
+    }
+    return serviceDayFromTrips(all, date, opts, invalid);
+  }
+
+  // The same figures from plain trip records {tripId, routeId, start, end, blockId, generated}, so drawn
+  // Services' synthetic trips cost the same way as a feed's. `all` is every trip on the date: layovers are
+  // taken across all of them, so a block shared with a route outside opts.routeIds still chains.
+  function serviceDayFromTrips(all, date, opts, invalidTrips) {
     var o = opts || {}, lay = normLayover(o.layover);
     var dpct = isFiniteNum(o.deadheadPct) && o.deadheadPct >= 0 ? o.deadheadPct : DEFAULT_DEADHEAD_PCT;
-    var day = dayEntries(feed, date), f = routeFilter(o), all = [], i;
-    for (i = 0; i < day.entries.length; i++) all.push(day.entries[i].trip);
-    // Layovers come from every trip on the date, so a block shared with a route outside scope still chains.
+    var f = routeFilter(o), i;
+    all = all || [];
     var lays = tripLayovers(all, lay), items = [], byRoute = Object.create(null), ids = [];
     for (i = 0; i < all.length; i++) {
       if (f && !f[all[i].routeId]) continue;
@@ -1658,12 +1670,8 @@
     ids.sort();
     var routes = {};
     for (i = 0; i < ids.length; i++) routes[ids[i]] = serviceRow(byRoute[ids[i]], true, dpct);
-    var total = serviceRow(items, false, dpct), invalid = 0;
-    for (i = 0; i < day.invalid.length; i++) {
-      var tt = feed._tripsById[day.invalid[i]];
-      if (!f || (tt && f[tt.routeId])) invalid++;
-    }
-    return { date: date, method: total.method, routes: routes, total: total, invalidTrips: invalid };
+    var total = serviceRow(items, false, dpct);
+    return { date: date, method: total.method, routes: routes, total: total, invalidTrips: invalidTrips || 0 };
   }
 
   // Sums of per-day service figures, weighted by mult (5 weekdays a week, or the editable day counts a year).
@@ -1704,6 +1712,38 @@
   // its rate times its revenue or platform hours; the total's cost is the sum of those route costs, so
   // per-route rate overrides carry through.
   function serviceYear(feed, opts) {
+    return serviceYearOf(function (date, o) {
+      return routeServiceDay(feed, date, { routeIds: o.routeIds, layover: o.layover, deadheadPct: o.deadheadPct });
+    }, opts);
+  }
+
+  // serviceYear over plain trips: dayTrips = { weekday: [trip, ...], saturday: ..., sunday: ... }, each
+  // the trips running on opts.dates[type] (see serviceDayFromTrips for the trip fields).
+  function serviceYearFromTrips(dayTrips, opts) {
+    var dt = dayTrips || {};
+    return serviceYearOf(function (date, o, type) {
+      return serviceDayFromTrips(dt[type] || [], date,
+        { routeIds: o.routeIds, layover: o.layover, deadheadPct: o.deadheadPct }, 0);
+    }, opts);
+  }
+
+  // Test hook: serviceYearFromTrips fed with the feed's own trips must equal serviceYear.
+  function serviceYearInvariant(feed, opts) {
+    var o = opts || {}, dates = o.dates || {}, dt = {}, i;
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      var d = dates[DAY_TYPES[i]];
+      dt[DAY_TYPES[i]] = d ? tripsOnDate(feed, d).trips : [];
+    }
+    var a = JSON.stringify(serviceYear(feed, o)), b = serviceYearFromTrips(dt, o);
+    // invalidTrips is a feed-only count; everything else must match.
+    var bs = JSON.parse(JSON.stringify(b)), as = JSON.parse(a);
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      if (as.days[DAY_TYPES[i]]) as.days[DAY_TYPES[i]].invalidTrips = 0;
+    }
+    return { equal: JSON.stringify(as) === JSON.stringify(bs), trips: b.total.annual.trips };
+  }
+
+  function serviceYearOf(dayOf, opts) {
     var o = opts || {}, dates = o.dates || {}, dc = o.dayCounts || {};
     var basis = o.rateBasis === "platform" ? "platform" : "revenue";
     var rate = isFiniteNum(o.rate) && o.rate >= 0 ? o.rate : DEFAULT_RATE;
@@ -1726,7 +1766,7 @@
     for (i = 0; i < DAY_TYPES.length; i++) {
       t = DAY_TYPES[i];
       if (dd[t] === null) { days[t] = null; continue; }
-      rd[t] = routeServiceDay(feed, dd[t], { routeIds: o.routeIds, layover: o.layover, deadheadPct: o.deadheadPct });
+      rd[t] = dayOf(dd[t], o, t);
       days[t] = { date: dd[t], method: rd[t].method, invalidTrips: rd[t].invalidTrips };
       var ks = Object.keys(rd[t].routes);
       for (var j = 0; j < ks.length; j++) {
@@ -2182,7 +2222,7 @@
     }
     if (end === null) {
       range = dateRange(feed);
-      if (range) { end = range.end; source = "calendar"; }
+      if (range && isRealDate(range.end)) { end = range.end; source = "calendar"; }
     }
     if (end === null) { check.note = "No end date in feed_info.txt or the calendar."; return check; }
     check.checked = 1;
@@ -2340,7 +2380,8 @@
       if (agencies > 1) check.status = "error";
       else {
         check.status = "warning";
-        check.note = "One agency: agency_id is recommended (NTD reporting uses it).";
+        check.note = (agencies === 1 ? "One agency" : "No agency.txt rows") +
+          ": agency_id is recommended (NTD reporting uses it).";
       }
     }
     return check;
@@ -2400,7 +2441,8 @@
     serviceCopyPlan: serviceCopyPlan, reconciliationNote: reconciliationNote,
     stopDepartures: stopDepartures, stopSummary: stopSummary, stopSpacing: stopSpacing,
     routeSchedule: routeSchedule, feedOverview: feedOverview,
-    routeServiceDay: routeServiceDay, serviceYear: serviceYear, calendarDayCounts: calendarDayCounts,
+    routeServiceDay: routeServiceDay, serviceYear: serviceYear,
+    serviceDayFromTrips: serviceDayFromTrips, serviceYearFromTrips: serviceYearFromTrips, _serviceYearInvariant: serviceYearInvariant, calendarDayCounts: calendarDayCounts,
     stopSpacingStats: stopSpacingStats, consolidationCandidates: consolidationCandidates,
     stopServiceTable: stopServiceTable, wheelchairByRoute: wheelchairByRoute,
     feedHealth: feedHealth,

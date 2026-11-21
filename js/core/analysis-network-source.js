@@ -266,4 +266,149 @@
       gridKmUsed: shed ? shed.gridKmUsed : null, routeMs: routeMs, totalMs: Date.now() - t0
     };
   };
+  // ---- Build vs No-Build service summaries (GTFS Service Analysis, Compare tab) ----
+  //
+  // A summary is { label, dates, year (GtfsSchedule.serviceYear shape), routes: {key: {id, shortName, longName,
+  // type}}, stops: [{id, lat, lon, mode}], pairs, notes, skipped }. GTFS route keys are the route_id; drawn
+  // Services are "d:<service key>". Only the summary is kept, so a second feed's full schedule can be dropped.
+
+  var DAY_TYPES = ["weekday", "saturday", "sunday"];
+
+  function trimmed(v) { return typeof v === "string" ? v.trim() : ""; }
+
+  function gtfsRouteInfo(feed, id) {
+    var r = feed._routes[id] || {}, t = parseInt(trimmed(r.route_type), 10);
+    return { id: id, shortName: trimmed(r.route_short_name), longName: trimmed(r.route_long_name), type: isFinite(t) ? t : null };
+  }
+
+  function busiestDates(feed) {
+    var out = {};
+    DAY_TYPES.forEach(function (t) { out[t] = window.GtfsSchedule.busiestDate(feed, t); });
+    return out;
+  }
+
+  // Stops served on any of the dates, with bus / rail from the routes that serve them (rail wins).
+  function servedStops(networks, keepRoute) {
+    var byId = Object.create(null), out = [];
+    networks.forEach(function (net) {
+      net.trips.forEach(function (t) {
+        if (keepRoute && !keepRoute(t.routeKey)) return;
+        var mode = net.routes[t.routeKey] ? net.routes[t.routeKey].mode : "bus";
+        t.stops.forEach(function (ix) {
+          var s = net.stops[ix];
+          if (!s || s.lat === null || s.lon === null) return;
+          var rec = byId[s.id];
+          if (!rec) { rec = byId[s.id] = { id: s.id, lat: s.lat, lon: s.lon, mode: mode }; out.push(rec); }
+          else if (mode === "rail") rec.mode = "rail";
+        });
+      });
+    });
+    return out;
+  }
+
+  function yearOpts(o, dates, routeIds) {
+    var sv = o.service || {};
+    return { dates: dates, routeIds: routeIds, layover: sv.layover, deadheadPct: sv.deadheadPct, rate: sv.rate,
+      rateBasis: sv.rateBasis, dayCounts: sv.dayCounts, rateOverrides: sv.rateOverrides };
+  }
+
+  // opts: { label, dates (default the busiest date of each day type), routeIds (null = all), service:
+  //         { layover, deadheadPct, rate, rateBasis, dayCounts, rateOverrides } }
+  App.feedServiceSummary = function (feed, opts) {
+    var o = opts || {}, G = window.GtfsSchedule;
+    var dates = o.dates || busiestDates(feed), routeIds = Array.isArray(o.routeIds) ? o.routeIds : null;
+    var year = G.serviceYear(feed, yearOpts(o, dates, routeIds));
+    var routes = {}, nets = [];
+    Object.keys(feed._routes).forEach(function (id) {
+      if (!routeIds || routeIds.indexOf(id) >= 0) routes[id] = gtfsRouteInfo(feed, id);
+    });
+    DAY_TYPES.forEach(function (t) {
+      if (dates[t]) nets.push(window.AnalysisNetwork.build({ feed: feed, date: dates[t], routeIds: routeIds, proposals: [] }));
+    });
+    return { label: o.label || "", dates: dates, year: year, routes: routes, stops: servedStops(nets), pairs: [], notes: [], skipped: [] };
+  };
+
+  // The loaded feed with drawn Services: opts.replaced = { serviceKey: gtfsRouteId | null } names the GTFS route
+  // each Service stands in for (null or absent = a new route). Same dates and scope as App.feedServiceSummary
+  // on the loaded feed with opts.dates / opts.routeIds.
+  App.editedServiceSummary = function (opts) {
+    var o = opts || {}, G = window.GtfsSchedule, feed = App.gtfsSchedule ? App.gtfsSchedule() : null;
+    if (!feed) throw new Error("Load a GTFS feed first.");
+    var dates = o.dates || busiestDates(feed);
+    var scope = Array.isArray(o.routeIds) ? o.routeIds : Object.keys(feed._routes);
+    var replaced = o.replaced || {}, gone = Object.create(null), pairs = [];
+    Object.keys(replaced).forEach(function (k) {
+      if (replaced[k]) { gone[replaced[k]] = true; pairs.push({ a: replaced[k], b: "d:" + k }); }
+    });
+    var keep = scope.filter(function (id) { return !gone[id]; });
+    var dayTrips = {}, nets = [], routes = {}, notes = [], skipped = [], drawnKeys = Object.create(null);
+    keep.forEach(function (id) { routes[id] = gtfsRouteInfo(feed, id); });
+    DAY_TYPES.forEach(function (t) {
+      dayTrips[t] = [];
+      if (!dates[t]) return;
+      dayTrips[t] = G.tripsOnDate(feed, dates[t]).trips.slice();
+      var net = App.buildAnalysisNetwork({ gtfs: false, date: dates[t], includeHidden: !!o.includeHidden });
+      if (!net) return;
+      notes = net.notes; skipped = net.proposalsSkipped;
+      net.trips.forEach(function (tr) {
+        var n = tr.arr.length;
+        dayTrips[t].push({ tripId: tr.id, routeId: tr.routeKey, start: tr.dep[0], end: tr.arr[n - 1], blockId: "", generated: false });
+        drawnKeys[tr.routeKey] = net.routes[tr.routeKey];
+      });
+      nets.push({ net: net });
+    });
+    Object.keys(drawnKeys).forEach(function (k) {
+      routes[k] = { id: k, shortName: "", longName: drawnKeys[k] ? drawnKeys[k].name : k, type: null };
+    });
+    var year = G.serviceYearFromTrips(dayTrips, yearOpts(o, dates, keep.concat(Object.keys(drawnKeys))));
+    var gtfsNets = [];
+    DAY_TYPES.forEach(function (t) {
+      if (dates[t]) gtfsNets.push(window.AnalysisNetwork.build({ feed: feed, date: dates[t], routeIds: keep, proposals: [] }));
+    });
+    var stops = servedStops(gtfsNets).concat(servedStops(nets.map(function (x) { return x.net; })));
+    return { label: o.label || "", dates: dates, year: year, routes: routes, stops: stops, pairs: pairs,
+      notes: notes, skipped: skipped };
+  };
+
+  // GTFS route a copied Service came from, read from the "route_id: X" its copy wrote into attributes.notes.
+  App.serviceSourceRouteId = function (serviceKey) {
+    var svc = (App.buildTransitServices ? App.buildTransitServices() : []).filter(function (s) { return s.key === serviceKey; })[0];
+    if (!svc) return null;
+    for (var i = 0; i < svc.patterns.length; i++) {
+      var f = featureOf(svc.patterns[i]), n = f && f.properties && f.properties.attributes && f.properties.attributes.notes;
+      var m = typeof n === "string" ? /(?:^|,\s*)route_id:\s*([^,]+)/.exec(n) : null;
+      if (m) return m[1].trim();
+    }
+    return null;
+  };
+
+  // Residents, jobs and census blocks within the stop buffers (bus busMi, rail railMi, straight line), using the
+  // Transit Coverage recipe: block-group population apportioned by 2020 block population, LODES jobs by block
+  // internal point (null when no LODES file is loaded).
+  App.countPeopleNearStops = async function (stops, opts) {
+    var o = opts || {}, progress = typeof o.onProgress === "function" ? o.onProgress : function () {};
+    var bus = [], rail = [];
+    (stops || []).forEach(function (s) { (s.mode === "rail" ? rail : bus).push(turf.point([s.lon, s.lat])); });
+    var circles = [];
+    if (bus.length) circles = circles.concat(App.buildStopCircles(bus, o.busMi || 0.25));
+    if (rail.length) circles = circles.concat(App.buildStopCircles(rail, o.railMi || 0.5));
+    if (!circles.length) return { residents: 0, jobs: App.lodesData ? 0 : null, blocks: 0, note: null };
+    progress("Merging stop buffers…");
+    var union = await App.unionManyPolygons(circles);
+    if (!union) return { residents: 0, jobs: App.lodesData ? 0 : null, blocks: 0, note: null };
+    progress("Fetching block groups…");
+    var geos = await App.fetchTigerwebGeos("bg", union);
+    var geoids = geos.map(function (f) { return f.properties.GEOID; }).filter(Boolean);
+    progress("Fetching population…");
+    var popMap = await App.fetchACSValues("bg", String(o.year || "2024"), "B01003_001E", geoids);
+    var ap = await App.computeApportionFractions(union, geos, "blockPop", { onProgress: progress });
+    var residents = App.aggregateWithinUnion(union, geos, popMap, "sum", { fractions: ap.fractions }).value;
+    progress("Counting census blocks…");
+    var blocks = await App.fetchBlocksInternalPointsInUnion(union), jobs = null;
+    if (App.lodesData) {
+      jobs = 0;
+      blocks.forEach(function (g) { var v = App.lodesData.get(g); if (v != null) jobs += v; });
+    }
+    return { residents: residents, jobs: jobs, blocks: blocks.size, note: ap.note || null };
+  };
 })();

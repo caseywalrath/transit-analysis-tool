@@ -1,4 +1,4 @@
-<!-- GTFS Service Analysis — tabbed popup body (Service & Cost | Stops) -->
+<!-- GTFS Service Analysis — tabbed popup body (Service & Cost | Stops | Feed health) -->
 <div class="gsa-body">
 
   <div class="gsa-scope">
@@ -16,6 +16,7 @@
   <div class="rf-tabs gsa-tabs" role="tablist">
     <button type="button" class="rf-tab rf-tab-active" data-tab="service">Service &amp; Cost</button>
     <button type="button" class="rf-tab" data-tab="stops">Stops</button>
+    <button type="button" class="rf-tab" data-tab="health">Feed health</button>
   </div>
 
   <div id="gsaStatus" class="rf-status" style="display:none;"><span id="gsaStatusText">Ready</span></div>
@@ -102,6 +103,15 @@
       <button type="button" id="gsaRunStops" class="rf-action-primary">Analyze stops</button>
     </div>
     <div id="gsaStopsResults"></div>
+  </div>
+
+  <!-- Feed health -->
+  <div class="rf-tab-content" data-tab="health">
+    <p class="tiny u-muted">Read-only checks of the loaded feed. They never change the feed or block an analysis.</p>
+    <div class="module-input-actions">
+      <button type="button" id="gsaRunHealth" class="rf-action-primary">Check feed</button>
+    </div>
+    <div id="gsaHealthResults"></div>
   </div>
 
 </div>

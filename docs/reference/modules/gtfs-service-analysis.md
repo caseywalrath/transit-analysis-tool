@@ -47,6 +47,20 @@ and `wheelchairByRoute`. Each section is a `<details>` with a one-line summary a
 `gsa-candidates-layer` (red rings on stops a consolidation would remove), both inserted below
 `App.firstUserLayer()`, both shown only by their section toggles and removed with the results.
 
+## Feed health
+
+Third tab (`_activeTab` is `"service" | "stops" | "health"`; per-tab hint, result, stale flag and re-run live
+in the `TABS` table). **Check feed** runs `GtfsSchedule.feedHealth(feed, { today: App.gtfsToday(), shapes:
+App.gtfsShapeCoords(), maxExamples: 20 })` in a `setTimeout` so the "Checking feed…" status paints first, stores
+`_healthResult = { feed, checks, today, ms }` and hands the checks to `App.gtfsSetHealth` so the GTFS Overview
+shows a one-line summary. The checks are read-only and never block an analysis.
+
+The result is a seven-row table (Check, Result, Found, Checked); rows with examples expand to a sub-table whose
+columns depend on the check id (`HEALTH_COLS`), kept in `_ui.health.expanded`. A result has no stale state: it
+is dropped (like the other two) when the loaded feed object changes, and `clearAll()` also calls
+`App.gtfsSetHealth(null)`. Results are not saved in the session. The CSV (`feed-health.csv`) has one row per
+check with its examples as `key=value` pairs. Browser test: `test/browser/gtfs-feed-health.test.mjs`.
+
 ## gtfs-service-analysis-popup.html
 
 Scope row (date, include hidden), tab bar, shared status and empty-state slots, per tab a `<details>`

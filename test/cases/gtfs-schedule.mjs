@@ -430,4 +430,15 @@ add("a7-health-empty-feed", inline({}, "feedHealth", { today: "20260105" }));
 add("a7-health-no-opts", inline(HEALTH, "feedHealth"));
 add("a7-health-mini", mini("feedHealth", { today: "20260105", shapes: MINI_SHAPES }));
 
+// serviceYearFromTrips must cost a feed's own trips exactly as serviceYear does (blocks included).
+const A7_DATES = { weekday: D1, saturday: D3, sunday: null };
+add("a7-serviceyear-from-trips-invariant", mini("_serviceYearInvariant", { dates: A7_DATES }));
+add("a7-serviceyear-from-trips-invariant-b1", mini("_serviceYearInvariant", { dates: A7_DATES, routeIds: ["B1"], layover: { mode: "percent", value: 20 } }));
+// Plain trips with no block: two 30-min trips on route X, 10-min layover per round trip (5 min each),
+// 15 % deadhead. Running 1 h, layover 10 min, revenue 1 h 10 min, deadhead 9 min, platform 1 h 19 min.
+add("a7-serviceyear-plain-trips", { call: "GtfsSchedule.serviceYearFromTrips", args: [
+  { weekday: [{ tripId: "a", routeId: "X", start: 25200, end: 27000, blockId: "", generated: false },
+              { tripId: "b", routeId: "X", start: 27000, end: 28800, blockId: "", generated: false }] },
+  { dates: { weekday: "20260112" } }] });
+
 export default { scripts: ["js/core/gtfs-schedule.js"], cases };

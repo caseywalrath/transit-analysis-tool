@@ -7237,5 +7237,112 @@
         "note": null
       }
     ]
+  },
+  "a7-serviceyear-from-trips-invariant": {
+    "equal": true,
+    "trips": 6739
+  },
+  "a7-serviceyear-from-trips-invariant-b1": {
+    "equal": true,
+    "trips": 1327
+  },
+  "a7-serviceyear-plain-trips": {
+    "basis": "revenue",
+    "rate": 150,
+    "dayCounts": {
+      "weekday": 255,
+      "saturday": 52,
+      "sunday": 58
+    },
+    "dates": {
+      "weekday": "20260112",
+      "saturday": null,
+      "sunday": null
+    },
+    "days": {
+      "weekday": {
+        "date": "20260112",
+        "method": "setting",
+        "invalidTrips": 0
+      },
+      "saturday": null,
+      "sunday": null
+    },
+    "routes": {
+      "X": {
+        "rate": 150,
+        "rateIsOverride": false,
+        "perDay": {
+          "weekday": {
+            "trips": 2,
+            "runningHrs": 1,
+            "layoverHrs": 0.16666666666666666,
+            "revenueHrs": 1.1666666666666667,
+            "deadheadHrs": 0.15,
+            "platformHrs": 1.3166666666666667,
+            "spanHrs": 1,
+            "firstDep": 25200,
+            "lastArr": 28800,
+            "peakVehicles": 2,
+            "peakMethod": "sweep",
+            "method": "setting",
+            "cost": 175
+          },
+          "saturday": null,
+          "sunday": null
+        },
+        "weekly": {
+          "trips": 10,
+          "runningHrs": 5,
+          "revenueHrs": 5.833333333333334,
+          "platformHrs": 6.583333333333333,
+          "cost": 875
+        },
+        "annual": {
+          "trips": 510,
+          "runningHrs": 255,
+          "revenueHrs": 297.5,
+          "platformHrs": 335.75,
+          "cost": 44625
+        },
+        "peakVehicles": 2
+      }
+    },
+    "total": {
+      "perDay": {
+        "weekday": {
+          "trips": 2,
+          "runningHrs": 1,
+          "layoverHrs": 0.16666666666666666,
+          "revenueHrs": 1.1666666666666667,
+          "deadheadHrs": 0.15,
+          "platformHrs": 1.3166666666666667,
+          "spanHrs": 1,
+          "firstDep": 25200,
+          "lastArr": 28800,
+          "peakVehicles": 2,
+          "peakMethod": "sweep",
+          "method": "setting",
+          "cost": 175
+        },
+        "saturday": null,
+        "sunday": null
+      },
+      "weekly": {
+        "trips": 10,
+        "runningHrs": 5,
+        "revenueHrs": 5.833333333333334,
+        "platformHrs": 6.583333333333333,
+        "cost": 875
+      },
+      "annual": {
+        "trips": 510,
+        "runningHrs": 255,
+        "revenueHrs": 297.5,
+        "platformHrs": 335.75,
+        "cost": 44625
+      },
+      "peakVehicles": 2
+    }
   }
 }

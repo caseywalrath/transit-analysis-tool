@@ -7326,3 +7326,8 @@ th[aria-sort="descending"] .gsa-sort::after { content: " \25BC"; font-size: 9px;
 .gsa-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--text-secondary); }
 .gsa-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .gsa-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-strong); }
+.gsa-health-pill { display: inline-block; font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-sm); margin-right: var(--space-1); border: 1px solid var(--border); }
+.gsa-health-ok { color: var(--text-secondary); }
+.gsa-health-warning { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-bd); }
+.gsa-health-error { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+.gsa-health-unknown { color: var(--text-secondary); }
