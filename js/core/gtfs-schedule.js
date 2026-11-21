@@ -412,7 +412,7 @@
       var rec = {
         id: tid, routeId: g(rows[i], "route_id"), serviceId: g(rows[i], "service_id"),
         directionId: g(rows[i], "direction_id"), blockId: g(rows[i], "block_id"),
-        shapeId: g(rows[i], "shape_id"),
+        shapeId: g(rows[i], "shape_id"), wheelchair: g(rows[i], "wheelchair_accessible"),
         ti: tripIdx[tid] === undefined ? -1 : tripIdx[tid],
         freq: freqs[tid] || null, routeOk: !!routes[g(rows[i], "route_id")]
       };
@@ -1533,6 +1533,595 @@
     return lines.join("\n");
   }
 
+  // ---------------------------------------------------------------- service hours, vehicles and cost
+
+  var DAY_TYPES = ["weekday", "saturday", "sunday"];
+  var DEFAULT_DAY_COUNTS = { weekday: 255, saturday: 52, sunday: 58 };
+  var DEFAULT_RATE = 150;
+  var DEFAULT_DEADHEAD_PCT = 15;
+
+  function isFiniteNum(x) { return typeof x === "number" && isFinite(x); }
+
+  function ownKey(obj, key) { return !!obj && Object.prototype.hasOwnProperty.call(obj, key); }
+
+  // Layover settings for the service engine. Minutes are per round trip, so each one-way trip takes half;
+  // the block gap limit stops a long gap (the bus went out of service) from counting as layover.
+  function normLayover(lay) {
+    var l = lay || {};
+    return {
+      mode: l.mode === "percent" ? "percent" : "minutes",
+      value: isFiniteNum(l.value) && l.value >= 0 ? l.value : 10,
+      maxBlockGapMin: isFiniteNum(l.maxBlockGapMin) && l.maxBlockGapMin >= 0 ? l.maxBlockGapMin : 60
+    };
+  }
+
+  // A trip is blocked when it has a block_id and is a real trip; frequency runs share their template's
+  // block_id but are separate vehicles.
+  function isBlockedTrip(t) { return t.blockId !== "" && !t.generated; }
+
+  function byStartThenId(trips) {
+    return function (p, q) {
+      var a = trips[p], b = trips[q];
+      if (a.start !== b.start) return a.start - b.start;
+      return a.tripId < b.tripId ? -1 : a.tripId > b.tripId ? 1 : 0;
+    };
+  }
+
+  // Layover in seconds for each trip, aligned with trips. Blocked trips take the gap to the next trip of
+  // their block, computed over every trip on the date so a block shared by two routes still chains.
+  // Other trips take the layover setting.
+  function tripLayovers(trips, lay) {
+    var out = [], groups = Object.create(null), keys = [], maxGap = lay.maxBlockGapMin * 60, i, j;
+    for (i = 0; i < trips.length; i++) {
+      var t = trips[i];
+      out.push(0);
+      if (isBlockedTrip(t)) {
+        if (!groups[t.blockId]) { groups[t.blockId] = []; keys.push(t.blockId); }
+        groups[t.blockId].push(i);
+      } else if (lay.mode === "percent") {
+        out[i] = Math.round((t.end - t.start) * lay.value / 100);
+      } else {
+        out[i] = Math.round(lay.value * 60 / 2);
+      }
+    }
+    for (i = 0; i < keys.length; i++) {
+      var idx = groups[keys[i]].sort(byStartThenId(trips));
+      for (j = 0; j + 1 < idx.length; j++) {
+        var gap = trips[idx[j + 1]].start - trips[idx[j]].end;
+        out[idx[j]] = gap > 0 && gap <= maxGap ? gap : 0;
+      }
+    }
+    return out;
+  }
+
+  // Vehicles needed at the busiest moment. items = [{trip, layoverSec}]. Blocked trips form one interval per
+  // block (per route and block when perRoute), spanning the block's first start to last end; every other trip
+  // is an interval from its start to its end plus its layover.
+  function vehiclePeak(items, perRoute) {
+    var groups = Object.create(null), keys = [], ivs = [], sweepN = 0, i;
+    for (i = 0; i < items.length; i++) {
+      var t = items[i].trip;
+      if (isBlockedTrip(t)) {
+        var k = (perRoute ? t.routeId + "\u0001" : "") + t.blockId;
+        var g = groups[k];
+        if (!g) { g = groups[k] = [t.start, t.end]; keys.push(k); }
+        if (t.start < g[0]) g[0] = t.start;
+        if (t.end > g[1]) g[1] = t.end;
+      } else {
+        ivs.push([t.start, t.end + items[i].layoverSec]);
+        sweepN++;
+      }
+    }
+    for (i = 0; i < keys.length; i++) ivs.push(groups[keys[i]]);
+    var mo = maxOverlap(ivs);
+    var method = items.length === 0 ? null : keys.length === 0 ? "sweep" : sweepN === 0 ? "block" : "mixed";
+    return { peak: mo.peak, at: mo.at, method: method };
+  }
+
+  // One Row of routeServiceDay. Empty input gives zero sums and nulls for times and methods.
+  function serviceRow(items, perRoute, deadheadPct) {
+    var running = 0, layover = 0, blocked = 0, first = null, last = null, i;
+    for (i = 0; i < items.length; i++) {
+      var t = items[i].trip;
+      running += t.end - t.start;
+      layover += items[i].layoverSec;
+      if (isBlockedTrip(t)) blocked++;
+      if (first === null || t.start < first) first = t.start;
+      if (last === null || t.end > last) last = t.end;
+    }
+    var n = items.length, revenue = running + layover, deadhead = Math.round(running * deadheadPct / 100);
+    var pk = vehiclePeak(items, perRoute);
+    return {
+      trips: n, runningSec: running, layoverSec: layover, revenueSec: revenue,
+      deadheadSec: deadhead, platformSec: revenue + deadhead,
+      firstDep: first, lastArr: last, spanSec: first === null ? null : last - first,
+      peakVehicles: pk.peak, peakAt: pk.at, peakMethod: pk.method,
+      method: n === 0 ? null : blocked === 0 ? "setting" : blocked === n ? "block" : "mixed"
+    };
+  }
+
+  // Hours, layover, deadhead and peak for one date and scope. Unknown dates and empty feeds give zero rows.
+  function routeServiceDay(feed, date, opts) {
+    var o = opts || {}, lay = normLayover(o.layover);
+    var dpct = isFiniteNum(o.deadheadPct) && o.deadheadPct >= 0 ? o.deadheadPct : DEFAULT_DEADHEAD_PCT;
+    var day = dayEntries(feed, date), f = routeFilter(o), all = [], i;
+    for (i = 0; i < day.entries.length; i++) all.push(day.entries[i].trip);
+    // Layovers come from every trip on the date, so a block shared with a route outside scope still chains.
+    var lays = tripLayovers(all, lay), items = [], byRoute = Object.create(null), ids = [];
+    for (i = 0; i < all.length; i++) {
+      if (f && !f[all[i].routeId]) continue;
+      var it = { trip: all[i], layoverSec: lays[i] }, rid = all[i].routeId;
+      items.push(it);
+      if (!byRoute[rid]) { byRoute[rid] = []; ids.push(rid); }
+      byRoute[rid].push(it);
+    }
+    ids.sort();
+    var routes = {};
+    for (i = 0; i < ids.length; i++) routes[ids[i]] = serviceRow(byRoute[ids[i]], true, dpct);
+    var total = serviceRow(items, false, dpct), invalid = 0;
+    for (i = 0; i < day.invalid.length; i++) {
+      var tt = feed._tripsById[day.invalid[i]];
+      if (!f || (tt && f[tt.routeId])) invalid++;
+    }
+    return { date: date, method: total.method, routes: routes, total: total, invalidTrips: invalid };
+  }
+
+  // Sums of per-day service figures, weighted by mult (5 weekdays a week, or the editable day counts a year).
+  function weightedSum(perDay, mult) {
+    var s = { trips: 0, runningHrs: 0, revenueHrs: 0, platformHrs: 0, cost: 0 }, i, d;
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      d = perDay[DAY_TYPES[i]];
+      if (!d) continue;
+      var m = mult[DAY_TYPES[i]];
+      s.trips += m * d.trips;
+      s.runningHrs += m * d.runningHrs;
+      s.revenueHrs += m * d.revenueHrs;
+      s.platformHrs += m * d.platformHrs;
+      s.cost += m * d.cost;
+    }
+    return s;
+  }
+
+  function dayFigures(row, cost) {
+    return {
+      trips: row.trips,
+      runningHrs: row.runningSec / 3600,
+      layoverHrs: row.layoverSec / 3600,
+      revenueHrs: row.revenueSec / 3600,
+      deadheadHrs: row.deadheadSec / 3600,
+      platformHrs: row.platformSec / 3600,
+      spanHrs: row.spanSec === null ? null : row.spanSec / 3600,
+      firstDep: row.firstDep,
+      lastArr: row.lastArr,
+      peakVehicles: row.peakVehicles,
+      peakMethod: row.peakMethod,
+      method: row.method,
+      cost: cost
+    };
+  }
+
+  // Weekly and annual service figures and cost for a service, one date per day type. Each route's cost is
+  // its rate times its revenue or platform hours; the total's cost is the sum of those route costs, so
+  // per-route rate overrides carry through.
+  function serviceYear(feed, opts) {
+    var o = opts || {}, dates = o.dates || {}, dc = o.dayCounts || {};
+    var basis = o.rateBasis === "platform" ? "platform" : "revenue";
+    var rate = isFiniteNum(o.rate) && o.rate >= 0 ? o.rate : DEFAULT_RATE;
+    var counts = {}, dd = {}, days = {}, rd = {}, t, i, r;
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      t = DAY_TYPES[i];
+      counts[t] = isFiniteNum(dc[t]) && dc[t] >= 0 ? dc[t] : DEFAULT_DAY_COUNTS[t];
+      dd[t] = typeof dates[t] === "string" && dates[t] !== "" ? dates[t] : null;
+    }
+    function rateFor(routeId) {
+      var ov = o.rateOverrides;
+      var v = ownKey(ov, routeId) ? ov[routeId] : undefined;
+      if (typeof v === "number" && isFinite(v) && v > 0) return { rate: v, isOverride: true };
+      return { rate: rate, isOverride: false };
+    }
+    function routeCost(row, rt) {
+      return rt * (basis === "platform" ? row.platformSec / 3600 : row.revenueSec / 3600);
+    }
+    var seen = Object.create(null), seenIds = [];
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      t = DAY_TYPES[i];
+      if (dd[t] === null) { days[t] = null; continue; }
+      rd[t] = routeServiceDay(feed, dd[t], { routeIds: o.routeIds, layover: o.layover, deadheadPct: o.deadheadPct });
+      days[t] = { date: dd[t], method: rd[t].method, invalidTrips: rd[t].invalidTrips };
+      var ks = Object.keys(rd[t].routes);
+      for (var j = 0; j < ks.length; j++) {
+        if (!seen[ks[j]]) { seen[ks[j]] = true; seenIds.push(ks[j]); }
+      }
+    }
+    seenIds.sort();
+    var mult = { weekday: 5, saturday: 1, sunday: 1 };
+    var routes = {};
+    for (i = 0; i < seenIds.length; i++) {
+      r = seenIds[i];
+      var rt = rateFor(r), perDay = {}, peak = 0;
+      for (var k = 0; k < DAY_TYPES.length; k++) {
+        t = DAY_TYPES[k];
+        var row = dd[t] !== null && ownKey(rd[t].routes, r) ? rd[t].routes[r] : null;
+        perDay[t] = row ? dayFigures(row, routeCost(row, rt.rate)) : null;
+        if (row && row.peakVehicles > peak) peak = row.peakVehicles;
+      }
+      var annualMult = { weekday: counts.weekday, saturday: counts.saturday, sunday: counts.sunday };
+      routes[r] = {
+        rate: rt.rate, rateIsOverride: rt.isOverride, perDay: perDay,
+        weekly: weightedSum(perDay, mult), annual: weightedSum(perDay, annualMult), peakVehicles: peak
+      };
+    }
+    var totPer = {}, tpeak = 0;
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      t = DAY_TYPES[i];
+      if (dd[t] === null) { totPer[t] = null; continue; }
+      var cost = 0, rk = Object.keys(rd[t].routes);
+      for (var m = 0; m < rk.length; m++) cost += routeCost(rd[t].routes[rk[m]], rateFor(rk[m]).rate);
+      totPer[t] = dayFigures(rd[t].total, cost);
+      if (rd[t].total.peakVehicles > tpeak) tpeak = rd[t].total.peakVehicles;
+    }
+    return {
+      basis: basis, rate: rate, dayCounts: counts, dates: dd, days: days, routes: routes,
+      total: {
+        perDay: totPer,
+        weekly: weightedSum(totPer, mult),
+        annual: weightedSum(totPer, counts),
+        peakVehicles: tpeak
+      }
+    };
+  }
+
+  // Calendar days in the feed's range on which each day type and each route runs. A route runs on a date
+  // when one of its trips has stop times and its service is active that date. Services are resolved once
+  // per date; no per-date trip expansion, since a feed can cover a year.
+  function calendarDayCounts(feed, opts) {
+    var o = opts || {}, f = routeFilter(o), range = dateRange(feed), i, j;
+    var routeSvc = Object.create(null), routeOrder = [];
+    for (i = 0; i < feed._trips.length; i++) {
+      var t = feed._trips[i];
+      if (!t.routeOk || t.ti < 0 || (f && !f[t.routeId])) continue;
+      if (feed.st.tripStart[t.ti + 1] <= feed.st.tripStart[t.ti]) continue;
+      if (!routeSvc[t.routeId]) { routeSvc[t.routeId] = Object.create(null); routeOrder.push(t.routeId); }
+      routeSvc[t.routeId][t.serviceId] = true;
+    }
+    routeOrder.sort();
+    var out = {
+      start: null, end: null, days: 0,
+      byType: { weekday: 0, saturday: 0, sunday: 0 },
+      perYear: { weekday: 0, saturday: 0, sunday: 0 },
+      routes: {}
+    };
+    for (j = 0; j < routeOrder.length; j++) out.routes[routeOrder[j]] = { weekday: 0, saturday: 0, sunday: 0 };
+    if (!range) return out;
+    out.start = range.start;
+    out.end = range.end;
+    var d;
+    for (d = range.start; d <= range.end; d = addDays(d, 1)) {
+      out.days++;
+      var active = activeServices(feed, d), set = Object.create(null), type = dayType(feed, d).dayType, anyRun = false;
+      for (i = 0; i < active.length; i++) set[active[i]] = true;
+      for (j = 0; j < routeOrder.length; j++) {
+        var svc = routeSvc[routeOrder[j]], hit = false;
+        for (var s in svc) { if (set[s]) { hit = true; break; } }
+        if (hit) { out.routes[routeOrder[j]][type]++; anyRun = true; }
+      }
+      if (anyRun) out.byType[type]++;
+    }
+    for (i = 0; i < DAY_TYPES.length; i++) {
+      out.perYear[DAY_TYPES[i]] = out.days === 0 ? 0 : Math.round(out.byType[DAY_TYPES[i]] * 365 / out.days);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- stop analysis
+
+  var FEET_PER_METRE = 3.28084;
+  var DEFAULT_SPACING_FT = [600, 750, 1320, 2640];
+  var SPACING_BANDS = [
+    { id: "very-close", label: "Very close" }, { id: "close", label: "Close" },
+    { id: "target", label: "Target" }, { id: "wide", label: "Wide" }, { id: "very-wide", label: "Very wide" }
+  ];
+
+  // Four strictly rising positive numbers, else the defaults, so a half-edited settings row cannot
+  // produce overlapping or empty bands.
+  function spacingThresholds(t) {
+    var ok = Array.isArray(t) && t.length === 4, i;
+    for (i = 0; ok && i < 4; i++) {
+      if (!isFiniteNum(t[i]) || !(t[i] > 0) || (i > 0 && !(t[i] > t[i - 1]))) ok = false;
+    }
+    return (ok ? t : DEFAULT_SPACING_FT).slice();
+  }
+
+  // Percentile of an ascending array by linear interpolation between ranks; null when empty.
+  function percentile(sorted, p) {
+    var n = sorted.length;
+    if (n === 0) return null;
+    var h = (n - 1) * p, lo = Math.floor(h), hi = Math.ceil(h);
+    return sorted[lo] + (h - lo) * (sorted[hi] - sorted[lo]);
+  }
+
+  function ascending(p, q) { return p - q; }
+
+  function idFilter(ids) {
+    if (!Array.isArray(ids)) return null;
+    var m = Object.create(null);
+    for (var i = 0; i < ids.length; i++) m[ids[i]] = true;
+    return m;
+  }
+
+  // A stop that is itself a station, platform or entrance (any location_type but 0), or sits inside a
+  // station.
+  function isStationStop(feed, id) {
+    var s = feed._stops[id];
+    if (!s) return false;
+    if (s.locationType !== "" && s.locationType !== "0") return true;
+    var p = s.parent !== "" ? feed._stops[s.parent] : null;
+    return !!p && p.locationType === "1";
+  }
+
+  // Great-circle feet, unrounded; null when either stop lacks coordinates.
+  function stopFeet(feed, idA, idB) {
+    var a = feed._stops[idA], b = feed._stops[idB];
+    if (!a || !b || typeof a.lat !== "number" || typeof a.lon !== "number" ||
+        typeof b.lat !== "number" || typeof b.lon !== "number") return null;
+    return haversine(a.lat, a.lon, b.lat, b.lon) * FEET_PER_METRE;
+  }
+
+  // Each in-scope route that runs on the date with its most-used pattern per direction, routes and
+  // directions sorted as strings. Same pick as dominantPattern, without rebuilding the pattern list per
+  // direction.
+  function dominantPatternsByRoute(feed, date, opts) {
+    var ents = filteredEntries(feed, date, opts), seen = Object.create(null), ids = [], i, j;
+    for (i = 0; i < ents.length; i++) {
+      var rid = ents[i].trip.routeId;
+      if (!seen[rid]) { seen[rid] = true; ids.push(rid); }
+    }
+    ids.sort();
+    var out = [];
+    for (i = 0; i < ids.length; i++) {
+      var list = patterns(feed, date, ids[i]), done = Object.create(null), dirs = [];
+      for (j = 0; j < list.length; j++) {
+        if (!done[list[j].directionId]) { done[list[j].directionId] = list[j]; dirs.push(list[j].directionId); }
+      }
+      dirs.sort();
+      var pats = [];
+      for (j = 0; j < dirs.length; j++) pats.push({ directionId: dirs[j], stops: done[dirs[j]].stops });
+      out.push({ routeId: ids[i], patterns: pats });
+    }
+    return out;
+  }
+
+  // Every non-final stop-time row of the day's in-scope trips, grouped by store stop index: departure
+  // times (frequency offset applied, blanks interpolated as stopSummary reads them) and the distinct
+  // routes. One pass over the store, no per-stop scans, so a 7,500-stop feed stays fast.
+  function dayStopDepartures(feed, date, opts) {
+    var st = feed.st, ents = filteredEntries(feed, date, opts), n = st.stopIds.length;
+    var deps = [], routes = [], cache = Object.create(null), i, r, k;
+    for (k = 0; k < n; k++) { deps.push(null); routes.push(null); }
+    for (i = 0; i < ents.length; i++) {
+      var e = ents[i], a = st.tripStart[e.ti], b = st.tripStart[e.ti + 1], rid = e.trip.routeId;
+      if (b - a < 2) continue;
+      var tf = cache[e.ti];
+      if (!tf) tf = cache[e.ti] = timesFor(feed, e.ti, true);
+      for (r = a; r < b - 1; r++) {
+        var d = tf.dep[r - a];
+        if (d < 0) continue;
+        k = st.stop[r];
+        if (deps[k] === null) { deps[k] = []; routes[k] = []; }
+        deps[k].push(d + e.off);
+        var rl = routes[k];
+        if (rl[rl.length - 1] !== rid && rl.indexOf(rid) < 0) rl.push(rid);
+      }
+    }
+    return { deps: deps, routes: routes };
+  }
+
+  function bandIndex(t, feet) {
+    for (var i = 0; i < 4; i++) if (feet < t[i]) return i;
+    return 4;
+  }
+
+  // Distance between consecutive stops on each route's most-used pattern, sorted into five bands. A pair
+  // with a stop that has no coordinates is counted in `skipped`, not binned.
+  function stopSpacingStats(feed, date, opts) {
+    var o = opts || {}, t = spacingThresholds(o.thresholdsFt), sf = idFilter(o.stopIds);
+    var recs = dominantPatternsByRoute(feed, date, o), list = [], skipped = 0, byRoute = [], i, j, k;
+    for (i = 0; i < recs.length; i++) {
+      var feet = [];
+      for (j = 0; j < recs[i].patterns.length; j++) {
+        var pat = recs[i].patterns[j];
+        for (k = 0; k + 1 < pat.stops.length; k++) {
+          var from = pat.stops[k], to = pat.stops[k + 1];
+          if (sf && !sf[from] && !sf[to]) continue;
+          var ft = stopFeet(feed, from, to);
+          if (ft === null) { skipped++; continue; }
+          list.push({ routeId: recs[i].routeId, directionId: pat.directionId, fromStopId: from, toStopId: to,
+            feet: ft, band: SPACING_BANDS[bandIndex(t, ft)].id });
+          feet.push(ft);
+        }
+      }
+      if (feet.length > 0) {
+        feet.sort(ascending);
+        byRoute.push({ routeId: recs[i].routeId, segments: feet.length, medianFt: percentile(feet, 0.5) });
+      }
+    }
+    var counts = [0, 0, 0, 0, 0], all = [], sum = 0, n = list.length;
+    for (i = 0; i < n; i++) {
+      counts[bandIndex(t, list[i].feet)]++;
+      all.push(list[i].feet);
+      sum += list[i].feet;
+    }
+    all.sort(ascending);
+    var bands = [];
+    for (i = 0; i < 5; i++) {
+      bands.push({
+        id: SPACING_BANDS[i].id, label: SPACING_BANDS[i].label,
+        minFt: i === 0 ? 0 : t[i - 1], maxFt: i === 4 ? null : t[i],
+        count: counts[i], share: n === 0 ? 0 : counts[i] / n
+      });
+    }
+    return {
+      thresholdsFt: t, segments: n, skipped: skipped, bands: bands,
+      medianFt: percentile(all, 0.5), meanFt: n === 0 ? null : sum / n,
+      p10Ft: percentile(all, 0.1), p90Ft: percentile(all, 0.9),
+      routes: byRoute, list: list
+    };
+  }
+
+  // Close consecutive stops whose removal would save time. The stop with fewer trips goes (the later one
+  // on a tie); it must not end any route's main pattern, which that route needs, and neither stop may be in a station.
+  // The kept stop may be an end: riders walk to it. Saved time is an upper bound, since it assumes every
+  // trip stops at the removed stop.
+  function consolidationCandidates(feed, date, opts) {
+    var o = opts || {}, sf = idFilter(o.stopIds);
+    var maxFt = isFiniteNum(o.maxFt) && o.maxFt > 0 ? o.maxFt : 600;
+    var secPer = isFiniteNum(o.secondsPerStop) && o.secondsPerStop >= 0 ? o.secondsPerStop : 20;
+    var recs = dominantPatternsByRoute(feed, date, o);
+    var day = dayStopDepartures(feed, date, o), best = Object.create(null), order = [], i, j, k;
+    function tripsAt(id) {
+      var ix = feed._stopIdx[id];
+      return ix === undefined || day.deps[ix] === null ? 0 : day.deps[ix].length;
+    }
+    // A stop that ends any route's main pattern stays, even where another route passes through it.
+    var ends = Object.create(null);
+    for (i = 0; i < recs.length; i++) {
+      for (j = 0; j < recs[i].patterns.length; j++) {
+        var ps0 = recs[i].patterns[j].stops;
+        if (ps0.length) { ends[ps0[0]] = true; ends[ps0[ps0.length - 1]] = true; }
+      }
+    }
+    for (i = 0; i < recs.length; i++) {
+      for (j = 0; j < recs[i].patterns.length; j++) {
+        var stops = recs[i].patterns[j].stops, last = stops.length - 1;
+        for (k = 0; k < last; k++) {
+          var A = stops[k], B = stops[k + 1], feet = stopFeet(feed, A, B);
+          if (feet === null || !(feet < maxFt)) continue;
+          if (isStationStop(feed, A) || isStationStop(feed, B)) continue;
+          var ta = tripsAt(A), tb = tripsAt(B);
+          var removeA = ta < tb, rm = removeA ? A : B, rmPos = removeA ? k : k + 1;
+          if (rmPos === 0 || rmPos === last || ends[rm]) continue;
+          if (sf && !sf[rm]) continue;
+          var cur = best[rm];
+          if (cur && cur.feet <= feet) continue;
+          if (!cur) order.push(rm);
+          best[rm] = { removeStopId: rm, keepStopId: removeA ? B : A, feet: feet, trips: removeA ? ta : tb };
+        }
+      }
+    }
+    var out = [], saved = 0;
+    for (i = 0; i < order.length; i++) {
+      var c = best[order[i]], rids = [];
+      for (j = 0; j < recs.length; j++) {
+        var hit = false;
+        for (k = 0; k < recs[j].patterns.length && !hit; k++) {
+          var ps = recs[j].patterns[k].stops;
+          for (var m = 0; m + 1 < ps.length; m++) {
+            if ((ps[m] === c.removeStopId && ps[m + 1] === c.keepStopId) ||
+                (ps[m] === c.keepStopId && ps[m + 1] === c.removeStopId)) { hit = true; break; }
+          }
+        }
+        if (hit) rids.push(recs[j].routeId);
+      }
+      var sec = secPer * c.trips;
+      saved += sec;
+      out.push({ removeStopId: c.removeStopId, keepStopId: c.keepStopId, feet: c.feet, routeIds: rids,
+        tripsPerDay: c.trips, savedSec: sec, extraWalkFt: c.feet });
+    }
+    out.sort(function (p, q) {
+      if (p.savedSec !== q.savedSec) return q.savedSec - p.savedSec;
+      return p.removeStopId < q.removeStopId ? -1 : p.removeStopId > q.removeStopId ? 1 : 0;
+    });
+    return { maxFt: maxFt, secondsPerStop: secPer, count: out.length, savedSecPerDay: saved, list: out };
+  }
+
+  // One row per stop with a departure that day, for every stop in a single pass. Numbers match stopSummary
+  // for a stop with no children; a station's own id has no rows (its platforms carry them).
+  function stopServiceTable(feed, date, opts) {
+    var o = opts || {}, sf = idFilter(o.stopIds), parts = dayPartList(o.dayParts);
+    var day = dayStopDepartures(feed, date, o), st = feed.st, out = [];
+    for (var k = 0; k < day.deps.length; k++) {
+      var deps = day.deps[k];
+      if (deps === null) continue;
+      var id = st.stopIds[k];
+      if (sf && !sf[id]) continue;
+      deps.sort(ascending);
+      var heads = partHeadways(deps, parts), s = feed._stops[id];
+      out.push({
+        stopId: id, lat: s ? s.lat : null, lon: s ? s.lon : null,
+        trips: deps.length, routes: day.routes[k].length,
+        firstSec: deps[0], lastSec: deps[deps.length - 1],
+        peakHeadwaySec: pooledHeadway(heads, parts, isPeakPart),
+        offPeakHeadwaySec: pooledHeadway(heads, parts, isOffPeakPart)
+      });
+    }
+    out.sort(function (p, q) { return p.stopId < q.stopId ? -1 : p.stopId > q.stopId ? 1 : 0; });
+    return out;
+  }
+
+  // Test helper: stopServiceTable against stopSummary for every stop that has no children and is not a
+  // station. Returns how many stops were compared and the ids that disagree (must be none).
+  function stopTableInvariant(feed, date, opts) {
+    var o = opts || {}, rows = stopServiceTable(feed, date, o), byId = Object.create(null), i;
+    for (i = 0; i < rows.length; i++) byId[rows[i].stopId] = rows[i];
+    var ids = Object.keys(feed._stops).sort(), checked = 0, bad = [];
+    for (i = 0; i < ids.length; i++) {
+      var s = feed._stops[ids[i]];
+      if (s.children.length > 0 || isStationStop(feed, ids[i])) continue;
+      checked++;
+      var sum = stopSummary(feed, date, ids[i], { routeIds: o.routeIds, dayParts: o.dayParts }), row = byId[ids[i]];
+      var ok;
+      if (sum.departures === 0) ok = !row;
+      else ok = !!row && row.trips === sum.departures && row.routes === sum.routes.length &&
+        row.firstSec === sum.span.first && row.lastSec === sum.span.last &&
+        row.peakHeadwaySec === sum.peakHeadwaySec && row.offPeakHeadwaySec === sum.offPeakHeadwaySec;
+      if (!ok) bad.push(ids[i]);
+    }
+    return { checked: checked, mismatches: bad };
+  }
+
+  function wheelchairCounts() {
+    return { stops: 0, stopsAccessible: 0, stopsNotAccessible: 0, stopsUnknown: 0,
+      trips: 0, tripsAccessible: 0, tripsNotAccessible: 0, tripsUnknown: 0 };
+  }
+
+  // Wheelchair data completeness per route: its distinct stops by boarding value (a parent's value counts
+  // when the stop has none) and its trips by wheelchair_accessible. A generated frequency run reads its
+  // template trip.
+  function wheelchairByRoute(feed, date, opts) {
+    var ents = filteredEntries(feed, date, opts), st = feed.st, acc = stopAccessibility(feed);
+    var byRoute = Object.create(null), ids = [], total = wheelchairCounts(), allStops = Object.create(null), i, r;
+    function stopClass(stopIx) {
+      var a = acc[st.stopIds[stopIx]], v = a ? a.value : 0;
+      return v === 1 ? "stopsAccessible" : v === 2 ? "stopsNotAccessible" : "stopsUnknown";
+    }
+    for (i = 0; i < ents.length; i++) {
+      var e = ents[i], rid = e.trip.routeId, rec = byRoute[rid];
+      if (!rec) { rec = byRoute[rid] = { row: wheelchairCounts(), seen: Object.create(null), tis: Object.create(null) }; ids.push(rid); }
+      var tpl = feed._tripsById[e.trip.generated ? e.trip.templateId : e.trip.tripId];
+      var w = tpl ? tpl.wheelchair : "";
+      var tk = w === "1" ? "tripsAccessible" : w === "2" ? "tripsNotAccessible" : "tripsUnknown";
+      rec.row.trips++; rec.row[tk]++;
+      total.trips++; total[tk]++;
+      if (rec.tis[e.ti]) continue;
+      rec.tis[e.ti] = true;
+      for (r = st.tripStart[e.ti]; r < st.tripStart[e.ti + 1]; r++) {
+        var si = st.stop[r];
+        if (!rec.seen[si]) { rec.seen[si] = true; rec.row.stops++; rec.row[stopClass(si)]++; }
+        if (!allStops[si]) { allStops[si] = true; total.stops++; total[stopClass(si)]++; }
+      }
+    }
+    ids.sort();
+    var routes = [];
+    for (i = 0; i < ids.length; i++) {
+      var row = byRoute[ids[i]].row;
+      routes.push({ routeId: ids[i], stops: row.stops, stopsAccessible: row.stopsAccessible,
+        stopsNotAccessible: row.stopsNotAccessible, stopsUnknown: row.stopsUnknown, trips: row.trips,
+        tripsAccessible: row.tripsAccessible, tripsNotAccessible: row.tripsNotAccessible,
+        tripsUnknown: row.tripsUnknown });
+    }
+    return { routes: routes, total: total };
+  }
+
   // ---------------------------------------------------------------- test helper
 
   function evaluate(texts, fnName, args) {
@@ -1563,6 +2152,10 @@
     meanTripMinutes: meanTripMinutes, bandsEqual: bandsEqual, _bandInvariant: bandInvariant,
     serviceCopyPlan: serviceCopyPlan, reconciliationNote: reconciliationNote,
     stopDepartures: stopDepartures, stopSummary: stopSummary, stopSpacing: stopSpacing,
-    routeSchedule: routeSchedule, feedOverview: feedOverview
+    routeSchedule: routeSchedule, feedOverview: feedOverview,
+    routeServiceDay: routeServiceDay, serviceYear: serviceYear, calendarDayCounts: calendarDayCounts,
+    stopSpacingStats: stopSpacingStats, consolidationCandidates: consolidationCandidates,
+    stopServiceTable: stopServiceTable, wheelchairByRoute: wheelchairByRoute,
+    _stopTableInvariant: stopTableInvariant
   };
 })();

@@ -19,6 +19,9 @@
   var _shapesFC     = null;  // stored shapes FeatureCollection for full-geometry lookup
   var _hoverPopup   = null;  // maplibregl.Popup for hover tooltips (clicks open the attributes dock)
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
+  // Told about every change to what GTFS analyses read (feed, date, hidden routes, day parts, stop list),
+  // so an analysis with a Run button can mark its results stale.
+  var _inputListeners = [];
 
   // ---- Stop selection state (docs/archive/gtfs-stop-selection-plan.md Phase 2) ----
   // The selection is a list of stop_id strings kept SEPARATELY from the loaded
@@ -1045,6 +1048,13 @@
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
     refreshSelectionBar();
+    fireInputsChange();
+  }
+
+  function fireInputsChange() {
+    _inputListeners.slice().forEach(function (fn) {
+      try { fn(); } catch (e) { console.error("GTFS input listener failed", e); }
+    });
   }
 
   function cleanIds(ids) {
@@ -2203,6 +2213,7 @@
 
   // Schedule-only figures never go stale: any change to their inputs redraws them at once.
   function refreshDetails() {
+    fireInputsChange();
     var key = typeof App.getDockViewKey === "function" ? App.getDockViewKey() : null;
     if (!key || key.indexOf("gtfs:") !== 0 || !_openTarget) return;
     var view = viewFor(_openTarget);
@@ -2470,6 +2481,17 @@
     { id: "schedule", label: "Schedule", render: renderRouteSchedule }
   );
 
+  // A tab from another module on the route details view. Its render gets the schedule route_id (not the
+  // route browser key) and redraws instantly like the built-in tabs.
+  App.gtfsAddRouteTab = function (tab) {
+    if (!tab || !tab.id || typeof tab.render !== "function") return;
+    _routeTabs.push({ id: tab.id, label: tab.label || tab.id, render: function (el, id, state, refresh) {
+      tab.render(el, scheduleRouteId(id), state, refresh);
+    } });
+    refreshDetails();
+  };
+  App.gtfsRefreshDetails = function () { refreshDetails(); };
+
   // ---- Feed attributes panel: Overview tab ----
 
   var _popupTab = "overview";
@@ -2620,6 +2642,14 @@
     _repDatesCache = { feed: _feed, date: _analysisDate, value: out };
     return out;
   }
+
+  App.gtfsRepresentativeDates = function () { return representativeDates(); };
+  App.gtfsScopeRouteIds = function (includeHidden) { return scheduleRouteIds(includeHidden); };
+  App.gtfsOnInputsChange = function (fn) {
+    if (typeof fn !== "function") return function () {};
+    _inputListeners.push(fn);
+    return function () { var i = _inputListeners.indexOf(fn); if (i >= 0) _inputListeners.splice(i, 1); };
+  };
 
   function scheduleRouteId(routeKey) {
     var r = findIndexRoute(routeKey);

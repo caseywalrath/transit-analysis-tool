@@ -1,0 +1,107 @@
+<!-- GTFS Service Analysis — tabbed popup body (Service & Cost | Stops) -->
+<div class="gsa-body">
+
+  <div class="gsa-scope">
+    <div class="form-field gsa-scope-date">
+      <label class="tiny" for="gsaDate">Day to analyze</label>
+      <input type="date" id="gsaDate" class="rf-number-input">
+    </div>
+    <label class="tpi-toggle-row">
+      <input type="checkbox" id="gsaIncludeHidden">
+      <span class="tiny">Include hidden routes</span>
+    </label>
+    <span id="gsaScopeNote" class="tiny u-muted"></span>
+  </div>
+
+  <div class="rf-tabs gsa-tabs" role="tablist">
+    <button type="button" class="rf-tab rf-tab-active" data-tab="service">Service &amp; Cost</button>
+    <button type="button" class="rf-tab" data-tab="stops">Stops</button>
+  </div>
+
+  <div id="gsaStatus" class="rf-status" style="display:none;"><span id="gsaStatusText">Ready</span></div>
+  <div id="gsaEmptyState" class="rf-empty-note" style="display:none;"></div>
+
+  <!-- Service & Cost -->
+  <div class="rf-tab-content rf-tab-visible" data-tab="service">
+    <details class="gsa-settings" id="gsaServiceSettings">
+      <summary>Cost settings <span id="gsaServiceSettingsSummary" class="tiny u-muted"></span></summary>
+      <div class="gsa-settings-grid">
+        <div class="form-field">
+          <label class="tiny" for="gsaRate">Cost per hour ($)</label>
+          <input type="number" id="gsaRate" class="rf-number-input" min="0" step="1">
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaRateBasis">Rate applies to</label>
+          <select id="gsaRateBasis" class="rf-select">
+            <option value="revenue">Revenue hours</option>
+            <option value="platform">Platform hours</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaDeadhead">Deadhead (% of running hours)</label>
+          <input type="number" id="gsaDeadhead" class="rf-number-input" min="0" step="1">
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaLayoverMode">Layover when the feed has no blocks</label>
+          <select id="gsaLayoverMode" class="rf-select">
+            <option value="minutes">Minutes per round trip</option>
+            <option value="percent">% of running time</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaLayoverValue" id="gsaLayoverValueLabel">Layover (min per round trip)</label>
+          <input type="number" id="gsaLayoverValue" class="rf-number-input" min="0" step="1">
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaMaxGap">Longest layover within a block (min)</label>
+          <input type="number" id="gsaMaxGap" class="rf-number-input" min="1" step="1">
+        </div>
+        <div class="form-field">
+          <label class="tiny">Days per year (weekday / Saturday / Sunday)</label>
+          <div class="gsa-days">
+            <input type="number" id="gsaDaysWeekday" class="rf-number-input" min="0" max="366" step="1" aria-label="Weekdays per year">
+            <input type="number" id="gsaDaysSaturday" class="rf-number-input" min="0" max="366" step="1" aria-label="Saturdays per year">
+            <input type="number" id="gsaDaysSunday" class="rf-number-input" min="0" max="366" step="1" aria-label="Sundays and holidays per year">
+          </div>
+        </div>
+      </div>
+      <div class="btn-row"><button type="button" id="gsaServiceDefaults" class="rf-btn-sm">Restore defaults</button></div>
+    </details>
+    <div class="module-input-actions">
+      <button type="button" id="gsaRunService" class="rf-action-primary">Summarize service</button>
+    </div>
+    <div id="gsaServiceResults"></div>
+  </div>
+
+  <!-- Stops -->
+  <div class="rf-tab-content" data-tab="stops">
+    <label class="tpi-toggle-row">
+      <input type="checkbox" id="gsaUseStopList">
+      <span class="tiny">Only stops in the GTFS stop selection <span id="gsaStopListCount" class="u-muted"></span></span>
+    </label>
+    <details class="gsa-settings" id="gsaStopSettings">
+      <summary>Stop settings <span id="gsaStopSettingsSummary" class="tiny u-muted"></span></summary>
+      <div class="gsa-settings-grid">
+        <div class="form-field">
+          <label class="tiny">Spacing band limits (ft)</label>
+          <div class="gsa-days">
+            <input type="number" id="gsaT1" class="rf-number-input" min="1" step="10" aria-label="Very close below">
+            <input type="number" id="gsaT2" class="rf-number-input" min="1" step="10" aria-label="Close below">
+            <input type="number" id="gsaT3" class="rf-number-input" min="1" step="10" aria-label="Target below">
+            <input type="number" id="gsaT4" class="rf-number-input" min="1" step="10" aria-label="Wide below">
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="tiny" for="gsaSecPerStop">Seconds saved per removed stop</label>
+          <input type="number" id="gsaSecPerStop" class="rf-number-input" min="0" step="1">
+        </div>
+      </div>
+      <div class="btn-row"><button type="button" id="gsaStopDefaults" class="rf-btn-sm">Restore defaults</button></div>
+    </details>
+    <div class="module-input-actions">
+      <button type="button" id="gsaRunStops" class="rf-action-primary">Analyze stops</button>
+    </div>
+    <div id="gsaStopsResults"></div>
+  </div>
+
+</div>

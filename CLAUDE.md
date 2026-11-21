@@ -138,6 +138,7 @@ js/projects/                Analysis modules, one reference doc each under docs/
   trip-builder.js           Trip Builder   [trip-builder]
   title-vi-engine.js + title-vi.js   window.TitleVI engine + Title VI module   [title-vi]
   gtfs.js                   GTFS Feed Viewer + route browser engine + stop selection   [gtfs]
+  gtfs-service-analysis.js  GTFS Service Analysis: service, cost and stop reports from the timetable   [gtfs-service-analysis]
   attribute-summary.js      Attribute Summary (system module)   [drawing-and-features]
   mitigation-needs*.js      Dormant illustration module (script tags commented out)
 projects/*.html             Popup bodies and legend fragments, documented with their module
@@ -159,7 +160,7 @@ config → utils → sidebar → map → search → walk-cost → walk-tiles →
 → cache → undo → popup → service-assembly → module-buffers → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
-   trip-builder, title-vi-engine, title-vi, gtfs, attribute-summary) → present-overlays
+   trip-builder, title-vi-engine, title-vi, gtfs, gtfs-service-analysis, attribute-summary) → present-overlays
 ```
 
 Hard ordering rules: `config.js` first (map.js/census.js read the keys at init); `merge.js` before `attribute-summary.js`; each `*-scoring.js`/`*-engine.js` before its module; `present-overlays.js` after all modules.

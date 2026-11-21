@@ -305,4 +305,92 @@ add("a4-feed-overview-no-today", mini("feedOverview", { today: null, dates: A4_D
 add("a4-feed-overview-agency-only", inline({ "agency.txt": "agency_name\nSolo\n" }, "feedOverview",
   { today: "20260110", dates: A4_DATES }));
 
+// ---- service hours, peak vehicles and cost ------------------------------
+// Hand values: test/fixtures/gtfs/mini/EXPECTED.md, section "Service hours and cost (A5)".
+// D1 rows: B1 5 trips, R1 2, F1 18, total 25; the total peak of 4 is reached at 26100 (07:15).
+add("a5-day-d1", mini("routeServiceDay", D1, {}));
+add("a5-day-d1-percent10", mini("routeServiceDay", D1, { layover: { mode: "percent", value: 10 } }));
+add("a5-day-d1-b1", mini("routeServiceDay", D1, { routeIds: ["B1"] }));
+add("a5-day-d1-gap5", mini("routeServiceDay", D1, { layover: { maxBlockGapMin: 5 } }));
+add("a5-day-d3", mini("routeServiceDay", D3, {}));
+add("a5-day-unknown", mini("routeServiceDay", "20250101", {}));
+// Weekly and annual figures: weekday D1, Saturday D3, Sunday D2 (a holiday with Sunday service).
+const A5_DATES = { weekday: D1, saturday: D3, sunday: D2 };
+add("a5-year-default", mini("serviceYear", { dates: A5_DATES }));
+add("a5-year-platform-overrides", mini("serviceYear", { dates: A5_DATES, rateBasis: "platform",
+  rateOverrides: { R1: 300, B1: "x" } }));
+add("a5-year-daycount-weekday-250", mini("serviceYear", { dates: A5_DATES, dayCounts: { weekday: 250 } }));
+add("a5-year-all-dates-null", mini("serviceYear", { dates: { weekday: null, saturday: null, sunday: null } }));
+// Calendar: 2026-01-05 to 2026-02-01 is 28 dates, with 20 weekdays, 4 Saturdays and 4 Sundays.
+add("a5-calendar-default", mini("calendarDayCounts", {}));
+add("a5-calendar-r1", mini("calendarDayCounts", { routeIds: ["R1"] }));
+// No calendar.txt and no calendar_dates.txt: no date range, so every count is zero.
+add("a5-calendar-no-calendar", inline({
+  "trips.txt": "route_id,service_id,trip_id,direction_id,block_id,shape_id\nB1,WKDY,T1,0,,\n",
+  "routes.txt": "route_id,agency_id,route_short_name\nB1,MINI,B1\n",
+  "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\nT1,07:00:00,07:00:00,S1,1\nT1,07:10:00,07:10:00,S2,2\n"
+}, "calendarDayCounts", {}));
+
+// ---- stop analysis (A5) --------------------------------------------------
+// Hand values: test/fixtures/gtfs/mini/EXPECTED.md, section "Stop analysis (A5)".
+// D1: every segment is "very wide" with default thresholds (B1 4 x 2805 ft, F1 3648 ft, R1 2 x 99440 ft).
+add("a5-stops-spacing-d1", mini("stopSpacingStats", D1, {}));
+add("a5-stops-spacing-d1-b1", mini("stopSpacingStats", D1, { routeIds: ["B1"] }));
+add("a5-stops-spacing-d1-stop-s2", mini("stopSpacingStats", D1, { stopIds: ["S2"] }));
+// Thresholds [100, 200, 3000, 50000]: B1 lands in Target, F1 in Wide, R1 in Very wide.
+add("a5-stops-spacing-d1-custom-thresholds", mini("stopSpacingStats", D1, { thresholdsFt: [100, 200, 3000, 50000] }));
+// [600, 500, 1, 2] is not rising, so the defaults apply.
+add("a5-stops-spacing-d1-invalid-thresholds", mini("stopSpacingStats", D1, { thresholdsFt: [600, 500, 1, 2] }));
+add("a5-stops-spacing-d3", mini("stopSpacingStats", D3, {}));
+add("a5-stops-spacing-unknown-date", mini("stopSpacingStats", "20250101", {}));
+
+// Default 600 ft: nothing is closer. With maxFt 99999, B1's middle stop S2 is the one candidate (5 trips,
+// 100 s a day); B1 alone and a stop list without S2 leave nothing.
+add("a5-stops-consolidation-d1", mini("consolidationCandidates", D1, {}));
+add("a5-stops-consolidation-d1-wide", mini("consolidationCandidates", D1, { maxFt: 99999 }));
+add("a5-stops-consolidation-d1-wide-b1", mini("consolidationCandidates", D1, { maxFt: 99999, routeIds: ["B1"] }));
+add("a5-stops-consolidation-d1-wide-stop-s2", mini("consolidationCandidates", D1, { maxFt: 99999, stopIds: ["S2"], secondsPerStop: 30 }));
+add("a5-stops-consolidation-d1-wide-stop-s1", mini("consolidationCandidates", D1, { maxFt: 99999, stopIds: ["S1"] }));
+add("a5-stops-consolidation-d3-wide", mini("consolidationCandidates", D3, { maxFt: 99999 }));
+add("a5-stops-consolidation-unknown-date", mini("consolidationCandidates", "20250101", { maxFt: 99999 }));
+
+// D1 rows: P1, R2, S1 (21 trips, 06:00 to 24:50, peak headway 900), S2 (5), S3 (2). STN has none of its own.
+add("a5-stops-table-d1", mini("stopServiceTable", D1, {}));
+add("a5-stops-table-d1-b1", mini("stopServiceTable", D1, { routeIds: ["B1"] }));
+add("a5-stops-table-d1-stop-s2", mini("stopServiceTable", D1, { stopIds: ["S2"] }));
+add("a5-stops-table-d1-two-parts", mini("stopServiceTable", D1, { dayParts: A4_PARTS }));
+add("a5-stops-table-d3", mini("stopServiceTable", D3, {}));
+add("a5-stops-table-unknown-date", mini("stopServiceTable", "20250101", {}));
+// Invariant: every childless non-station stop agrees with stopSummary (checked 5, mismatches none).
+add("a5-stops-table-matches-summary-d1", mini("_stopTableInvariant", D1, {}));
+add("a5-stops-table-matches-summary-d3", mini("_stopTableInvariant", D3, { dayParts: A4_PARTS }));
+add("a5-stops-table-matches-summary-d1-b1", mini("_stopTableInvariant", D1, { routeIds: ["B1"] }));
+
+// The mini trips.txt has no wheelchair_accessible column, so every trip is unknown; stops are S1 1, S2 2,
+// S3 0, P1 inherits 1 from STN, R2 1, F2 0.
+add("a5-stops-wheelchair-d1", mini("wheelchairByRoute", D1, {}));
+add("a5-stops-wheelchair-d1-b1", mini("wheelchairByRoute", D1, { routeIds: ["B1"] }));
+add("a5-stops-wheelchair-d3", mini("wheelchairByRoute", D3, {}));
+add("a5-stops-wheelchair-unknown-date", mini("wheelchairByRoute", "20250101", {}));
+// Inline feed with trip values: route A trips T1 1, T2 2, T3 1 (two frequency runs), T4 blank; route B T5 2.
+// Stops X 1, Y 2, Z blank, W inherits 2 from its station P.
+add("a5-stops-wheelchair-trip-values", inline({
+  "calendar.txt": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20260105,20260201\n",
+  "routes.txt": "route_id,agency_id,route_short_name\nA,M,A\nB,M,B\n",
+  "stops.txt": "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding\nX,X,39.70,-105.00,0,,1\nY,Y,39.71,-105.00,0,,2\nZ,Z,39.72,-105.00,0,,\nP,P,39.73,-105.00,1,,2\nW,W,39.73,-105.00,0,P,\n",
+  "trips.txt": "route_id,service_id,trip_id,direction_id,wheelchair_accessible\nA,WK,T1,0,1\nA,WK,T2,0,2\nA,WK,T3,0,1\nA,WK,T4,0,\nB,WK,T5,0,2\n",
+  "frequencies.txt": "trip_id,start_time,end_time,headway_secs,exact_times\nT3,07:00:00,08:00:00,1800,0\n",
+  "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\nT1,06:00:00,06:00:00,X,1\nT1,06:10:00,06:10:00,Y,2\nT2,06:30:00,06:30:00,X,1\nT2,06:40:00,06:40:00,Z,2\nT3,07:00:00,07:00:00,X,1\nT3,07:10:00,07:10:00,Y,2\nT4,09:00:00,09:00:00,Y,1\nT4,09:10:00,09:10:00,Z,2\nT5,10:00:00,10:00:00,W,1\nT5,10:10:00,10:10:00,Z,2\n"
+}, "wheelchairByRoute", D1, {}));
+
+// A stop in the middle of route A that is route B's first stop is never removed, even when it is close.
+const A5_END = {
+  "routes.txt": "route_id,route_type\nA,3\nB,3\n",
+  "calendar.txt": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nW,1,1,1,1,1,0,0,20260105,20260201\n",
+  "trips.txt": "route_id,service_id,trip_id\nA,W,a1\nB,W,b1\n",
+  "stops.txt": "stop_id,stop_lat,stop_lon\nX1,39.7400,-104.9900\nX2,39.7400,-104.9895\nX3,39.7400,-104.9800\nX4,39.7500,-104.9800\n",
+  "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\na1,07:00:00,07:00:00,X1,1\na1,07:01:00,07:01:00,X2,2\na1,07:05:00,07:05:00,X3,3\nb1,08:00:00,08:00:00,X2,1\nb1,08:10:00,08:10:00,X4,2\n"
+};
+add("a5-stops-consolidation-other-route-end", inline(A5_END, "consolidationCandidates", D1, { maxFt: 99999 }));
+
 export default { scripts: ["js/core/gtfs-schedule.js"], cases };

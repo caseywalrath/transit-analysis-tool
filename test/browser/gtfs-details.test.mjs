@@ -137,7 +137,7 @@ MINI_FILES.forEach((f) => { mini[f] = readFileSync(join(MINI_DIR, f), "utf8"); }
     const names = await page.evaluate(() => Array.from(document.querySelectorAll("#attr-dock .gtfs-dt-stops"))[0]
       ? Array.from(document.querySelectorAll("#attr-dock .gtfs-dt-stops")[0].querySelectorAll(".gtfs-dt-link")).map((b) => b.textContent) : []);
     check("8. a route shows Details, Stops, Schedule; Stops lists S1, S2, S3 in direction order",
-      rtabs.join(",") === "Details,Stops,Schedule" &&
+      rtabs.join(",") === "Details,Stops,Schedule,Cost" &&
       names.join("|") === "Main St & 1st Ave, Shared|Main St & 5th Ave|Main St & 9th Ave", rtabs.join(",") + " " + names.join("|"));
 
     // 9

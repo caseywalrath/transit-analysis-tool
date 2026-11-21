@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0–A4 complete; next phase A5.
+> **Status:** Approved at Gate G0 (2026-11-21). A0–A5 complete; next phase A6.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -373,7 +373,7 @@ Use `CLAUDE.md` § Testing:
 | A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Done |
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Done |
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Done (sub-plan `docs/archive/A4-plan.md`) |
-| A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Not started |
+| A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Done (sub-plan `docs/archive/A5-plan.md`) |
 | A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Not started |
 | A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Not started |
 | A8 | Export drawn Services as GTFS; decide Trip Builder's future | Sub-plan | S, H, O | A6 | G8a–b | Not started |
@@ -976,10 +976,10 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G4a | A4 | Where details appear | Left details panel | Left details panel (Option A) | 2026-11-21 |
 | G4b | A4 | Instant results for schedule-only figures | Yes | Yes (Option A) | 2026-11-21 |
 | G4c | A4 | Peak / off-peak definition | Shared editable day parts | Shared editable day parts (Option A) | 2026-11-21 |
-| G5a | A5 | One day → a year | Annual day counts | | |
-| G5b | A5 | Where reports live | One tabbed analysis | | |
-| G5c | A5 | Layover without vehicle blocks | Blocks if present, else setting | | |
-| G5d | A5 | Time saved by removing a stop | Labelled upper bound + walk distance | | |
+| G5a | A5 | One day → a year | Annual day counts | Annual day counts (Option A) | 2026-11-21 |
+| G5b | A5 | Where reports live | One tabbed analysis | One tabbed analysis (Option A) | 2026-11-21 |
+| G5c | A5 | Layover without vehicle blocks | Blocks if present, else setting | Blocks if present, else setting (Option A) | 2026-11-21 |
+| G5d | A5 | Time saved by removing a stop | Labelled upper bound + walk distance | Upper bound + walk distance (Option A) | 2026-11-21 |
 | G6a | A6 | Low-income definition | Setting, default below poverty | | |
 | G6b | A6 | Departure time or window | Window | | |
 | G6c | A6 | Mix proposals into real network | Yes | | |
@@ -1219,4 +1219,22 @@ Gates: G4a left details panel; G4b instant results; G4c the shared, editable par
 - Details: `App.gtfsOpenDetails({kind:"stop", stopId} | {kind:"route", routeId, shapeId})`; private tab lists `_stopTabs` / `_routeTabs` in `gtfs.js` take `{id, label, render(el, id, state, refresh)}` — A5 adds the route Cost tab by pushing onto `_routeTabs`; A6 adds the stop Coverage tab to `_stopTabs`.
 - Hidden routes: private `scheduleRouteIds(includeHidden)` gives the `routeIds` filter (null = all).
 - `#gtfsHealth` in the Overview is reserved for A7's feed-health flags.
+
+### A5 — 2026-11-21
+
+Gates: G5a annual day counts; G5b one tabbed analysis; G5c vehicle blocks when present, else the layover setting; G5d labelled upper bound plus walk distance.
+
+- Sub-plan [Opus]: `docs/archive/A5-plan.md`. Decisions: the module keeps its own settings with Route Costing's defaults (Route Costing has no public API); the setting's layover minutes are per round trip, so half per one-way trip, matching Route Costing; it is a normal Run-button analysis (G4b's instant rule covers only details views, including the new route Cost tab).
+- A5.1 engine [Haiku]: `routeServiceDay`, `serviceYear`, `calendarDayCounts`; 13 golden cases, every D1 row hand-checked in `EXPECTED.md`. Holidays count under their weekday in the calendar cross-check.
+- A5.2 engine [Sonnet]: `stopSpacingStats`, `consolidationCandidates`, `stopServiceTable`, `wheelchairByRoute`, trip `wheelchair` field; 28 golden cases; `stopServiceTable` equals `stopSummary` for all 7,403 RTD stops. Card deviation accepted: only the removed stop must not be a pattern end (the kept stop may be).
+- A5.3 module shell [Opus]: `js/projects/gtfs-service-analysis.js`, popup, scope and stale wiring, session state, map layers `gsa-stop-service-layer` / `gsa-candidates-layer`, route Cost tab; `gtfs.js` hooks `App.gtfsRepresentativeDates`, `gtfsScopeRouteIds`, `gtfsOnInputsChange`, `gtfsAddRouteTab`, `gtfsRefreshDetails`.
+- A5.4 tables, sections, CSVs, test [Sonnet]: `test/browser/gtfs-service-analysis.test.mjs` (19 checks). `test/browser/gtfs-details.test.mjs` now expects the Cost route tab (deliberate, by Opus).
+- A5.5 review [Opus]: 9 findings, all fixed: a stop ending another route's pattern could be listed for removal (new golden case); an empty stop selection gave empty reports (now a message); a replaced feed left old Stops results and map toggles; candidate toggle out of step after a run with none; an out-of-range typed date stayed in the box; non-rising band limits ran silently; CSV header said "Feed:" for a date (now "Analysis date:" plus the dates used); a phase name in a comment; the doc link to this sub-plan.
+- Cross-check (mini B1, copied Service vs Route Costing, same settings): trips equal (1,385/yr); running hr 461.7 vs 460.0 (+0.4 %, Route Costing rounds run times to whole minutes); revenue 594 vs 575 hr, platform 663 vs 644 hr, cost $89,100 vs $86,321 (about +3 %; B1 has vehicle blocks, so layover is the real gap instead of the setting).
+- Performance (RTD, 130 routes, 7,443 stops): Summarize service 101 ms; Analyze stops 712 ms; route Cost tab 8 ms.
+
+**Hand-off:**
+- Engine: `serviceYear(feed, {dates, dayCounts, routeIds, layover:{mode, value, maxBlockGapMin}, deadheadPct, rate, rateBasis, rateOverrides})` and `routeServiceDay` give per-route and system hours, peak vehicles and cost; A7's Build vs No-Build can call them on two feeds.
+- Module: tabs via `[data-tab]` in `projects/gtfs-service-analysis-popup.html`; A7 adds Compare and Feed health there. Results hold `{feed, sig, inputs, ...}`; staleness = signature compare on `App.gtfsOnInputsChange`.
+- A6 adds the stop Coverage tab with an `App.gtfsAddStopTab` hook alongside `App.gtfsAddRouteTab`.
 
