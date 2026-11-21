@@ -1582,9 +1582,11 @@
   }
 
   // Walk distance (km) from a flood's distMap to each point: through either end of the point's snapped
-  // segment. Infinity when the point does not snap or neither end was reached.
-  function walkKmToPoints(distMap, lngLats) {
-    var out = [];
+  // segment. Infinity when the point does not snap or neither end was reached. fromLngLat (the flood's
+  // origin) adds the direct walk when both snap to the same segment, which the end nodes alone would
+  // price as out to an end and back.
+  function walkKmToPoints(distMap, lngLats, fromLngLat) {
+    var out = [], from = fromLngLat ? snapToNetwork(fromLngLat, "walk") : null;
     for (var i = 0; i < (lngLats || []).length; i++) {
       var snap = lngLats[i] ? snapToNetwork(lngLats[i], "walk") : null;
       if (!snap || !distMap) { out.push(Infinity); continue; }
@@ -1592,7 +1594,11 @@
       var b = distMap.has(snap.segEndKey) ? distMap.get(snap.segEndKey) : Infinity;
       var da = turf.distance(turf.point(snap.coord), turf.point(snap.segStartCoord), { units: "kilometers" });
       var db = turf.distance(turf.point(snap.coord), turf.point(snap.segEndCoord), { units: "kilometers" });
-      out.push(Math.min(a + da, b + db));
+      var direct = Infinity;
+      if (from && from.segStartKey === snap.segStartKey && from.segEndKey === snap.segEndKey) {
+        direct = turf.distance(turf.point(from.coord), turf.point(snap.coord), { units: "kilometers" });
+      }
+      out.push(Math.min(a + da, b + db, direct));
     }
     return out;
   }
@@ -1617,7 +1623,8 @@
     };
     for (var i = 0; i < (origins || []).length; i++) {
       var o = origins[i];
-      var snap = o && o.lngLat && o.offsetKm < budgetKm ? snapToNetwork(o.lngLat, "walk") : null;
+      if (!o || !o.lngLat || !(o.offsetKm < budgetKm)) continue;  // no time left to walk: not "unsnapped"
+      var snap = snapToNetwork(o.lngLat, "walk");
       if (!snap) { unsnapped.push(i); continue; }
       var cap = o.capKm > 0 ? o.capKm : Infinity;
       snaps.push({ coord: snap.coord, a: snap.segStartCoord, b: snap.segEndCoord, offsetKm: o.offsetKm, cap: cap });

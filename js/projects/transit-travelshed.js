@@ -7,6 +7,8 @@
 //   App.getEffectiveServiceBands (service-assembly.js), App.foldAnalysisUnion
 //   (module-buffers.js), road-network.js exports, turf (CDN), maplibregl (CDN),
 //   window.Travelshed (travelshed.js).
+// Two service modes: "headway" (drawn routes, Travelshed engine) and "schedule"
+// (GTFS + drawn proposals as timetables, App.computeScheduleTravelshed).
 // No public API.
 
 (function () {
@@ -26,8 +28,15 @@
     shedMode: "transit",      // "transit" (walk legs capped) | "door" (walk legs uncapped)
     maxAccessWalkMi: 0.5,
     maxEgressWalkMi: 0.25,
-    maxTransferWalkMi: 0.25
+    maxTransferWalkMi: 0.25,
+    serviceMode: "headway",   // "headway" (drawn routes) | "schedule" (GTFS + proposals)
+    windowFrom: "07:00",      // schedule mode: first departure sampled
+    windowTo: "08:00",        // schedule mode: window end (exclusive)
+    stepMin: 2,               // schedule mode: minutes between sampled departures
+    statistic: "typical",     // "typical" (median) | "best" | "worst" (90th percentile)
+    includeHidden: false
   };
+  var SETTINGS_VERSION = 3;
   var KM_PER_MILE = 1.609344; // engine graph weights are in km; UI/attributes are in mph
   var TRANSFER_CAP = 1;
   var FT_PER_KM = 3280.84; // grid sizes are stored in km and shown in feet
@@ -39,6 +48,7 @@
   var _stale         = false;
   var _running       = false;
   var _initialized   = false;
+  var _feedIds = new WeakMap(), _feedSeq = 0; // loaded-feed identity, as Title VI's service equity signature
   var _savedSelectedRouteIds = null; // routeIdx/lineIdx-based ids restored from session cache, applied once the checklist exists
 
   // Per-stop walk-flood cache, keyed "stopKey|epoch|budgetKm.toFixed(3)" ->
@@ -54,6 +64,54 @@
 
   function isPopupVisible() {
     return App.popup && App.popup.isOpen() && App.popup.currentModuleId() === "transit-travelshed";
+  }
+
+  function isSchedule() { return _settings.serviceMode === "schedule"; }
+
+  // A reloaded feed is a new object, so a result computed on the old one must read as stale even when
+  // the analysis date happens to be unchanged.
+  function feedId() {
+    var feed = typeof App.gtfsSchedule === "function" ? App.gtfsSchedule() : null;
+    if (!feed) return "none";
+    if (!_feedIds.has(feed)) _feedIds.set(feed, ++_feedSeq);
+    return String(_feedIds.get(feed));
+  }
+
+  function isoDate(d) {
+    return /^\d{8}$/.test(String(d || "")) ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) : String(d || "");
+  }
+
+  // Shows only the inputs that belong to the chosen service mode.
+  function applyServiceMode() {
+    var sched = isSchedule();
+    var root = document.querySelector(".ts-body");
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll(".ts-headway-only"), function (el) { el.style.display = sched ? "none" : ""; });
+    Array.prototype.forEach.call(root.querySelectorAll(".ts-schedule-only"), function (el) { el.style.display = sched ? "" : "none"; });
+    var fh = document.getElementById("tsFootHeadway"), fs = document.getElementById("tsFootSchedule");
+    if (fh) fh.style.display = sched ? "none" : "";
+    if (fs) fs.style.display = sched ? "" : "none";
+    var run = document.getElementById("tsRunBtn");
+    if (run) run.textContent = sched ? "Calculate travelshed (schedule)" : "Calculate travelshed";
+    updateWalkCapInputsEnabled();
+    refreshDateLine();
+  }
+
+  function refreshDateLine() {
+    var el = document.getElementById("tsDateLine");
+    if (!el) return;
+    var feed = typeof App.gtfsSchedule === "function" ? App.gtfsSchedule() : null;
+    if (!feed) { el.textContent = "No GTFS feed: drawn Services only."; return; }
+    var date = App.gtfsAnalysisDate ? App.gtfsAnalysisDate.get() : null;
+    if (!date) { el.textContent = "No analysis date set (change it in GTFS Feed Attributes)."; return; }
+    var dayType = window.GtfsSchedule.dayType(feed, date).dayType;
+    el.textContent = "GTFS analysis date: " + isoDate(date) + " (" + dayType + ") (change it in GTFS Feed Attributes).";
+  }
+
+  // A schedule result depends on the feed and date as well as the inputs.
+  function scheduleSourceChanged() {
+    refreshDateLine();
+    if (_lastResult && _lastResult.serviceMode === "schedule") markStale();
   }
 
   // ---- Route/line checklist (annotates features with no schedule) ----
@@ -400,10 +458,16 @@
 
   // ---- Collapsible inputs + status / stale / empty (shared helpers) ----
   var DAY_LABEL_TS = { weekday: "Weekday", saturday: "Saturday", sunday: "Sunday" };
+  var STAT_LABEL = { typical: "typical (median)", best: "best case", worst: "worst case (90th percentile)" };
 
   function inputsSummary() {
     if (!_lastResult) return "";
     var budgets = (_lastResult.budgets || []).filter(function (b) { return b != null; });
+    if (_lastResult.serviceMode === "schedule") {
+      var q = _lastResult.sched;
+      return [budgets.join("/") + " min", "Schedule " + q.from + "\u2013" + q.to + " every " + q.stepMin + " min",
+        STAT_LABEL[q.statistic] || q.statistic, q.walkMph + " mph"].join(" \u00b7 ");
+    }
     var parts = [
       budgets.join("/") + " min",
       (DAY_LABEL_TS[_settings.dayType] || _settings.dayType) + " " + _settings.timeOfDay,
@@ -436,6 +500,10 @@
   }
 
   function emptyHint() {
+    if (isSchedule()) {
+      if (!_origin) return { need: "Select an origin on the map.", action: "Click \u201cSelect Origin\u201d, then click a starting point." };
+      return { need: "Click Calculate.", action: "Schedule mode rides the loaded GTFS feed and drawn Services with schedules, sampled across the departure window." };
+    }
     var nFeat = (App.routes || []).length + (App.lines || []).length;
     if (!nFeat) {
       return { need: "Draw a route or line with service bands.", action: "Use the Route or Line tool, then click it and set bands in the attributes panel." };
@@ -620,6 +688,20 @@
     var transferWalk = document.getElementById("tsTransferWalk");
     if (transferWalk && +transferWalk.value > 0) _settings.maxTransferWalkMi = +transferWalk.value;
 
+    var mode = document.getElementById("tsServiceMode");
+    if (mode && (mode.value === "headway" || mode.value === "schedule")) _settings.serviceMode = mode.value;
+
+    var wFrom = document.getElementById("tsWindowFrom");
+    if (wFrom && wFrom.value) _settings.windowFrom = wFrom.value;
+    var wTo = document.getElementById("tsWindowTo");
+    if (wTo && wTo.value) _settings.windowTo = wTo.value;
+    var step = document.getElementById("tsStepMin");
+    if (step && +step.value >= 1) _settings.stepMin = Math.round(+step.value);
+    var stat = document.getElementById("tsStatistic");
+    if (stat && STAT_LABEL[stat.value]) _settings.statistic = stat.value;
+    var hid = document.getElementById("tsIncludeHidden");
+    if (hid) _settings.includeHidden = !!hid.checked;
+
     updateWalkCapInputsEnabled();
 
     if (App.cache && App.cache.save) App.cache.save();
@@ -639,7 +721,7 @@
   // The three cap inputs are only meaningful in "transit" mode — gray them
   // out (but keep their values intact) while "door" mode is selected.
   function updateWalkCapInputsEnabled() {
-    var enabled = _settings.shedMode !== "door";
+    var enabled = isSchedule() || _settings.shedMode !== "door";
     ["tsAccessWalk", "tsEgressWalk", "tsTransferWalk"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.disabled = !enabled;
@@ -691,7 +773,20 @@
     var transferWalk = document.getElementById("tsTransferWalk");
     if (transferWalk) transferWalk.value = _settings.maxTransferWalkMi;
 
-    updateWalkCapInputsEnabled();
+    var mode = document.getElementById("tsServiceMode");
+    if (mode) mode.value = _settings.serviceMode;
+    var wFrom = document.getElementById("tsWindowFrom");
+    if (wFrom) wFrom.value = _settings.windowFrom;
+    var wTo = document.getElementById("tsWindowTo");
+    if (wTo) wTo.value = _settings.windowTo;
+    var step = document.getElementById("tsStepMin");
+    if (step) step.value = _settings.stepMin;
+    var stat = document.getElementById("tsStatistic");
+    if (stat) stat.value = _settings.statistic;
+    var hid = document.getElementById("tsIncludeHidden");
+    if (hid) hid.checked = !!_settings.includeHidden;
+
+    applyServiceMode();
     if (App.syncWalkShapeInputs) App.syncWalkShapeInputs("ts");
 
     var originLabel = document.getElementById("tsOriginLabel");
@@ -889,6 +984,11 @@
       position: "bottom-left", width: 200, title: "Transit Travelshed"
     });
     fillTravelshedLegendColors();
+    var note = document.getElementById("tsLegendNote");
+    if (note) {
+      note.textContent = isSchedule() ? "Walk \u2192 ride scheduled trips \u2192 walk, \u22642 transfers."
+        : "Walk \u2192 wait \u2192 ride \u2192 walk, \u22641 transfer.";
+    }
     for (var i = 0; i < 3; i++) {
       var row = document.getElementById("tsLegendRow" + i);
       var label = document.getElementById("tsLegendLabel" + i);
@@ -915,14 +1015,30 @@
     var M2_TO_MI2 = 3.861021585e-7;
     var M2_TO_KM2 = 1e-6;
 
+    var sched = result.serviceMode === "schedule";
     var rows = "";
     result.bands.forEach(function (b) {
       var areaM2 = b.ring ? turf.area(b.ring) : 0;
       rows += "<tr><td>" + b.budgetMin + " min</td>" +
         "<td>" + (areaM2 * M2_TO_MI2).toFixed(3) + " mi&sup2;<span class='ws-sub'> / " +
           (areaM2 * M2_TO_KM2).toFixed(3) + " km&sup2;</span></td>" +
-        "<td>" + b.nodeCount + "</td></tr>";
+        (sched ? "" : "<td>" + b.nodeCount + "</td>") + "</tr>";
     });
+
+    // Schedule runs have no per-stop flood cache, so the footer is just timing.
+    if (sched) {
+      container.innerHTML =
+        '<table class="ts-table"><thead><tr><th>Budget</th><th>Area</th></tr></thead><tbody>' +
+        rows + "</tbody></table>" +
+        '<p class="tiny" style="margin-top:6px;color:var(--muted);">' + result.computeMs + " ms total &middot; routing " +
+          result.schedule.routeMs + " ms</p>" +
+        ((result.schedule.gridKmUsed && result.contourGridAskedKm && result.schedule.gridKmUsed > result.contourGridAskedKm * 1.001)
+          ? '<p class="tiny" id="tsGridNote" style="margin-top:2px;color:var(--muted);">Grid coarsened to ' +
+            Math.round(result.schedule.gridKmUsed * FT_PER_KM) + " ft for this size.</p>" : "") +
+        connectionReportHTML() +
+        coverageReportHTML();
+      return;
+    }
 
     container.innerHTML =
       '<table class="ts-table"><thead><tr><th>Budget</th><th>Area</th><th>Nodes</th></tr></thead><tbody>' +
@@ -1008,6 +1124,43 @@
     el.innerHTML = html;
   }
 
+  function fmtMiles(mi) {
+    return mi === 0.25 ? "\u00bc" : mi === 0.5 ? "\u00bd" : mi === 0.75 ? "\u00be" : String(mi);
+  }
+
+  // Summary of a schedule run in the results column: what was sampled, what the network held, and the
+  // assumptions the walk legs rest on.
+  function renderScheduleDetail(result) {
+    var el = document.getElementById("tsRouteDetail");
+    if (!el) return;
+    var r = result.schedule, q = result.sched;
+    var html = '<div class="ts-route-detail">';
+    html += '<div class="ts-route-detail-row"><div class="ts-route-detail-name">' +
+      r.departures + " departures " + escapeHtml(q.from) + "\u2013" + escapeHtml(q.to) + " every " + q.stepMin + " min \u00b7 " +
+      escapeHtml(STAT_LABEL[q.statistic] || q.statistic) + " \u00b7 " + r.stopsReached + " stops within reach \u00b7 " +
+      r.accessStops + " stops within walk of the origin</div>";
+    html += '<div class="ts-route-detail-sub">' +
+      (r.date ? "Analysis date " + escapeHtml(isoDate(r.date)) + " (" + escapeHtml(r.dayType) + ")"
+              : "No GTFS feed: drawn Services only (" + escapeHtml(r.dayType) + " bands)") +
+      " &middot; " + r.gtfsTrips + " GTFS trips, " + r.proposalTrips + " drawn trips</div></div>";
+    (r.notes || []).forEach(function (n) {
+      html += '<div class="ts-route-detail-row"><div class="ts-route-detail-sub">' + escapeHtml(n) + "</div></div>";
+    });
+    if (r.egressUnsnapped > 0) {
+      html += '<div class="ts-route-detail-row"><div class="ts-route-detail-sub">' + r.egressUnsnapped +
+        " reached stops are beyond the loaded streets, so no walk is drawn from them.</div></div>";
+    }
+    var skipped = r.proposalsSkipped || [];
+    if (skipped.length) {
+      html += '<div class="ts-route-detail-row"><div class="ts-route-detail-sub ts-route-detail-excluded">Skipped drawn Services: ' +
+        skipped.map(function (k) { return escapeHtml((k.name || k.key) + " (" + k.reason + ")"); }).join(", ") + "</div></div>";
+    }
+    html += "</div>";
+    html += '<p class="tiny" style="margin-top:6px;color:var(--muted);">Transfers: walk up to ' + fmtMiles(q.transferMi) +
+      " mi, straight line &times; 1.3. Walk caps: access " + fmtMiles(q.accessMi) + " mi &middot; egress " + fmtMiles(q.egressMi) + " mi.</p>";
+    el.innerHTML = html;
+  }
+
   function exportGeoJSON() {
     if (!_lastResult) return;
     var features = [];
@@ -1015,7 +1168,7 @@
       if (!b.ring) return;
       features.push({
         type: "Feature",
-        properties: { band: b.band, budgetMin: b.budgetMin, areaM2: turf.area(b.ring), nodeCount: b.nodeCount },
+        properties: { band: b.band, budgetMin: b.budgetMin, areaM2: turf.area(b.ring), nodeCount: b.nodeCount == null ? null : b.nodeCount },
         geometry: b.ring.geometry
       });
     });
@@ -1025,11 +1178,32 @@
       geometry: { type: "Point", coordinates: _lastResult.origin }
     });
 
+    var sched = _lastResult.serviceMode === "schedule";
+    var scheduleMeta = sched ? {
+      serviceMode: "schedule",
+      window: _lastResult.sched.from + "-" + _lastResult.sched.to,
+      stepMin: _lastResult.sched.stepMin,
+      statistic: _lastResult.sched.statistic,
+      departures: _lastResult.schedule.departures,
+      analysisDate: _lastResult.schedule.date || null,
+      dayType: _lastResult.schedule.dayType,
+      includeHidden: _lastResult.sched.includeHidden,
+      budgets: _lastResult.budgets,
+      walkSpeedMph: _lastResult.sched.walkMph,
+      maxAccessWalkMi: _lastResult.sched.accessMi,
+      maxEgressWalkMi: _lastResult.sched.egressMi,
+      maxTransferWalkMi: _lastResult.sched.transferMi
+    } : { serviceMode: "headway" };
     var fc = {
       type: "FeatureCollection",
-      metadata: {
+      metadata: sched ? Object.assign({
         generator: "micro-analysis-tool transit-travelshed",
         generated: new Date().toISOString(),
+        networkEpoch: (typeof App.roadNetworkEpoch === "function") ? App.roadNetworkEpoch() : null
+      }, scheduleMeta) : {
+        generator: "micro-analysis-tool transit-travelshed",
+        generated: new Date().toISOString(),
+        serviceMode: scheduleMeta.serviceMode,
         waitModel: "initial=min(headway/2," + _settings.maxWaitMin + ")+" + _settings.boardPenaltyMin +
           "; transfer=headway/2+" + _settings.boardPenaltyMin,
         budgets: _lastResult.budgets,
@@ -1049,6 +1223,165 @@
 
   // ---- Orchestration ----
 
+  // Checks that the loaded streets cover the analysis area and offers the download when they don't.
+  // Returns "go", "stop" (the reason is in the coverage warning) or "rerun" (a stored network covering
+  // the area was just restored).
+  async function coverageGate(requiredExtent, afterRestore) {
+    _pendingDownloadExtent = requiredExtent;
+    var netLoaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
+    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
+    // Before offering a download, look for a stored network that covers this
+    // area (e.g. one the user only removed from the map).
+    if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
+        (!netLoaded || (downloadedExtent && !networkCovers(requiredExtent)))) {
+      if (await App.restoreNetworkCovering(requiredExtent)) {
+        if (typeof App.notifyProject === "function") App.notifyProject();
+        return "rerun";
+      }
+    }
+    if (!netLoaded) {
+      setCoverageWarn("No street network loaded.");
+      showDownloadBtn(true);
+      return "stop";
+    }
+    if (downloadedExtent === null) {
+      // File-imported network — extent unknown. Soft warning; proceed anyway.
+      setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
+      showDownloadBtn(false);
+    } else if (requiredExtent && !networkCovers(requiredExtent)) {
+      setCoverageWarn(cdotActive() ? "Loaded CDOT streets don't cover this analysis area."
+        : tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
+      showDownloadBtn(true);
+      return "stop";
+    } else {
+      setCoverageWarn(typeof App.walkTilesExtentBeyondPrepared === "function" &&
+        App.walkTilesExtentBeyondPrepared(requiredExtent)
+        ? "Part of this analysis area is outside the prepared FLM area \u2014 results may be clipped there." : null);
+      showDownloadBtn(false);
+    }
+    return "go";
+  }
+
+
+  // Ring differencing largest-first so the innermost band stays solid; a
+  // turf.difference failure falls back to the un-differenced polygon for
+  // that band rather than discarding the run.
+  function buildRings(polys) {
+    var rings = [];
+    for (var ri = polys.length - 1; ri >= 0; ri--) {
+      var band = polys[ri];
+      var ringPoly = band.polygon;
+      if (ringPoly && ri > 0 && polys[ri - 1].polygon) {
+        try {
+          var diffed = turf.difference(ringPoly, polys[ri - 1].polygon);
+          if (diffed) ringPoly = diffed;
+        } catch (e) { /* fall back to the un-differenced polygon for this band */ }
+      }
+      if (ringPoly) {
+        ringPoly.properties = ringPoly.properties || {};
+        ringPoly.properties.band = ri;
+        ringPoly.properties.budgetMin = band.budgetMin;
+      }
+      rings.unshift({ band: ri, budgetMin: band.budgetMin, ring: ringPoly, nodeCount: band.nodeCount });
+    }
+    return rings;
+  }
+
+
+  // Schedule mode: the loaded GTFS feed and drawn Services as timetables, sampled over the departure
+  // window (App.computeScheduleTravelshed). Bands are drawn exactly like the headway mode's.
+  async function runScheduleTravelshed(budgets, afterRestore) {
+    var fromMin = Travelshed.parseHHMMtoMin(_settings.windowFrom);
+    var toMin = Travelshed.parseHHMMtoMin(_settings.windowTo);
+    // A window ending at or before its start runs past midnight (23:00–01:00); the network keeps GTFS's
+    // after-midnight times above 24:00, so later departures still find those trips.
+    if (fromMin != null && toMin != null && toMin < fromMin) toMin += 1440;
+    if (fromMin == null || toMin == null || toMin <= fromMin) {
+      setStatus("Set a departure window that ends after it starts.", "error");
+      return;
+    }
+    var maxBudgetMin = budgets[budgets.length - 1];
+
+    // The origin's access circle plus the drawn lines; GTFS stops far from both depend on what is loaded.
+    var feats = [];
+    (App.routes || []).concat(App.lines || []).forEach(function (f) {
+      if (f && (_settings.includeHidden || !(f.properties && f.properties.hidden))) feats.push({ feature: f });
+    });
+    var requiredExtent = computeRequiredExtent(_origin, feats, maxBudgetMin, _settings.walkSpeedMph, "transit",
+      _settings.maxAccessWalkMi, Math.max(_settings.maxEgressWalkMi, _settings.maxTransferWalkMi));
+    var gate = await coverageGate(requiredExtent, afterRestore);
+    if (gate === "rerun") return runTravelshed(true);
+    if (gate === "stop") return;
+
+    var sched = {
+      from: _settings.windowFrom, to: _settings.windowTo, stepMin: _settings.stepMin, statistic: _settings.statistic,
+      includeHidden: _settings.includeHidden, walkMph: _settings.walkSpeedMph, accessMi: _settings.maxAccessWalkMi,
+      egressMi: _settings.maxEgressWalkMi, transferMi: _settings.maxTransferWalkMi
+    };
+    var snapshotFeed = feedId();
+    var snapshotOrigin = _origin.slice();
+
+    _running = true;
+    var t0 = Date.now();
+    var runBtn = document.getElementById("tsRunBtn");
+    if (runBtn) runBtn.disabled = true;
+    try {
+      var res;
+      try {
+        res = await App.computeScheduleTravelshed({
+          origin: snapshotOrigin, budgetsMin: budgets, fromSec: fromMin * 60, toSec: toMin * 60,
+          stepSec: sched.stepMin * 60, statistic: sched.statistic, walkMph: sched.walkMph,
+          accessMi: sched.accessMi, egressMi: sched.egressMi, transferMi: sched.transferMi,
+          includeHidden: sched.includeHidden,
+          onProgress: function (text) { setStatus(text, "running"); }
+        });
+      } catch (e) {
+        setStatus(e && e.message ? e.message : String(e), "error");
+        return;
+      }
+
+      setStatus("Building isochrones…", "running");
+      await new Promise(function (r) { setTimeout(r, 0); });
+      var rings = buildRings(budgets.map(function (B, k) {
+        return { budgetMin: B, polygon: res.bands[k] || null, nodeCount: null };
+      }));
+      var shapeOpt = App.walkShapeFor();
+      _lastResult = {
+        serviceMode: "schedule",
+        origin: snapshotOrigin,
+        budgets: budgets,
+        bands: rings,
+        resolved: [],
+        schedule: res,
+        sched: sched,
+        feedId: snapshotFeed,
+        offNetworkStopCount: 0,
+        floodStats: { fresh: 0, cached: 0, snapMs: 0, floodMs: 0 },
+        computeMs: Date.now() - t0,
+        contourGridAskedKm: window.WalkShape.scaledGridKm(shapeOpt.gridKm,
+          budgets[budgets.length - 1] * _settings.walkSpeedMph * KM_PER_MILE / 60 / 1.25)
+      };
+      _stale = false;
+
+      renderTravelshedLayers(rings);
+      renderResults(_lastResult);
+      renderScheduleDetail(_lastResult);
+      await showLegend(budgets);
+      setExportEnabled(true);
+      if (res.accessStops === 0) {
+        setStatus("No stops within walking distance of the origin." + streetsSuffix(), "");
+      } else {
+        var drawn = rings.filter(function (r) { return r.ring; }).length;
+        setStatus("Calculated travelshed — " + drawn + " band(s), " + res.stopsReached + " stops reached." + streetsSuffix(), "done");
+      }
+      renderInputs(true);
+      if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
+    } finally {
+      _running = false;
+      if (runBtn) runBtn.disabled = false;
+    }
+  }
+
   // `afterRestore` marks the re-run after a stored-network restore, so a
   // restore that still doesn't pass the coverage check can't loop.
   async function runTravelshed(afterRestore) {
@@ -1061,6 +1394,8 @@
     var budgets = (_settings.budgets || []).filter(function (v) { return Number.isFinite(v) && v > 0; });
     budgets = Array.from(new Set(budgets)).sort(function (a, b) { return a - b; });
     if (!budgets.length) { setStatus("Enter at least one time budget.", "error"); return; }
+
+    if (isSchedule()) return runScheduleTravelshed(budgets, afterRestore);
 
     var filter = getSelectedRouteFilter();
     if (!filter.routeIndices.length && !filter.lineIndices.length) {
@@ -1081,37 +1416,9 @@
       _settings.shedMode, _settings.maxAccessWalkMi, stopCapMi);
     _pendingDownloadExtent = requiredExtent;
 
-    var netLoaded = App.roadNetworkLoaded && App.roadNetworkLoaded();
-    var downloadedExtent = App.getRoadDownloadExtent ? App.getRoadDownloadExtent() : null;
-    // Before offering a download, look for a stored network that covers this
-    // area (e.g. one the user only removed from the map).
-    if (afterRestore !== true && requiredExtent && typeof App.restoreNetworkCovering === "function" &&
-        (!netLoaded || (downloadedExtent && !networkCovers(requiredExtent)))) {
-      if (await App.restoreNetworkCovering(requiredExtent)) {
-        if (typeof App.notifyProject === "function") App.notifyProject();
-        return runTravelshed(true);
-      }
-    }
-    if (!netLoaded) {
-      setCoverageWarn("No street network loaded.");
-      showDownloadBtn(true);
-      return;
-    }
-    if (downloadedExtent === null) {
-      // File-imported network — extent unknown. Soft warning; proceed anyway.
-      setCoverageWarn("Imported network — can't verify it covers this analysis; results near the edge may be clipped.");
-      showDownloadBtn(false);
-    } else if (requiredExtent && !networkCovers(requiredExtent)) {
-      setCoverageWarn(cdotActive() ? "Loaded CDOT streets don't cover this analysis area."
-        : tilesActive() ? "Loaded FLM tiles don't cover this analysis area." : "Loaded streets don't cover this analysis area.");
-      showDownloadBtn(true);
-      return;
-    } else {
-      setCoverageWarn(typeof App.walkTilesExtentBeyondPrepared === "function" &&
-        App.walkTilesExtentBeyondPrepared(requiredExtent)
-        ? "Part of this analysis area is outside the prepared FLM area \u2014 results may be clipped there." : null);
-      showDownloadBtn(false);
-    }
+    var gate = await coverageGate(requiredExtent, afterRestore);
+    if (gate === "rerun") return runTravelshed(true);
+    if (gate === "stop") return;
 
     var walkSpeedKmh = _settings.walkSpeedMph * KM_PER_MILE;
     var budgetKm = walkSpeedKmh * (maxBudgetMin / 60);
@@ -1249,26 +1556,7 @@
         return { budgetMin: B, polygon: cRes.bands[k], nodeCount: bandSets[k].nodeKeys.length };
       });
 
-      // Ring differencing largest-first so the innermost band stays solid; a
-      // turf.difference failure falls back to the un-differenced polygon for
-      // that band rather than discarding the run.
-      var rings = [];
-      for (var ri = polys.length - 1; ri >= 0; ri--) {
-        var band = polys[ri];
-        var ringPoly = band.polygon;
-        if (ringPoly && ri > 0 && polys[ri - 1].polygon) {
-          try {
-            var diffed = turf.difference(ringPoly, polys[ri - 1].polygon);
-            if (diffed) ringPoly = diffed;
-          } catch (e) { /* fall back to the un-differenced polygon for this band */ }
-        }
-        if (ringPoly) {
-          ringPoly.properties = ringPoly.properties || {};
-          ringPoly.properties.band = ri;
-          ringPoly.properties.budgetMin = band.budgetMin;
-        }
-        rings.unshift({ band: ri, budgetMin: band.budgetMin, ring: ringPoly, nodeCount: band.nodeCount });
-      }
+      var rings = buildRings(polys);
 
       _lastResult = {
         origin: _origin.slice(),
@@ -1318,10 +1606,24 @@
 
     ["tsBudget1", "tsBudget2", "tsBudget3", "tsWalkSpeed", "tsDayType", "tsTimeOfDay",
      "tsMaxWait", "tsBoardPenalty", "tsStopSpacing",
-     "tsShedMode", "tsAccessWalk", "tsEgressWalk", "tsTransferWalk"].forEach(function (id) {
+     "tsShedMode", "tsAccessWalk", "tsEgressWalk", "tsTransferWalk",
+     "tsWindowFrom", "tsWindowTo", "tsStepMin", "tsStatistic", "tsIncludeHidden"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", function () { readSettingsFromInputs(); markStale(); });
     });
+
+    var modeEl = document.getElementById("tsServiceMode");
+    if (modeEl) modeEl.addEventListener("change", function () {
+      readSettingsFromInputs();
+      applyServiceMode();
+      markStale();
+      if (!_lastResult) showEmpty();
+    });
+
+    // Opened panels follow the GTFS analysis date; a reloaded feed fires it too.
+    if (App.gtfsAnalysisDate && typeof App.gtfsAnalysisDate.onChange === "function") {
+      App.gtfsAnalysisDate.onChange(scheduleSourceChanged);
+    }
 
     if (App.wireWalkShapeInputs) App.wireWalkShapeInputs("ts");
 
@@ -1376,11 +1678,13 @@
     buildRouteChecklist();
     if (_savedSelectedRouteIds) applySelections(_savedSelectedRouteIds);
     refreshNetWarn();
+    if (_lastResult && _lastResult.serviceMode === "schedule" && _lastResult.feedId !== feedId()) _stale = true;
     renderInputs(_lastResult ? undefined : false);
     if (_lastResult) {
       if (App.popup && App.popup.setLayoutMode) App.popup.setLayoutMode("results");
       renderResults(_lastResult);
-      renderRouteDetail(_lastResult.resolved);
+      if (_lastResult.serviceMode === "schedule") renderScheduleDetail(_lastResult);
+      else renderRouteDetail(_lastResult.resolved);
       setExportEnabled(!_stale);
       if (_stale) showStale(); else setStatus("", "");
     } else {
@@ -1422,10 +1726,12 @@
 
   async function update(core) {
     var noFeatures = (App.routes || []).length === 0 && (App.lines || []).length === 0;
-    if (_lastResult && noFeatures) clearAll();
+    // A schedule result can rest on the GTFS feed alone, so only a headway result needs drawn features.
+    if (_lastResult && noFeatures && _lastResult.serviceMode !== "schedule") clearAll();
     if (!isPopupVisible()) return;
     buildRouteChecklist();
     refreshNetWarn();
+    refreshDateLine();
     if (_lastResult) markStale();
   }
 
@@ -1435,7 +1741,7 @@
   function collect() {
     var budgets = _settings.budgets || [];
     return {
-      v: 2,
+      v: SETTINGS_VERSION,
       origin: _origin ? _origin.slice() : null,
       budgets: [budgets[0] != null ? budgets[0] : null, budgets[1] != null ? budgets[1] : null, budgets[2] != null ? budgets[2] : null],
       walkSpeedMph: _settings.walkSpeedMph,
@@ -1448,7 +1754,13 @@
       maxAccessWalkMi: _settings.maxAccessWalkMi,
       maxEgressWalkMi: _settings.maxEgressWalkMi,
       maxTransferWalkMi: _settings.maxTransferWalkMi,
-      selectedRouteIds: collectSelectedRouteIds()
+      selectedRouteIds: collectSelectedRouteIds(),
+      serviceMode: _settings.serviceMode,
+      windowFrom: _settings.windowFrom,
+      windowTo: _settings.windowTo,
+      stepMin: _settings.stepMin,
+      statistic: _settings.statistic,
+      includeHidden: _settings.includeHidden
     };
   }
 
@@ -1479,6 +1791,17 @@
     if (+data.maxAccessWalkMi > 0) _settings.maxAccessWalkMi = +data.maxAccessWalkMi;
     if (+data.maxEgressWalkMi > 0) _settings.maxEgressWalkMi = +data.maxEgressWalkMi;
     if (+data.maxTransferWalkMi > 0) _settings.maxTransferWalkMi = +data.maxTransferWalkMi;
+
+    // v1/v2 sessions predate schedule mode and keep the headway behavior they were saved with.
+    var v3 = +data.v >= 3;
+    _settings.serviceMode = (v3 && data.serviceMode === "schedule") ? "schedule" : "headway";
+    if (v3) {
+      if (/^\d{1,2}:\d{2}$/.test(String(data.windowFrom || ""))) _settings.windowFrom = data.windowFrom;
+      if (/^\d{1,2}:\d{2}$/.test(String(data.windowTo || ""))) _settings.windowTo = data.windowTo;
+      if (+data.stepMin >= 1) _settings.stepMin = Math.round(+data.stepMin);
+      if (STAT_LABEL[data.statistic]) _settings.statistic = data.statistic;
+      _settings.includeHidden = !!data.includeHidden;
+    }
 
     _savedSelectedRouteIds = Array.isArray(data.selectedRouteIds) ? data.selectedRouteIds : null;
   }

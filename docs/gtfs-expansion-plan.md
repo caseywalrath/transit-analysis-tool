@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0–A5 complete; A6 in progress (see `docs/A6-plan.md`).
+> **Status:** Approved at Gate G0 (2026-11-21). A0–A5 complete; A6 in progress (see `docs/archive/A6-plan.md`).
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -374,7 +374,7 @@ Use `CLAUDE.md` § Testing:
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Done |
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Done (sub-plan `docs/archive/A4-plan.md`) |
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Done (sub-plan `docs/archive/A5-plan.md`) |
-| A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Not started |
+| A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Done (sub-plan `docs/archive/A6-plan.md`) |
 | A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Not started |
 | A8 | Export drawn Services as GTFS; decide Trip Builder's future | Sub-plan | S, H, O | A6 | G8a–b | Not started |
 

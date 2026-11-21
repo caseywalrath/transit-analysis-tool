@@ -132,15 +132,16 @@ Overview tab (see Popup above). Files tab — left: file directory + layer visib
 Pure; reads only the analysis network. `Raptor.prepare(network)` sorts trips by first departure.
 `Raptor.route(prep, access [{stop, sec}], transfers [stopIdx → [{to, sec}]], departSec, {maxRounds 3, maxSec 7200,
 minTransferSec 0})` → `{arrival, rounds}` per stop (Infinity / −1 unreached; round 0 = walk only). Each round scans
-every trip, boarding at the first stop labelled in the previous round in time. Walking transfers start from every
-stop a ride reached in the round, improved or not: a stop reached earlier on foot cannot transfer again, so its
+every trip, boarding at the first stop labelled in the previous round in time. No transfer walk follows the access walk (the caller's access cap
+stays a cap). Walking transfers start from every stop a ride reached in the round, improved or not: a stop reached earlier on foot cannot transfer again, so its
 ride arrival still matters (a brute-force comparison caught this). `Raptor.profile(prep, access, transfers, fromSec,
 toSec, stepSec)` → per stop best / typical (lower median) / worst (90th percentile) travel time over the departures
 `fromSec, fromSec + step, … < toSec`. Golden: `test/cases/raptor.mjs`. About 50 ms per departure on an 8,000-stop,
 25,000-trip synthetic network.
 
 `App.computeScheduleTravelshed(opts)` (`analysis-network-source.js`) runs it for Transit Travelshed: street walk
-from the origin to stops within the access cap (`App.walkKmToPoints`), transfers by straight line × 1.3 up to the
-transfer cap, one `route` per departure (yielding every 3), the chosen statistic per stop, then
+from the origin to stops within the access cap (`App.walkKmToPoints`, with the direct walk when origin and stop
+share a street segment), transfers by straight line × 1.3 up to the
+transfer cap, one `route` per departure (yielding every 3), the chosen statistic per stop over ride arrivals only (a stop reached on foot does not seed a second walk), then
 `App.computeOffsetWalkCostMap` walks out from each reached stop (its travel time as a starting cost, egress cap) and
 traces the bands.

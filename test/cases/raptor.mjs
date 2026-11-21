@@ -110,10 +110,10 @@ export default {
     // EXPECTED: empty network and empty access: arrival [] and rounds [].
     route("route-empty-network", EMPTY_NETWORK, [], [], T(7, 58), {}),
 
-    // EXPECTED: a walk does not start from another walk. A to F walk 100 s gives F 08:00:40 r0.
-    // If F to E (100 s) could chain, E would be 08:02:20 r0. It is not allowed, so E is 08:30 r2
-    // via T3 from B (T1 ride, then T3). F stays 08:00:40 r0 (the C to F walk is later).
-    // Full: A 07:59 r0, B 08:05 r1, C 08:10 r1, D 08:20 r2, E 08:30 r2, F 08:00:40 r0.
+    // EXPECTED: no transfer walk follows the access walk, and a walk never starts from another walk.
+    // A is reached by the access walk, so the A to F walk is not taken; F's first walk is C to F after
+    // the 08:10 ride (120 s): F 08:12 r1. E is 08:30 r2 via T3 from B.
+    // Full: A 07:59 r0, B 08:05 r1, C 08:10 r1, D 08:20 r2, E 08:30 r2, F 08:12 r1.
     route("no-chain-walk-after-walk", NETWORK, FROM_A, CHAIN_TRANSFERS, T(7, 58), {}),
 
     // EXPECTED: two origin walks to A (300 s, then 60 s). The minimum is 60 s: A 07:59.

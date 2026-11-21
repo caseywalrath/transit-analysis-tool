@@ -3323,6 +3323,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 }
 .ts-budget-input { width: 64px; }
 .ts-advanced-summary { cursor: pointer; }
+.ts-check-row { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .ts-table {
   width: 100%;
   border-collapse: collapse;

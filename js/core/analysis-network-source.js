@@ -157,12 +157,13 @@
       if (!isFinite(s.lat) || !isFinite(s.lon) || s.lat === null) continue;
       (grid[cell(s.lat, s.lon)] || (grid[cell(s.lat, s.lon)] = [])).push(i);
     }
-    var span = Math.ceil(maxKm / 1.1) + 1;
+    var spanY = Math.ceil(maxKm / 1.1) + 1;
     for (i = 0; i < stops.length; i++) {
       var a = stops[i];
       if (a.lat === null || !isFinite(a.lat) || !isFinite(a.lon)) continue;
       var cy = Math.floor(a.lat / 0.01), cx = Math.floor(a.lon / 0.01);
-      for (var dy = -span; dy <= span; dy++) for (var dx = -span; dx <= span; dx++) {
+      var spanX = Math.ceil(maxKm / (1.11 * Math.max(0.05, Math.cos(a.lat * Math.PI / 180)))) + 1;
+      for (var dy = -spanY; dy <= spanY; dy++) for (var dx = -spanX; dx <= spanX; dx++) {
         var list = grid[(cy + dy) + ":" + (cx + dx)];
         if (!list) continue;
         for (var k = 0; k < list.length; k++) {
@@ -217,7 +218,7 @@
       }
     });
     var flood = App.computeMultiWalkCostMap([{ lngLat: opts.origin, id: "origin" }], accessKm);
-    var walk = flood && flood.snapped ? App.walkKmToPoints(flood.distMap, nearLL) : near.map(function () { return Infinity; });
+    var walk = flood && flood.snapped ? App.walkKmToPoints(flood.distMap, nearLL, opts.origin) : near.map(function () { return Infinity; });
     var access = [];
     near.forEach(function (idx, k) { if (walk[k] <= accessKm) access.push({ stop: idx, sec: walk[k] / kmPerMin * 60 }); });
     var transfers = buildTransfers(network.stops, transferKm, kmPerMin / 60);
@@ -231,7 +232,9 @@
     for (var di = 0; di < deps.length; di++) {
       var r = window.Raptor.route(prep, access, transfers, deps[di],
         { maxRounds: opts.maxRounds > 0 ? opts.maxRounds : 3, maxSec: maxMin * 60 });
-      for (var si = 0; si < times.length; si++) times[si].push(r.arrival[si] - deps[di]);
+      // Only arrivals by a ride seed the walk out: a stop reached on foot adds nothing the origin's own walk
+      // does not, and seeding it would chain a second walk onto the access walk.
+      for (var si = 0; si < times.length; si++) times[si].push(r.rounds[si] >= 1 ? r.arrival[si] - deps[di] : Infinity);
       if (di % 3 === 2) {
         progress("Routing departure " + (di + 1) + " of " + deps.length + "…");
         await new Promise(function (res) { setTimeout(res, 0); });
@@ -254,7 +257,9 @@
     return {
       bands: shed ? shed.bands : budgets.map(function () { return null; }),
       budgetsMin: budgets, statistic: stat, departures: deps.length, fromSec: fromSec, toSec: toSec, stepSec: stepSec,
-      accessStops: access.length, stopsReached: reached, originSnapped: !!(flood && flood.snapped),
+      accessStops: access.length, stopsReached: reached,
+      // Reached stops beyond the loaded streets get no walk out from them (index 0 is the origin).
+      egressUnsnapped: shed ? shed.unsnapped.filter(function (i) { return i > 0; }).length : 0, originSnapped: !!(flood && flood.snapped),
       date: network.date, dayType: network.dayType,
       gtfsTrips: network.counts.gtfsTrips, proposalTrips: network.counts.proposalTrips,
       proposalsSkipped: network.proposalsSkipped, notes: network.notes,

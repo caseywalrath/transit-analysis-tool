@@ -1,6 +1,6 @@
 # A6 — Coverage, Title VI equity and travel times on real schedules (sub-plan)
 
-**Status:** A6a and A6b done; next A6c (cards to write from the outline below). Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
+**Status:** Done (A6a, A6b, A6c). Archived. Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
 
 A6 ships as three steps, each reviewed and committed on its own: **A6a** analysis network and coverage,
 **A6b** Title VI service equity, **A6c** travel times. Each step's cards are written when it starts, from
@@ -101,9 +101,9 @@ network is loaded).
   A6a.2 multi-origin flood + `App.buildAnalysisNetwork` [Opus], A6a.4 Feature Area Analysis GTFS stop row [Sonnet],
   docs. Golden 1080/1080; browser multi-walk-flood 10/10, analysis-network 17/17, faa-gtfs-stops 14/14,
   hidden-features 138/138. A6a.3 was stopped mid-edit and its changes discarded: restart it fresh from
-  `docs/a6-cards/card-a6a.3.md` with the rules block `docs/a6-cards/rules.md`. Then A6a.5: code review at high,
+  `docs/archive/a6-cards/card-a6a.3.md` with the rules block `docs/archive/a6-cards/rules.md`. Then A6a.5: code review at high,
   screenshots, check FAA's collapsed inputs summary reads well with only GTFS stops ("0 features" seen), archive
-  this plan and move the cards out of `docs/a6-cards/`.
+  this plan and move the cards out of `docs/archive/a6-cards/`.
 - 2026-11-21 (resumed): A6a.3 Transit Coverage [Sonnet], restarted fresh from its card: GTFS routes checklist,
   bus / rail stop buffers, per-stop combined peak headway, along-streets distance; 32/32 browser checks, golden
   1098/1098. Deviations accepted: a local pairwise union for thousands of circles (foldAnalysisUnion took
@@ -133,6 +133,19 @@ network is loaded).
   Golden 1123/1123; browser title-vi-service-equity 58/58 (twice), gtfs-stop-coverage 12/12, gtfs-details 19/19,
   tvi-clear 4/4, hidden-features 138/138, clear-all 6/6. Known gap: day-part or GTFS route-hide edits refresh the
   Service Equity banner only on the next input / tab / update event.
+
+- 2026-11-21: A6c. Opus: `App.computeOffsetWalkCostMap` (flood from stops at their arrival cost, per-origin
+  egress cap, traced bands), `App.walkKmToPoints`, `App.computeScheduleTravelshed`; transfers are straight line × 1.3
+  (a pairwise street flood per stop is too slow for a whole system). A6c.1 `window.Raptor` [Haiku xhigh]: its own
+  brute-force check caught a wrong transfer rule in the card (walk only from improved stops); fixed in the engine,
+  1,400/1,400 random queries equal, ~50 ms per departure at 8,000 stops / 25,000 trips. A6c.2 Transit Travelshed
+  Schedule mode [Sonnet]. Review (medium) fixes by Opus: same-segment access walk, no transfer straight after the
+  access walk (golden `no-chain-walk-after-walk` re-recorded: F 08:00:40 r0 → 08:12 r1), egress only from ride
+  arrivals, over-budget stops no longer reported as off the streets, windows past midnight, longitude span for
+  transfer search. Known gaps: coverage check does not see GTFS stops away from the origin; double-click during the
+  coverage gate (pre-existing, headway path too); the schedule statistic is computed in the glue, not through
+  `Raptor.profile`. Golden 1137/1137; browser travelshed-schedule 40/40, multi-walk-flood 15/15,
+  walkshed-contour 24/24. Not timed on RTD (no RTD street network offline).
 
 **Hand-off (A6b, A6c):** `App.buildAnalysisNetwork({date, includeHidden, gtfs, proposals})` →
 network (see `docs/reference/modules/gtfs.md` "Analysis network"); `AnalysisNetwork.stopService(network,

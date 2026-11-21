@@ -102,7 +102,8 @@
         offer(s, t, 0, label, marked, seen);
       }
     }
-    walkFrom(originList, originArr, 0, label, marked, seen);
+    // No transfer walk straight after the access walk: access already comes from a street walk capped by
+    // the caller, and chaining a transfer onto it would stretch that cap.
 
     for (k = 1; k <= maxRounds && marked.length > 0; k++) {
       prevLabel = label;
