@@ -123,6 +123,20 @@ coverage, equity and travel-time analyses.
   single "Both" pattern runs both ways. `notes` carries "Proposals use evenly spaced trips from their
   headway bands." whenever a proposal is in. Test: `test/browser/analysis-network.test.mjs`.
 
+### Build vs No-Build and feed health hooks
+
+- `App.gtfsReadOtherFeed(file)` → `{feed, name}`: a second ZIP parsed by the same reader (`zipEntries` /
+  `readEntries`), never put on the map or in the store; throws `Error(status text)` for a bad ZIP.
+- `App.feedServiceSummary(feed, {label, dates, routeIds, service})`, `App.editedServiceSummary({dates, routeIds,
+  replaced: {serviceKey: routeId|null}, includeHidden, service})` (in `analysis-network-source.js`): compact summaries
+  `{label, dates, year, routes, stops, pairs, notes, skipped}` for `window.ServiceCompare`. Drawn Services cost through
+  `GtfsSchedule.serviceYearFromTrips` (the same rows as `serviceYear`). `App.serviceSourceRouteId(key)` reads a copied
+  Service's "route_id:" note. `App.countPeopleNearStops(stops, {busMi, railMi, year, onProgress})` →
+  `{residents, jobs|null, blocks, note}` (Transit Coverage's block-population recipe, straight-line stop buffers).
+- Feed health: `App.gtfsSetHealth(feed, checks)` shows a one-line summary in the Overview's `#gtfsHealth` while that
+  feed is loaded; `App.gtfsToday()`; `App.gtfsShapeCoords()` → `{shapeId: [[lon, lat], …]}` from the shape lines.
+- Title VI (`title-vi.js`): `App.titleViMajorChangePolicy()` (a copy) and `App.titleViAddScenario({name, alterations})`.
+
 ## gtfs-popup.html
 
 Overview tab (see Popup above). Files tab — left: file directory + layer visibility checkboxes + Clear. Right: CSV table with row/column count.

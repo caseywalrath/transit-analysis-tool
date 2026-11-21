@@ -20,6 +20,7 @@ gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only con
 gtfs-schedule.js     Pure engine, window.GtfsSchedule; reads nothing at load time (golden-tested alone). Before gtfs.js, which calls it only at load-feed time
 analysis-network.js  Pure engine, window.AnalysisNetwork; reads window.GtfsSchedule at call time only. Before trip-builder.js, which calls bandTrips
 raptor.js            Pure engine, window.Raptor; reads only the network passed in. After analysis-network.js
+service-compare.js   Pure engine, window.ServiceCompare (Build vs No-Build); no App, DOM or turf. After service-equity.js
 gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
 walk-tiles-source.js reads WalkTiles at call time; App.walkTilesSource + FLM dialog wiring (before road-network.js)
 cdot-source.js       reads CdotRoads, App.walkTilesSource at call time; App.cdotSource + CDOT dialog wiring (before road-network.js)
