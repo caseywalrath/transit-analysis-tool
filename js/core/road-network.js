@@ -1581,6 +1581,88 @@
       snapMs: flood.snapMs, floodMs: flood.floodMs, shapeMs: shapeMs, gridKmUsed: gridKmUsed };
   }
 
+  // Walk distance (km) from a flood's distMap to each point: through either end of the point's snapped
+  // segment. Infinity when the point does not snap or neither end was reached.
+  function walkKmToPoints(distMap, lngLats) {
+    var out = [];
+    for (var i = 0; i < (lngLats || []).length; i++) {
+      var snap = lngLats[i] ? snapToNetwork(lngLats[i], "walk") : null;
+      if (!snap || !distMap) { out.push(Infinity); continue; }
+      var a = distMap.has(snap.segStartKey) ? distMap.get(snap.segStartKey) : Infinity;
+      var b = distMap.has(snap.segEndKey) ? distMap.get(snap.segEndKey) : Infinity;
+      var da = turf.distance(turf.point(snap.coord), turf.point(snap.segStartCoord), { units: "kilometers" });
+      var db = turf.distance(turf.point(snap.coord), turf.point(snap.segEndCoord), { units: "kilometers" });
+      out.push(Math.min(a + da, b + db));
+    }
+    return out;
+  }
+
+  // Walk flood from many origins that each START at a cost (offsetKm: the time already spent, as walking
+  // km) and may walk at most capKm from their own snap point; nothing beyond budgetKm in total. A node keeps
+  // only its cheapest label, so a node first reached by an origin near the end of its cap can stop a costlier
+  // origin with walk to spare from passing through it; with caps of a quarter mile the effect is a few metres.
+  //   origins : [{ lngLat, offsetKm, capKm }]
+  // Returns null without a network, otherwise { distMap: Map<nodeKey, km>, snapped, unsnapped: [index] } and,
+  // with opts.contour = [budgetKm…], also bands: [polygon|null] (the area within each budget, traced like
+  // multiWalkPolygon, each origin's own block sampled outward from its snap point).
+  function computeOffsetWalkCostMap(origins, budgetKm, opts) {
+    if (!_graph || !(budgetKm > 0)) return null;
+    opts = opts || {};
+    var dist = new Map(), walked = new Map(), heap = new MinHeap(), snaps = [], unsnapped = [];
+    var push = function (key, cost, w, cap) {
+      if (cost > budgetKm || w > cap) return;
+      if (cost >= (dist.has(key) ? dist.get(key) : Infinity)) return;
+      dist.set(key, cost); walked.set(key, w);
+      heap.push({ node: key, dist: cost, w: w, cap: cap });
+    };
+    for (var i = 0; i < (origins || []).length; i++) {
+      var o = origins[i];
+      var snap = o && o.lngLat && o.offsetKm < budgetKm ? snapToNetwork(o.lngLat, "walk") : null;
+      if (!snap) { unsnapped.push(i); continue; }
+      var cap = o.capKm > 0 ? o.capKm : Infinity;
+      snaps.push({ coord: snap.coord, a: snap.segStartCoord, b: snap.segEndCoord, offsetKm: o.offsetKm, cap: cap });
+      var da = turf.distance(turf.point(snap.coord), turf.point(snap.segStartCoord), { units: "kilometers" });
+      var db = turf.distance(turf.point(snap.coord), turf.point(snap.segEndCoord), { units: "kilometers" });
+      push(snap.segStartKey, o.offsetKm + da, da, cap);
+      push(snap.segEndKey, o.offsetKm + db, db, cap);
+    }
+    while (heap.size() > 0) {
+      var cur = heap.pop();
+      if (cur.dist > dist.get(cur.node)) continue;
+      var nbs = _graph.get(cur.node);
+      if (!nbs) continue;
+      for (var j = 0; j < nbs.length; j++) {
+        var nb = nbs[j];
+        if (nb.pedBlocked) continue;
+        push(nb.node, cur.dist + nb.weight, cur.w + nb.weight, cur.cap);
+      }
+    }
+    var res = { distMap: dist, snapped: snaps.length, unsnapped: unsnapped };
+    if (opts.contour && opts.contour.length) {
+      var shape = opts.shape || (typeof App.walkShapeFor === "function" ? App.walkShapeFor() : null);
+      res.bands = opts.contour.map(function () { return null; });
+      if (snaps.length && shape && window.WalkShape && window.WalkShape.contour) {
+        var maxB = Math.max.apply(null, opts.contour);
+        var gridKm = window.WalkShape.scaledGridKm(shape.gridKm, maxB / 1.25);
+        var stepKm = gridKm * window.WalkShape.SAMPLE_STEP_CELLS;
+        // partialEdges false: a node at the end of an origin's cap must not walk on down the block.
+        var samples = contourSamples(dist, maxB, stepKm, 1, false);
+        snaps.forEach(function (sn) {
+          var room = Math.min(sn.cap, budgetKm - sn.offsetKm);
+          var tmp = [];
+          pushSnapSegmentSamples(tmp, sn, room, stepKm);
+          tmp.forEach(function (p) { samples.push([p[0], p[1], p[2] + sn.offsetKm]); });
+        });
+        var c = window.WalkShape.contour(samples, opts.contour.slice().sort(function (x, y) { return x - y; }),
+          { gridKm: gridKm, offStreetKm: shape.offStreetKm, costPerKm: 1, holeAcres: shape.holeAcres, roundKm: shape.roundKm });
+        var sorted = opts.contour.slice().sort(function (x, y) { return x - y; });
+        res.bands = opts.contour.map(function (b) { return c.bands[sorted.indexOf(b)] || null; });
+        res.gridKmUsed = c.gridKmUsed;
+      }
+    }
+    return res;
+  }
+
   // ---- Walk network segment accessor (js/core/network-connectors.js) ----
 
   // Plain-array (not turf FeatureCollection) view of every walkable segment in
@@ -1671,6 +1753,8 @@
   App.multiWalkPolygon = multiWalkPolygon;
   App.nodeKeyToCoord     = keyToCoord;
   App.contourSamples     = contourSamples;
+  App.walkKmToPoints     = walkKmToPoints;
+  App.computeOffsetWalkCostMap = computeOffsetWalkCostMap;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
   App.getRoadDownloadExtent = function () { return _downloadedBboxPolygon; }; // Feature<Polygon|MultiPolygon>|null — for a tile or CDOT network, display only; use App.roadNetworkCoversExtent to test coverage
   App.loadRoadNetworkFromTiles = loadNetworkFromTiles;       // (extentPolygon, pieces?) -> Promise<boolean>

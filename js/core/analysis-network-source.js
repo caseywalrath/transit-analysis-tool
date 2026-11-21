@@ -132,4 +132,133 @@
     net.notes = prop.proposals.length ? [PROPOSAL_NOTE] : [];
     return net;
   };
+
+  // ---- Schedule travelshed (Transit Travelshed's "Schedule" mode) ----
+
+  // Straight line × this factor stands in for the street walk between two stops: a pairwise street flood per
+  // stop is too slow for a whole system, and transfers are short (a quarter mile at most).
+  var TRANSFER_DETOUR = 1.3;
+
+  function sortedStat(vals, which) {
+    var v = vals.slice().sort(function (a, b) { return a - b; }), n = v.length;
+    if (!n) return Infinity;
+    if (which === "best") return v[0];
+    if (which === "worst") return v[Math.ceil(0.9 * n) - 1];
+    return v[(n - 1) >> 1];
+  }
+
+  // Transfers between stops within maxKm (straight line), on a 0.01° grid.
+  function buildTransfers(stops, maxKm, kmPerSec) {
+    var grid = Object.create(null), out = [], i;
+    var cell = function (lat, lon) { return Math.floor(lat / 0.01) + ":" + Math.floor(lon / 0.01); };
+    for (i = 0; i < stops.length; i++) {
+      out.push([]);
+      var s = stops[i];
+      if (!isFinite(s.lat) || !isFinite(s.lon) || s.lat === null) continue;
+      (grid[cell(s.lat, s.lon)] || (grid[cell(s.lat, s.lon)] = [])).push(i);
+    }
+    var span = Math.ceil(maxKm / 1.1) + 1;
+    for (i = 0; i < stops.length; i++) {
+      var a = stops[i];
+      if (a.lat === null || !isFinite(a.lat) || !isFinite(a.lon)) continue;
+      var cy = Math.floor(a.lat / 0.01), cx = Math.floor(a.lon / 0.01);
+      for (var dy = -span; dy <= span; dy++) for (var dx = -span; dx <= span; dx++) {
+        var list = grid[(cy + dy) + ":" + (cx + dx)];
+        if (!list) continue;
+        for (var k = 0; k < list.length; k++) {
+          var j = list[k];
+          if (j === i) continue;
+          var b = stops[j];
+          var km = turf.distance([a.lon, a.lat], [b.lon, b.lat], { units: "kilometers" }) * TRANSFER_DETOUR;
+          if (km <= maxKm) out[i].push({ to: j, sec: km / kmPerSec });
+        }
+      }
+    }
+    return out;
+  }
+
+  // Area reachable from an origin within each budget, on the analysis network's real (and proposal) trips.
+  //   opts : { origin: [lng, lat], budgetsMin: [..], fromSec, toSec (default from + 3600), stepSec (120),
+  //            statistic "typical" | "best" | "worst", walkMph (3.1), accessMi (0.5), egressMi (0.25),
+  //            transferMi (0.25), maxRounds (3), includeHidden, date, onProgress(text) }
+  // Typical = median travel time over the departures, best = minimum, worst = 90th percentile.
+  App.computeScheduleTravelshed = async function (opts) {
+    opts = opts || {};
+    if (!window.Raptor) throw new Error("The schedule router did not load.");
+    if (!App.roadNetworkLoaded || !App.roadNetworkLoaded()) throw new Error("Load a street network first.");
+    var progress = typeof opts.onProgress === "function" ? opts.onProgress : function () {};
+    var budgets = (opts.budgetsMin || []).filter(function (b) { return b > 0; });
+    if (!budgets.length || !opts.origin) throw new Error("Pick an origin and at least one time budget.");
+    var maxMin = Math.max.apply(null, budgets);
+    var kmPerMin = (opts.walkMph > 0 ? opts.walkMph : 3.1) * 1.609344 / 60;
+    var MI = 1.609344;
+    var accessKm = (opts.accessMi > 0 ? opts.accessMi : 0.5) * MI;
+    var egressKm = (opts.egressMi > 0 ? opts.egressMi : 0.25) * MI;
+    var transferKm = (opts.transferMi >= 0 ? opts.transferMi : 0.25) * MI;
+    var fromSec = isFinite(opts.fromSec) ? opts.fromSec : 7 * 3600;
+    var toSec = isFinite(opts.toSec) && opts.toSec > fromSec ? opts.toSec : fromSec + 3600;
+    var stepSec = opts.stepSec > 0 ? opts.stepSec : 120;
+    var t0 = Date.now();
+
+    progress("Building the network…");
+    var netOpts = { includeHidden: !!opts.includeHidden };
+    if (opts.date) netOpts.date = opts.date;
+    var network = App.buildAnalysisNetwork(netOpts);
+    if (!network || !network.trips.length) {
+      throw new Error("No service on the analysis date. Load a GTFS feed or draw a Service with a schedule.");
+    }
+
+    progress("Walking to stops…");
+    var near = [], nearLL = [];
+    network.stops.forEach(function (s, i) {
+      if (s.lat === null || !isFinite(s.lat)) return;
+      if (turf.distance(opts.origin, [s.lon, s.lat], { units: "kilometers" }) <= accessKm) {
+        near.push(i); nearLL.push([s.lon, s.lat]);
+      }
+    });
+    var flood = App.computeMultiWalkCostMap([{ lngLat: opts.origin, id: "origin" }], accessKm);
+    var walk = flood && flood.snapped ? App.walkKmToPoints(flood.distMap, nearLL) : near.map(function () { return Infinity; });
+    var access = [];
+    near.forEach(function (idx, k) { if (walk[k] <= accessKm) access.push({ stop: idx, sec: walk[k] / kmPerMin * 60 }); });
+    var transfers = buildTransfers(network.stops, transferKm, kmPerMin / 60);
+
+    var prep = window.Raptor.prepare(network);
+    var deps = [];
+    for (var d = fromSec; d < toSec; d += stepSec) deps.push(d);
+    if (!deps.length) deps.push(fromSec);
+    var times = network.stops.map(function () { return []; });
+    var tr0 = Date.now();
+    for (var di = 0; di < deps.length; di++) {
+      var r = window.Raptor.route(prep, access, transfers, deps[di],
+        { maxRounds: opts.maxRounds > 0 ? opts.maxRounds : 3, maxSec: maxMin * 60 });
+      for (var si = 0; si < times.length; si++) times[si].push(r.arrival[si] - deps[di]);
+      if (di % 3 === 2) {
+        progress("Routing departure " + (di + 1) + " of " + deps.length + "…");
+        await new Promise(function (res) { setTimeout(res, 0); });
+      }
+    }
+    var routeMs = Date.now() - tr0;
+
+    progress("Tracing the travelshed…");
+    var stat = opts.statistic === "best" || opts.statistic === "worst" ? opts.statistic : "typical";
+    var origins = [{ lngLat: opts.origin, offsetKm: 0, capKm: accessKm }];
+    var reached = 0;
+    times.forEach(function (list, i) {
+      var t = sortedStat(list, stat), s = network.stops[i];
+      if (!(t <= maxMin * 60) || s.lat === null) return;
+      reached++;
+      origins.push({ lngLat: [s.lon, s.lat], offsetKm: t / 60 * kmPerMin, capKm: egressKm });
+    });
+    var budgetsKm = budgets.map(function (b) { return b * kmPerMin; });
+    var shed = App.computeOffsetWalkCostMap(origins, maxMin * kmPerMin, { contour: budgetsKm });
+    return {
+      bands: shed ? shed.bands : budgets.map(function () { return null; }),
+      budgetsMin: budgets, statistic: stat, departures: deps.length, fromSec: fromSec, toSec: toSec, stepSec: stepSec,
+      accessStops: access.length, stopsReached: reached, originSnapped: !!(flood && flood.snapped),
+      date: network.date, dayType: network.dayType,
+      gtfsTrips: network.counts.gtfsTrips, proposalTrips: network.counts.proposalTrips,
+      proposalsSkipped: network.proposalsSkipped, notes: network.notes,
+      gridKmUsed: shed ? shed.gridKmUsed : null, routeMs: routeMs, totalMs: Date.now() - t0
+    };
+  };
 })();

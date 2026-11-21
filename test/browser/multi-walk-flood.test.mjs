@@ -90,7 +90,19 @@ function check(name, pass, detail) {
       const mid = [LNG0 + 4.5 * D, LAT0 + 5 * D];
       const tiny = App.multiWalkPolygon([{ lngLat: mid, id: "mid" }], 0.05);
       const midIn = !!(tiny && tiny.polygon) && turf.booleanPointInPolygon(turf.point(mid), tiny.polygon);
-      return { midIn, worst, missing, extra, origins, wrongOrigin, snapped: m.snapped, unsnapped: m.unsnapped,
+      // Offset flood: one origin at 0 with no cap matches the plain flood; an offset shifts every cost;
+      // a cap stops the walk.
+      const off0 = App.computeOffsetWalkCostMap([{ lngLat: A, offsetKm: 0, capKm: 99 }], km).distMap;
+      let offWorst = 0, offMissing = 0;
+      const plainA = App.computeMultiWalkCostMap([{ lngLat: A, id: "a" }], km).distMap;
+      plainA.forEach((v, k) => { if (!off0.has(k)) offMissing++; else offWorst = Math.max(offWorst, Math.abs(off0.get(k) - v)); });
+      const off1 = App.computeOffsetWalkCostMap([{ lngLat: A, offsetKm: 0.3, capKm: 99 }], km).distMap;
+      let shiftOk = true; off1.forEach((v, k) => { if (Math.abs(v - 0.3 - plainA.get(k)) > 1e-9) shiftOk = false; });
+      const capped = App.computeOffsetWalkCostMap([{ lngLat: A, offsetKm: 0, capKm: 0.3 }], km).distMap;
+      let capOk = capped.size > 0; capped.forEach((v) => { if (v > 0.3 + 1e-9) capOk = false; });
+      const offBands = App.computeOffsetWalkCostMap([{ lngLat: A, offsetKm: 0, capKm: 99 }], km, { contour: [0.4, 0.8] }).bands;
+      const bandsOk = !!(offBands[0] && offBands[1]) && turf.area(offBands[0]) < turf.area(offBands[1]);
+      return { offWorst, offMissing, shiftOk, capOk, bandsOk, midIn, worst, missing, extra, origins, wrongOrigin, snapped: m.snapped, unsnapped: m.unsnapped,
         inA: inside(A), inB: inside(B), ratio: areaM / areaU, manyN: many.length, manySnapped: big.snapped,
         bigOk: !!big.polygon, ms: Math.round(ms), nonePoly: none.polygon, noneUnsnapped: none.unsnapped };
     }, { LAT0, LNG0, D });
@@ -105,6 +117,10 @@ function check(name, pass, detail) {
     check("polygon area ≈ union of the two single walksheds", r.ratio > 0.9 && r.ratio < 1.1, "ratio " + r.ratio.toFixed(3));
     check("81 origins snap and trace", r.manySnapped === r.manyN && r.bigOk, r.manySnapped + "/" + r.manyN + " in " + r.ms + " ms");
     check("nothing snapped → polygon null, origin listed", r.nonePoly === null && r.noneUnsnapped.length === 1);
+    check("offset flood at 0 = plain flood", r.offWorst < 1e-9 && r.offMissing === 0, "worst " + r.offWorst + " missing " + r.offMissing);
+    check("offset shifts every cost", r.shiftOk);
+    check("cap stops the walk", r.capOk);
+    check("offset contour gives nested bands", r.bandsOk);
     check("mid-block origin with a short budget still covers its stop", r.midIn);
     check("no page errors", pageErrors.length === 0, pageErrors.join(" | "));
   } catch (e) {
