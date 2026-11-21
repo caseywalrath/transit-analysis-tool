@@ -375,7 +375,7 @@ Use `CLAUDE.md` § Testing:
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Done (sub-plan `docs/archive/A4-plan.md`) |
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Done (sub-plan `docs/archive/A5-plan.md`) |
 | A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Done (sub-plan `docs/archive/A6-plan.md`) |
-| A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Not started |
+| A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Done (sub-plan `docs/archive/A7-plan.md`) |
 | A8 | Export drawn Services as GTFS; decide Trip Builder's future | Sub-plan | S, H, O | A6 | G8a–b | Not started |
 
 ```
@@ -984,8 +984,8 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G6b | A6 | Departure time or window | Window | Window, editable (Option A) | 2026-11-21 |
 | G6c | A6 | Mix proposals into real network | Yes | Yes (Option A) | 2026-11-21 |
 | G6d | A6 | Wider buffer for frequent stops | Optional, off | Optional switch, off (Option A) | 2026-11-21 |
-| G7a | A7 | What can be compared | Two feeds | | |
-| G7b | A7 | Which health checks | Listed set | | |
+| G7a | A7 | What can be compared | Two feeds | Two feeds plus edited copies (Option B) | 2026-11-21 |
+| G7b | A7 | Which health checks | Listed set | The seven listed (Option A) | 2026-11-21 |
 | G8a | A8 | Trip Builder's future | Retire once the export works | | |
 | G8b | A8 | Headway bands in exports | Yes | | |
 

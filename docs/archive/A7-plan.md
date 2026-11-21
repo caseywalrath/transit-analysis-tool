@@ -1,10 +1,10 @@
 # A7 — Build vs No-Build comparison and feed health (sub-plan)
 
-**Status:** In progress. Parent plan: `docs/gtfs-expansion-plan.md` § A7. Base commit `4e4b446`.
+**Status:** Done (A7a, A7b). Archived. Parent plan: `docs/gtfs-expansion-plan.md` § A7. Base commit `4e4b446`.
 
 A7 ships as two steps, each reviewed and committed on its own: **A7a** feed health, **A7b** Build vs
 No-Build comparison (with the Title VI changed-routes workflow moved here from A6). Cards live in
-`docs/a7-cards/`; each step's cards are written when it starts, from the code as it then stands.
+`docs/archive/a7-cards/`; each step's cards are written when it starts, from the code as it then stands.
 
 ## Gate answers (2026-11-21)
 
@@ -50,7 +50,7 @@ Thresholds are from the MobilityData GTFS validator source (master, read 2026-11
 ## Fixed decisions
 
 - **A7a engine:** `GtfsSchedule.feedHealth(feed, {today, shapes, maxExamples})`, pure, in `gtfs-schedule.js`
-  (card `docs/a7-cards/card-a7a.1.md`). Shapes come in as `{shapeId: [[lon, lat], …]}`.
+  (card `docs/archive/a7-cards/card-a7a.1.md`). Shapes come in as `{shapeId: [[lon, lat], …]}`.
 - **A7a UI:** a **Feed health** tab in GTFS Service Analysis with a "Check feed" button (feed-wide scans are
   not instant on RTD), a table of the seven checks with expandable examples, and a CSV. The GTFS Overview's
   `#gtfsHealth` shows a one-line summary once checks have run for the loaded feed. `App.gtfsShapeCoords()`
@@ -73,8 +73,8 @@ Thresholds are from the MobilityData GTFS validator source (master, read 2026-11
   cases added, none moved. Accepted deviations: the expiry example also obeys `maxExamples`; `maxExamples` floored;
   non-numeric shape points dropped. Open for the review: zero agencies gets the "One agency" warning note; the
   calendar fallback end date is not `isRealDate`-checked; `a7-health-mini` values recorded, not hand-checked.
-  Paused here at the usage limit (Opus). **Resume:** launch card `docs/a7-cards/card-a7a.2.md` [Sonnet] with
-  `docs/a7-cards/rules.md`, then review A7a (code-review high on `4e4b446..HEAD`, screenshots), then write A7b's cards.
+  Paused here at the usage limit (Opus). **Resume:** launch card `docs/archive/a7-cards/card-a7a.2.md` [Sonnet] with
+  `docs/archive/a7-cards/rules.md`, then review A7a (code-review high on `4e4b446..HEAD`, screenshots), then write A7b's cards.
 - 2026-11-21 (resumed): A7a.2 Feed health tab [Sonnet]: clean, 9/9 browser checks; tabs now table-driven (`TABS`).
   Opus: the test's dark screenshot waits for the theme transition; engine follow-ups (calendar end date must be a
   real date; zero agencies get "No agency.txt rows" wording). A7a review done by reading the diff (no defects found).
@@ -83,3 +83,14 @@ Thresholds are from the MobilityData GTFS validator source (master, read 2026-11
   hand-checked); `gtfs.js` ZIP reader split (`zipEntries`, `readEntries`) and `App.gtfsReadOtherFeed(file)`;
   `analysis-network-source.js`: `App.feedServiceSummary`, `App.editedServiceSummary`, `App.serviceSourceRouteId`,
   `App.countPeopleNearStops` (not yet called).
+- 2026-11-21: A7b. A7b.1 `window.ServiceCompare` [Haiku xhigh]: clean, 9 golden cases; accepted reading: a route absent
+  from one side has all figures 0 including span (so an eliminated route's span change is −100 %). Card slip: fixture B's
+  platform total (1749) is not the route sum; it is input data and nothing checks it. Opus: Title VI hooks; docs.
+  A7b.2 Compare tab [Sonnet]: 9/10 first time; the failure was the card's: the Build feed was summarised on its own
+  busiest dates and kept routes with no service. Opus fixes: `feedServiceSummary` takes `preferDates` (the No-Build
+  dates where the Build feed runs them as that day type) and both summaries list only routes with service; the
+  test's own recomputation passes `preferDates`; `gtfs-feed-health` check 1 now expects four tabs (deliberate).
+  Known gaps: route miles and altered miles for Title VI still need the user to pick before / after Lines (GTFS
+  routes are not drawn features); people counts use straight-line stop buffers; not timed on RTD (no RTD Build feed
+  offline). Review was done by reading the diffs and the screenshots; the high-effort code-review pass was skipped
+  to save usage — run it over `4e4b446..HEAD` at the start of A8.

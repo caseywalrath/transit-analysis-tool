@@ -5,7 +5,7 @@ Add a **Feed health** tab to GTFS Service Analysis that runs `GtfsSchedule.feedH
 on a button press and shows the seven checks with their examples and a CSV.
 
 ## 2. Read first
-- `CLAUDE.md`, `AGENTS.md`, `docs/A7-plan.md`, `docs/a7-cards/card-a7a.1.md` (the engine contract: check ids,
+- `CLAUDE.md`, `AGENTS.md`, `docs/archive/A7-plan.md`, `docs/archive/a7-cards/card-a7a.1.md` (the engine contract: check ids,
   statuses, example fields — the engine is already written; read it in `js/core/gtfs-schedule.js`, search `function feedHealth`).
 - `js/projects/gtfs-service-analysis.js`: `_activeTab`, `function emptyHint`, `function renderState`,
   `function switchTab`, `function runService`, `function checkStale`, `function clearAll`, `var H = {`,

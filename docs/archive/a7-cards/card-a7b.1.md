@@ -5,7 +5,7 @@ A new pure engine that matches routes between a No-Build and a Build service sum
 total changes, and pre-checks changed routes against the Title VI major-change rules.
 
 ## 2. Read first
-- `CLAUDE.md`, `AGENTS.md`, `docs/A7-plan.md`.
+- `CLAUDE.md`, `AGENTS.md`, `docs/archive/A7-plan.md`.
 - `js/core/service-equity.js` (file layout to copy: IIFE, `window.X = {...}`, header comment).
 - `js/core/gtfs-schedule.js`: `function serviceYearOf` (the `year` shape: `routes[key].annual`, `.peakVehicles`,
   `.perDay.weekday.spanHrs`; `total.annual`, `total.peakVehicles`, `total.perDay.weekday`).

@@ -77,8 +77,8 @@ const SHOTS = process.env.GSA_SHOTS_DIR || "";
 
     // 1
     const tabs = await page.evaluate(() => Array.from(document.querySelectorAll(".gsa-tabs .rf-tab")).map((b) => b.textContent.trim()));
-    check("1. tab-present: three tabs, the third labelled Feed health",
-      tabs.length === 3 && tabs[2] === "Feed health", JSON.stringify(tabs));
+    check("1. tab-present: four tabs, the last labelled Feed health",
+      tabs.length === 4 && tabs[3] === "Feed health", JSON.stringify(tabs));
 
     // 2
     await page.click('.gsa-tabs .rf-tab[data-tab="health"]');

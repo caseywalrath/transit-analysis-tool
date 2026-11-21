@@ -61,7 +61,32 @@ is dropped (like the other two) when the loaded feed object changes, and `clearA
 `App.gtfsSetHealth(null)`. Results are not saved in the session. The CSV (`feed-health.csv`) has one row per
 check with its examples as `key=value` pairs. Browser test: `test/browser/gtfs-feed-health.test.mjs`.
 
+## Compare
+
+Third tab (`_activeTab` is `"service" | "stops" | "compare" | "health"`). No-Build is always the loaded feed
+(`App.feedServiceSummary` on the Service & Cost scope and dates). Build is either **Another GTFS feed (ZIP)**,
+read with `App.gtfsReadOtherFeed`, summarised on the No-Build dates where it runs them as the same day type (else its busiest such date) and then dropped
+(only the summary is kept), or **This feed with my drawn Services** (`App.editedServiceSummary`): each drawn
+Service gets a select naming the GTFS route it replaces (saved choice, else `App.serviceSourceRouteId`, else
+"(new route)").
+
+`ServiceCompare.compare` matches the routes and gives the change table; `ServiceCompare.precheck` flags changed
+routes against `App.titleViMajorChangePolicy()`. The optional people count (`App.countPeopleNearStops` on each
+side's served stops) downloads Census data; a failure becomes a note and the table still shows. Jobs read "—"
+when no LODES file is loaded, and the CSV leaves out any people line that has no figure.
+
+State: `_compareCfg = { mode, replaced, people }` (session-saved as `compare`), `_compareFile` (never saved),
+`_compareResult = { feed, sig, cfg, nb, b, result, people, precheck, notes, ms }`. `compareSig()` covers the
+config, the cost settings, the file's name, size and date and, in drawn mode, each Service's patterns, so any
+change marks the result stale. A result for another feed is dropped like the others. The expanded rows and the
+Changed / All filter live in `_ui.compare`.
+
+**Send to Title VI** lists the changed routes (pre-checked where a rule is met); **Create Title VI scenario**
+calls `App.titleViAddScenario` with each ticked route's yearly revenue hours and weekday span. Route geometry
+(before / after Lines) is picked afterwards in Title VI. The CSV is `compare.csv`. Browser test:
+`test/browser/gtfs-compare.test.mjs`.
+
 ## gtfs-service-analysis-popup.html
 
-Scope row (date, include hidden), tab bar, shared status and empty-state slots, per tab a `<details>`
+Scope row (date, include hidden), tab bar (Service & Cost, Stops, Compare, Feed health), shared status and empty-state slots, per tab a `<details>`
 settings block, a Run button in `.module-input-actions` and a results host.

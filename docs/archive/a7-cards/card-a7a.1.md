@@ -5,7 +5,7 @@ Add a pure function `GtfsSchedule.feedHealth(feed, opts)` that runs seven read-o
 GTFS feed, with golden cases.
 
 ## 2. Read first
-- `CLAUDE.md`, `AGENTS.md`, `docs/A7-plan.md` (section "Health check rules").
+- `CLAUDE.md`, `AGENTS.md`, `docs/archive/A7-plan.md` (section "Health check rules").
 - `js/core/gtfs-schedule.js`: search `function buildFeed` (feed shape), `function haversine`, `function isRealDate`,
   `function utcDay`, `function addDays`, `function dateRange`, `function wheelchairByRoute` (style to copy),
   `window.GtfsSchedule = {` (export list), `function evaluate(texts, fnName, args)`.

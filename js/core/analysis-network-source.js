@@ -281,9 +281,21 @@
     return { id: id, shortName: trimmed(r.route_short_name), longName: trimmed(r.route_long_name), type: isFinite(t) ? t : null };
   }
 
-  function busiestDates(feed) {
+  // One date per day type: the preferred date when this feed runs it as an ordinary day of that type (so two
+  // feeds are compared on the same calendar day), else the feed's busiest such date.
+  function busiestDates(feed, prefer) {
+    var G = window.GtfsSchedule, out = {};
+    DAY_TYPES.forEach(function (t) {
+      var p = prefer && prefer[t], info = p ? G.dayType(feed, p) : null;
+      out[t] = info && info.dayType === t && !info.exception && G.tripsOnDate(feed, p).trips.length ? p : G.busiestDate(feed, t);
+    });
+    return out;
+  }
+
+  // Routes with service on at least one of the dates; a route listed in routes.txt but never run reads as absent.
+  function servedRoutes(year, infoOf) {
     var out = {};
-    DAY_TYPES.forEach(function (t) { out[t] = window.GtfsSchedule.busiestDate(feed, t); });
+    Object.keys(year.routes).forEach(function (k) { out[k] = infoOf(k); });
     return out;
   }
 
@@ -312,16 +324,14 @@
       rateBasis: sv.rateBasis, dayCounts: sv.dayCounts, rateOverrides: sv.rateOverrides };
   }
 
-  // opts: { label, dates (default the busiest date of each day type), routeIds (null = all), service:
+  // opts: { label, dates (default the busiest date of each day type), preferDates (used where this feed runs
+  //         them as that day type), routeIds (null = all), service:
   //         { layover, deadheadPct, rate, rateBasis, dayCounts, rateOverrides } }
   App.feedServiceSummary = function (feed, opts) {
     var o = opts || {}, G = window.GtfsSchedule;
-    var dates = o.dates || busiestDates(feed), routeIds = Array.isArray(o.routeIds) ? o.routeIds : null;
+    var dates = o.dates || busiestDates(feed, o.preferDates), routeIds = Array.isArray(o.routeIds) ? o.routeIds : null;
     var year = G.serviceYear(feed, yearOpts(o, dates, routeIds));
-    var routes = {}, nets = [];
-    Object.keys(feed._routes).forEach(function (id) {
-      if (!routeIds || routeIds.indexOf(id) >= 0) routes[id] = gtfsRouteInfo(feed, id);
-    });
+    var routes = servedRoutes(year, function (id) { return gtfsRouteInfo(feed, id); }), nets = [];
     DAY_TYPES.forEach(function (t) {
       if (dates[t]) nets.push(window.AnalysisNetwork.build({ feed: feed, date: dates[t], routeIds: routeIds, proposals: [] }));
     });
@@ -341,8 +351,7 @@
       if (replaced[k]) { gone[replaced[k]] = true; pairs.push({ a: replaced[k], b: "d:" + k }); }
     });
     var keep = scope.filter(function (id) { return !gone[id]; });
-    var dayTrips = {}, nets = [], routes = {}, notes = [], skipped = [], drawnKeys = Object.create(null);
-    keep.forEach(function (id) { routes[id] = gtfsRouteInfo(feed, id); });
+    var dayTrips = {}, nets = [], notes = [], skipped = [], drawnKeys = Object.create(null);
     DAY_TYPES.forEach(function (t) {
       dayTrips[t] = [];
       if (!dates[t]) return;
@@ -357,10 +366,11 @@
       });
       nets.push({ net: net });
     });
-    Object.keys(drawnKeys).forEach(function (k) {
-      routes[k] = { id: k, shortName: "", longName: drawnKeys[k] ? drawnKeys[k].name : k, type: null };
-    });
     var year = G.serviceYearFromTrips(dayTrips, yearOpts(o, dates, keep.concat(Object.keys(drawnKeys))));
+    var routes = servedRoutes(year, function (k) {
+      return drawnKeys[k] !== undefined ? { id: k, shortName: "", longName: drawnKeys[k] ? drawnKeys[k].name : k, type: null }
+        : gtfsRouteInfo(feed, k);
+    });
     var gtfsNets = [];
     DAY_TYPES.forEach(function (t) {
       if (dates[t]) gtfsNets.push(window.AnalysisNetwork.build({ feed: feed, date: dates[t], routeIds: keep, proposals: [] }));

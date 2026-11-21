@@ -7331,3 +7331,7 @@ th[aria-sort="descending"] .gsa-sort::after { content: " \25BC"; font-size: 9px;
 .gsa-health-warning { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-bd); }
 .gsa-health-error { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
 .gsa-health-unknown { color: var(--text-secondary); }
+.gsa-cmp-mode { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
+.gsa-cmp-pos { color: var(--text-primary); }
+.gsa-cmp-neg { color: var(--danger); }
+.gsa-cmp-services select { max-width: 280px; }

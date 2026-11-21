@@ -1,6 +1,7 @@
 // js/projects/gtfs-service-analysis.js
 // GTFS Service Analysis: service hours, peak vehicles and cost per route from the loaded GTFS timetable,
-// and a stop analysis (spacing, consolidation candidates, service per stop, wheelchair data).
+// a stop analysis (spacing, consolidation candidates, service per stop, wheelchair data), a Build vs No-Build
+// comparison and feed health checks.
 // All figures come from window.GtfsSchedule; this file only gathers inputs, displays results and owns
 // the module's map layers. Detail: docs/reference/modules/gtfs-service-analysis.md
 
@@ -24,10 +25,14 @@
   var _includeHidden = false;
   var _useStopList = false;
   var _rateOverrides = {};          // route_id -> $/hr (only values that pass sanitizeRate are kept)
-  var _activeTab = "service";       // "service" | "stops" | "health"
+  var _activeTab = "service";       // "service" | "stops" | "compare" | "health"
   var _serviceResult = null;        // { feed, sig, inputs, year, calendar, dates }
   var _stopsResult = null;          // { feed, sig, inputs, spacing, candidates, service, wheelchair, date }
   var _healthResult = null;         // { feed, checks, today, ms }
+  var _compareCfg = { mode: "feed", replaced: {}, people: true };   // replaced: drawn Service key -> GTFS route_id | ""
+  var _compareFile = null;          // the chosen Build ZIP (a File; never saved)
+  var _compareResult = null;        // { feed, sig, cfg, nb, b, result, people, precheck, notes, ms }
+  var _compareRunning = false;
   var _serviceStale = false, _stopsStale = false;
   var _ui = {};                     // sort, search, expanded rows and open sections, kept across re-renders
   var _initialized = false;
@@ -99,14 +104,15 @@
   function checkStale() {
     var f = feed();
     if ((_serviceResult && _serviceResult.feed !== f) || (_stopsResult && _stopsResult.feed !== f) ||
-        (_healthResult && _healthResult.feed !== f)) {
+        (_healthResult && _healthResult.feed !== f) || (_compareResult && _compareResult.feed !== f)) {
       // Feed removed or replaced: stop ids and routes in the old results may not exist in the new feed.
-      _serviceResult = _stopsResult = _healthResult = null;
+      _serviceResult = _stopsResult = _healthResult = _compareResult = null;
       clearMapLayers();
       if (isPopupVisible()) {
         renderServiceResults(byId("gsaServiceResults"), null, _ui);
         renderStopsResults(byId("gsaStopsResults"), null, _ui);
         renderHealthResults(byId("gsaHealthResults"), null);
+        renderCompareResults(byId("gsaCompareResults"), null);
       }
     }
     _serviceStale = !!_serviceResult && (_serviceResult.feed !== f || _serviceResult.sig !== serviceSig());
@@ -234,6 +240,33 @@
     }
   }
 
+  // ---- Compare inputs ----
+
+  function drawnServices() { return typeof App.buildTransitServices === "function" ? App.buildTransitServices() : []; }
+
+  function drawnSig() {
+    return drawnServices().map(function (svc) {
+      return { k: svc.key, p: svc.patterns.map(function (p) {
+        return [p.featureType, p.featureId, p.runTime, p.avgSpeed, p.direction, p.service];
+      }) };
+    });
+  }
+
+  function compareSig() {
+    return JSON.stringify({
+      cfg: _compareCfg, service: serviceInputs(),
+      file: _compareFile ? [_compareFile.name, _compareFile.size, _compareFile.lastModified] : null,
+      drawn: _compareCfg.mode === "drawn" ? drawnSig() : null
+    });
+  }
+
+  // The route a drawn Service replaces: the saved choice, else the GTFS route it was copied from, else none.
+  function replaceChoice(key) {
+    if (Object.prototype.hasOwnProperty.call(_compareCfg.replaced, key)) return _compareCfg.replaced[key];
+    var f = feed(), src = typeof App.serviceSourceRouteId === "function" ? App.serviceSourceRouteId(key) : null;
+    return src && f && f._routes && f._routes[src] ? src : "";
+  }
+
   // ---- Status, empty hint, stale banner ----
 
   // Per-tab lookups; a tab id outside this table means "service".
@@ -242,6 +275,9 @@
       result: function () { return _serviceResult; }, stale: function () { return _serviceStale; }, run: function () { runService(); } },
     stops: { hint: { need: "No stop analysis yet.", action: "Press Analyze stops." },
       result: function () { return _stopsResult; }, stale: function () { return _stopsStale; }, run: function () { runStops(); } },
+    compare: { hint: { need: "No comparison yet.", action: "Choose what to compare with, then press Compare." },
+      result: function () { return _compareResult; },
+      stale: function () { return !!_compareResult && _compareResult.sig !== compareSig(); }, run: function () { runCompare(); } },
     health: { hint: { need: "No feed check yet.", action: "Press Check feed." },
       result: function () { return _healthResult; }, stale: function () { return false; }, run: function () { runHealth(); } }
   };
@@ -357,6 +393,124 @@
       renderHealthResults(byId("gsaHealthResults"), _healthResult);
       renderState();
     }, 0);
+  }
+
+  // ---- Compare (Build vs No-Build) ----
+
+  async function runCompare() {
+    if (_compareRunning) return;
+    var f = feed();
+    if (!f || !S() || !window.ServiceCompare) { renderState(); return; }
+    var cfg = JSON.parse(JSON.stringify(_compareCfg)), services = drawnServices();
+    if (cfg.mode === "feed" && !_compareFile) { setStatus("Choose a GTFS ZIP to compare with.", "error"); return; }
+    if (cfg.mode === "drawn" && !services.length) { setStatus("Draw or copy a Service first.", "error"); return; }
+    _compareRunning = true;
+    var btn = byId("gsaRunCompare");
+    if (btn) btn.disabled = true;
+    var t0 = Date.now();
+    try {
+      var sig = compareSig(), inputs = serviceInputs(), b, other, people = null, notes = [];
+      var nb = App.feedServiceSummary(f, { label: "No-Build: loaded feed", dates: inputs.dates, routeIds: inputs.routeIds, service: inputs });
+      if (cfg.mode === "feed") {
+        setStatus("Reading the Build feed…", "running");
+        other = await App.gtfsReadOtherFeed(_compareFile);
+        if (feed() !== f) return;
+        b = App.feedServiceSummary(other.feed, { label: "Build: " + other.name, preferDates: inputs.dates, service: inputs });
+        other = null;   // only the summary is kept, so one full schedule stays in memory
+      } else {
+        var replaced = {};
+        services.forEach(function (svc) { replaced[svc.key] = replaceChoice(svc.key) || null; });
+        b = App.editedServiceSummary({ label: "Build: loaded feed with drawn Services", dates: inputs.dates,
+          routeIds: inputs.routeIds, replaced: replaced, includeHidden: _includeHidden, service: inputs });
+      }
+      var result = window.ServiceCompare.compare(nb, b, { pairs: b.pairs });
+      if (cfg.people) {
+        try {
+          var progress = function (m) { setStatus(m, "running"); };
+          setStatus("Counting people near No-Build stops…", "running");
+          var pa = await App.countPeopleNearStops(nb.stops, { onProgress: progress });
+          setStatus("Counting people near Build stops…", "running");
+          var pb = await App.countPeopleNearStops(b.stops, { onProgress: progress });
+          people = { a: pa, b: pb };
+        } catch (e) {
+          console.error(e);
+          people = null;
+          notes.push("Census counts failed: " + (e && e.message ? e.message : e));
+        }
+        if (feed() !== f) return;
+      }
+      var precheck = window.ServiceCompare.precheck(result.rows,
+        typeof App.titleViMajorChangePolicy === "function" ? App.titleViMajorChangePolicy() : null);
+      if (feed() !== f) return;
+      var all = (b.notes || []).slice();
+      (b.skipped || []).forEach(function (sk) { all.push("Not included: " + sk.name + " (" + sk.reason + ")."); });
+      if (cfg.mode === "feed") all.push("The Build feed uses the same dates where it runs them; otherwise its busiest weekday, Saturday or Sunday.");
+      if (people) {
+        [people.a.note, people.b.note].forEach(function (n) { if (n && all.indexOf(n) < 0) all.push(n); });
+      }
+      _compareResult = { feed: f, sig: sig, cfg: cfg, nb: nb, b: b, result: result, people: people, precheck: precheck,
+        notes: all.concat(notes), ms: Date.now() - t0 };
+      renderCompareResults(byId("gsaCompareResults"), _compareResult);
+      setStatus(null);
+      renderState();
+    } catch (e) {
+      console.error(e);
+      if (feed() === f) setStatus("Comparison failed: " + (e && e.message ? e.message : e), "error");
+    } finally {
+      _compareRunning = false;
+      var b2 = byId("gsaRunCompare");
+      if (b2) b2.disabled = false;
+    }
+  }
+
+  // The Drawn-Services table: one select per Service, listing the loaded feed's routes.
+  function renderCompareServices() {
+    var host = byId("gsaCompareServices");
+    if (!host) return;
+    host.textContent = "";
+    var services = drawnServices(), f = feed();
+    if (!services.length) {
+      host.appendChild(note("Draw or copy a Service first (Copy route as Service with schedule in the GTFS route menu)."));
+      return;
+    }
+    var ids = f && f._routes ? Object.keys(f._routes) : [];
+    ids.sort(function (a, b) { return cmpName(routeName(a), routeName(b)); });
+    var tbl = el("table", "gtfs-dt-table"), body = el("tbody");
+    tbl.innerHTML = "<thead><tr><th>Service</th><th>Replaces GTFS route</th></tr></thead>";
+    services.forEach(function (svc) {
+      var tr = el("tr"), sel = el("select", "rf-select gsa-cmp-replace");
+      sel.setAttribute("data-key", svc.key);
+      sel.setAttribute("aria-label", "GTFS route replaced by " + svc.name);
+      var none = el("option", "", "(new route)");
+      none.value = "";
+      sel.appendChild(none);
+      ids.forEach(function (id) {
+        var o = el("option", "", routeName(id));
+        o.value = id;
+        sel.appendChild(o);
+      });
+      sel.value = replaceChoice(svc.key);
+      var c1 = td("");
+      c1.appendChild(sel);
+      tr.appendChild(td(svc.name));
+      tr.appendChild(c1);
+      body.appendChild(tr);
+    });
+    tbl.appendChild(body);
+    host.appendChild(tbl);
+  }
+
+  function syncCompareControls() {
+    var feedBox = byId("gsaCompareFeedBox"), drawnBox = byId("gsaCompareDrawnBox");
+    if (feedBox) feedBox.style.display = _compareCfg.mode === "feed" ? "" : "none";
+    if (drawnBox) drawnBox.style.display = _compareCfg.mode === "drawn" ? "" : "none";
+    var radios = document.querySelectorAll('input[name="gsaCompareMode"]');
+    for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === _compareCfg.mode;
+    var pe = byId("gsaComparePeople");
+    if (pe) pe.checked = _compareCfg.people;
+    var nm = byId("gsaCompareFileName");
+    if (nm) nm.textContent = _compareFile ? _compareFile.name : "";
+    if (isPopupVisible()) renderCompareServices();
   }
 
   // ---- Map layers (stop service ramp, consolidation candidates) ----
@@ -1340,6 +1494,234 @@
     host.appendChild(csvButton(function () { return healthCSV(result); }, "feed-health.csv"));
   }
 
+  // ---- Compare results ----
+
+  var CMP_COLS = [
+    { key: "trips", label: "Trips/yr", d: 0 }, { key: "revenueHrs", label: "Revenue hr/yr", d: 1 },
+    { key: "platformHrs", label: "Platform hr/yr", d: 1 }, { key: "cost", label: "Cost/yr", d: 0 },
+    { key: "peakVehicles", label: "Peak veh.", d: 0 }, { key: "spanHrs", label: "Wkdy span hr", d: 1 }
+  ];
+  var CMP_ALL_KEYS = ["trips", "runningHrs", "revenueHrs", "platformHrs", "cost", "peakVehicles", "spanHrs"];
+  var CMP_ALL_LABELS = { trips: "Trips/yr", runningHrs: "Running hr/yr", revenueHrs: "Revenue hr/yr", platformHrs: "Platform hr/yr",
+    cost: "Cost/yr", peakVehicles: "Peak veh.", spanHrs: "Wkdy span hr" };
+  var CMP_STATUS = { added: "Added", removed: "Removed", changed: "Changed", unchanged: "Unchanged" };
+  var CMP_HOW = { pair: "Replaced by drawn Service", id: "route_id", short: "short name", long: "long name" };
+  var CMP_CHANGE = { adjustment: "Changed", elimination: "Removed", new_route: "New" };
+  var CMP_RULE = { revenueHoursPct: "Revenue hours", spanHoursPct: "Span", routeElimination: "Elimination" };
+
+  function fmtSigned(n, d) {
+    if (n == null || !isFinite(n)) return "—";
+    return (n > 0 ? "+" : n === 0 ? "+" : "") + fmtN(n, d);
+  }
+  function fmtChange(diff, pct, d) {
+    if (diff == null || !isFinite(diff)) return "—";
+    return fmtSigned(diff, d) + " (" + (pct == null || !isFinite(pct) ? "—" : fmtSigned(pct, 1) + "%") + ")";
+  }
+  function cmpDates(label, dates) {
+    var parts = DAY_TYPES.map(function (t) { return DAY_LABEL[t] + " " + (isoDate(dates && dates[t]) || "—"); });
+    return label + ": " + parts.join(" · ");
+  }
+  function pctOf(a, b) { return a ? (b - a) / a * 100 : null; }
+
+  function cmpTile(value, change, label) {
+    var tile = el("div", "gsa-tile");
+    tile.appendChild(el("div", "gsa-tile-val", value));
+    tile.appendChild(el("div", "tiny", change));
+    tile.appendChild(el("div", "gsa-tile-lbl tiny", label));
+    return tile;
+  }
+
+  function cmpTiles(r) {
+    var wrap = el("div", "gsa-tiles"), t = r.result.total.metrics;
+    [["trips", "Trips/yr", 0], ["revenueHrs", "Revenue hr/yr", 0], ["platformHrs", "Platform hr/yr", 0],
+      ["cost", "Cost/yr", 0], ["peakVehicles", "Peak vehicles", 0]].forEach(function (c) {
+      var m = t[c[0]], money$ = c[0] === "cost";
+      var fv = function (v) { return money$ ? H.money(v) : fmtN(v, c[2]); };
+      wrap.appendChild(cmpTile(fv(m.a) + " → " + fv(m.b), fmtChange(m.diff, m.pct, c[2]), c[1]));
+    });
+    if (r.people) {
+      [["residents", "Residents"], ["jobs", "Jobs"], ["blocks", "Census blocks"]].forEach(function (c) {
+        var a = r.people.a[c[0]], b = r.people.b[c[0]];
+        if (a == null || b == null) {
+          wrap.appendChild(cmpTile("—", "", c[1] + (c[0] === "jobs" ? " (Load LODES jobs to count jobs)" : "")));
+          return;
+        }
+        wrap.appendChild(cmpTile(fmtN(a, 0) + " → " + fmtN(b, 0), fmtChange(b - a, pctOf(a, b), 0), c[1] + " within reach"));
+      });
+    }
+    return wrap;
+  }
+
+  function cmpDetailRow(row) {
+    var tr = el("tr", "gsa-detail"), cell = td("");
+    cell.colSpan = 9;
+    var sub = el("table", "gtfs-dt-table gsa-sub-table"), body = el("tbody");
+    var head = "<thead><tr><th></th>";
+    CMP_ALL_KEYS.forEach(function (k) { head += "<th class=\"num\">" + CMP_ALL_LABELS[k] + "</th>"; });
+    sub.innerHTML = head + "</tr></thead>";
+    [["No-Build", function (m) { return fmtN(m.a, 1); }], ["Build", function (m) { return fmtN(m.b, 1); }],
+      ["Change", function (m) { return fmtSigned(m.diff, 1); }], ["Change %", function (m) { return m.pct == null ? "—" : fmtSigned(m.pct, 1) + "%"; }]
+    ].forEach(function (line) {
+      var r = el("tr");
+      r.appendChild(td(line[0]));
+      CMP_ALL_KEYS.forEach(function (k) { r.appendChild(td(line[1](row.metrics[k]), "num")); });
+      body.appendChild(r);
+    });
+    sub.appendChild(body);
+    cell.appendChild(sub);
+    tr.appendChild(cell);
+    return tr;
+  }
+
+  function cmpCSV(r) {
+    var t = window.ServiceCompare.csv(r.result, { a: "No-Build", b: "Build" });
+    var lines = [r.nb.label, r.b.label];
+    if (r.people) {
+      [["residents", "Residents"], ["jobs", "Jobs"], ["blocks", "Census blocks"]].forEach(function (c) {
+        var a = r.people.a[c[0]], b = r.people.b[c[0]];
+        if (a != null && b != null) lines.push(c[1] + ": " + fmtN(a, 0) + " → " + fmtN(b, 0));
+      });
+    }
+    return H.csvText(lines, t.header, t.rows);
+  }
+
+  function cmpTable(r, st) {
+    var wrap = el("div", "gsa-table-wrap"), tbl = el("table", "gtfs-dt-table gsa-cmp-table"), body = el("tbody");
+    var head = "<thead><tr><th>Route</th><th>Status</th><th>Matched by</th>";
+    CMP_COLS.forEach(function (c) { head += "<th class=\"num\">" + c.label + "</th>"; });
+    tbl.innerHTML = head + "</tr></thead>";
+    var rows = r.result.rows.filter(function (x) { return st.filter === "all" || x.status !== "unchanged"; });
+    if (!rows.length) {
+      var tr0 = el("tr"), c0 = td("No routes to show.", "u-muted");
+      c0.colSpan = 9;
+      tr0.appendChild(c0);
+      body.appendChild(tr0);
+    }
+    rows.forEach(function (x) {
+      var id = (x.aKey || "") + "\u0001" + (x.bKey || "");
+      var tr = el("tr", "gsa-cmp-row");
+      tr.setAttribute("data-status", x.status);
+      var c0 = td("", "gsa-route-cell");
+      var caret = el("button", "gsa-caret", st.expanded[id] ? "▾" : "▸");
+      caret.type = "button";
+      caret.setAttribute("aria-expanded", st.expanded[id] ? "true" : "false");
+      caret.setAttribute("aria-label", "Show figures for " + x.name);
+      caret.addEventListener("click", function () {
+        st.expanded[id] = !st.expanded[id];
+        caret.textContent = st.expanded[id] ? "▾" : "▸";
+        caret.setAttribute("aria-expanded", st.expanded[id] ? "true" : "false");
+        var next = tr.nextSibling;
+        if (st.expanded[id]) tr.parentNode.insertBefore(cmpDetailRow(x), next);
+        else if (next && next.classList.contains("gsa-detail")) next.parentNode.removeChild(next);
+      });
+      c0.appendChild(caret);
+      c0.appendChild(document.createTextNode(x.name));
+      tr.appendChild(c0);
+      tr.appendChild(td(CMP_STATUS[x.status] || x.status));
+      tr.appendChild(td(x.match ? CMP_HOW[x.match] || "" : ""));
+      CMP_COLS.forEach(function (c) {
+        var m = x.metrics[c.key];
+        var cls = "num" + (m.diff == null || m.diff === 0 ? "" : m.diff < 0 ? " gsa-cmp-neg" : " gsa-cmp-pos");
+        tr.appendChild(td(fmtSigned(m.diff, c.d), cls));
+      });
+      body.appendChild(tr);
+      if (st.expanded[id]) body.appendChild(cmpDetailRow(x));
+    });
+    tbl.appendChild(body);
+    wrap.appendChild(tbl);
+    return wrap;
+  }
+
+  function cmpTitleVi(r) {
+    var box = el("div", "gsa-cmp-titlevi");
+    box.appendChild(el("div", "rf-section-title", "Send changed routes to Title VI"));
+    box.appendChild(note("Pre-checked against your Title VI major-change rules. Revenue hours are per year; span is the weekday span."));
+    var wrap = el("div", "gsa-table-wrap"), tbl = el("table", "gtfs-dt-table gsa-cmp-send"), body = el("tbody");
+    tbl.innerHTML = "<thead><tr><th>Send</th><th>Route</th><th>Change</th><th class=\"num\">Revenue hr %</th>" +
+      "<th class=\"num\">Weekday span %</th><th>Rules met</th></tr></thead>";
+    var boxes = [];
+    r.precheck.forEach(function (p) {
+      var tr = el("tr"), c0 = td(""), cb = el("input");
+      cb.type = "checkbox";
+      cb.checked = !!p.suggested;
+      cb.setAttribute("aria-label", "Send " + p.name + " to Title VI");
+      cb.addEventListener("change", sync);
+      boxes.push(cb);
+      c0.appendChild(cb);
+      tr.appendChild(c0);
+      tr.appendChild(td(p.name));
+      tr.appendChild(td(CMP_CHANGE[p.changeType] || p.changeType));
+      tr.appendChild(td(p.revenueHoursPct == null ? "—" : fmtSigned(p.revenueHoursPct, 1), "num"));
+      tr.appendChild(td(p.spanHoursPct == null ? "—" : fmtSigned(p.spanHoursPct, 1), "num"));
+      tr.appendChild(td(p.triggers.map(function (k) { return CMP_RULE[k] || k; }).join(", ") || "—"));
+      body.appendChild(tr);
+    });
+    tbl.appendChild(body);
+    wrap.appendChild(tbl);
+    box.appendChild(wrap);
+    var row = el("div", "btn-row"), send = el("button", "rf-btn-sm", "Create Title VI scenario");
+    send.type = "button";
+    send.id = "gsaSendTitleVi";
+    var msg = el("div");
+    function sync() {
+      send.disabled = typeof App.titleViAddScenario !== "function" || !boxes.some(function (b) { return b.checked; });
+    }
+    send.addEventListener("click", function () {
+      var ticked = r.precheck.filter(function (p, i) { return boxes[i].checked; });
+      if (!ticked.length || typeof App.titleViAddScenario !== "function") return;
+      var alterations = ticked.map(function (p) {
+        var rw = r.result.rows.filter(function (x) { return x.aKey === p.aKey && x.bKey === p.bKey; })[0];
+        var m = rw ? rw.metrics : null;
+        return { name: p.name, changeType: p.changeType,
+          revenueHours: { before: m ? m.revenueHrs.a : null, after: m ? m.revenueHrs.b : null },
+          spanHours: { before: m ? m.spanHrs.a : null, after: m ? m.spanHrs.b : null } };
+      });
+      var name = App.titleViAddScenario({ name: "Build vs No-Build " + isoDate(App.gtfsToday()), alterations: alterations });
+      msg.textContent = "";
+      msg.appendChild(note("Added “" + name + "” to Title VI with " + alterations.length + " route(s). Open Title VI and pick each route's before / after Lines to run the equity analysis."));
+    });
+    sync();
+    row.appendChild(send);
+    box.appendChild(row);
+    box.appendChild(msg);
+    return box;
+  }
+
+  function renderCompareResults(host, r) {
+    if (!host) return;
+    host.textContent = "";
+    if (!r) return;
+    var st = _ui.compare = _ui.compare || { filter: "changed", expanded: {} };
+    var lines = el("div", "gsa-basis tiny");
+    lines.appendChild(el("div", "", cmpDates(r.nb.label, r.nb.dates)));
+    lines.appendChild(el("div", "", cmpDates(r.b.label, r.b.dates)));
+    host.appendChild(lines);
+    host.appendChild(cmpTiles(r));
+    var c = r.result.counts;
+    host.appendChild(note(c.added + " added · " + c.removed + " removed · " + c.changed + " changed · " + c.unchanged + " unchanged")).setAttribute("data-gsa", "cmp-counts");
+
+    var controls = el("div", "gsa-controls"), sel = el("select", "rf-select");
+    sel.id = "gsaCompareFilter";
+    sel.setAttribute("aria-label", "Routes to show");
+    [["changed", "Changed routes"], ["all", "All routes"]].forEach(function (o) {
+      var op = el("option", "", o[1]);
+      op.value = o[0];
+      sel.appendChild(op);
+    });
+    sel.value = st.filter;
+    controls.appendChild(sel);
+    controls.appendChild(csvButton(function () { return cmpCSV(r); }, "compare.csv"));
+    host.appendChild(controls);
+    var tableHost = el("div");
+    host.appendChild(tableHost);
+    function drawTable() { tableHost.textContent = ""; tableHost.appendChild(cmpTable(r, st)); }
+    sel.addEventListener("change", function () { st.filter = sel.value === "all" ? "all" : "changed"; drawTable(); });
+    drawTable();
+
+    if (r.precheck.length) host.appendChild(cmpTitleVi(r));
+    r.notes.forEach(function (n) { host.appendChild(note(n)); });
+  }
+
   // ---- Route details: Cost tab (instant, like the other details tabs) ----
 
   function renderCostTab(el, routeId) {
@@ -1407,6 +1789,26 @@
     on("gsaRunService", "click", runService);
     on("gsaRunStops", "click", runStops);
     on("gsaRunHealth", "click", runHealth);
+    on("gsaRunCompare", "click", runCompare);
+    var radios = document.querySelectorAll('input[name="gsaCompareMode"]');
+    for (var ri = 0; ri < radios.length; ri++) {
+      radios[ri].addEventListener("change", function () {
+        if (!this.checked) return;
+        _compareCfg.mode = this.value === "drawn" ? "drawn" : "feed";
+        syncCompareControls(); saveSession(); checkStale();
+      });
+    }
+    on("gsaCompareFile", "change", function () {
+      _compareFile = this.files && this.files[0] ? this.files[0] : null;
+      syncCompareControls(); checkStale();
+    });
+    on("gsaComparePeople", "change", function () { _compareCfg.people = this.checked; saveSession(); checkStale(); });
+    on("gsaCompareServices", "change", function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains("gsa-cmp-replace")) return;
+      _compareCfg.replaced[t.getAttribute("data-key")] = t.value;
+      saveSession(); checkStale();
+    });
     on("gsaIncludeHidden", "change", function () { _includeHidden = this.checked; saveSession(); checkStale(); });
     on("gsaUseStopList", "change", function () { _useStopList = this.checked; saveSession(); checkStale(); });
     on("gsaDate", "change", function () {
@@ -1432,11 +1834,15 @@
     renderServiceResults(byId("gsaServiceResults"), _serviceResult, _ui);
     renderStopsResults(byId("gsaStopsResults"), _stopsResult, _ui);
     renderHealthResults(byId("gsaHealthResults"), _healthResult);
+    syncCompareControls();
+    renderCompareResults(byId("gsaCompareResults"), _compareResult);
     checkStale();
   }
 
   function clearAll() {
-    _serviceResult = null; _stopsResult = null; _healthResult = null;
+    _serviceResult = null; _stopsResult = null; _healthResult = null; _compareResult = null;
+    _compareFile = null;
+    _compareCfg = { mode: "feed", replaced: {}, people: true };
     if (typeof App.gtfsSetHealth === "function") App.gtfsSetHealth(null);
     _serviceStale = _stopsStale = false;
     _rateOverrides = {};
@@ -1457,7 +1863,11 @@
     onOpen: function () { onOpen(); },
     onClose: function () {},
     clear: function () { clearAll(); },
-    update: async function () { checkStale(); }
+    update: async function () {
+      // Drawn Services can change under an open Compare tab.
+      if (isPopupVisible()) syncCompareControls();
+      checkStale();
+    }
   });
 
   // ---- Session ----
@@ -1473,7 +1883,8 @@
           v: 1, service: Object.assign({}, _service), stops: { thresholdsFt: _stopsCfg.thresholdsFt.slice(),
             secondsPerStop: _stopsCfg.secondsPerStop },
           includeHidden: _includeHidden, useStopList: _useStopList,
-          rateOverrides: Object.assign({}, _rateOverrides), activeTab: _activeTab
+          rateOverrides: Object.assign({}, _rateOverrides), activeTab: _activeTab,
+          compare: { mode: _compareCfg.mode, replaced: Object.assign({}, _compareCfg.replaced), people: _compareCfg.people }
         };
       },
       apply: function (data) {
@@ -1498,8 +1909,11 @@
         var ro = data.rateOverrides || {};
         Object.keys(ro).forEach(function (k) { var v = sanitizeRate(ro[k]); if (v != null) _rateOverrides[k] = v; });
         _activeTab = tabId(data.activeTab);
+        var cm = data.compare || {}, rp = cm.replaced && typeof cm.replaced === "object" ? cm.replaced : {};
+        _compareCfg = { mode: cm.mode === "drawn" ? "drawn" : "feed", replaced: {}, people: typeof cm.people === "boolean" ? cm.people : true };
+        Object.keys(rp).forEach(function (k) { if (typeof rp[k] === "string") _compareCfg.replaced[k] = rp[k]; });
         // Results are not saved: they are recomputed from the feed with one click.
-        _serviceResult = _stopsResult = _healthResult = null;
+        _serviceResult = _stopsResult = _healthResult = _compareResult = null;
         clearMapLayers();
         if (isPopupVisible()) onOpen();
       }

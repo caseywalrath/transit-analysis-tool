@@ -6,7 +6,7 @@ the user's drawn Services (Build), shows the change table with totals and people
 sends ticked changed routes to Title VI as a new scenario.
 
 ## 2. Read first
-- `CLAUDE.md`, `AGENTS.md`, `docs/A7-plan.md`, `docs/a7-cards/card-a7b.1.md` (the `ServiceCompare` contract;
+- `CLAUDE.md`, `AGENTS.md`, `docs/archive/A7-plan.md`, `docs/archive/a7-cards/card-a7b.1.md` (the `ServiceCompare` contract;
   the engine is in `js/core/service-compare.js`).
 - `js/core/analysis-network-source.js`: section `// ---- Build vs No-Build service summaries` — `App.feedServiceSummary`,
   `App.editedServiceSummary`, `App.serviceSourceRouteId`, `App.countPeopleNearStops` (use them; do not change them).

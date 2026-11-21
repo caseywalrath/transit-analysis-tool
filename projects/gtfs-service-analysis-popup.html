@@ -1,4 +1,4 @@
-<!-- GTFS Service Analysis — tabbed popup body (Service & Cost | Stops | Feed health) -->
+<!-- GTFS Service Analysis — tabbed popup body (Service & Cost | Stops | Compare | Feed health) -->
 <div class="gsa-body">
 
   <div class="gsa-scope">
@@ -16,6 +16,7 @@
   <div class="rf-tabs gsa-tabs" role="tablist">
     <button type="button" class="rf-tab rf-tab-active" data-tab="service">Service &amp; Cost</button>
     <button type="button" class="rf-tab" data-tab="stops">Stops</button>
+    <button type="button" class="rf-tab" data-tab="compare">Compare</button>
     <button type="button" class="rf-tab" data-tab="health">Feed health</button>
   </div>
 
@@ -103,6 +104,36 @@
       <button type="button" id="gsaRunStops" class="rf-action-primary">Analyze stops</button>
     </div>
     <div id="gsaStopsResults"></div>
+  </div>
+
+  <!-- Compare (Build vs No-Build) -->
+  <div class="rf-tab-content" data-tab="compare">
+    <p class="tiny u-muted">No-Build is the loaded feed. Build is another GTFS feed, or the loaded feed with your drawn Services standing in for routes.</p>
+    <div class="gsa-cmp-mode">
+      <label class="tpi-toggle-row">
+        <input type="radio" name="gsaCompareMode" value="feed" checked>
+        <span class="tiny">Another GTFS feed (ZIP)</span>
+      </label>
+      <label class="tpi-toggle-row">
+        <input type="radio" name="gsaCompareMode" value="drawn">
+        <span class="tiny">This feed with my drawn Services</span>
+      </label>
+    </div>
+    <div id="gsaCompareFeedBox" class="form-field">
+      <input type="file" id="gsaCompareFile" accept=".zip" aria-label="Build GTFS feed (ZIP)">
+      <span id="gsaCompareFileName" class="tiny u-muted"></span>
+    </div>
+    <div id="gsaCompareDrawnBox" class="gsa-cmp-services" style="display:none;">
+      <div id="gsaCompareServices"></div>
+    </div>
+    <label class="tpi-toggle-row">
+      <input type="checkbox" id="gsaComparePeople" checked>
+      <span class="tiny">Count residents, jobs and census blocks near stops (downloads Census data)</span>
+    </label>
+    <div class="module-input-actions">
+      <button type="button" id="gsaRunCompare" class="rf-action-primary">Compare</button>
+    </div>
+    <div id="gsaCompareResults"></div>
   </div>
 
   <!-- Feed health -->
