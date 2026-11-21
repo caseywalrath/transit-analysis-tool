@@ -5932,6 +5932,8 @@ body.dark-mode .gtfs-detail-title { border-color: #3a3a50; }
 }
 .rc-service-actions button { flex: 1; }
 .rc-summary-label { margin-top: var(--space-4); }
+/* Narrow so the Rate column does not widen the Total table. */
+.rc-rate-override { width: 72px; }
 
 .rc-settings-grid {
   display: grid;

@@ -15,20 +15,24 @@ Daily/annual operating cost for transit Services assembled from drawn Routes/Lin
 - `computeLayoverHrs(rtHrs, settings)`: minutes mode `layoverValue/60`; percent mode `rtHrs × layoverValue/100`.
 - `cycleHrs = rtHrs + layoverHrs`; `tripsPerCycle` 2 (paired/Both), 1 (loop), N (3+).
 - **3+ patterns** (the only path that differs; 1-2-pattern math is golden-pinned): each pattern is a one-way trip stream, layover per trip = `computeLayoverHrs(2 × oneWay_p) / 2`, daily peak vehicles = `ceil(Σ_p (oneWay_p + layover_p) × 60 / minHeadway_p,day)` over patterns running that day. The list pill reads "Grouped" instead of "Paired".
-- Per band: `trips = ceil(hours × 60 / headwayMin)`; blank/0 headway = no service; midnight-wrap bands supported. `platHrs = revHrs + layoverHrs + deadheadHrs`, `deadheadHrs = revHrs × deadheadPct/100`.
+- Per band: `trips = ceil(hours × 60 / headwayMin)`; blank/0 headway = no service; midnight-wrap bands supported. `platHrs = revHrs + layoverHrs + deadheadHrs`, `deadheadHrs = revHrs × deadheadPct/100`. **`revHrs` is RUNNING hours** (no layover); the field name stays because saved sessions and golden files use it, but every label says "running-hr". `revenueHrs = revHrs + layoverHrs` (NTD revenue hours) is the new per-day field, with `annual.revenueHrs`, `dailyRevenueHrs` and `annualRevenueHrs` in the summary.
 - Each day type has its own min headway → peak vehicles; Service peak fleet = max across day types.
 - `computeSystemSummary(serviceResults, settings, intGroups)` → per-day and total metrics, `fleetSumRounded`, `fleetSumRaw` (theoretical interline min), `fleetWithSpares`.
 - `computeInterlinesEffect(serviceResults, intGroups)`: per group of ≥2, `savings[day] = Σ peaks − max peak`.
 
-**Interlines:** the UI and pooling logic exist but `#rcInterlinesBtn` is `disabled` in the popup HTML. **Do not enable** without reviewing the fleet-pooling logic.
+**Rate basis** (`settings.rateBasis`): `"revenue"` = cost is rate × `revenueHrs` (the default for new work); `"platform"` = rate × `platHrs`. `computeService` treats anything but `"revenue"` as platform, so an engine call without the setting keeps the original math. Restoring a session whose `settings` has no `rateBasis` sets `"platform"` (saved results keep their method).
 
-**Results:** Skipped block, Weekday/Saturday/Sunday tables, Total (annualized) table with expandable band breakdown, and a Wk/Sa/Su/Total system summary. CSV export includes Day Type and explicit layover/deadhead.
+**Per-Service rate override:** module state `_rateOverrides` (`{ serviceKey: $/hr }`), entered in the last column of the Total (annualized) table and saved as `rateOverrides` (keys migrated via `App.migrateServiceKey`; unresolvable keys dropped). It lives here, not in feature attributes. `effectiveRate(settings, override)`: a finite value > 0 wins, otherwise `settings.costPerHour` (blank, 0, negative, text ignored). `runCosting` passes `Object.assign({}, _settings, { costPerHour: rate })` to `computeService`; each result records `rateUsed` and `rateIsOverride`. Editing an override marks results stale; it does not re-run. Test hooks `App._rcTest.sanitizeRate` / `effectiveRate`.
 
-**Costing Settings modal** (`rcSettingsModal`): cost/platform hr, deadhead %, layover mode (`minutes`/`percent`) + value, days/year Wk/Sa/Su (sum turns red over 366), spare ratio %, cost basis label, runtime mode (`rcRuntimeMode`). Confirm re-validates and marks results stale.
+**Interlines:** the UI and pooling logic exist but `#rcInterlinesBtn` is `disabled` in the popup HTML (tooltip: planned for the Transit Costing Tool). **Do not enable** without reviewing the fleet-pooling logic.
 
-**Persistence:** `App.cache.registerModule("route-costing", …)` — `settings`, `selectedKeys`, `interlineGroups`, `lastSummary` (per-Service `perDay` totals, no band breakdown). Schema **v3** (solo Service keys ID-based, e.g. `"solo-route-id12"`); v2/v1 restore (v1 summaries dropped). `restoreRcState` migrates `"group-…"` → `"service-…"` and index solo keys → ID keys via `App.migrateServiceKey` in selections, interline groups and summary rows (unresolvable keys dropped from selections/groups, kept verbatim in the summary). Checkbox state is re-read by key on every `update()`, so selection survives deletes/merges of earlier features.
+**Results:** Skipped block, Weekday/Saturday/Sunday tables, Total (annualized) table with expandable band breakdown, and a Wk/Sa/Su/Total system summary. A sentence under the summary names the cost basis. CSV export includes Day Type, explicit layover/deadhead, running-hr and revenue-hr columns, per-Service `Rate ($/hr)` and `Rate source` (default/override), and a `# Cost basis: rate × revenue|platform hours` header line; the old `rev-hr` columns are now `running-hr`.
 
-**Not built:** fare/revenue, per-Service cost overrides, inflation.
+**Costing Settings modal** (`rcSettingsModal`): cost per hour + rate basis (`rcRateBasis`), deadhead %, layover mode (`minutes`/`percent`) + value, days/year Wk/Sa/Su (sum turns red over 366), spare ratio %, cost basis label, runtime mode (`rcRuntimeMode`). Confirm re-validates and marks results stale.
+
+**Persistence:** `App.cache.registerModule("route-costing", …)` — `settings`, `selectedKeys`, `interlineGroups`, `rateOverrides`, `lastSummary` (per-Service `perDay` totals, no band breakdown). Schema **v4** (adds `settings.rateBasis` and `rateOverrides`); v3 (solo Service keys ID-based, e.g. `"solo-route-id12"`) restores with the platform basis; v2/v1 restore (v1 summaries dropped). `restoreRcState` migrates `"group-…"` → `"service-…"` and index solo keys → ID keys via `App.migrateServiceKey` in selections, interline groups and summary rows (unresolvable keys dropped from selections/groups, kept verbatim in the summary). Checkbox state is re-read by key on every `update()`, so selection survives deletes/merges of earlier features.
+
+**Not built:** fare revenue, inflation.
 
 ## route-costing-popup.html
 
