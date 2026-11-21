@@ -5800,6 +5800,11 @@ body.dark-mode .result-error td { color: #fc8181; }
   margin-top: 6px;
 }
 
+.gtfs-date-controls { margin-bottom: var(--space-3, 12px); }
+.gtfs-date-controls input[type="date"] { width: 100%; }
+.gtfs-date-desc { font-size: var(--text-sm); color: var(--text-primary, inherit); margin-top: 4px; }
+.gtfs-date-range { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+
 .gtfs-table-truncated td {
   text-align: center;
   color: var(--muted);

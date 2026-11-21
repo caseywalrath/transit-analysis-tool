@@ -17,6 +17,7 @@ cdot-roads.js        pure, no deps; window.CdotRoads (before cdot-source.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
+gtfs-schedule.js     Pure engine, window.GtfsSchedule; reads nothing at load time (golden-tested alone). Before gtfs.js, which calls it only at load-feed time
 gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
 walk-tiles-source.js reads WalkTiles at call time; App.walkTilesSource + FLM dialog wiring (before road-network.js)
 cdot-source.js       reads CdotRoads, App.walkTilesSource at call time; App.cdotSource + CDOT dialog wiring (before road-network.js)

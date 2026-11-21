@@ -9,7 +9,9 @@
   var App = window.App = window.App || {};
 
   // ---- Module-local state ----
-  var _gtfsData    = null;   // Map<filename, { headers: [], rows: [] }>
+  var _gtfsData    = null;   // Map<filename, { headers: [], rows: [] }>; stop_times has rows: null, columnar: true (rows live in _feed.st)
+  var _feed        = null;   // GtfsSchedule feed built from the same tables
+  var _feedBlob    = null;   // the original ZIP, kept for session files; null after an old-format session restore
   var _selectedFile = null;  // currently active file in the directory list
   var _initialized  = false;
   var _showRoutes   = true;
@@ -449,32 +451,44 @@
     }
 
     App.setStatus("Parsing GTFS files\u2026");
+    var S = window.GtfsSchedule;
+    var tables = {}, stStore = null;
     for (var i = 0; i < entries.length; i++) {
       var name  = entries[i].name;
       var entry = entries[i].entry;
       try {
-        var text   = await entry.async("string");
-        var parsed = Papa.parse(text.trim(), {
-          header:         true,
-          skipEmptyLines: true,
-          dynamicTyping:  false
-        });
-        data.set(name, {
-          headers: parsed.meta.fields || [],
-          rows:    parsed.data
-        });
+        var text = await entry.async("string");
+        if (seq !== _loadSeq) return false;
+        if (name === "shapes.txt") {
+          data.set(name, await parseShapesAsync(text));
+        } else if (name === "stop_times.txt") {
+          var stHeaders = [];
+          var b = new S.StopTimesBuilder();
+          await streamText(text, new S.CsvStream(function (h) { stHeaders = h; b.header(h); }, function (v) { b.row(v); }));
+          text = null;
+          stStore = b.finish();
+          data.set(name, { headers: stHeaders, rows: null, rowCount: stStore.rowCount, columnar: true });
+        } else {
+          var t = await parseTableAsync(text);
+          tables[name] = t;
+          data.set(name, t);
+        }
       } catch (e) {
         console.warn("GTFS: could not parse", name, e);
       }
+      if (seq !== _loadSeq) return false;
     }
 
     // A newer load, or a Remove layer, happened while this one was parsing.
     if (seq !== _loadSeq) return false;
 
-    if (!restored) _pendingHidden = null; // a fresh upload never inherits a session's hidden sets
+    if (!(opts && opts.keepHidden) && !restored) { _pendingHidden = null; _pendingDate = null; } // a fresh upload never inherits a session's hidden sets or date
     _feedFileName = file.name || "";
+    _feedBlob = file;
+    _feed = S.buildFeed(tables, stStore);
     applyGtfsData(data);
-    if (restored) applyPendingHidden();
+    if (restored || (opts && opts.keepHidden)) applyPendingHidden();
+    initAnalysisDate();
     changed(); // feed name changed + re-apply highlight/counts; the stop list itself is kept (D8)
     if (restored) {
       App.setStatus("GTFS feed restored from last session: " + _feedFileName + " (" + data.size + " file(s)).");
@@ -483,6 +497,50 @@
       persistFeed(file, seq);
     }
     return true;
+  }
+
+  // Large tables (stop_times, shapes) would block the page for over a second if
+  // parsed in one call, so text is fed to the parser a slice at a time and the
+  // page gets a turn whenever a slice run has taken more than ~40 ms.
+  var SLICE_CHARS = 1 << 18;
+  function yieldToPage() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  async function streamText(text, cs) {
+    var last = Date.now();
+    for (var i = 0; i < text.length; i += SLICE_CHARS) {
+      cs.write(text.slice(i, i + SLICE_CHARS));
+      if (Date.now() - last > 40) { await yieldToPage(); last = Date.now(); }
+    }
+    cs.end();
+  }
+  // shapes.txt is grouped straight into per-shape point lists: on a large feed
+  // its row objects were the biggest memory cost after stop_times. Only the
+  // first rows are kept as objects, for the table viewer.
+  async function parseShapesAsync(text) {
+    var headers = [], preview = [], groups = {}, count = 0, c = null;
+    await streamText(text, new window.GtfsSchedule.CsvStream(function (h) {
+      headers = h;
+      c = { id: h.indexOf("shape_id"), lat: h.indexOf("shape_pt_lat"), lon: h.indexOf("shape_pt_lon"), seq: h.indexOf("shape_pt_sequence") };
+    }, function (v) {
+      count++;
+      if (preview.length < TABLE_ROW_LIMIT) {
+        var o = {};
+        for (var k = 0; k < headers.length; k++) o[headers[k]] = v[k];
+        preview.push(o);
+      }
+      if (c.id < 0 || c.lat < 0 || c.lon < 0 || c.seq < 0) return;
+      addShapePoint(groups, v[c.id], v[c.lat], v[c.lon], v[c.seq]);
+    }));
+    return { headers: headers, rows: null, rowCount: count, columnar: true, preview: preview, groups: groups };
+  }
+
+  async function parseTableAsync(text) {
+    var headers = [], rows = [];
+    await streamText(text, new window.GtfsSchedule.CsvStream(function (h) { headers = h; }, function (v) {
+      var o = {};
+      for (var k = 0; k < headers.length; k++) o[headers[k]] = v[k];
+      rows.push(o);
+    }));
+    return { headers: headers, rows: rows };
   }
 
   // Keep the ZIP in IndexedDB (js/core/gtfs-store.js) so a page refresh brings
@@ -537,25 +595,161 @@
 
   // Restore GTFS feed from a previously serialized state-file payload.
   // serialized: { "stops.txt": { headers: [...], rows: [...] }, ... }
+  // Session files saved before the ZIP was embedded carry the parsed tables;
+  // they still open, by rebuilding the same store an upload would.
   function restoreGTFSFromData(serialized) {
     if (!serialized || typeof serialized !== "object") return;
-    var dataMap = new Map();
+    var S = window.GtfsSchedule;
+    var dataMap = new Map(), tables = {}, stStore = null;
     Object.keys(serialized).forEach(function (k) {
-      dataMap.set(k, serialized[k]);
+      var t = serialized[k];
+      if (!t || !Array.isArray(t.rows)) return;
+      var headers = t.headers || [];
+      if (k === "stop_times.txt") {
+        var b = new S.StopTimesBuilder();
+        b.header(headers);
+        t.rows.forEach(function (r) {
+          b.row(headers.map(function (h) { return r[h] == null ? "" : String(r[h]); }));
+        });
+        stStore = b.finish();
+        dataMap.set(k, { headers: headers, rows: null, rowCount: stStore.rowCount, columnar: true });
+      } else {
+        tables[k] = { headers: headers, rows: t.rows };
+        dataMap.set(k, tables[k]);
+      }
     });
     if (dataMap.size === 0) return;
+    _loadSeq++;
+    _feedBlob = null;
+    _feed = S.buildFeed(tables, stStore);
     applyGtfsData(dataMap);
     applyPendingHidden();
+    initAnalysisDate();
+    changed();
     App.setStatus("GTFS restored: " + dataMap.size + " file(s).");
   }
 
-  // Serialize the current _gtfsData Map to a plain JSON-friendly object.
-  // Returns null when no feed is loaded.
+  // The parsed tables as plain objects (the pre-ZIP session shape). No longer
+  // written to session files; kept for callers that inspect the loaded feed.
+  // stop_times rows are rebuilt from the columns on each call, so it is slow on
+  // a large feed.
   function serializeGTFSData() {
     if (!_gtfsData || _gtfsData.size === 0) return null;
     var out = {};
-    _gtfsData.forEach(function (val, key) { out[key] = val; });
+    _gtfsData.forEach(function (val, key) {
+      if (!val.columnar) { out[key] = val; return; }
+      if (key === "shapes.txt") { out[key] = { headers: ["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"], rows: shapeRowsFromFC() }; return; }
+      out[key] = { headers: STOP_TIMES_COLUMNS.slice(), rows: stopTimesPreviewRows(Infinity) };
+    });
     return out;
+  }
+
+  function shapeRowsFromFC() {
+    var out = [];
+    ((_shapesFC && _shapesFC.features) || []).forEach(function (f) {
+      f.geometry.coordinates.forEach(function (c, i) {
+        out.push({ shape_id: f.properties.shape_id, shape_pt_lat: String(c[1]), shape_pt_lon: String(c[0]), shape_pt_sequence: String(i + 1) });
+      });
+    });
+    return out;
+  }
+
+  // Session payload: the original ZIP as base64 (several times smaller than the
+  // parsed tables). Null when no feed is loaded or it came from an old session
+  // file that had no ZIP to keep.
+  function serializeGTFSZip() {
+    if (!_gtfsData || !_feedBlob) return Promise.resolve(null);
+    var blob = _feedBlob, name = _feedFileName;
+    return new Promise(function (resolve) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var s = String(fr.result || ""), comma = s.indexOf(",");
+        resolve(comma >= 0 ? { name: name, base64: s.slice(comma + 1) } : null);
+      };
+      fr.onerror = function () { resolve(null); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  // Loads a feed from a session file's embedded ZIP through the upload path, so
+  // it is identical to an upload; the session's hidden sets are kept.
+  function restoreGTFSFromZip(payload) {
+    if (!payload || typeof payload.base64 !== "string") return Promise.resolve(false);
+    var bin;
+    try { bin = atob(payload.base64); } catch (e) { return Promise.reject(new Error("the GTFS feed in this session file is damaged")); }
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var file = new File([bytes], payload.name || "feed.zip", { type: "application/zip" });
+    return loadGTFSFile(file, { keepHidden: true });
+  }
+
+  // ---- Day to analyze ----
+  // One exact service date shared by every GTFS analysis. Kept here because it
+  // only means something while a feed is loaded; open panels subscribe through
+  // App.gtfsAnalysisDate.onChange.
+  var _analysisDate = null;
+  var _pendingDate = null;   // from a restored session, applied once the feed is in
+  var _dateListeners = [];
+
+  function fireDateChange() {
+    _dateListeners.slice().forEach(function (fn) {
+      try { fn(_analysisDate); } catch (e) { console.warn("GTFS date listener failed:", e); }
+    });
+    renderDateControls();
+  }
+
+  // Keeps a session's date when the feed covers it; otherwise starts on the
+  // feed's busiest weekday so a first look shows full service, not a holiday.
+  function initAnalysisDate() {
+    var S = window.GtfsSchedule, range = _feed ? S.dateRange(_feed) : null;
+    var want = _pendingDate;
+    _pendingDate = null;
+    if (!range) _analysisDate = null;
+    else if (want && want >= range.start && want <= range.end) _analysisDate = want;
+    else _analysisDate = S.busiestDate(_feed, "weekday") || range.start;
+    fireDateChange();
+  }
+
+  function setAnalysisDate(date) {
+    if (typeof date !== "string" || !/^\d{8}$/.test(date) || !_feed) return false;
+    var range = window.GtfsSchedule.dateRange(_feed);
+    if (!range || date < range.start || date > range.end) return false;
+    if (date === _analysisDate) return true;
+    _analysisDate = date;
+    fireDateChange();
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    return true;
+  }
+
+  function isoOf(d) { return d ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) : ""; }
+
+  function describeDate(d) {
+    if (!d || !_feed) return "";
+    var S = window.GtfsSchedule, info = S.dayType(_feed, d);
+    var n = S.tripsOnDate(_feed, d).trips.length;
+    var dt = new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)));
+    var label = dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+    return label + " · " + n.toLocaleString() + " trip" + (n === 1 ? "" : "s") +
+      (info.exception ? " · special service (holiday or added service)" : "");
+  }
+
+  function renderDateControls() {
+    if (typeof document === "undefined") return;
+    var wrap = document.getElementById("gtfsDateControls");
+    if (!wrap) return;
+    var range = _feed ? window.GtfsSchedule.dateRange(_feed) : null;
+    wrap.style.display = range ? "" : "none";
+    if (!range) return;
+    var input = document.getElementById("gtfsAnalysisDate");
+    if (input) {
+      input.min = isoOf(range.start);
+      input.max = isoOf(range.end);
+      input.value = isoOf(_analysisDate);
+    }
+    var desc = document.getElementById("gtfsAnalysisDateDesc");
+    if (desc) desc.textContent = describeDate(_analysisDate);
+    var rng = document.getElementById("gtfsAnalysisDateRange");
+    if (rng) rng.textContent = "Feed runs " + isoOf(range.start) + " to " + isoOf(range.end) + ".";
   }
 
   function clearGTFS() {
@@ -571,6 +765,11 @@
     _hiddenShapes = {};
     _pendingHidden = null;
     _feedFileName = "";
+    _feed = null;
+    _feedBlob = null;
+    _analysisDate = null;
+    _pendingDate = null;
+    fireDateChange();
     _selectedStops = [];
     _selectedLookup = Object.create(null);
     removeMapLayers(); // also removes popups
@@ -690,7 +889,10 @@
 
     // --- shapes.txt → route geometry ---
     if (_gtfsData && _gtfsData.has("shapes.txt")) {
-      var shapesFC = buildShapesGeoJSON(_gtfsData.get("shapes.txt").rows, routeLookup);
+      var shEntry = _gtfsData.get("shapes.txt");
+      var shapesFC = buildShapesGeoJSON(shEntry.columnar ? shEntry : shEntry.rows, routeLookup);
+      // The grouped points now live in the features; drop them (memory).
+      if (shEntry.columnar) shEntry.groups = null;
       _shapesFC = shapesFC;
       _routeIndex = buildRouteIndex(shapesFC,
         _gtfsData.has("trips.txt") ? _gtfsData.get("trips.txt").rows : [],
@@ -1353,18 +1555,23 @@
 
   // ---- GeoJSON builders ----
 
+  function addShapePoint(groups, id, latText, lonText, seqText) {
+    var lat = parseFloat(latText);
+    var lon = parseFloat(lonText);
+    var seq = parseInt(seqText, 10);
+    if (!id || isNaN(lat) || isNaN(lon) || isNaN(seq)) return;
+    if (!groups[id]) groups[id] = [];
+    groups[id].push([seq, lon, lat]);
+  }
+
+  // rows: shapes.txt row objects, or { groups } already built while parsing.
   function buildShapesGeoJSON(rows, routeLookup) {
     // Group points by shape_id, sort by sequence, build LineStrings
     var groups = {};
-    for (var i = 0; i < rows.length; i++) {
-      var r   = rows[i];
-      var id  = r.shape_id;
-      var lat = parseFloat(r.shape_pt_lat);
-      var lon = parseFloat(r.shape_pt_lon);
-      var seq = parseInt(r.shape_pt_sequence, 10);
-      if (!id || isNaN(lat) || isNaN(lon) || isNaN(seq)) continue;
-      if (!groups[id]) groups[id] = [];
-      groups[id].push([seq, lon, lat]);
+    if (rows && rows.groups) groups = rows.groups;
+    else for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      addShapePoint(groups, r.shape_id, r.shape_pt_lat, r.shape_pt_lon, r.shape_pt_sequence);
     }
 
     var features = [];
@@ -1458,7 +1665,7 @@
         '<span class="gtfs-file-badge' + (isReq ? ' req' : '') + '">' +
           (isReq ? "REQ" : "OPT") +
         '</span>';
-      btn.title = fileData.rows.length + " rows";
+      btn.title = (fileData.columnar ? fileData.rowCount : fileData.rows.length) + " rows";
 
       (function (f) {
         btn.addEventListener("click", function () {
@@ -1489,6 +1696,23 @@
 
   var TABLE_ROW_LIMIT = 500;
 
+  // stop_times is held as compact columns rather than row objects (memory), so
+  // the viewer shows the columns the app keeps, rebuilt for the first rows only.
+  var STOP_TIMES_COLUMNS = ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence", "timepoint"];
+  function stopTimesPreviewRows(limit) {
+    var st = _feed && _feed.st, out = [];
+    if (!st) return out;
+    var S = window.GtfsSchedule, n = Math.min(limit, st.rowCount);
+    for (var i = 0; i < n; i++) {
+      out.push({
+        trip_id: st.tripIds[st.trip[i]], arrival_time: S.formatTime(st.arr[i]),
+        departure_time: S.formatTime(st.dep[i]), stop_id: st.stopIds[st.stop[i]],
+        stop_sequence: String(st.seq[i]), timepoint: st.tp[i] === 255 ? "" : String(st.tp[i])
+      });
+    }
+    return out;
+  }
+
   function renderTable(fname) {
     var fileData = _gtfsData && _gtfsData.get(fname);
     if (!fileData) return;
@@ -1506,7 +1730,14 @@
 
     var headers = fileData.headers;
     var rows    = fileData.rows;
-    var shown   = Math.min(rows.length, TABLE_ROW_LIMIT);
+    var total   = rows ? rows.length : fileData.rowCount;
+    if (fileData.columnar && fileData.preview) {
+      rows = fileData.preview;
+    } else if (fileData.columnar) {
+      headers = STOP_TIMES_COLUMNS;
+      rows = stopTimesPreviewRows(TABLE_ROW_LIMIT);
+    }
+    var shown   = Math.min(total, TABLE_ROW_LIMIT);
 
     var thHtml = "<tr>";
     for (var h = 0; h < headers.length; h++) {
@@ -1524,10 +1755,10 @@
       }
       tbHtml += "</tr>";
     }
-    if (rows.length > TABLE_ROW_LIMIT) {
+    if (total > TABLE_ROW_LIMIT) {
       tbHtml +=
         '<tr class="gtfs-table-truncated"><td colspan="' + headers.length + '">' +
-        "Showing " + TABLE_ROW_LIMIT + " of " + rows.length.toLocaleString() + " rows" +
+        "Showing " + TABLE_ROW_LIMIT + " of " + total.toLocaleString() + " rows" +
         "</td></tr>";
     }
     tbody.innerHTML = tbHtml;
@@ -1535,8 +1766,9 @@
 
     if (meta) {
       meta.textContent =
-        rows.length.toLocaleString() + " row" + (rows.length !== 1 ? "s" : "") +
-        ", " + headers.length + " column" + (headers.length !== 1 ? "s" : "");
+        total.toLocaleString() + " row" + (total !== 1 ? "s" : "") +
+        ", " + headers.length + " column" + (headers.length !== 1 ? "s" : "") +
+        (fileData.columnar && !fileData.preview ? " (the columns the app uses, in trip and stop order)" : "");
       meta.style.display = "";
     }
   }
@@ -1565,6 +1797,14 @@
       });
     }
 
+    var dateInput = document.getElementById("gtfsAnalysisDate");
+    if (dateInput) {
+      dateInput.addEventListener("change", function () {
+        var v = String(this.value || "").replace(/-/g, "");
+        if (!setAnalysisDate(v)) renderDateControls();
+      });
+    }
+
     var clearBtn = document.getElementById("gtfsClearBtn");
     if (clearBtn) {
       clearBtn.addEventListener("click", function () {
@@ -1580,6 +1820,7 @@
     if (showStops) showStops.checked = _showStops;
 
     renderFileList();
+    renderDateControls();
 
     if (_selectedFile && _gtfsData && _gtfsData.has(_selectedFile)) {
       renderTable(_selectedFile);
@@ -1627,7 +1868,19 @@
   App.restoreCachedGTFS = restoreCachedGTFS;
   App.clearGTFS    = clearGTFS;
   App.restoreGTFSFromData = restoreGTFSFromData;
+  App.restoreGTFSFromZip  = restoreGTFSFromZip;
+  App.serializeGTFSZip    = serializeGTFSZip;
   App.serializeGTFSData   = serializeGTFSData;
+  App.gtfsSchedule = function () { return _feed; };
+  App.gtfsAnalysisDate = {
+    get: function () { return _analysisDate; },
+    set: setAnalysisDate,
+    onChange: function (fn) {
+      if (typeof fn !== "function") return function () {};
+      _dateListeners.push(fn);
+      return function () { var i = _dateListeners.indexOf(fn); if (i >= 0) _dateListeners.splice(i, 1); };
+    }
+  };
   App.setGtfsLayersVisible = function (visible) {
     if (typeof setRouteLayerVisibility === "function") setRouteLayerVisibility(visible);
     if (typeof setStopLayerVisibility  === "function") setStopLayerVisibility(visible);
@@ -1789,6 +2042,7 @@
         var out = _routeIndex ? App.gtfsHiddenState() : {};
         out.stops = _selectedStops.slice();
         out.feedFile = _feedFileName;
+        if (_analysisDate) out.analysisDate = _analysisDate;
         return out;
       },
       apply: function (data) {
@@ -1802,6 +2056,12 @@
           _selectedStops.forEach(function (id) { _selectedLookup[id] = true; });
         }
         if (data && typeof data.feedFile === "string") _feedFileName = data.feedFile;
+        // Queued even when a feed is loaded: a session file's own feed usually
+        // replaces it right after, and initAnalysisDate reads the queue.
+        if (data && typeof data.analysisDate === "string" && /^\d{8}$/.test(data.analysisDate)) {
+          _pendingDate = data.analysisDate;
+          if (_feed) setAnalysisDate(data.analysisDate);
+        }
         var map = App.map;
         if (map && map.getLayer(SEL_LAYER)) map.setFilter(SEL_LAYER, selectedStopsFilter());
         if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();

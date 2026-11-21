@@ -8,6 +8,13 @@
     <!-- Left: file directory + map controls -->
     <div class="rf-settings-col">
 
+      <div id="gtfsDateControls" class="gtfs-date-controls" style="display:none;">
+        <div class="rf-section-title">Day to analyze</div>
+        <input type="date" id="gtfsAnalysisDate" class="rf-select" aria-label="Day to analyze">
+        <div id="gtfsAnalysisDateDesc" class="gtfs-date-desc"></div>
+        <div id="gtfsAnalysisDateRange" class="gtfs-date-range"></div>
+      </div>
+
       <div class="rf-section-title">Feed Files</div>
       <div id="gtfsFileList" class="gtfs-file-list">
         <div class="gtfs-empty-state">No GTFS feed loaded.<br>Use Add Data&nbsp;(+) &rarr; GTFS to load a feed.</div>

@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0 and A1 complete; next phase A2.
+> **Status:** Approved at Gate G0 (2026-11-21). A0, A1 and A2 complete; next phase A3 or A4.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -370,7 +370,7 @@ Use `CLAUDE.md` § Testing:
 |---|---|---|---|---|---|---|
 | A0 | Test feeds and a speed baseline (nothing visible) | Ready | O | — | G0a–b | Done (2026-11-21) |
 | A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Done (2026-11-21) |
-| A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Not started |
+| A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Done |
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Not started |
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Not started |
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Not started |
@@ -969,8 +969,8 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G1a | A1 | Count people by area or by 2020 blocks | Blocks for new runs | Blocks for new runs (Option B) | 2026-11-21 |
 | G1b | A1 | Coverage from stops or line | Stops when present | Stops when present (Option A) | 2026-11-21 |
 | G1c | A1 | Route Costing rate basis | Keep platform default, add revenue | Revenue-hour default (Option B) | 2026-11-21 |
-| G2a | A2 | GTFS inside session files | Original ZIP | | |
-| G2b | A2 | Choosing the day to analyze | Day type → typical date, changeable | | |
+| G2a | A2 | GTFS inside session files | Original ZIP | Original ZIP (Option A) | 2026-11-21 |
+| G2b | A2 | Choosing the day to analyze | Day type → typical date, changeable | Exact date always (Option B) | 2026-11-21 |
 | G3a | A3 | Detail of copied headway bands | Standard day parts | | |
 | G3b | A3 | Copy stops too | Yes, up to 5 routes | | |
 | G4a | A4 | Where details appear | Left details panel | | |
@@ -1127,3 +1127,56 @@ Each gate is answered in its phase section. Record answers here and in the progr
 - Related names: `App.APPORTION_DEFAULT = "blockPop"`, `App.apportionMethodFromLegacy(bool)` and `Apportion.methodLabel(m)`.
 - `App.associatedStopPoints(type, feature, {includeHidden})` and `App.buildStopCircleUnion(points, miles)`.
 - Route Costing: `settings.rateBasis` and `_rateOverrides` (saved as `rateOverrides`, state v4). Per-day `revenueHrs`, plus `dailyRevenueHrs` and `annualRevenueHrs`. Test hooks: `App._rcTest.sanitizeRate` and `effectiveRate`.
+
+### 2026-11-21 — A2 GTFS schedule engine (Opus orchestrating)
+
+**Gates:**
+- G2a: the original ZIP goes in session files.
+- G2b: always an exact date (not the recommendation). The control starts on the feed's busiest weekday, shown as an exact date, and the user can pick any date in the feed's range. There is no day-type picker.
+
+**Tasks:**
+- A2.1 card pass [Opus]. Deviation: A2.2–A2.5 went to one Sonnet card instead of three Haiku cards plus one Sonnet card. They share one new file, and the CSV reader, store and queries depend on each other.
+- A2.2–A2.5 engine [Sonnet]: `js/core/gtfs-schedule.js`, with 115 golden cases (`test/cases/gtfs-schedule.mjs`). Every value in `EXPECTED.md` reproduced, and the 10-minute sweep layover is kept as the default. Opus fixes after review:
+  - `busiestDate` returns null when no day of that type has service.
+  - Frequency runs from a template with a `block_id` each count as their own vehicle.
+  - A bad duplicate calendar row no longer deletes the valid row before it.
+  - Two golden cases were added for these.
+- A2.7a synthetic feed [Haiku]: `test/perf/make-synthetic-feed.mjs` (deterministic; about 835 k stop_times rows at scale 1). Headway was widened to 20–60 min to hit the row target.
+- A2.6 loader integration [Opus]:
+  - The parse uses `CsvStream` in slices that yield to the page.
+  - stop_times is kept only in the columnar store.
+  - shapes are grouped while parsing, keeping a 500-row preview.
+  - Session export writes `gtfsZip` and falls back to `gtfsData` for a feed that came from an old session file.
+  - Old session files still open.
+  - Day to analyze control and API; table viewer reads from the store.
+- A2.7b browser test [Sonnet]: `test/browser/gtfs-schedule.test.mjs`, 16 checks: mini feed, date API and panel, refresh, ZIP round trip, old format, `importFullState`, clear, and the synthetic feed's responsiveness.
+- A2.8 review [Opus]: `code-review` at high found 8 issues, all fixed directly:
+  - session date lost when a feed was already loaded;
+  - old-format feed dropped on re-save;
+  - frequency block peaks;
+  - dates outside the feed's range accepted;
+  - damaged base64 showing the wrong error;
+  - a stale session date applied to a fresh upload;
+  - `notifyProject` firing before the ZIP feed loaded;
+  - calendar duplicate rows.
+
+  The review also found 1 problem in A1 code, fixed here: the block-method label and medians note in Feature Area Analysis said "population-weighted" but the weights are each geography's share of its residents inside.
+- Background thread (D11): not built. The main thread meets the targets.
+
+**Performance** (this container, `test/perf/gtfs-baseline.mjs`):
+
+| Feed | Load to map | Longest freeze | Heap growth | GTFS part of session |
+|---|---|---|---|---|
+| RTD, before | 4.0–4.4 s | 1.41–1.47 s | 210 MB | 240 M chars |
+| RTD, after | 3.0–3.3 s | 0.22 s | 69 MB | 14.4 M chars |
+| Synthetic (scale 1), after | 2.2 s | 0.19–0.24 s | 47 MB | 6.5 M chars |
+| BART, after | 0.6 s | 0 | 12 MB | 1.4 M chars |
+
+All A0 targets are met: load ≤ 15 s, freeze ≤ 250 ms, memory ≤ 100 MB. The freeze margin is thin, about 30 ms. The remaining long tasks are `StopTimesBuilder.finish`/`buildFeed` and the MapLibre source build. Later phases must re-check against it.
+
+**Hand-off:**
+- `window.GtfsSchedule`: see `docs/reference/modules/gtfs.md` § "Schedule engine and day to analyze" for the full list. The key calls are `tripsOnDate(feed, date, {routeIds})`, `routeDaySummary(feed, date)`, `peakVehicles(feed, date, {layoverSec})`, `patterns`/`dominantPattern(feed, date, routeId, dir)`, `departuresAtStop`, `medianHeadway` and `tripStopTimes(feed, tripId, {interpolate})`.
+- Runtime: `App.gtfsSchedule()` returns the feed or null. The date API is `App.gtfsAnalysisDate.get()`, `.set("YYYYMMDD")`, which rejects dates outside the feed's range, and `.onChange(fn)`, which returns an unsubscribe function and fires with null on clear.
+- `_gtfsData` entries for `stop_times.txt` and `shapes.txt` are `columnar` with `rows: null`. Code reading `.rows` must handle that.
+- Session format: `state.gtfsZip = {name, base64}`, or the legacy `state.gtfsData`. `App.serializeGTFSZip()` returns a Promise; `App.restoreGTFSFromZip(payload)` re-loads the ZIP like an upload.
+- Hidden routes are not yet applied to schedule queries (D9). A4–A6 must filter with `tripsOnDate(..., {routeIds})` using `App.gtfsHiddenState()`.

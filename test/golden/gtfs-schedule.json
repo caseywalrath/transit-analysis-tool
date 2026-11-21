@@ -1,0 +1,1757 @@
+{
+  "parseTime-std": 25800,
+  "parseTime-onedigit": 25509,
+  "parseTime-past24": 90600,
+  "parseTime-spaces": 28800,
+  "parseTime-blank": -1,
+  "parseTime-whitespace": -1,
+  "parseTime-no-seconds": -1,
+  "parseTime-junk": -1,
+  "parseTime-minute60": -1,
+  "parseTime-hours100": 360000,
+  "formatTime-past24": "25:10:00",
+  "formatTime-missing": "",
+  "formatTime-string": "",
+  "formatTime-zero": "00:00:00",
+  "formatTime-mixed": "01:01:01",
+  "csv-bom-crlf": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3",
+        "4"
+      ]
+    ]
+  },
+  "csv-lone-cr": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3",
+        "4"
+      ]
+    ]
+  },
+  "csv-quoted-comma": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "x,y",
+        "2"
+      ]
+    ]
+  },
+  "csv-quoted-newline": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "line1\nline2",
+        "2"
+      ]
+    ]
+  },
+  "csv-quote-escape": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "say \"hi\"",
+        "2"
+      ]
+    ]
+  },
+  "csv-chunk-in-quote": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "hello, world",
+        "2"
+      ]
+    ]
+  },
+  "csv-chunk-in-escape": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "x\"y",
+        "2"
+      ]
+    ]
+  },
+  "csv-chunk-between-crlf": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3",
+        "4"
+      ]
+    ]
+  },
+  "csv-chunk-mid-field": {
+    "headers": [
+      "a",
+      "bb"
+    ],
+    "rows": [
+      [
+        "123",
+        "456"
+      ]
+    ]
+  },
+  "csv-no-trailing-newline": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ]
+    ]
+  },
+  "csv-trailing-empty-field": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        ""
+      ]
+    ]
+  },
+  "csv-short-and-long-rows": {
+    "headers": [
+      "a",
+      "b",
+      "c"
+    ],
+    "rows": [
+      [
+        "1",
+        "",
+        ""
+      ],
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ]
+  },
+  "csv-blank-lines": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3",
+        "4"
+      ]
+    ]
+  },
+  "csv-header-trim-values-untrimmed": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        " 1 ",
+        " 2 "
+      ]
+    ]
+  },
+  "csv-bom-own-chunk": {
+    "headers": [
+      "a",
+      "b"
+    ],
+    "rows": [
+      [
+        "1",
+        "2"
+      ]
+    ]
+  },
+  "csv-empty": {
+    "headers": [],
+    "rows": []
+  },
+  "active-0112": [
+    "WKDY"
+  ],
+  "daytype-0112": {
+    "date": "20260112",
+    "weekday": "monday",
+    "dayType": "weekday",
+    "exception": false
+  },
+  "summary-0112": {
+    "date": "20260112",
+    "routes": {
+      "B1": {
+        "trips": 5,
+        "runningSec": 6000,
+        "firstDep": 25200,
+        "lastArr": 90600
+      },
+      "F1": {
+        "trips": 18,
+        "runningSec": 16200,
+        "firstDep": 21600,
+        "lastArr": 64800
+      },
+      "R1": {
+        "trips": 2,
+        "runningSec": 4440,
+        "firstDep": 21600,
+        "lastArr": 26520
+      }
+    },
+    "total": {
+      "trips": 25,
+      "runningSec": 26640,
+      "firstDep": 21600,
+      "lastArr": 90600
+    },
+    "invalidTrips": 1
+  },
+  "peak-0112": {
+    "method": "block",
+    "peak": 4,
+    "at": 26400,
+    "block": {
+      "peak": 4,
+      "at": 26400
+    },
+    "sweep": {
+      "peak": 5,
+      "at": 26400,
+      "layoverSec": 600
+    }
+  },
+  "s1-departures-0112": [
+    21600,
+    22800,
+    24000,
+    25200,
+    25200,
+    26400,
+    27600,
+    27900,
+    28800,
+    28800,
+    30000,
+    31200,
+    57600,
+    58500,
+    59400,
+    60300,
+    61200,
+    62100,
+    63000,
+    63900,
+    89400
+  ],
+  "active-0119": [
+    "SUN"
+  ],
+  "daytype-0119": {
+    "date": "20260119",
+    "weekday": "monday",
+    "dayType": "weekday",
+    "exception": true
+  },
+  "summary-0119": {
+    "date": "20260119",
+    "routes": {
+      "B1": {
+        "trips": 1,
+        "runningSec": 1200,
+        "firstDep": 36000,
+        "lastArr": 37200
+      }
+    },
+    "total": {
+      "trips": 1,
+      "runningSec": 1200,
+      "firstDep": 36000,
+      "lastArr": 37200
+    },
+    "invalidTrips": 0
+  },
+  "peak-0119": {
+    "method": "sweep",
+    "peak": 1,
+    "at": 36000,
+    "block": null,
+    "sweep": {
+      "peak": 1,
+      "at": 36000,
+      "layoverSec": 600
+    }
+  },
+  "s1-departures-0119": [
+    36000
+  ],
+  "active-0124": [
+    "EVT",
+    "SAT"
+  ],
+  "daytype-0124": {
+    "date": "20260124",
+    "weekday": "saturday",
+    "dayType": "saturday",
+    "exception": true
+  },
+  "summary-0124": {
+    "date": "20260124",
+    "routes": {
+      "B1": {
+        "trips": 1,
+        "runningSec": 1200,
+        "firstDep": 32400,
+        "lastArr": 33600
+      },
+      "F1": {
+        "trips": 4,
+        "runningSec": 3600,
+        "firstDep": 82800,
+        "lastArr": 89100
+      },
+      "R1": {
+        "trips": 2,
+        "runningSec": 4440,
+        "firstDep": 28800,
+        "lastArr": 81420
+      }
+    },
+    "total": {
+      "trips": 7,
+      "runningSec": 9240,
+      "firstDep": 28800,
+      "lastArr": 89100
+    },
+    "invalidTrips": 0
+  },
+  "peak-0124": {
+    "method": "block",
+    "peak": 1,
+    "at": 28800,
+    "block": {
+      "peak": 1,
+      "at": 28800
+    },
+    "sweep": {
+      "peak": 1,
+      "at": 28800,
+      "layoverSec": 600
+    }
+  },
+  "s1-departures-0124": [
+    32400,
+    82800,
+    84600,
+    86400,
+    88200
+  ],
+  "active-0130": [
+    "SAT",
+    "WKDY"
+  ],
+  "daytype-0130": {
+    "date": "20260130",
+    "weekday": "friday",
+    "dayType": "weekday",
+    "exception": true
+  },
+  "summary-0130": {
+    "date": "20260130",
+    "routes": {
+      "B1": {
+        "trips": 6,
+        "runningSec": 7200,
+        "firstDep": 25200,
+        "lastArr": 90600
+      },
+      "F1": {
+        "trips": 22,
+        "runningSec": 19800,
+        "firstDep": 21600,
+        "lastArr": 89100
+      },
+      "R1": {
+        "trips": 3,
+        "runningSec": 6660,
+        "firstDep": 21600,
+        "lastArr": 31020
+      }
+    },
+    "total": {
+      "trips": 31,
+      "runningSec": 33660,
+      "firstDep": 21600,
+      "lastArr": 90600
+    },
+    "invalidTrips": 1
+  },
+  "peak-0130": {
+    "method": "block",
+    "peak": 4,
+    "at": 26400,
+    "block": {
+      "peak": 4,
+      "at": 26400
+    },
+    "sweep": {
+      "peak": 5,
+      "at": 26400,
+      "layoverSec": 600
+    }
+  },
+  "s1-departures-0130": [
+    21600,
+    22800,
+    24000,
+    25200,
+    25200,
+    26400,
+    27600,
+    27900,
+    28800,
+    28800,
+    30000,
+    31200,
+    32400,
+    57600,
+    58500,
+    59400,
+    60300,
+    61200,
+    62100,
+    63000,
+    63900,
+    82800,
+    84600,
+    86400,
+    88200,
+    89400
+  ],
+  "daytype-0112-sunday": {
+    "date": "20260111",
+    "weekday": "sunday",
+    "dayType": "sunday",
+    "exception": false
+  },
+  "stn-departures-0112": [
+    21600
+  ],
+  "p1-departures-0112": [
+    21600
+  ],
+  "stn-departures-0124": [
+    28800,
+    79200
+  ],
+  "s2-departures-0112": [
+    25800,
+    26700,
+    27600,
+    29400,
+    90000
+  ],
+  "unknown-stop-departures": [],
+  "trips-0112": {
+    "date": "20260112",
+    "trips": [
+      {
+        "tripId": "F1_W_FREQ@06:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 21600,
+        "end": 22500,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "R1_W_0",
+        "routeId": "R1",
+        "directionId": "0",
+        "blockId": "RBLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_R1_0",
+        "start": 21600,
+        "end": 23820,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_W_FREQ@06:20:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 22800,
+        "end": 23700,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "F1_W_FREQ@06:40:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 24000,
+        "end": 24900,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "R1_W_1",
+        "routeId": "R1",
+        "directionId": "1",
+        "blockId": "RBLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_R1_1",
+        "start": 24300,
+        "end": 26520,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "B1_W_0",
+        "routeId": "B1",
+        "directionId": "0",
+        "blockId": "BLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_B1_0",
+        "start": 25200,
+        "end": 26400,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_W_FREQ@07:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 25200,
+        "end": 26100,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "B1_W_3",
+        "routeId": "B1",
+        "directionId": "1",
+        "blockId": "BLK2",
+        "serviceId": "WKDY",
+        "shapeId": "SH_B1_1",
+        "start": 26100,
+        "end": 27300,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_W_FREQ@07:20:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 26400,
+        "end": 27300,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "B1_W_1",
+        "routeId": "B1",
+        "directionId": "1",
+        "blockId": "BLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_B1_1",
+        "start": 27000,
+        "end": 28200,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_W_FREQ@07:40:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 27600,
+        "end": 28500,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "F1_W_X",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "BLK2",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 27900,
+        "end": 28800,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "B1_W_2",
+        "routeId": "B1",
+        "directionId": "0",
+        "blockId": "BLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_B1_0",
+        "start": 28800,
+        "end": 30000,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_W_FREQ@08:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 28800,
+        "end": 29700,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "F1_W_FREQ@08:20:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 30000,
+        "end": 30900,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "F1_W_FREQ@08:40:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 31200,
+        "end": 32100,
+        "generated": true,
+        "templateId": "F1_W_FREQ",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "F1_W_PM@16:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 57600,
+        "end": 58500,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@16:15:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 58500,
+        "end": 59400,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@16:30:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 59400,
+        "end": 60300,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@16:45:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 60300,
+        "end": 61200,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@17:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 61200,
+        "end": 62100,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@17:15:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 62100,
+        "end": 63000,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@17:30:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 63000,
+        "end": 63900,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_W_PM@17:45:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WKDY",
+        "shapeId": "",
+        "start": 63900,
+        "end": 64800,
+        "generated": true,
+        "templateId": "F1_W_PM",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "B1_W_OWL",
+        "routeId": "B1",
+        "directionId": "0",
+        "blockId": "BLK5",
+        "serviceId": "WKDY",
+        "shapeId": "SH_B1_0",
+        "start": 89400,
+        "end": 90600,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      }
+    ],
+    "invalid": [
+      "B1_W_BAD"
+    ]
+  },
+  "trips-0119": {
+    "date": "20260119",
+    "trips": [
+      {
+        "tripId": "B1_U_0",
+        "routeId": "B1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SUN",
+        "shapeId": "SH_B1_0",
+        "start": 36000,
+        "end": 37200,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      }
+    ],
+    "invalid": []
+  },
+  "trips-0124": {
+    "date": "20260124",
+    "trips": [
+      {
+        "tripId": "R1_S_0",
+        "routeId": "R1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SAT",
+        "shapeId": "SH_R1_0",
+        "start": 28800,
+        "end": 31020,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "B1_S_0",
+        "routeId": "B1",
+        "directionId": "0",
+        "blockId": "BLK3",
+        "serviceId": "SAT",
+        "shapeId": "SH_B1_0",
+        "start": 32400,
+        "end": 33600,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "R1_E_0",
+        "routeId": "R1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "EVT",
+        "shapeId": "SH_R1_0",
+        "start": 79200,
+        "end": 81420,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "F1_S_NIGHT@23:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SAT",
+        "shapeId": "",
+        "start": 82800,
+        "end": 83700,
+        "generated": true,
+        "templateId": "F1_S_NIGHT",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_S_NIGHT@23:30:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SAT",
+        "shapeId": "",
+        "start": 84600,
+        "end": 85500,
+        "generated": true,
+        "templateId": "F1_S_NIGHT",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_S_NIGHT@24:00:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SAT",
+        "shapeId": "",
+        "start": 86400,
+        "end": 87300,
+        "generated": true,
+        "templateId": "F1_S_NIGHT",
+        "exactTimes": 1
+      },
+      {
+        "tripId": "F1_S_NIGHT@24:30:00",
+        "routeId": "F1",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "SAT",
+        "shapeId": "",
+        "start": 88200,
+        "end": 89100,
+        "generated": true,
+        "templateId": "F1_S_NIGHT",
+        "exactTimes": 1
+      }
+    ],
+    "invalid": []
+  },
+  "trips-0112-route-filter": {
+    "date": "20260112",
+    "trips": [
+      {
+        "tripId": "R1_W_0",
+        "routeId": "R1",
+        "directionId": "0",
+        "blockId": "RBLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_R1_0",
+        "start": 21600,
+        "end": 23820,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      },
+      {
+        "tripId": "R1_W_1",
+        "routeId": "R1",
+        "directionId": "1",
+        "blockId": "RBLK1",
+        "serviceId": "WKDY",
+        "shapeId": "SH_R1_1",
+        "start": 24300,
+        "end": 26520,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      }
+    ],
+    "invalid": []
+  },
+  "trips-no-service-date": {
+    "date": "20260301",
+    "trips": [],
+    "invalid": []
+  },
+  "summary-no-service-date": {
+    "date": "20251201",
+    "routes": {},
+    "total": {
+      "trips": 0,
+      "runningSec": 0,
+      "firstDep": null,
+      "lastArr": null
+    },
+    "invalidTrips": 0
+  },
+  "peak-no-service-date": {
+    "method": "sweep",
+    "peak": 0,
+    "at": null,
+    "block": null,
+    "sweep": {
+      "peak": 0,
+      "at": null,
+      "layoverSec": 600
+    }
+  },
+  "peak-0112-layover0": {
+    "method": "block",
+    "peak": 4,
+    "at": 26400,
+    "block": {
+      "peak": 4,
+      "at": 26400
+    },
+    "sweep": {
+      "peak": 3,
+      "at": 25200,
+      "layoverSec": 0
+    }
+  },
+  "headway-s1-am-0112": 1200,
+  "headway-s1-one-dep": null,
+  "headway-s1-night-0124": 1800,
+  "trip-times-b1w2-blank": [
+    {
+      "stopId": "S1",
+      "seq": 1,
+      "arr": 28800,
+      "dep": 28800,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S2",
+      "seq": 5,
+      "arr": -1,
+      "dep": -1,
+      "timepoint": 0,
+      "interpolated": false
+    },
+    {
+      "stopId": "S3",
+      "seq": 9,
+      "arr": 30000,
+      "dep": 30000,
+      "timepoint": 1,
+      "interpolated": false
+    }
+  ],
+  "trip-times-b1w2-interp": [
+    {
+      "stopId": "S1",
+      "seq": 1,
+      "arr": 28800,
+      "dep": 28800,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S2",
+      "seq": 5,
+      "arr": 29400,
+      "dep": 29400,
+      "timepoint": 0,
+      "interpolated": true
+    },
+    {
+      "stopId": "S3",
+      "seq": 9,
+      "arr": 30000,
+      "dep": 30000,
+      "timepoint": 1,
+      "interpolated": false
+    }
+  ],
+  "trip-times-owl": [
+    {
+      "stopId": "S1",
+      "seq": 10,
+      "arr": 89400,
+      "dep": 89400,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S2",
+      "seq": 20,
+      "arr": 90000,
+      "dep": 90000,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S3",
+      "seq": 30,
+      "arr": 90600,
+      "dep": 90600,
+      "timepoint": 1,
+      "interpolated": false
+    }
+  ],
+  "trip-times-bad": [
+    {
+      "stopId": "S1",
+      "seq": 10,
+      "arr": -1,
+      "dep": -1,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S2",
+      "seq": 20,
+      "arr": 27900,
+      "dep": 27900,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "S3",
+      "seq": 30,
+      "arr": 28500,
+      "dep": 28500,
+      "timepoint": 1,
+      "interpolated": false
+    }
+  ],
+  "trip-times-generated": [
+    {
+      "stopId": "S1",
+      "seq": 1,
+      "arr": 22800,
+      "dep": 22800,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "F2",
+      "seq": 2,
+      "arr": 23700,
+      "dep": 23700,
+      "timepoint": 1,
+      "interpolated": false
+    }
+  ],
+  "trip-times-unknown": [],
+  "patterns-b1-0112": [
+    {
+      "directionId": "0",
+      "stops": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "trips": 3
+    },
+    {
+      "directionId": "1",
+      "stops": [
+        "S3",
+        "S2",
+        "S1"
+      ],
+      "trips": 2
+    }
+  ],
+  "patterns-f1-0124": [
+    {
+      "directionId": "0",
+      "stops": [
+        "S1",
+        "F2"
+      ],
+      "trips": 4
+    }
+  ],
+  "patterns-unknown-route": [],
+  "dominant-b1-any": {
+    "directionId": "0",
+    "stops": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "trips": 3
+  },
+  "dominant-b1-dir1": {
+    "directionId": "1",
+    "stops": [
+      "S3",
+      "S2",
+      "S1"
+    ],
+    "trips": 2
+  },
+  "dominant-b1-dir9": null,
+  "busiest-weekday": "20260130",
+  "busiest-saturday": "20260124",
+  "busiest-sunday": "20260111",
+  "date-range": {
+    "start": "20260105",
+    "end": "20260201"
+  },
+  "accessibility": {
+    "F2": {
+      "value": 0,
+      "inherited": false
+    },
+    "P1": {
+      "value": 1,
+      "inherited": true
+    },
+    "R2": {
+      "value": 1,
+      "inherited": false
+    },
+    "S1": {
+      "value": 1,
+      "inherited": false
+    },
+    "S2": {
+      "value": 2,
+      "inherited": false
+    },
+    "S3": {
+      "value": 0,
+      "inherited": false
+    },
+    "STN": {
+      "value": 1,
+      "inherited": false
+    }
+  },
+  "mini-problems": {
+    "tripsUnknownRoute": 0,
+    "tripsUnknownService": 0,
+    "stopTimesUnknownTrip": 0,
+    "stopTimesUnknownStop": 0,
+    "calendarEndBeforeStart": 0
+  },
+  "mini-store": {
+    "rowCount": 40,
+    "badRows": 0,
+    "duplicateRows": 0,
+    "tripIds": [
+      "B1_W_0",
+      "B1_W_1",
+      "B1_W_2",
+      "B1_W_3",
+      "B1_W_OWL",
+      "B1_W_BAD",
+      "B1_S_0",
+      "B1_U_0",
+      "R1_W_0",
+      "R1_W_1",
+      "R1_S_0",
+      "R1_E_0",
+      "F1_W_FREQ",
+      "F1_W_PM",
+      "F1_W_X",
+      "F1_S_NIGHT"
+    ],
+    "stopIds": [
+      "S2",
+      "S1",
+      "S3",
+      "P1",
+      "R2",
+      "F2"
+    ],
+    "seq": [
+      10,
+      20,
+      30,
+      10,
+      20,
+      30,
+      1,
+      5,
+      9,
+      10,
+      20,
+      30,
+      10,
+      20,
+      30,
+      10,
+      20,
+      30,
+      10,
+      20,
+      30,
+      10,
+      20,
+      30,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      1,
+      2
+    ],
+    "arr": [
+      25200,
+      25800,
+      26400,
+      27000,
+      27600,
+      28200,
+      28800,
+      -1,
+      30000,
+      26100,
+      26700,
+      27300,
+      89400,
+      90000,
+      90600,
+      -1,
+      27900,
+      28500,
+      32400,
+      33000,
+      33600,
+      36000,
+      36600,
+      37200,
+      21600,
+      23820,
+      24300,
+      26520,
+      28800,
+      31020,
+      79200,
+      81420,
+      21600,
+      22500,
+      57600,
+      58500,
+      27900,
+      28800,
+      82800,
+      83700
+    ],
+    "dep": [
+      25200,
+      25800,
+      26400,
+      27000,
+      27600,
+      28200,
+      28800,
+      -1,
+      30000,
+      26100,
+      26700,
+      27300,
+      89400,
+      90000,
+      90600,
+      -1,
+      27900,
+      28500,
+      32400,
+      33000,
+      33600,
+      36000,
+      36600,
+      37200,
+      21600,
+      23820,
+      24300,
+      26520,
+      28800,
+      31020,
+      79200,
+      81420,
+      21600,
+      22500,
+      57600,
+      58500,
+      27900,
+      28800,
+      82800,
+      83700
+    ],
+    "tp": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "tripStart": [
+      0,
+      3,
+      6,
+      9,
+      12,
+      15,
+      18,
+      21,
+      24,
+      26,
+      28,
+      30,
+      32,
+      34,
+      36,
+      38,
+      40
+    ]
+  },
+  "edge-dup-store": {
+    "rowCount": 5,
+    "badRows": 2,
+    "duplicateRows": 1,
+    "tripIds": [
+      "T1",
+      "T2"
+    ],
+    "stopIds": [
+      "C",
+      "A",
+      "B"
+    ],
+    "seq": [
+      10,
+      20,
+      30,
+      40,
+      1
+    ],
+    "arr": [
+      28800,
+      29100,
+      30000,
+      31800,
+      25200
+    ],
+    "dep": [
+      28800,
+      29100,
+      30000,
+      31800,
+      25200
+    ],
+    "tp": [
+      1,
+      0,
+      1,
+      255,
+      1
+    ],
+    "tripStart": [
+      0,
+      4,
+      5
+    ]
+  },
+  "edge-dup-times": [
+    {
+      "stopId": "A",
+      "seq": 10,
+      "arr": 28800,
+      "dep": 28800,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "B",
+      "seq": 20,
+      "arr": 29100,
+      "dep": 29100,
+      "timepoint": 0,
+      "interpolated": false
+    },
+    {
+      "stopId": "C",
+      "seq": 30,
+      "arr": 30000,
+      "dep": 30000,
+      "timepoint": 1,
+      "interpolated": false
+    },
+    {
+      "stopId": "A",
+      "seq": 40,
+      "arr": 31800,
+      "dep": 31800,
+      "timepoint": -1,
+      "interpolated": false
+    }
+  ],
+  "edge-unknown-problems": {
+    "tripsUnknownRoute": 1,
+    "tripsUnknownService": 1,
+    "stopTimesUnknownTrip": 2,
+    "stopTimesUnknownStop": 1,
+    "calendarEndBeforeStart": 0
+  },
+  "edge-unknown-trips": {
+    "date": "20260112",
+    "trips": [
+      {
+        "tripId": "T1",
+        "routeId": "R",
+        "directionId": "",
+        "blockId": "",
+        "serviceId": "WK",
+        "shapeId": "",
+        "start": 28800,
+        "end": 29400,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      }
+    ],
+    "invalid": []
+  },
+  "edge-cal-problems": {
+    "tripsUnknownRoute": 0,
+    "tripsUnknownService": 0,
+    "stopTimesUnknownTrip": 0,
+    "stopTimesUnknownStop": 0,
+    "calendarEndBeforeStart": 1
+  },
+  "edge-cal-range": {
+    "start": "20260105",
+    "end": "20260301"
+  },
+  "edge-cal-active-monday": [
+    "WK"
+  ],
+  "edge-cal-removed-wins": [],
+  "edge-cal-add-outside-range": [
+    "ONLY",
+    "WK"
+  ],
+  "edge-cal-saturday-reverse-ignored": [],
+  "edge-cal-daytype-add-outside": {
+    "date": "20260301",
+    "weekday": "sunday",
+    "dayType": "sunday",
+    "exception": true
+  },
+  "edge-cal-daytype-removed": {
+    "date": "20260106",
+    "weekday": "tuesday",
+    "dayType": "weekday",
+    "exception": true
+  },
+  "edge-cal-busiest": null,
+  "edge-nocal-range": {
+    "start": "20260112",
+    "end": "20260113"
+  },
+  "edge-nocal-trips": {
+    "date": "20260112",
+    "trips": [
+      {
+        "tripId": "T1",
+        "routeId": "R",
+        "directionId": "0",
+        "blockId": "",
+        "serviceId": "WK",
+        "shapeId": "",
+        "start": 28800,
+        "end": 29400,
+        "generated": false,
+        "templateId": null,
+        "exactTimes": null
+      }
+    ],
+    "invalid": []
+  },
+  "edge-nocal-trips-other-day": {
+    "date": "20260114",
+    "trips": [],
+    "invalid": []
+  },
+  "edge-nocal-busiest": "20260112",
+  "edge-empty-range": null,
+  "edge-empty-trips": {
+    "date": "20260112",
+    "trips": [],
+    "invalid": []
+  },
+  "edge-empty-summary": {
+    "date": "20260112",
+    "routes": {},
+    "total": {
+      "trips": 0,
+      "runningSec": 0,
+      "firstDep": null,
+      "lastArr": null
+    },
+    "invalidTrips": 0
+  },
+  "edge-empty-peak": {
+    "method": "sweep",
+    "peak": 0,
+    "at": null,
+    "block": null,
+    "sweep": {
+      "peak": 0,
+      "at": null,
+      "layoverSec": 600
+    }
+  },
+  "edge-empty-busiest": null,
+  "edge-empty-access": {},
+  "edge-empty-store": {
+    "rowCount": 0,
+    "badRows": 0,
+    "duplicateRows": 0,
+    "tripIds": [],
+    "stopIds": [],
+    "seq": [],
+    "arr": [],
+    "dep": [],
+    "tp": [],
+    "tripStart": [
+      0
+    ]
+  },
+  "edge-freq-overlap": {
+    "date": "20260112",
+    "trips": [
+      {
+        "tripId": "TF@06:00:00",
+        "routeId": "R",
+        "directionId": "",
+        "blockId": "",
+        "serviceId": "WK",
+        "shapeId": "",
+        "start": 21600,
+        "end": 22200,
+        "generated": true,
+        "templateId": "TF",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "TF@06:30:00",
+        "routeId": "R",
+        "directionId": "",
+        "blockId": "",
+        "serviceId": "WK",
+        "shapeId": "",
+        "start": 23400,
+        "end": 24000,
+        "generated": true,
+        "templateId": "TF",
+        "exactTimes": 0
+      },
+      {
+        "tripId": "TF@07:00:00",
+        "routeId": "R",
+        "directionId": "",
+        "blockId": "",
+        "serviceId": "WK",
+        "shapeId": "",
+        "start": 25200,
+        "end": 25800,
+        "generated": true,
+        "templateId": "TF",
+        "exactTimes": 1
+      }
+    ],
+    "invalid": []
+  },
+  "edge-blocks-half-open": {
+    "method": "block",
+    "peak": 2,
+    "at": 30600,
+    "block": {
+      "peak": 2,
+      "at": 30600
+    },
+    "sweep": {
+      "peak": 2,
+      "at": 28800,
+      "layoverSec": 600
+    }
+  },
+  "edge-freq-block-runs-are-vehicles": {
+    "method": "block",
+    "peak": 6,
+    "at": 24600,
+    "block": {
+      "peak": 6,
+      "at": 24600
+    },
+    "sweep": {
+      "peak": 7,
+      "at": 25200,
+      "layoverSec": 600
+    }
+  },
+  "edge-cal-bad-duplicate-row-skipped": [
+    "WK"
+  ]
+}

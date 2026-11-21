@@ -4,15 +4,30 @@ Read the code when this and the code disagree. See `docs/archive/gtfs-route-brow
 
 ## gtfs.js (module `"gtfs"`)
 
-GTFS ZIP viewer (JSZip + PapaParse) plus the route-browser engine. Wires its own Add Data buttons (hidden `#gtfs-file-input`), no `app.js` changes. Styles `.gtfs-*` in `css/style.css`.
+GTFS ZIP viewer (JSZip + the `GtfsSchedule` CSV reader) plus the route-browser engine. Wires its own Add Data buttons (hidden `#gtfs-file-input`), no `app.js` changes. Styles `.gtfs-*` in `css/style.css`.
 
-**Loading:** `App.loadGTFSFile(file)` unzips, strips a top-level folder prefix, parses each `.txt` into private `_gtfsData` (Map filename → `{headers, rows}`). `App.clearGTFS()` removes the feed, layers and route index, and refreshes the Layers panel. `App.gtfsData` is assigned once at load time (`null`) — **not** a live reference; don't read feed data through it.
+**Loading:** `App.loadGTFSFile(file, opts)` unzips, strips a top-level folder prefix, and parses each `.txt` with `GtfsSchedule.CsvStream`, fed in 256 K-character slices that yield to the page whenever a run of slices has taken over ~40 ms (this keeps the longest freeze on an RTD-size feed near 0.2 s). Results go into private `_gtfsData` (Map filename → `{headers, rows}`), with two exceptions kept compact for memory:
+- `stop_times.txt` → `{headers, rows: null, rowCount, columnar: true}`; its rows live only in the schedule store (`_feed.st`, see "Schedule engine" below).
+- `shapes.txt` → `{headers, rows: null, rowCount, columnar: true, preview, groups}`: points are grouped per shape while parsing; `groups` is dropped once `addMapLayers()` has built `_shapesFC`; `preview` keeps the first 500 rows for the table viewer.
+
+Any code that reads `_gtfsData.get(name).rows` must handle `columnar`. `App.clearGTFS()` removes the feed, layers and route index, and refreshes the Layers panel. `App.gtfsData` is assigned once at load time (`null`) — **not** a live reference; don't read feed data through it.
 
 **Map layers** (below drawn features, non-editable): `gtfs-shapes`/`gtfs-shapes-layer` (dashed `[4,2]` lines from `shapes.txt`) and `gtfs-stops`/`gtfs-stops-layer` (hollow circles, `location_type` 0/absent). Hover (`.gtfs-hover`) and click detail (`.gtfs-detail`) on both. `buildRouteLookup` joins trips → routes at load into `shape_id → route fields`, merged into shape properties so hover needs no runtime join; without trips/routes only `shape_id` shows. Colors are styleKeys `gtfs-shapes` / `gtfs-stops`.
 
-**Popup:** file list with REQ/OPT badges | CSV table capped at 500 rendered rows (`stop_times.txt` can be millions).
+**Popup:** Day to analyze (`#gtfsDateControls`: `<input type="date" id="gtfsAnalysisDate">` limited to the feed's date range, `#gtfsAnalysisDateDesc` "Fri, Jan 30, 2026 · 31 trips", plus a "special service" note on holiday or added-service dates, and `#gtfsAnalysisDateRange`), then the file list with REQ/OPT badges | CSV table capped at 500 rendered rows. `stop_times.txt` shows the six columns the store keeps (`trip_id, arrival_time, departure_time, stop_id, stop_sequence, timepoint`) in trip and sequence order; `shapes.txt` shows its first 500 rows.
 
-**Persistence:** the feed survives a page refresh through `App.gtfsStore` (below) and also rides the full session file (`App.serializeGTFSData` / `App.restoreGTFSFromData`, called from `cache.js`), never localStorage. Hidden route/shape sets persist as `moduleState["gtfs-browse"]` and are re-applied when a feed is restored from the cache or a session file, never on a fresh upload.
+**Persistence:** the feed survives a page refresh through `App.gtfsStore` (below). It also rides the full session file as the original ZIP: `state.gtfsZip = {name, base64}` from `App.serializeGTFSZip()` (a Promise), restored by `App.restoreGTFSFromZip(payload)` through `loadGTFSFile(file, {keepHidden: true})`, so it is identical to an upload and is also written to the store. Session files saved before this carry `state.gtfsData` (parsed tables) and still open through `App.restoreGTFSFromData(serialized)`, which rebuilds the store from the rows; such a feed has no ZIP, so a later session export carries no feed (`serializeGTFSZip()` → null). Never localStorage. `App.serializeGTFSData()` still returns the old parsed-tables shape, rebuilt on each call, for tests and inspection only; it is slow on a big feed. Hidden route/shape sets persist as `moduleState["gtfs-browse"]` and are re-applied when a feed is restored from the cache or a session file, never on a fresh upload.
+
+### Schedule engine and day to analyze
+
+`window.GtfsSchedule` (`js/core/gtfs-schedule.js`, pure; golden `test/cases/gtfs-schedule.mjs` against `test/fixtures/gtfs/mini/EXPECTED.md`, whose nine counting conventions the engine follows). Dates are `"YYYYMMDD"`; times are seconds after service-day midnight (past 24:00 allowed); -1 = missing.
+
+- Reading: `CsvStream(onHeader, onRow)` with `.write(chunk)` / `.end()` (BOM, CRLF/CR, RFC 4180 quotes, chunk boundaries anywhere), `parseCSV(text)`, `parseTime`, `formatTime`.
+- Store: `StopTimesBuilder` (`.header/.row/.finish`) → `{tripIds, stopIds, trip, stop, seq, arr, dep (Int32Array), tp (Uint8Array, 255 = blank), tripStart, rowCount, badRows, duplicateRows}`, sorted by trip then sequence; a duplicate (trip, sequence) keeps the first row.
+- `buildFeed(tables, store)`, `feedFromTexts(texts)`; bad references are counted in `feed.problems`, never thrown.
+- Queries (feed first): `dateRange`, `activeServices(date)`, `dayType(date)` → `{weekday, dayType, exception}`, `tripsOnDate(date, {routeIds})` → `{trips, invalid}` (frequency templates expanded; generated ids `template@HH:MM:SS`), `tripStopTimes(tripId, {interpolate})`, `departuresAtStop(date, stopId)` (parent station includes children; a trip's last stop excluded), `medianHeadway(date, stopId, from, to)`, `patterns(date, routeId)` / `dominantPattern(...)`, `routeDaySummary(date)`, `peakVehicles(date, {layoverSec: 600})` (block method when any trip that date has a `block_id`, otherwise trip sweep; both reported, plus `method`), `stopAccessibility()`, `busiestDate(dayType)` (null when no such day has service). Results are plain values. The feed caches the last six dates' trip lists.
+
+Runtime: `App.gtfsSchedule()` → the loaded feed or null. `App.gtfsAnalysisDate.get()` / `.set("YYYYMMDD")` (false when invalid or no feed) / `.onChange(fn)` (returns an unsubscribe function; fires with null on clear). One exact date drives every GTFS analysis. On load it keeps the session's date if the feed covers it, otherwise it starts on the busiest weekday (`busiestDate("weekday")`). Saved additively as `moduleState["gtfs-browse"].analysisDate`.
 
 ### Route browser engine
 
@@ -39,7 +54,7 @@ Sibling of `network-store.js` (same `_withStore` transaction rule: issue request
 - `loadGTFSFile(file, opts)` resolves `true` when the feed is on the map. After a successful non-restored load, `persistFeed()` writes the ZIP (deferred one tick). `App.restoreCachedGTFS()` (called once from `app.js` after `cache.restore()`, so the stop list and queued hidden sets are already in place) re-parses the latest stored ZIP with `{restored: true}`: a restored load keeps `_pendingHidden`, is not written back, and reports "GTFS feed restored from last session: <name>".
 - `_loadSeq` is bumped by every load and every clear, so a slower, older load notices it was superseded: a ZIP picked while the restore is still reading wins, and a feed cleared right after loading is never written back.
 - **Build vs No-Build:** only one feed is active; loading a second ZIP replaces it and keeps the stop selection (the list is the bridge between scenarios). Hidden routes reset on a swap.
-- `clearGTFS()` (Remove layer, Clear all features, Reset Session) empties the store so a dismissed feed does not resurrect; an unreadable stored copy is dropped after one failed restore. A feed that arrives via a session JSON is not written to the store (no ZIP), so it survives a refresh only if that file is loaded again.
+- `clearGTFS()` (Remove layer, Clear all features, Reset Session) empties the store so a dismissed feed does not resurrect; an unreadable stored copy is dropped after one failed restore. A feed from a session file's embedded ZIP is written to the store like an upload; one from an old-format session file (parsed tables, no ZIP) is not, so it survives a refresh only if that file is loaded again.
 - Tests: `test/browser/gtfs-cache.test.mjs`. The session autosave is debounced 500 ms, so wait ~900 ms before reloading.
 
 ### Stop selection
@@ -61,4 +76,4 @@ Runtime API `App.gtfsStops`: `ids()`, `count()` → `{total, inFeed}` (`inFeed` 
 
 ## gtfs-popup.html
 
-Left: file directory + layer visibility checkboxes + Clear. Right: CSV table with row/column count.
+Left: Day to analyze + file directory + layer visibility checkboxes + Clear. Right: CSV table with row/column count.

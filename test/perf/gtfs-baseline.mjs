@@ -130,7 +130,9 @@ async function oneRun(browser, port) {
     run.heapAfterMB = round(run.heapAfterMB);
 
     try {
-      run.gtfsSessionChars = await page.evaluate(() => JSON.stringify({ gtfsData: App.serializeGTFSData() }).length);
+      run.gtfsSessionChars = await page.evaluate(async () => (typeof App.serializeGTFSZip === "function")
+        ? JSON.stringify({ gtfsZip: await App.serializeGTFSZip() }).length
+        : JSON.stringify({ gtfsData: App.serializeGTFSData() }).length);
     } catch (e) {
       run.gtfsSessionChars = null;
       run.sessionNote = "serializeGTFSData/stringify failed: " + String(e.message || e).slice(0, 200);

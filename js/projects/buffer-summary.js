@@ -153,7 +153,7 @@
   function aggDescription(meta, method) {
     if (meta.source === "LODES") return "Sum (block internal points)";
     if (meta.agg === "ratio") return meta.ratioLabel || "Calculated ratio";
-    if (method === "blockPop") return meta.agg === "sum" ? "Sum (block-population apportioned)" : "Population-weighted average (blocks)";
+    if (method === "blockPop") return meta.agg === "sum" ? "Sum (block-population apportioned)" : "Average weighted by share of residents inside (blocks)";
     if (method === "area") return meta.agg === "sum" ? "Sum (area-apportioned)" : "Area-weighted average";
     return meta.agg === "sum" ? "Sum (all overlapping geos)" : "Simple average (all overlapping geos)";
   }
@@ -770,7 +770,7 @@
     var bufferNote = _state.useDisplayBuffers
       ? "the selected displayed buffers"
       : "a " + _state.bufferMiles + " mi analysis buffer around the selected features";
-    var methodNote = 'Summaries are computed within the <b>dissolved union</b> of ' + bufferNote + '. Polygons are included without a buffer. For ACS, ' + apportionNote + '. Medians are shown as an area-weighted average estimate.';
+    var methodNote = 'Summaries are computed within the <b>dissolved union</b> of ' + bufferNote + '. Polygons are included without a buffer. For ACS, ' + apportionNote + '. Medians are shown as an estimate: an average weighted by ' + (apportionMethodUsed === "blockPop" ? "each geography's share of residents inside" : apportionMethodUsed === "whole" ? "whole geographies" : "area inside") + '.';
     notesEl.innerHTML = (notesParts.length ? notesParts.join(" ") + "<br>" : "") + methodNote +
       (apportionNoteText
         ? '<div class="rf-status rf-status-stale u-mt-2"><span class="rf-status-text">' + escapeHtml(apportionNoteText) + '</span></div>'
