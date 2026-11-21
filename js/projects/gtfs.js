@@ -2717,9 +2717,46 @@
     ov.dayTypes.forEach(function (t) { tbl.addRow([labels[t.type] || t.type, isoOf(t.date), t.trips.toLocaleString()]); });
     body.appendChild(tbl);
 
+    renderHealthLine();
     renderDayPartRows();
     renderDateControls();
   }
+
+  // Feed health is checked in GTFS Service Analysis (a feed-wide scan is too slow to redraw on every
+  // Overview paint); the Overview only repeats the last result for the feed that is still loaded.
+  var _health = null;   // { feed, checks }
+  function renderHealthLine() {
+    var box = document.getElementById("gtfsHealth");
+    if (!box) return;
+    box.textContent = "";
+    var checks = _health && _health.feed === _feed && _feed ? _health.checks : null;
+    if (!checks) { box.hidden = true; return; }
+    var errors = 0, warnings = 0;
+    checks.forEach(function (c) { if (c.status === "error") errors++; else if (c.status === "warning") warnings++; });
+    var txt = errors + warnings === 0 ? "Feed health: no problems found."
+      : "Feed health: " + [errors ? errors + (errors === 1 ? " error" : " errors") : "",
+        warnings ? warnings + (warnings === 1 ? " warning" : " warnings") : ""].filter(Boolean).join(", ") +
+        ". Details in GTFS Service Analysis › Feed health.";
+    box.appendChild(el("div", "gtfs-ov-health" + (errors ? " gtfs-ov-bad" : warnings ? " gtfs-ov-warn" : ""), txt));
+    box.hidden = false;
+  }
+  App.gtfsSetHealth = function (feed, checks) {
+    _health = feed && Array.isArray(checks) ? { feed: feed, checks: checks } : null;
+    renderHealthLine();
+  };
+  App.gtfsToday = function () { return localToday(); };
+  // { shapeId: [[lon, lat], ...] } from the shape lines on the map (the parse-time point lists are freed).
+  App.gtfsShapeCoords = function () {
+    var out = Object.create(null);
+    if (!_shapesFC) return out;
+    _shapesFC.features.forEach(function (f) {
+      var id = f.properties && f.properties.shape_id, g = f.geometry;
+      if (!id || !g) return;
+      if (g.type === "LineString") out[id] = g.coordinates;
+      else if (g.type === "MultiLineString") out[id] = [].concat.apply([], g.coordinates);
+    });
+    return out;
+  };
 
   // ---- Copy a route as a Service with its timetable ----
 
