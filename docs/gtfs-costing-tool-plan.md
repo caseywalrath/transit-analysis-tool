@@ -479,10 +479,10 @@ Each gate is answered in its section. Record answers here and in the progress lo
 | G-C4b | C4 | Estimated deadheads | 1.3 × distance ÷ 20 mph | | |
 | G-C4c | C4 | Cost split for shared vehicles | By revenue hours | | |
 | G-C5a | C5 | Which stops become timepoints | Feed's timepoints, else suggested | | |
-| G-C5e | C5 | Frequency windows that do not fit one plan | Busiest direction, conflicts listed | | |
 | G-C5b | C5 | Run-time bands from real times | Hourly medians | | |
 | G-C5c | C5 | Days and annual counts | From calendar, confirmed | | |
 | G-C5d | C5 | Trips exact or rebuilt | Exact | | |
+| G-C5e | C5 | Frequency windows that do not fit one plan | Busiest direction, conflicts listed | | |
 | G-J1 | J1 | GTFS alone for handoff | GTFS only | | |
 
 ---
