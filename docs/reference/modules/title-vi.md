@@ -6,7 +6,7 @@ Read the code when this and the code disagree.
 
 Pure calculation engine: no DOM. Uses turf and `window.App` (feature resolution only).
 
-- `TitleVI.defaultPolicy()` → policy profile: major-change rules (route miles %, revenue hours %, span %, elimination, fare %), equity thresholds (disparate impact / disproportionate burden, in percentage points), geography level, ACS year, buffer distance.
+- `TitleVI.defaultPolicy()` → policy profile: major-change rules (route miles %, revenue hours %, span %, elimination, fare %), equity thresholds (disparate impact / disproportionate burden, in percentage points), geography level, ACS year, `apportionMethod` (default `App.APPORTION_DEFAULT`), buffer distance.
 - `TitleVI.createScenario(name)` → `{ …, alterations: [], impactMethod: "service_loss_area" }`.
 - `TitleVI.createAlteration(name)` → `{ name, changeType: "alteration"|"elimination"|"new_route", before, after, computed, manual: { revenueHours, spanHours, fare } }`. `before`/`after` are refs `{ featureType: "route"|"line", featureId, featureName }`; `featureId: null` = a legacy ref whose index no longer resolved. `featureName` is only the label for a missing feature.
 - `TitleVI.resolveFeature(ref)` → feature by ID at use time, or null (deleted). `TitleVI.findMissingRefs(scenario)` → `[{altName, which}]` for required refs that no longer exist.
@@ -16,7 +16,7 @@ Pure calculation engine: no DOM. Uses turf and `window.App` (feature resolution 
 - `TitleVI.computeRouteMetrics(route)` — legacy CSV metrics, kept for backward compat.
 - `TitleVI.evaluateMajorChange(policy, scenario)` → `{ triggered, ruleResults, altMetrics }`.
 - `TitleVI.buildImpactedArea(scenario)` by `impactMethod`: `service_loss_area` (default), `service_change_area` (loss + gain), `full_route_buffer`, `user_polygon`; falls back to before-route buffers when no change areas exist.
-- `TitleVI.fetchDemographics(core, unionGeom, geoLevel, year)` → ACS B03002 + B17001 (tract fallback for poverty at block-group level) → `{ totalPop, minorityPop, minorityShare, lowIncomePop, lowIncomeShare, geoCount, geos }`.
+- `TitleVI.fetchDemographics(core, unionGeom, geoLevel, year, options)` (`options.apportionMethod`, default `"area"` so direct callers keep their numbers) → ACS B03002 + B17001 (tract fallback for poverty at block-group level) → `{ totalPop, minorityPop, minorityShare, lowIncomePop, lowIncomeShare, geoCount, geos, apportionMethodUsed, apportionNote }`. Fractions come from one `computeApportionFractions` call shared by all four sums.
 - `TitleVI.evaluateFindings(impacted, baseline, policy)` → minority (Disparate Impact) and low-income (Disproportionate Burden) findings with `diffPpt`, `exceedsThreshold`, `finding`.
 - `TitleVI.compareScenarios(scenarioResults)` → rows for the comparison table.
 
@@ -33,3 +33,7 @@ Pure calculation engine: no DOM. Uses turf and `window.App` (feature resolution 
 ## title-vi-popup.html
 
 Policies tab: policy settings | alteration cards + impact-method radios. Analysis tab: baseline + equity findings. Scenarios tab: scenario manager + comparison table + session JSON import/export.
+
+## Counting residents of partly covered areas
+
+The Policies tab select `#tviApportionMethod` (stored as `_policy.apportionMethod`) chooses how residents of census geographies only partly inside the impacted area are counted: **by 2020 census-block population** (default; a geography contributes the share of its residents living in blocks whose internal point is inside the area) or **by land area** (share of land inside the area). If the block service cannot be reached the run uses land area and the results show the engine's `apportionNote`. Baseline and scenario analysis both pass the method, so they stay comparable; changing the select marks results stale (the baseline must be re-computed by hand). Results show "Residents counted by <label>." (`#tviBaselineApportion`, `#tviSummaryApportion`) and the findings, MSC and comparison CSVs start with the same line as a `# ` comment. Saved sessions without the setting load as land area, so their numbers do not change.

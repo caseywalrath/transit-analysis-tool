@@ -111,6 +111,7 @@
           <div class="tiny"><strong>Minority share:</strong> <span id="tviBaselineMinority">&mdash;</span></div>
           <div class="tiny"><strong>Low-income share:</strong> <span id="tviBaselineLowIncome">&mdash;</span></div>
           <div class="tiny u-mt-1 u-muted"><span id="tviBaselineGeos">&mdash;</span> geographies &middot; Pop: <span id="tviBaselinePop">&mdash;</span></div>
+          <div class="tiny u-mt-1 u-muted" id="tviBaselineApportion"></div>
         </div>
         </div>
 
@@ -130,6 +131,12 @@
           <option value="2023">2023</option>
           <option value="2022">2022</option>
           <option value="2021">2021</option>
+        </select>
+
+        <label class="tiny u-mt-3">Count residents of partly covered areas</label>
+        <select id="tviApportionMethod" class="rf-select">
+          <option value="blockPop">by 2020 census-block population</option>
+          <option value="area">by land area</option>
         </select>
         </div>
 
@@ -229,6 +236,7 @@
             <span id="tviSummaryGeos">&mdash;</span> geographies scored &middot;
             Impacted pop: <span id="tviSummaryPop">&mdash;</span>
           </div>
+          <div class="tiny u-muted" id="tviSummaryApportion"></div>
 
           <!-- Export buttons -->
           <div class="btn-row tvi-export-row">

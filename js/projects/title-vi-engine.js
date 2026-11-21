@@ -27,6 +27,7 @@
       disproportionateBurdenThresholdPpt: 15,
       geoLevel: "bg",
       acsYear: "2024",
+      apportionMethod: (window.App && window.App.APPORTION_DEFAULT) || "blockPop",
       bufferDistanceMiles: 0.5
     };
   };
@@ -501,13 +502,16 @@
   // Demographic computation (async — Census API calls)
   // =========================================================================
 
-  TitleVI.fetchDemographics = async function (core, unionGeom, geoLevel, year) {
+  // options.apportionMethod ("blockPop" | "area" | "whole", default "area" so
+  // direct callers keep their numbers) says how residents of partly covered
+  // geographies are counted.
+  TitleVI.fetchDemographics = async function (core, unionGeom, geoLevel, year, options) {
     if (!unionGeom) throw new Error("No impacted area geometry provided.");
 
     // 1. Fetch intersecting census geographies
     var geos = await core.fetchTigerwebGeos(geoLevel, unionGeom);
     if (!geos || geos.length === 0) {
-      return { totalPop: 0, minorityPop: 0, minorityShare: 0, lowIncomePop: 0, lowIncomeShare: 0, geoCount: 0, geos: [] };
+      return { totalPop: 0, minorityPop: 0, minorityShare: 0, lowIncomePop: 0, lowIncomeShare: 0, geoCount: 0, geos: [], apportionMethodUsed: null, apportionNote: null };
     }
 
     var geoids = geos.map(function (g) {
@@ -549,10 +553,15 @@
     }
 
     // 3. Aggregate within union
-    var aggTotal    = core.aggregateWithinUnion(unionGeom, geos, b03002_001, "sum");
-    var aggNhWhite  = core.aggregateWithinUnion(unionGeom, geos, b03002_003, "sum");
-    var aggPoverty  = core.aggregateWithinUnion(unionGeom, geos, b17001_002, "sum");
-    var aggTotalPop = core.aggregateWithinUnion(unionGeom, geos, b01003_001, "sum");
+    // Fractions are computed once and shared by all four sums so the shares stay consistent.
+    var apMethod = (options && options.apportionMethod) || "area";
+    var apFn = core.computeApportionFractions || App.computeApportionFractions;
+    var ap = await apFn(unionGeom, geos, apMethod);
+    var aggOpts = { fractions: ap.fractions };
+    var aggTotal    = core.aggregateWithinUnion(unionGeom, geos, b03002_001, "sum", aggOpts);
+    var aggNhWhite  = core.aggregateWithinUnion(unionGeom, geos, b03002_003, "sum", aggOpts);
+    var aggPoverty  = core.aggregateWithinUnion(unionGeom, geos, b17001_002, "sum", aggOpts);
+    var aggTotalPop = core.aggregateWithinUnion(unionGeom, geos, b01003_001, "sum", aggOpts);
 
     // 4. Compute shares
     var totalPopB03 = aggTotal.value || 0;
@@ -571,7 +580,9 @@
       lowIncomePop: Math.round(lowIncomePop),
       lowIncomeShare: lowIncomeShare,
       geoCount: geos.length,
-      geos: geos
+      geos: geos,
+      apportionMethodUsed: ap.methodUsed,
+      apportionNote: ap.note
     };
   };
 

@@ -11,7 +11,7 @@
   var _state = {
     geoLevel: "bg",
     year: "2024",
-    apportionByArea: true,
+    apportionMethod: App.APPORTION_DEFAULT, // effective method: "blockPop" | "area" | "whole" (checkbox unchecked)
     checkedVars: [], // persisted checkbox values (restored before DOM exists)
     featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
@@ -50,7 +50,7 @@
   //     geoLevel, year, apportionByArea,
   //     geos,            // full TIGERweb features (bg or tract per geoLevel)
   //     clippedGeos,     // clipped-for-display set when apportioned, else null
-  //     fractions,       // Map<GEOID, frac> from App.computeGeoOverlapFractions
+  //     fractions,       // Map<GEOID, frac> from App.computeApportionFractions (methodUsed, apportionNote kept beside it)
   //     tractGeos,       // tractGeosForFallback, or null if no tract-fallback var was fetched
   //     tractFractions,  // Map for tractGeos, or null
   //     displayVars,     // user-checked codes, table order
@@ -149,11 +149,28 @@
       .replace(/"/g, "&quot;");
   }
 
-  function aggDescription(meta, apportionByArea) {
+  // "blockPop" and "area" both count partial overlap; only "whole" takes full geographies.
+  function aggDescription(meta, method) {
     if (meta.source === "LODES") return "Sum (block internal points)";
     if (meta.agg === "ratio") return meta.ratioLabel || "Calculated ratio";
-    if (meta.agg === "sum") return apportionByArea ? "Sum (area-apportioned)" : "Sum (all overlapping geos)";
-    return apportionByArea ? "Area-weighted average" : "Simple average (all overlapping geos)";
+    if (method === "blockPop") return meta.agg === "sum" ? "Sum (block-population apportioned)" : "Population-weighted average (blocks)";
+    if (method === "area") return meta.agg === "sum" ? "Sum (area-apportioned)" : "Area-weighted average";
+    return meta.agg === "sum" ? "Sum (all overlapping geos)" : "Simple average (all overlapping geos)";
+  }
+
+  // Checkbox off = whole geographies; on = the select's method.
+  function readApportionMethod() {
+    var cb = document.getElementById("basApportionByArea");
+    var sel = document.getElementById("basApportionMethod");
+    if (cb && !cb.checked) return "whole";
+    var v = sel ? sel.value : App.APPORTION_DEFAULT;
+    return v === "area" ? "area" : "blockPop";
+  }
+
+  function syncApportionSelect() {
+    var cb = document.getElementById("basApportionByArea");
+    var sel = document.getElementById("basApportionMethod");
+    if (sel && cb) sel.disabled = !cb.checked;
   }
 
   // Context-aware onboarding/empty hint shown until a summary is calculated.
@@ -363,8 +380,8 @@
 
     var year = document.getElementById("basYearSelect").value;
     var geoLevel = document.getElementById("basGeoLevel").value;
-    var apportionByAreaEl = document.getElementById("basApportionByArea");
-    var apportionByArea = apportionByAreaEl ? apportionByAreaEl.checked : true;
+    var apportionMethod = readApportionMethod();
+    var apportionByArea = apportionMethod !== "whole";
     var featureFilter = getFeatureFilter();
     var checkedDisabled = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:disabled").length;
     var selectedCount = featureFilter.routeIndices.length + featureFilter.lineIndices.length +
@@ -405,7 +422,7 @@
 
     _state.year = year;
     _state.geoLevel = geoLevel;
-    _state.apportionByArea = apportionByArea;
+    _state.apportionMethod = apportionMethod;
     if (typeof App.cache !== "undefined") App.cache.save();
 
     // Separate ACS vs LODES selections
@@ -441,7 +458,7 @@
         "<td>" + (m.label || code) + "</td>" +
         "<td>Computing\u2026</td>" +
         "<td>\u2014</td>" +
-        "<td>" + aggDescription(m, apportionByArea) + "</td>";
+        "<td>" + aggDescription(m, apportionMethod) + "</td>";
       tbody.appendChild(tr);
       if (!codeToRows[code]) codeToRows[code] = [];
       codeToRows[code].push(tr);
@@ -473,6 +490,7 @@
     // additional fetches happen anywhere in this function because of it.
     _lastGeoData = {
       geoLevel: geoLevel, year: year, apportionByArea: apportionByArea,
+      apportionMethod: apportionMethod, methodUsed: apportionMethod, apportionNote: null,
       geos: null, clippedGeos: null, fractions: null,
       tractGeos: null, tractFractions: null,
       displayVars: displayVars.slice(),
@@ -529,6 +547,8 @@
     var clippedGeos = null;
     var fractions = null;
     var tractFractions = null;
+    var apportionMethodUsed = apportionMethod;
+    var apportionNoteText = null;
     if (acsVarsUniq.length > 0) {
       App.setStatus("Querying TIGERweb\u2026");
       progressEl.textContent = "Fetching census geometries\u2026";
@@ -537,8 +557,13 @@
 
       // Overlap fractions computed once per run (not per variable); also used by the
       // choropleth hover popup's apportioned-share display.
-      fractions = App.computeGeoOverlapFractions(unionFeat, geos, apportionByArea);
+      var apRes = await App.computeApportionFractions(unionFeat, geos, apportionMethod, { onProgress: App.setStatus });
+      fractions = apRes.fractions;
       _lastGeoData.fractions = fractions;
+      apportionMethodUsed = apRes.methodUsed;
+      apportionNoteText = apRes.note;
+      _lastGeoData.methodUsed = apRes.methodUsed;
+      _lastGeoData.apportionNote = apRes.note;
 
       // When apportioning by area, clip each geo to the union so the map
       // display matches the math (same pattern as computeAreaFractions in tpi-scoring.js).
@@ -585,7 +610,9 @@
               if (!tractGeosForFallback) {
                 progressEl.textContent = "Fetching tract geometries for tract-level variables\u2026";
                 tractGeosForFallback = await App.fetchTigerwebGeos("tract", unionFeat);
-                tractFractions = App.computeGeoOverlapFractions(unionFeat, tractGeosForFallback, apportionByArea);
+                var tractAp = await App.computeApportionFractions(unionFeat, tractGeosForFallback, apportionMethod, { onProgress: App.setStatus });
+                tractFractions = tractAp.fractions;
+                if (tractAp.note && !apportionNoteText) { apportionNoteText = tractAp.note; _lastGeoData.apportionNote = tractAp.note; }
                 _lastGeoData.tractGeos = tractGeosForFallback;
                 _lastGeoData.tractFractions = tractFractions;
               }
@@ -737,14 +764,17 @@
     }
     var hiddenNote = App.hiddenSelectionMessage(hiddenCount).notes;
     if (hiddenNote) notesParts.push(hiddenNote);
-    var apportionNote = apportionByArea
-      ? "counts are area-apportioned (fractional overlap)"
-      : "counts include all intersecting geographies in full (no area apportionment)";
+    var apportionNote = apportionMethodUsed === "whole"
+      ? "counts include all intersecting geographies in full (no apportionment)"
+      : "residents of partly covered geographies are counted by " + Apportion.methodLabel(apportionMethodUsed);
     var bufferNote = _state.useDisplayBuffers
       ? "the selected displayed buffers"
       : "a " + _state.bufferMiles + " mi analysis buffer around the selected features";
     var methodNote = 'Summaries are computed within the <b>dissolved union</b> of ' + bufferNote + '. Polygons are included without a buffer. For ACS, ' + apportionNote + '. Medians are shown as an area-weighted average estimate.';
-    notesEl.innerHTML = (notesParts.length ? notesParts.join(" ") + "<br>" : "") + methodNote;
+    notesEl.innerHTML = (notesParts.length ? notesParts.join(" ") + "<br>" : "") + methodNote +
+      (apportionNoteText
+        ? '<div class="rf-status rf-status-stale u-mt-2"><span class="rf-status-text">' + escapeHtml(apportionNoteText) + '</span></div>'
+        : "");
 
     _hasResults = true;
     renderInputs(true);
@@ -1180,7 +1210,9 @@
       }
     }
 
-    var lines = [header.join(",")];
+    var lines = ["# Apportionment: " + Apportion.methodLabel(_lastGeoData.methodUsed)];
+    if (_lastGeoData.apportionNote) lines.push("# " + _lastGeoData.apportionNote);
+    lines.push(header.join(","));
     for (var gi = 0; gi < _lastGeoData.geos.length; gi++) {
       var geo = _lastGeoData.geos[gi];
       var geoid = geo.properties && geo.properties.GEOID;
@@ -1208,7 +1240,10 @@
     var yearEl = document.getElementById("basYearSelect");
     if (yearEl) yearEl.value = _state.year;
     var apportionEl = document.getElementById("basApportionByArea");
-    if (apportionEl) apportionEl.checked = _state.apportionByArea;
+    if (apportionEl) apportionEl.checked = _state.apportionMethod !== "whole";
+    var apMethodEl = document.getElementById("basApportionMethod");
+    if (apMethodEl) apMethodEl.value = _state.apportionMethod === "area" ? "area" : "blockPop";
+    syncApportionSelect();
     syncBufferControl();
     applyFeatureFilterToCheckboxes(_state.featureFilter);
     var ihEl = document.getElementById("basIncludeHidden");
@@ -1262,7 +1297,8 @@
     var geoLabel = geoEl && geoEl.value === "tract" ? "Tracts" : "Block groups";
     return count + " variable" + (count === 1 ? "" : "s") + " \u00b7 " +
       geoLabel + " \u00b7 " + (yearEl ? yearEl.value : _state.year) + " \u00b7 " +
-      (apportionEl && apportionEl.checked ? "area apportioned" : "whole geographies") + " \u00b7 " +
+      (apportionEl && !apportionEl.checked ? "whole geographies"
+        : (readApportionMethod() === "area" ? "area apportioned" : "block-population apportioned")) + " \u00b7 " +
       featureCount + " feature" + (featureCount === 1 ? "" : "s");
   }
 
@@ -1345,6 +1381,10 @@
       var varSelectEl = document.getElementById("varSelect");
       if (varSelectEl) varSelectEl.innerHTML = buildVarChecklistHTML();
       buildFeatureChecklist();
+
+      var apCb = document.getElementById("basApportionByArea");
+      if (apCb) apCb.addEventListener("change", syncApportionSelect);
+      syncApportionSelect();
 
       document.getElementById("basRun").addEventListener("click", async function () {
         try {
@@ -1516,7 +1556,8 @@
         return {
           geoLevel: _state.geoLevel,
           year: _state.year,
-          apportionByArea: _state.apportionByArea,
+          apportionMethod: _state.apportionMethod,
+          apportionByArea: _state.apportionMethod !== "whole",   // older readers
           checkedVars: vars,
           // Schema v2: checked features as stable { type, id } refs, or null (= all).
           // v1 saved a { routeIndices, ... } index filter, migrated in apply().
@@ -1537,7 +1578,14 @@
       apply: function (data) {
         if (data.geoLevel) _state.geoLevel = data.geoLevel;
         if (data.year) _state.year = data.year;
-        if (typeof data.apportionByArea === "boolean") _state.apportionByArea = data.apportionByArea;
+        // Sessions saved before the method choice keep the method they were run with.
+        if (data.apportionMethod === "blockPop" || data.apportionMethod === "area" || data.apportionMethod === "whole") {
+          _state.apportionMethod = data.apportionMethod;
+        } else if (typeof data.apportionByArea === "boolean") {
+          _state.apportionMethod = App.apportionMethodFromLegacy(data.apportionByArea);
+        } else {
+          _state.apportionMethod = App.apportionMethodFromLegacy(undefined);
+        }
         if (Array.isArray(data.checkedVars)) _state.checkedVars = data.checkedVars;
         // v1 sessions saved checked array indices. Features are restored in saved
         // order and given IDs before module hooks run, so an old index still names

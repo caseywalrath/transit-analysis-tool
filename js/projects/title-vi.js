@@ -76,6 +76,13 @@
     if (geoEl) _policy.geoLevel = geoEl.value;
     var yearEl = document.getElementById("tviYearSelect");
     if (yearEl) _policy.acsYear = yearEl.value;
+    var apEl = document.getElementById("tviApportionMethod");
+    if (apEl) _policy.apportionMethod = apEl.value === "area" ? "area" : "blockPop";
+  }
+
+  // "Residents counted by <label>." plus the fallback note, for results and CSVs.
+  function apportionLine(methodUsed, method) {
+    return "Residents counted by " + Apportion.methodLabel(methodUsed || method) + ".";
   }
 
   function writePolicyToDOM() {
@@ -98,6 +105,8 @@
     if (geoEl) geoEl.value = _policy.geoLevel;
     var yearEl = document.getElementById("tviYearSelect");
     if (yearEl) yearEl.value = _policy.acsYear;
+    var apEl = document.getElementById("tviApportionMethod");
+    if (apEl) apEl.value = _policy.apportionMethod === "area" ? "area" : "blockPop";
   }
 
   // ---- Feature checklist helpers ----
@@ -638,7 +647,8 @@
         return;
       }
 
-      var demographics = await TV.fetchDemographics(core, unionGeom, _policy.geoLevel, _policy.acsYear);
+      var demographics = await TV.fetchDemographics(core, unionGeom, _policy.geoLevel, _policy.acsYear,
+        { apportionMethod: _policy.apportionMethod });
 
       _baseline = {
         type: "system_population",
@@ -650,6 +660,9 @@
         minorityPop: demographics.minorityPop,
         lowIncomePop: demographics.lowIncomePop,
         geoCount: demographics.geoCount,
+        apportionMethod: _policy.apportionMethod,
+        apportionMethodUsed: demographics.apportionMethodUsed,
+        apportionNote: demographics.apportionNote,
         computedAt: new Date().toISOString()
       };
 
@@ -674,6 +687,15 @@
     if (geoEl) geoEl.textContent = String(_baseline.geoCount);
     var popEl = document.getElementById("tviBaselinePop");
     if (popEl) popEl.textContent = _baseline.totalPop.toLocaleString();
+    setApportionLine("tviBaselineApportion", _baseline.apportionMethodUsed, _baseline.apportionNote);
+  }
+
+  // Method line plus, when block data was unavailable, the fallback note.
+  function setApportionLine(id, methodUsed, note) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!methodUsed) { el.textContent = ""; return; }
+    el.textContent = apportionLine(methodUsed) + (note ? " " + note : "");
   }
 
   // ---- Build union from feature filter ----
@@ -726,6 +748,15 @@
 
     try {
       readPolicyFromDOM();
+      // Comparing an impacted area and a baseline counted by different methods
+      // would mix two definitions of "residents inside"; older baselines were by area.
+      var baseMethod = _baseline.apportionMethod || "area";
+      if (baseMethod !== _policy.apportionMethod) {
+        if (statusEl) statusEl.textContent = "The system baseline counted residents by " +
+          Apportion.methodLabel(baseMethod) + ". Recompute the baseline so both use the same method.";
+        _running = false;
+        return;
+      }
       var scenario = _scenarios[_activeScenarioIdx];
 
       // Update scenario's impact method from DOM
@@ -760,7 +791,8 @@
       }
 
       // 3. Fetch demographics for impacted area
-      var demographics = await TV.fetchDemographics(core, impactedArea.geometry, _policy.geoLevel, _policy.acsYear);
+      var demographics = await TV.fetchDemographics(core, impactedArea.geometry, _policy.geoLevel, _policy.acsYear,
+        { apportionMethod: _policy.apportionMethod });
 
       // 4. Evaluate findings
       var findings = TV.evaluateFindings(demographics, _baseline, _policy);
@@ -868,6 +900,7 @@
     if (geoEl) geoEl.textContent = String(result.demographics.geoCount);
     var popEl = document.getElementById("tviSummaryPop");
     if (popEl) popEl.textContent = result.demographics.totalPop.toLocaleString();
+    setApportionLine("tviSummaryApportion", result.demographics.apportionMethodUsed, result.demographics.apportionNote);
 
     // Enable export buttons
     var csvBtn = document.getElementById("tviExportCSV");
@@ -1254,6 +1287,10 @@
     }
 
     var lines = [];
+    var mscRes = _results[scenario.id];
+    var mscDem = (mscRes && mscRes.demographics) || {};
+    lines.push("# " + apportionLine(mscDem.apportionMethodUsed, _policy.apportionMethod));
+    if (mscDem.apportionNote) lines.push("# " + mscDem.apportionNote);
     lines.push([
       "adjustment_name", "change_type",
       "route_miles_change_pct", "route_miles_msc",
@@ -1312,6 +1349,14 @@
 
   function exportFindingsCSV() {
     var lines = [];
+    var apDem = null;
+    for (var ai0 = 0; ai0 < _scenarios.length && !apDem; ai0++) {
+      var r0 = _results[_scenarios[ai0].id];
+      if (r0 && r0.demographics) apDem = r0.demographics;
+    }
+    apDem = apDem || {};
+    lines.push("# " + apportionLine(apDem.apportionMethodUsed, _policy.apportionMethod));
+    if (apDem.apportionNote) lines.push("# " + apDem.apportionNote);
     lines.push("scenario_name,alteration_name,change_type,major_change_triggered," +
       "before_miles,after_miles,pct_change_miles,altered_pct,altered_miles," +
       "before_rev_hours,after_rev_hours,pct_change_rev_hours," +
@@ -1412,6 +1457,9 @@
 
     var comparison = TV.compareScenarios(analyzedResults);
     var lines = [];
+    var cmpDem = (analyzedResults[0] && analyzedResults[0].demographics) || {};
+    lines.push("# " + apportionLine(cmpDem.apportionMethodUsed, _policy.apportionMethod));
+    if (cmpDem.apportionNote) lines.push("# " + cmpDem.apportionNote);
     lines.push("metric," + comparison.map(function (c) { return csvEscape(c.scenarioName); }).join(","));
 
     var metrics = [
@@ -1545,6 +1593,8 @@
   function applyState(data) {
     if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return;
     if (data.policy) _policy = data.policy;
+    // Sessions saved before the method choice were computed by land area.
+    if (!data.policy || !data.policy.apportionMethod) _policy.apportionMethod = "area";
     if (data.scenarios) {
       _scenarios = data.scenarios;
       // v1 migration: convert affectedRoutes → alterations
@@ -1593,6 +1643,12 @@
     // MSC export button
     var mscExpBtn = document.getElementById("tviExportMSCBtn");
     if (mscExpBtn) mscExpBtn.addEventListener("click", exportMSCResultsCSV);
+
+    var apSel = document.getElementById("tviApportionMethod");
+    if (apSel) apSel.addEventListener("change", function () {
+      readPolicyFromDOM();
+      if (Object.keys(_results).length > 0) markStale();
+    });
 
     // Impact method radios (mark stale on change)
     var radios = document.querySelectorAll('input[name="tviImpactMethod"]');
