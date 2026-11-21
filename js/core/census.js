@@ -358,6 +358,116 @@
     return fractions;
   }
 
+  // --- Apportionment by 2020 census-block population ---
+
+  var BLOCK_LAYER_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/2";
+  var APPORTION_FALLBACK_NOTE = "Census block data could not be downloaded, so residents were apportioned by land area.";
+  var _blockCache = new Map();  // bbox string -> parsed block rows (pre GEOID-prefix filter)
+
+  // The bbox covers the WHOLE geographies, not the study area, so each
+  // geography's population denominator includes blocks outside the union.
+  // Errors propagate: a partial page sequence must never be treated as data.
+  async function fetchBlockPopulations(geos, onProgress) {
+    var prefixes = [];
+    var boxFeats = [];
+    for (var i = 0; i < geos.length; i++) {
+      var g = geos[i];
+      var id = g && g.properties && g.properties.GEOID;
+      if (!id) continue;
+      prefixes.push(String(id));
+      if (g.geometry) boxFeats.push(g);
+    }
+    if (!prefixes.length || !boxFeats.length) return [];
+
+    var bbox = turf.bbox({ type: "FeatureCollection", features: boxFeats }).join(",");
+    var rows = _blockCache.get(bbox);
+    if (!rows) {
+      var params = new URLSearchParams({
+        where: "1=1",
+        outFields: "GEOID,INTPTLAT,INTPTLON,POP100,HU100",
+        geometry: bbox,
+        geometryType: "esriGeometryEnvelope",
+        inSR: "4326",
+        spatialRel: "esriSpatialRelIntersects",
+        outSR: "4326",
+        returnGeometry: "false",
+        f: "geojson"
+      });
+      var features = await App.fetchAllTigerwebFeatures(BLOCK_LAYER_URL, params);
+      if (features.length > 20000 && typeof onProgress === "function") {
+        onProgress("Large study area: " + features.length + " census blocks\u2026");
+      }
+      rows = [];
+      for (var k = 0; k < features.length; k++) {
+        var p = features[k].properties || {};
+        var geoid = p.GEOID ? String(p.GEOID) : "";
+        var lat = Number(p.INTPTLAT);
+        var lon = Number(p.INTPTLON);
+        if (!geoid || !isFinite(lat) || !isFinite(lon)) continue;
+        var pop = Number(p.POP100);
+        var hu = Number(p.HU100);
+        rows.push({ geoid: geoid, lat: lat, lon: lon, pop: isFinite(pop) ? pop : 0, hu: isFinite(hu) ? hu : 0 });
+      }
+      _blockCache.set(bbox, rows);
+    }
+
+    return rows.filter(function (r) {
+      for (var j = 0; j < prefixes.length; j++) {
+        if (r.geoid.indexOf(prefixes[j]) === 0) return true;
+      }
+      return false;
+    });
+  }
+
+  // computeApportionFractions: per-geography share of residents inside the
+  // study area by method "blockPop" | "area" | "whole". Never silent: when
+  // block data fails, the area result comes back with methodUsed "area" and a
+  // note for the caller to display. Geos not touching the union stay absent.
+  async function computeApportionFractions(unionFeat, geos, method, opts) {
+    geos = geos || [];
+    if (method !== "whole" && method !== "blockPop") method = "area";
+    if (!geos.length) {
+      return { fractions: new Map(), method: method, methodUsed: method, basis: null, note: null };
+    }
+    if (method === "whole") {
+      return { fractions: computeGeoOverlapFractions(unionFeat, geos, false), method: "whole", methodUsed: "whole", basis: null, note: null };
+    }
+    var areaFractions = computeGeoOverlapFractions(unionFeat, geos, true);
+    if (method === "area") {
+      return { fractions: areaFractions, method: "area", methodUsed: "area", basis: null, note: null };
+    }
+
+    try {
+      var blocks = await fetchBlockPopulations(geos, opts && opts.onProgress);
+      var inside = [];
+      for (var i = 0; i < blocks.length; i++) {
+        var b = blocks[i];
+        var isIn = false;
+        try { isIn = turf.booleanPointInPolygon(turf.point([b.lon, b.lat]), unionFeat); } catch (_) { isIn = false; }
+        if (isIn) inside.push(b.geoid);
+      }
+      var geoids = [];
+      var areaObj = {};
+      areaFractions.forEach(function (v, k) { areaObj[k] = v; });
+      for (var gi = 0; gi < geos.length; gi++) {
+        var gid = geos[gi] && geos[gi].properties && geos[gi].properties.GEOID;
+        if (gid) geoids.push(String(gid));
+      }
+      var res = Apportion.blockWeightedFractions(geoids, blocks, inside, areaObj);
+      var fractions = new Map();
+      var basis = new Map();
+      areaFractions.forEach(function (_v, k) {
+        if (res.fractions[k] === undefined) return;
+        fractions.set(k, res.fractions[k]);
+        basis.set(k, res.basis[k]);
+      });
+      return { fractions: fractions, method: "blockPop", methodUsed: "blockPop", basis: basis, note: null, blockCount: blocks.length };
+    } catch (err) {
+      console.warn("Block-population apportionment failed; using land area.", err);
+      return { fractions: areaFractions, method: "blockPop", methodUsed: "area", basis: null, note: APPORTION_FALLBACK_NOTE };
+    }
+  }
+
   // aggregateWithinUnion: area-weighted aggregation of census values within a union polygon.
   // options.apportionByArea (default true): when false, uses full geography values for any
   // geo that intersects the union (no fractional area apportionment).
@@ -436,6 +546,10 @@
   App.aggregateWithinUnion = aggregateWithinUnion;
   App.computeGeoOverlapFractions = computeGeoOverlapFractions;
   App.computeAcsValueOnly = computeAcsValueOnly;
+  App.computeApportionFractions = computeApportionFractions;
+  App.APPORTION_DEFAULT = "blockPop";
+  // Old sessions saved a boolean apportionByArea; undefined means the old default (area).
+  App.apportionMethodFromLegacy = function (apportionByArea) { return apportionByArea === false ? "whole" : "area"; };
 
   // Shared session fetch cache control (awareness + override).
   App.censusCache = {
