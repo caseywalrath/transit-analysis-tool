@@ -100,6 +100,28 @@ Runtime API `App.gtfsStops`: `ids()`, `count()` → `{total, inFeed}` (`inFeed` 
 
 `App.setGtfsLayersVisible(visible)` → shows/hides both the GTFS route and stop map layers.
 
+### Analysis network — `window.AnalysisNetwork` (`js/core/analysis-network.js`) and `App.buildAnalysisNetwork` (`js/core/analysis-network-source.js`)
+
+One network of the GTFS trips of a date plus synthetic trips for drawn Services (gate G6c), the input of the
+coverage, equity and travel-time analyses.
+- Engine (pure; golden `test/cases/analysis-network.mjs`): `bandTrips(bands, runtimeMin)` (Trip Builder's
+  generator, which now calls it), `stopTimesAlong(startMin, runtimeMin, distMi, lengthMi)` (time ∝ distance
+  along the line; by index when the length is unusable), `proposalTrips(proposal, dayType)` (`both` adds
+  the reversed way with the other direction id), `modeOf(route_type)` (0, 1, 2, 5, 7, 12 → rail, else bus),
+  `build({feed, date, routeIds, proposals})`, `stopService(network, dayParts)` (equals `stopServiceTable`
+  for a GTFS-only network).
+- Network: `{date, dayType, stops [{id, srcId, source, name, lat, lon}] sorted by id, stopIndex, routes
+  {key: {key, source, srcId, name, mode, color}} (only routes with trips), routeOrder, trips [{id, routeKey,
+  source, directionId, stops: [stop index], arr, dep}] (seconds; sorted by first departure), counts}`. Ids:
+  `g:<stop_id>` / `g:<route_id>` / `g:<trip_id>`; drawn `d:point-<pointIdx>`, `d:<serviceKey>#<pattern>#<n>`
+  for spaced stops, `d:<serviceKey>`.
+- `App.buildAnalysisNetwork({date, includeHidden, gtfs, proposals})`: feed and analysis date from this
+  module, scope `App.gtfsScopeRouteIds(includeHidden)`; drawn Services from `App.buildTransitServices()`
+  (skipped with a reason in `proposalsSkipped`: needs setup, hidden, no run time, no line). Stops are the
+  Service's associated stop Points placed by `turf.nearestPointOnLine`; under two, stops every 0.25 mi. A
+  single "Both" pattern runs both ways. `notes` carries "Proposals use evenly spaced trips from their
+  headway bands." whenever a proposal is in. Test: `test/browser/analysis-network.test.mjs`.
+
 ## gtfs-popup.html
 
 Overview tab (see Popup above). Files tab — left: file directory + layer visibility checkboxes + Clear. Right: CSV table with row/column count.

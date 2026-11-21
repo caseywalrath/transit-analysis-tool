@@ -334,3 +334,58 @@ Inline feed (route A trips T1 1, T2 2, T3 1 as two frequency runs, T4 blank; B T
 W inherits 2 from station P): A has stops X, Y, Z (1, 1, 1) and 5 trips (3 accessible, 1 not, 1 unknown);
 B has W (not accessible by inheritance) and Z (unknown) and 1 trip not accessible; the total counts X, Y, Z, W
 once each (1 accessible, 2 not, 1 unknown) and 6 trips (3, 2, 1).
+
+## Analysis network (A6)
+
+Hand-worked for `AnalysisNetwork` (`js/core/analysis-network.js`). Times are seconds after the date's midnight.
+
+### D1 (Mon 2026-01-12), GTFS only, all routes
+
+- `dayType` weekday. **25 trips** (B1 5, R1 2, F1 18), 0 proposal trips, **0 dropped rows** (B1_W_2's blank
+  S2 is interpolated to 29400 first; B1_W_BAD is not on the date at all).
+- **6 stops**, sorted by id: `g:F2`, `g:P1`, `g:R2`, `g:S1`, `g:S2`, `g:S3` (indices 0 to 5). STN has no
+  stop-time rows, so it is not in the network.
+- Routes `g:B1` (name B1, bus, `#0055AA`), `g:F1` (F1, bus, `#228822`), `g:R1` (R1, rail, `#AA3300`).
+- First trip: the F1 run `g:F1_W_FREQ@06:00:00` (S1 21600, F2 22500) comes before `g:R1_W_0` (P1 21600,
+  R2 23820): equal first departures, so the lower trip id first. Last trip `g:B1_W_OWL` (89400, 90000, 90600).
+- `routeIds: ["B1"]`: 5 trips, stops `g:S1`, `g:S2`, `g:S3` only, one route.
+- Unknown date 20260301 (a Sunday after the feed's range): dayType sunday, no trips, no stops, counts all 0.
+- Feed null, date given: same as no GTFS trips.
+
+### Proposal "P" (not in the feed)
+
+Three stops A, B, C at 0, 1 and 2 mi; line length 2 mi; weekday band 07:00 to 09:00 every 30 min; runtime
+20 min. Trips start 420, 450, 480, 510 min (4 trips; 09:00 is not before the end). A trip starting at `s`
+min has times `s*60`, `s*60 + 600`, `s*60 + 1200` at A, B, C (B is halfway):
+
+| Start | A | B | C |
+|---|---|---|---|
+| 07:00 | 25200 | 25800 | 26400 |
+| 07:30 | 27000 | 27600 | 28200 |
+| 08:00 | 28800 | 29400 | 30000 |
+| 08:30 | 30600 | 31200 | 31800 |
+
+Trip ids `d:P|pat1|0|420`, `...|450`, `...|480`, `...|510`.
+- Mixed with D1: 29 trips (25 + 4), 9 stops (`d:A`, `d:B`, `d:C` sort before the `g:` stops, so `d:A` is
+  index 0 and `g:F2` index 3), routes `d:P`, `g:B1`, `g:F1`, `g:R1`.
+- Proposals only (feed null): 4 trips, stops `d:A`, `d:B`, `d:C`, dayType weekday.
+- `both: true`: the reverse trips run C, B, A with distances 0, 1, 2 mi from C, so the 07:00 return trip is
+  C 25200, B 25800, A 26400, direction "1", id `...|1|420`; 8 trips in all.
+- Sunday with no Sunday bands: no trips.
+
+### stopService, D1
+
+Same figures as `stopServiceTable` for D1 (see "Stop analysis"), with `g:` ids: `g:P1` 1 trip, 1 route,
+21600 / 21600, no headways; `g:R2` 1, 1, 24300 / 24300; `g:S1` 21, 2, 21600 / 89400, peak 900;
+`g:S2` 5, 1, 25800 / 90000, peak 900; `g:S3` 2, 1, 26100 / 27000, peak 900. `g:F2` has only arrivals, so no row. Off-peak headway is null everywhere.
+The invariant check compares the rows of non-station stops (P1 sits in a station): S1, S2, S3 and R2, so
+`checked` is 4 and `mismatches` is empty.
+
+### Generator and helpers
+
+- `bandTrips`: 07:00 to 08:00 every 20 min gives starts 420, 440, 460 (end = start + runtime). 22:00 to 02:00
+  every 120 min wraps (to = 1560): starts 1320, 1440. Headway 0: nothing. Headway 0.5 clamps to 1: 60 trips
+  for a one-hour band.
+- `stopTimesAlong(420, 20, [0, 1, 2], 2)` = [25200, 25800, 26400]. Length 0: by index, 3 stops, fractions
+  0, 0.5, 1: same three values. One stop: [25200].
+- `modeOf`: 3 bus, "1" rail, 12 rail, "" bus.

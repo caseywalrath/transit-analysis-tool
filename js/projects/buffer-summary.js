@@ -16,14 +16,15 @@
     featureFilter: null, // null (= all checked) or an array of CHECKED { type, id } stable feature refs
     bufferMiles: App.ANALYSIS_BUFFER_DEFAULT_MILES,
     useDisplayBuffers: false,
-    includeHidden: false // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
+    includeHidden: false, // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
+    gtfsStops: true // the "GTFS stop selection" row's checkbox; it only shows checked while stops are selected
   };
   var _initialized = false;
   var _hasResults = false; // true once a summary has been computed this session
   var _stale = false; // true when features/walksheds changed since the last run
   // Snapshot taken at run time so update() can tell a relevant change from an
   // unrelated hide/show (notifyProject fires on every visibility change).
-  var _runSnap = null; // { geom: string, hidden: string, includeHidden: bool }
+  var _runSnap = null; // { geom: string, hidden: string, includeHidden: bool, gtfs: null | { feed, ids: string } }
 
   // Currently selected #basMapVar value ("" = none / gray outline). Persisted
   // via the cache collect/apply handlers below — geometry is not
@@ -207,6 +208,47 @@
              pointIndices: pointIndices, polygonIndices: polygonIndices };
   }
 
+  // ---- GTFS stop selection ----
+
+  // The selected stops that exist in the loaded feed with usable coordinates, as point
+  // features. The selection can name stops the feed lacks (a list imported for another
+  // feed) and a feed can omit coordinates; neither may reach turf.circle.
+  function gtfsStopPoints() {
+    var feed = typeof App.gtfsSchedule === "function" ? App.gtfsSchedule() : null;
+    if (!feed || !feed._stops || !App.gtfsStops) return [];
+    var out = [];
+    App.gtfsStops.ids().forEach(function (id) {
+      var s = feed._stops[id];
+      if (!s || typeof s.lat !== "number" || typeof s.lon !== "number" ||
+          !Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return;
+      out.push({ type: "Feature", properties: { stop_id: id, name: s.name },
+        geometry: { type: "Point", coordinates: [s.lon, s.lat] } });
+    });
+    return out;
+  }
+
+  function hasGtfsFeed() {
+    return typeof App.gtfsSchedule === "function" && !!App.gtfsSchedule();
+  }
+
+  // True when the row exists, is enabled and ticked: the run will add the stops.
+  function gtfsRowChecked() {
+    var cb = document.querySelector("#basFeatureChecklist input[data-type=gtfs]");
+    return !!cb && cb.checked && !cb.disabled;
+  }
+
+  // Keeps _state.gtfsStops in step with the visible box; a disabled row (no stops) shows
+  // unchecked without meaning the user turned it off.
+  function syncGtfsState() {
+    var cb = document.querySelector("#basFeatureChecklist input[data-type=gtfs]");
+    if (cb && !cb.disabled) _state.gtfsStops = cb.checked;
+  }
+
+  // What a run's GTFS stops depend on; compared with the snapshot taken at run time.
+  function gtfsSig() {
+    return { feed: App.gtfsSchedule(), ids: gtfsStopPoints().map(function (f) { return f.properties.stop_id; }).join("|") };
+  }
+
   // Signature of everything about the drawn features that affects a run EXCEPT
   // the hidden flag (geometry + properties + attributes), so update() can ignore
   // hide/show notifications. Includes the road-network epoch (walksheds).
@@ -258,6 +300,10 @@
     if (!_runSnap) return true;
     if (_runSnap.includeHidden !== !!_state.includeHidden) return true;
     if (_runSnap.geom !== featureGeomSig()) return true;
+    if (_runSnap.gtfs) {
+      var g = hasGtfsFeed() ? gtfsSig() : null;
+      if (!g || g.feed !== _runSnap.gtfs.feed || g.ids !== _runSnap.gtfs.ids) return true;
+    }
     var f = currentRunFilter();
     return !!f && _runSnap.hidden !== selectedHiddenSig(f);
   }
@@ -284,6 +330,7 @@
   function applyFeatureFilterToCheckboxes(filter) {
     var boxes = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]");
     for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].getAttribute("data-type") === "gtfs") continue;   // not a drawn feature; _state.gtfsStops owns it
       boxes[i].checked = filterHas(filter, boxes[i].getAttribute("data-type"),
         parseInt(boxes[i].getAttribute("data-feature-id"), 10));
     }
@@ -343,7 +390,44 @@
     (App.lines || []).forEach(function (feature, idx) { addRow("line", idx, feature, "Line " + (idx + 1), "L"); });
     (App.points || []).forEach(function (feature, idx) { addRow("point", idx, feature, "Point " + (idx + 1), "S"); });
     (App.polygons || []).forEach(function (feature, idx) { addRow("polygon", idx, feature, "Polygon " + (idx + 1), "P"); });
-    if (!hasFeatures) el.innerHTML = '<div class="rf-empty-note">No features drawn.</div>';
+    if (hasGtfsFeed()) {
+      var gtfsPts = gtfsStopPoints();
+      var n = gtfsPts.length;
+      var gLabel = document.createElement("div");
+      gLabel.className = "bas-feature-group-label";
+      gLabel.textContent = "GTFS";
+      el.appendChild(gLabel);
+      var gRow = document.createElement("div");
+      gRow.className = "rf-feature-check-row";
+      gRow.title = "Buffered as plain circles at the Buffer distance below. Use Display Buffers does not apply to GTFS stops.";
+      var gCb = document.createElement("input");
+      gCb.type = "checkbox";
+      gCb.setAttribute("data-type", "gtfs");
+      gCb.disabled = n === 0;
+      gCb.checked = n > 0 && _state.gtfsStops;
+      var gText = document.createElement("label");
+      gText.style.cssText = "flex:1;cursor:pointer;";
+      gText.textContent = n > 0 ? "GTFS stop selection (" + n + " stop" + (n === 1 ? "" : "s") + ")"
+        : "GTFS stop selection (no stops selected)";
+      gText.addEventListener("click", function (event) {
+        event.preventDefault();
+        if (gCb.disabled) return;
+        gCb.checked = !gCb.checked;
+        onGtfsRowChange();
+      });
+      gCb.addEventListener("change", onGtfsRowChange);
+      gRow.appendChild(gCb);
+      gRow.appendChild(gText);
+      el.appendChild(gRow);
+    } else if (!hasFeatures) {
+      el.innerHTML = '<div class="rf-empty-note">No features drawn.</div>';
+    }
+  }
+
+  function onGtfsRowChange() {
+    syncGtfsState();
+    if (App.cache) App.cache.save();
+    renderInputs();
   }
 
   function syncBufferControl() {
@@ -354,6 +438,10 @@
       input.disabled = _state.useDisplayBuffers;
     }
     if (toggle) toggle.checked = _state.useDisplayBuffers;
+  }
+
+  function gtfsNote(n) {
+    return "Includes " + n + " GTFS stop" + (n === 1 ? "" : "s") + " (stop selection).";
   }
 
   // ---- Summary runner ----
@@ -386,14 +474,16 @@
     var checkedDisabled = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:disabled").length;
     var selectedCount = featureFilter.routeIndices.length + featureFilter.lineIndices.length +
       featureFilter.pointIndices.length + featureFilter.polygonIndices.length;
-    if (!selectedCount && checkedDisabled > 0) {
+    // The GTFS row counts as a selection only when it will contribute a geometry.
+    var gtfsPoints = gtfsRowChecked() ? gtfsStopPoints() : [];
+    if (!selectedCount && !gtfsPoints.length && checkedDisabled > 0) {
       // Everything the user ticked is hidden on the map (toggle off).
       var hiddenErr = App.hiddenSelectionMessage(0).error;
       App.setStatus(hiddenErr);
       setStatus(hiddenErr, "error");
       return;
     }
-    if (!selectedCount) {
+    if (!selectedCount && !gtfsPoints.length) {
       App.setStatus("No features selected");
       App.renderModuleState({ statusEl: "basStatus", emptyEl: "basEmptyState", empty: true,
         hint: { need: "Select at least one feature to analyze.", action: "Choose a point, line, route, or polygon above." } });
@@ -407,7 +497,9 @@
       ? App.buildDisplayBufferSet(featureFilter, hiddenOpts)
       : App.buildAnalysisBufferSet(featureFilter, _state.bufferMiles, hiddenOpts);
     var hiddenCount = bufferSet.hiddenCount || { included: 0, skipped: 0 };
+    var gtfsUnion = gtfsPoints.length ? App.buildStopCircleUnion(gtfsPoints, _state.bufferMiles) : null;
     _runSnap = {
+      gtfs: gtfsUnion ? gtfsSig() : null,
       geom: featureGeomSig(), hidden: selectedHiddenSig(featureFilter),
       includeHidden: !!_state.includeHidden, filterRefs: getCheckedRefs().filter(function (r) {
         // only refs that were actually in the run filter (enabled boxes)
@@ -418,7 +510,8 @@
         return false;
       })
     };
-    var unionFeat = bufferSet.union;
+    var unionFeat = gtfsUnion ? App.foldAnalysisUnion([bufferSet.union, gtfsUnion].filter(Boolean)) : bufferSet.union;
+    var gtfsStopCount = gtfsUnion ? gtfsPoints.length : 0;
 
     _state.year = year;
     _state.geoLevel = geoLevel;
@@ -494,7 +587,7 @@
       geos: null, clippedGeos: null, fractions: null,
       tractGeos: null, tractFractions: null,
       displayVars: displayVars.slice(),
-      perGeo: {}, perGeoParts: {}, denomVars: {}
+      perGeo: {}, perGeoParts: {}, denomVars: {}, gtfsStopCount: gtfsStopCount
     };
 
     // Deduplicate ACS vars so each unique code is only fetched once
@@ -764,6 +857,7 @@
     }
     var hiddenNote = App.hiddenSelectionMessage(hiddenCount).notes;
     if (hiddenNote) notesParts.push(hiddenNote);
+    if (gtfsStopCount > 0) notesParts.push(gtfsNote(gtfsStopCount));
     var apportionNote = apportionMethodUsed === "whole"
       ? "counts include all intersecting geographies in full (no apportionment)"
       : "residents of partly covered geographies are counted by " + Apportion.methodLabel(apportionMethodUsed);
@@ -1212,6 +1306,7 @@
 
     var lines = ["# Apportionment: " + Apportion.methodLabel(_lastGeoData.methodUsed)];
     if (_lastGeoData.apportionNote) lines.push("# " + _lastGeoData.apportionNote);
+    if (_lastGeoData.gtfsStopCount > 0) lines.push("# " + gtfsNote(_lastGeoData.gtfsStopCount));
     lines.push(header.join(","));
     for (var gi = 0; gi < _lastGeoData.geos.length; gi++) {
       var geo = _lastGeoData.geos[gi];
@@ -1293,13 +1388,13 @@
     var yearEl = document.getElementById("basYearSelect");
     var apportionEl = document.getElementById("basApportionByArea");
     var count = collectCheckedVars().length;
-    var featureCount = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:not(:disabled)").length;
+    var featureCount = document.querySelectorAll("#basFeatureChecklist input[type=checkbox]:checked:not(:disabled):not([data-type=gtfs])").length;
     var geoLabel = geoEl && geoEl.value === "tract" ? "Tracts" : "Block groups";
     return count + " variable" + (count === 1 ? "" : "s") + " \u00b7 " +
       geoLabel + " \u00b7 " + (yearEl ? yearEl.value : _state.year) + " \u00b7 " +
       (apportionEl && !apportionEl.checked ? "whole geographies"
         : (readApportionMethod() === "area" ? "area apportioned" : "block-population apportioned")) + " \u00b7 " +
-      featureCount + " feature" + (featureCount === 1 ? "" : "s");
+      featureCount + " feature" + (featureCount === 1 ? "" : "s") + (gtfsRowChecked() ? " + GTFS stops" : "");
   }
 
   function renderInputs(collapsed) {
@@ -1415,6 +1510,7 @@
       document.getElementById("basFeatureSelectAll").addEventListener("click", function (event) {
         event.preventDefault();
         document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { if (!cb.disabled) cb.checked = true; });
+        syncGtfsState();
         _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
@@ -1422,6 +1518,7 @@
       document.getElementById("basFeatureSelectNone").addEventListener("click", function (event) {
         event.preventDefault();
         document.querySelectorAll("#basFeatureChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        syncGtfsState();
         _state.featureFilter = getCheckedRefs();
         if (App.cache) App.cache.save();
         renderInputs();
@@ -1502,6 +1599,16 @@
         });
       });
 
+      // The stop selection or feed changed: refresh the row's count while the panel is open and
+      // go stale when the shown results used the stops. Subscribed here, not at load, because
+      // gtfs.js loads after this file.
+      if (typeof App.gtfsOnInputsChange === "function") {
+        App.gtfsOnInputsChange(function () {
+          if (isPopupVisible()) { buildFeatureChecklist(); renderInputs(); }
+          if (_hasResults && runIsOutdated()) showStale();
+        });
+      }
+
       applyStateToDOM();
       renderInputs(_hasResults ? undefined : false);
       var settingsEl = document.querySelector(".bas-body .rf-settings-col");
@@ -1530,7 +1637,7 @@
       if (document.getElementById("varSelect")) {
         _state.checkedVars = collectCheckedVars();
       }
-      if (document.getElementById("basFeatureChecklist")) _state.featureFilter = getCheckedRefs();
+      if (document.getElementById("basFeatureChecklist")) { syncGtfsState(); _state.featureFilter = getCheckedRefs(); }
     },
 
     clear: function () { clearAll(); },
@@ -1569,6 +1676,7 @@
           bufferMiles: _state.bufferMiles,
           useDisplayBuffers: _state.useDisplayBuffers,
           includeHidden: !!_state.includeHidden,   // additive, no schema bump
+          gtfsStops: (function () { syncGtfsState(); return !!_state.gtfsStops; })(),   // additive; the stop ids belong to the GTFS module's own save
           mapVar: _mapVar,
           mapNorm: _mapNorm,
           mapRamp: _mapRamp,
@@ -1600,6 +1708,7 @@
         if (Number.isFinite(data.bufferMiles)) _state.bufferMiles = data.bufferMiles;
         if (typeof data.useDisplayBuffers === "boolean") _state.useDisplayBuffers = data.useDisplayBuffers;
         if (typeof data.includeHidden === "boolean") _state.includeHidden = data.includeHidden;
+        _state.gtfsStops = typeof data.gtfsStops === "boolean" ? data.gtfsStops : true;   // older sessions: on
         // Geometry/results are not persisted (see clearAll()/_lastGeoData) — this
         // only restores which variable the dropdown will re-select on the next
         // successful run (populateBasMapVarDropdown() reads _mapVar as "keep").

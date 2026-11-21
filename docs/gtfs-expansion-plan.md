@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0–A5 complete; next phase A6.
+> **Status:** Approved at Gate G0 (2026-11-21). A0–A5 complete; A6 in progress (see `docs/A6-plan.md`).
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -980,10 +980,10 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G5b | A5 | Where reports live | One tabbed analysis | One tabbed analysis (Option A) | 2026-11-21 |
 | G5c | A5 | Layover without vehicle blocks | Blocks if present, else setting | Blocks if present, else setting (Option A) | 2026-11-21 |
 | G5d | A5 | Time saved by removing a stop | Labelled upper bound + walk distance | Upper bound + walk distance (Option A) | 2026-11-21 |
-| G6a | A6 | Low-income definition | Setting, default below poverty | | |
-| G6b | A6 | Departure time or window | Window | | |
-| G6c | A6 | Mix proposals into real network | Yes | | |
-| G6d | A6 | Wider buffer for frequent stops | Optional, off | | |
+| G6a | A6 | Low-income definition | Setting, default below poverty | Setting, default below poverty (Option A) | 2026-11-21 |
+| G6b | A6 | Departure time or window | Window | Window, editable (Option A) | 2026-11-21 |
+| G6c | A6 | Mix proposals into real network | Yes | Yes (Option A) | 2026-11-21 |
+| G6d | A6 | Wider buffer for frequent stops | Optional, off | Optional switch, off (Option A) | 2026-11-21 |
 | G7a | A7 | What can be compared | Two feeds | | |
 | G7b | A7 | Which health checks | Listed set | | |
 | G8a | A8 | Trip Builder's future | Retire once the export works | | |

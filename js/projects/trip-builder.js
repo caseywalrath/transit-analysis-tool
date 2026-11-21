@@ -196,30 +196,7 @@
   function generateTripsForPattern(pattern, day, runtimeMin) {
     var svc   = pattern.service || {};
     var bands = App.getEffectiveServiceBands(svc, day);
-    var trips = [];
-
-    var MAX_TRIPS_PER_BAND = 1500;
-    bands.forEach(function (b) {
-      var headway = parseFloat(b && b.frequency);
-      if (!(headway > 0)) return;             // blank/0 → "no service in band"
-      // Clamp to the UI's minimum (1 min) so a malformed import can't freeze the browser.
-      if (headway < 1) headway = 1;
-      var fromMin = parseHHMMtoMin(b && b.from);
-      var toMin   = parseHHMMtoMin(b && b.to);
-      if (!isFinite(fromMin) || !isFinite(toMin)) return;
-      // Midnight wrap (e.g. 22:00 → 02:00).
-      if (toMin <= fromMin) toMin += 1440;
-      // Generate from the band start, stepping by headway, while < band end.
-      // Trips whose end exceeds the band end are still emitted.
-      var emitted = 0;
-      for (var t = fromMin; t < toMin; t += headway) {
-        trips.push({ startMin: t, endMin: t + runtimeMin });
-        if (++emitted >= MAX_TRIPS_PER_BAND) break;
-      }
-    });
-
-    trips.sort(function (a, b) { return a.startMin - b.startMin; });
-    return trips;
+    return window.AnalysisNetwork.bandTrips(bands, runtimeMin);
   }
 
   // Build all trip columns for the selected service.

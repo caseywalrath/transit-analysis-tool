@@ -2156,6 +2156,8 @@
     routeServiceDay: routeServiceDay, serviceYear: serviceYear, calendarDayCounts: calendarDayCounts,
     stopSpacingStats: stopSpacingStats, consolidationCandidates: consolidationCandidates,
     stopServiceTable: stopServiceTable, wheelchairByRoute: wheelchairByRoute,
-    _stopTableInvariant: stopTableInvariant
+    _stopTableInvariant: stopTableInvariant,
+    dayPartList: dayPartList, partHeadways: partHeadways, pooledHeadway: pooledHeadway,
+    isPeakPart: isPeakPart, isOffPeakPart: isOffPeakPart, isStationStop: isStationStop
   };
 })();

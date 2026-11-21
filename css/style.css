@@ -4063,6 +4063,14 @@ select.fp-attr-input,
   cursor: pointer;
 }
 .rf-feature-check-row:hover { background: var(--surface-hover); }
+.bas-feature-group-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-sm);
+  color: var(--muted);
+  margin: 8px 0 2px;
+}
 .rf-feature-check-row input[type="checkbox"] {
   margin: 0;
   cursor: pointer;

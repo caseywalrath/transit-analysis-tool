@@ -1220,11 +1220,22 @@
   //               to no-penalty output.
   // Returns Map<nodeKey, distKm>.
   function floodDijkstra(startKey, budgetKm, penaltyKm) {
+    return floodFromSeeds([{ key: startKey, dist: 0, origin: 0 }], budgetKm, penaltyKm, null);
+  }
+
+  // Dijkstra from several start nodes at once, each at its own starting distance.
+  // originOf (a Map, optional) records which seed's origin settled each node.
+  function floodFromSeeds(seeds, budgetKm, penaltyKm, originOf) {
     var dist = new Map();
     var heap = new MinHeap();
 
-    dist.set(startKey, 0);
-    heap.push({ node: startKey, dist: 0 });
+    for (var s = 0; s < seeds.length; s++) {
+      var sd = seeds[s];
+      if (!(sd.dist <= budgetKm) || sd.dist >= (dist.has(sd.key) ? dist.get(sd.key) : Infinity)) continue;
+      dist.set(sd.key, sd.dist);
+      if (originOf) originOf.set(sd.key, sd.origin);
+      heap.push({ node: sd.key, dist: sd.dist });
+    }
 
     while (heap.size() > 0) {
       var current = heap.pop();
@@ -1242,8 +1253,12 @@
           if (tier) newDist += (tier === "major" ? penaltyKm.major : penaltyKm.minor);
         }
         if (newDist > budgetKm) continue; // beyond walk budget — don't settle
-        if (newDist < (dist.get(nb.node) || Infinity)) {
+        // The single-origin path keeps its old `|| Infinity` reading (a node settled at exactly 0
+        // can be overwritten), so walksheds do not move; the multi-origin path reads 0 as 0.
+        var known = originOf ? (dist.has(nb.node) ? dist.get(nb.node) : Infinity) : (dist.get(nb.node) || Infinity);
+        if (newDist < known) {
           dist.set(nb.node, newDist);
+          if (originOf) originOf.set(nb.node, originOf.get(current.node));
           heap.push({ node: nb.node, dist: newDist });
         }
       }
@@ -1496,6 +1511,57 @@
     };
   }
 
+  // Walk flood from many origins at once (every stop of a system starts at 0), for street-distance
+  // coverage without one flood per stop. Each origin seeds its snapped segment's two ends at their
+  // straight-line distance from the snap point, so no temporary graph nodes are needed.
+  //   origins : [{ lngLat: [lng, lat], id }]
+  // Returns null without a network, otherwise { distMap: Map<nodeKey, km>, originOf: Map<nodeKey,
+  // index into origins>, snapped, unsnapped: [id], snapMs, floodMs }. An origin farther than
+  // SNAP_MAX_KM from a walkable street is listed in unsnapped and takes no part.
+  function computeMultiWalkCostMap(origins, budgetKm, opts) {
+    if (!_graph || !(budgetKm > 0)) return null;
+    var now = function () { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); };
+    var t0 = now(), seeds = [], unsnapped = [], snapped = 0;
+    for (var i = 0; i < (origins || []).length; i++) {
+      var o = origins[i], snap = o && o.lngLat ? snapToNetwork(o.lngLat, "walk") : null;
+      if (!snap) { unsnapped.push(o ? o.id : null); continue; }
+      snapped++;
+      seeds.push({ key: snap.segStartKey, origin: i,
+        dist: turf.distance(turf.point(snap.coord), turf.point(snap.segStartCoord), { units: "kilometers" }) });
+      seeds.push({ key: snap.segEndKey, origin: i,
+        dist: turf.distance(turf.point(snap.coord), turf.point(snap.segEndCoord), { units: "kilometers" }) });
+    }
+    var t1 = now(), originOf = new Map();
+    var distMap = floodFromSeeds(seeds, budgetKm, opts && opts.crossingPenaltyKm, originOf);
+    var t2 = now();
+    return { distMap: distMap, originOf: originOf, snapped: snapped, unsnapped: unsnapped,
+      snapMs: Math.round(t1 - t0), floodMs: Math.round(t2 - t1) };
+  }
+
+  // Area within budgetKm walking of any origin, traced like computeWalkshed's boundary.
+  // Returns null without a network; otherwise { polygon (null when nothing snapped), snapped,
+  // unsnapped, snapMs, floodMs, shapeMs, gridKmUsed }.
+  function multiWalkPolygon(origins, budgetKm, opts) {
+    opts = opts || {};
+    var flood = computeMultiWalkCostMap(origins, budgetKm, opts);
+    if (!flood) return null;
+    var shape = opts.shape || (typeof App.walkShapeFor === "function" ? App.walkShapeFor() : null);
+    var tc0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    var polygon = null, gridKmUsed = null;
+    if (flood.snapped > 0 && shape && window.WalkShape && window.WalkShape.contour) {
+      var gridKm = window.WalkShape.scaledGridKm(shape.gridKm, budgetKm / 1.25);
+      var res = window.WalkShape.contour(
+        contourSamples(flood.distMap, budgetKm, gridKm * window.WalkShape.SAMPLE_STEP_CELLS, 1, true), [budgetKm],
+        { gridKm: gridKm, offStreetKm: shape.offStreetKm, costPerKm: 1,
+          holeAcres: shape.holeAcres, roundKm: shape.roundKm });
+      polygon = res.bands[0] || null;
+      gridKmUsed = res.gridKmUsed;
+    }
+    var shapeMs = Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - tc0);
+    return { polygon: polygon, snapped: flood.snapped, unsnapped: flood.unsnapped,
+      snapMs: flood.snapMs, floodMs: flood.floodMs, shapeMs: shapeMs, gridKmUsed: gridKmUsed };
+  }
+
   // ---- Walk network segment accessor (js/core/network-connectors.js) ----
 
   // Plain-array (not turf FeatureCollection) view of every walkable segment in
@@ -1582,6 +1648,8 @@
   // ---- Transit Travelshed primitives (js/core/travelshed.js + transit-travelshed.js) ----
 
   App.computeWalkCostMap = computeWalkCostMap;
+  App.computeMultiWalkCostMap = computeMultiWalkCostMap;
+  App.multiWalkPolygon = multiWalkPolygon;
   App.nodeKeyToCoord     = keyToCoord;
   App.contourSamples     = contourSamples;
   App.snapWalk           = function (lngLat) { return snapToNetwork(lngLat, "walk"); };
