@@ -177,4 +177,83 @@ const CALDUP = { "routes.txt": ROUTES, "stops.txt": STOPS,
   "stop_times.txt": HDR + "X1,07:00:00,07:00:00,A,1,1\nX1,08:00:00,08:00:00,B,2,1\n" };
 add("edge-cal-bad-duplicate-row-skipped", inline(CALDUP, "activeServices", "20260112"));
 
+// ---- headway bands (headwayBands and helpers) ---------------------------
+// Bands are checked by the invariant (bands-invariant), so these cases pin the chosen edges, headways
+// and trip counts for the shapes the card names; values come from the rules, not from the code.
+const HMS = (h, m) => h * 3600 + m * 60;
+const every = (from, to, step) => { const out = []; for (let t = from; t <= to; t += step) out.push(t); return out; };
+const bandsCall = (deps, parts) => ({ call: "GtfsSchedule.headwayBands", args: [deps, parts ?? null] });
+
+add("bands-every15-0600-0900", bandsCall(every(HMS(6, 0), HMS(9, 0), 900)));
+{ // Alternating 14/16-minute gaps from 09:00 to 15:00.
+  const alt = []; let t = HMS(9, 0), g = 840;
+  while (t <= HMS(15, 0)) { alt.push(t); t += g; g = g === 840 ? 960 : 840; }
+  add("bands-alt-14-16-midday", bandsCall(alt));
+}
+add("bands-one-dep-0700", bandsCall([HMS(7, 0)]));
+add("bands-one-dep-0703", bandsCall([HMS(7, 3)]));
+add("bands-night-cross-midnight", bandsCall([HMS(21, 30), HMS(22, 30), HMS(23, 30), HMS(24, 30), HMS(25, 30)]));
+add("bands-whole-day-every20", bandsCall(every(HMS(5, 10), HMS(24, 50), 1200)));
+{ // 7 trips in a 30-minute band: no round headway gives 7, so the one-decimal fallback (4.9) is used.
+  const d = []; for (let i = 0; i < 7; i++) d.push(HMS(6, 0) + i * 300);
+  add("bands-decimal-fallback-7-in-30", bandsCall(d));
+}
+{ // 40 trips in one 60-minute band (90-second spacing).
+  const d = []; for (let i = 0; i < 40; i++) d.push(HMS(6, 0) + i * 90);
+  add("bands-40-in-60", bandsCall(d));
+}
+{ // 100 trips in a 180-minute band (108-second spacing): the tight fallback.
+  const d = []; for (let i = 0; i < 100; i++) d.push(HMS(6, 0) + i * 108);
+  add("bands-100-in-180", bandsCall(d));
+}
+add("bands-empty", bandsCall([]));
+add("bands-unsorted", bandsCall([HMS(9, 30), HMS(7, 0), HMS(8, 15), HMS(7, 45)]));
+add("bands-negative-ignored", bandsCall([-60, HMS(7, 0), -1, HMS(7, 3)]));
+add("bands-custom-two-parts", bandsCall(every(HMS(6, 0), HMS(13, 0), 1800),
+  [{ id: "a", label: "A", start: "06:00" }, { id: "b", label: "B", start: "12:00" }]));
+add("bands-invariant", { call: "GtfsSchedule._bandInvariant", args: [1] });
+
+// bandTripCount: Route Costing's formula (22:00 to 02:00 at 30 minutes is 8 trips).
+add("bands-trip-count-wrap", { call: "GtfsSchedule.bandTripCount", args: ["22:00", "02:00", 30] });
+add("bands-trip-count-bad-time", { call: "GtfsSchedule.bandTripCount", args: ["25:00", "02:00", 30] });
+add("bands-trip-count-zero-headway", { call: "GtfsSchedule.bandTripCount", args: ["06:00", "07:00", 0] });
+
+// meanTripMinutes: 600 s and 900 s average 12.5 minutes; the zero-length entry is ignored.
+add("bands-mean-trip-minutes", { call: "GtfsSchedule.meanTripMinutes",
+  args: [[{ start: 0, end: 600 }, { start: 0, end: 900 }, { start: 100, end: 100 }]] });
+add("bands-mean-trip-empty", { call: "GtfsSchedule.meanTripMinutes", args: [[]] });
+add("bands-mean-trip-zero-only", { call: "GtfsSchedule.meanTripMinutes", args: [[{ start: 5, end: 5 }]] });
+
+// bandsEqual: trips and part are ignored; from, to and frequency must match.
+const B = (from, to, frequency, trips = 6, part = "am") => ({ from, to, frequency, trips, part });
+add("bands-equal-same", { call: "GtfsSchedule.bandsEqual", args: [[B("06:00", "07:00", 10)], [B("06:00", "07:00", 10, 99, "x")]] });
+add("bands-equal-frequency", { call: "GtfsSchedule.bandsEqual", args: [[B("06:00", "07:00", 10)], [B("06:00", "07:00", 12)]] });
+add("bands-equal-length", { call: "GtfsSchedule.bandsEqual", args: [[B("06:00", "07:00", 10)], [B("06:00", "07:00", 10), B("07:00", "08:00", 10)]] });
+
+// ---- serviceCopyPlan / reconciliationNote ------------------------------
+// Mini feed: B1 on Fri 0130 has 6 shaped trips (SH_B1_0 x4, SH_B1_1 x2) and a 20-minute run time on both
+// shapes; Sat 0124 and Sun 0111 each have one SH_B1_0 trip. F1 has no shape, so every F1 trip is unshaped.
+const PLAN_DATES = { weekday: "20260130", saturday: "20260124", sunday: "20260111" };
+const plan = (routeId, dates = PLAN_DATES) => mini("serviceCopyPlan", { routeId, dates });
+add("plan-b1", plan("B1"));
+add("plan-r1", plan("R1"));
+add("plan-f1-all-unshaped", plan("F1"));
+add("plan-unknown-route", plan("NOPE"));
+add("plan-weekday-only", plan("B1", { weekday: "20260112", saturday: null, sunday: null }));
+add("plan-no-dates", plan("B1", { weekday: null, saturday: null, sunday: null }));
+add("plan-custom-day-parts", mini("serviceCopyPlan", { routeId: "B1", dates: PLAN_DATES,
+  dayParts: [{ id: "all", label: "All day", start: "00:00" }] }));
+
+const recon = (day, date, gtfsTrips, copyTrips, gtfsHours, copyHours, diffPct) =>
+  ({ day, date, gtfsTrips, copyTrips, gtfsHours, copyHours, diffPct, tripsOk: gtfsTrips === copyTrips, hoursOk: Math.abs(diffPct) <= 3 });
+const noteCall = (reconciliation, unshaped = { weekday: 0, saturday: 0, sunday: 0 }, dates = PLAN_DATES) =>
+  ({ call: "GtfsSchedule.reconciliationNote", args: [{ routeId: "R", dates, shapes: [], unshaped, reconciliation }, "Red"] });
+add("note-matches", noteCall([recon("weekday", "20260112", 25, 25, 4.7, 4.7, 0)]));
+add("note-hours-off", noteCall([recon("weekday", "20260112", 25, 25, 4.7, 5.1, 8.5)]));
+add("note-hours-off-negative", noteCall([recon("saturday", "20260124", 1, 1, 0.33, 0.32, -3.2)]));
+add("note-trip-mismatch", noteCall([recon("weekday", "20260112", 25, 24, 4.7, 4.5, -4.3)]));
+add("note-no-service-and-unshaped", noteCall(
+  [recon("weekday", "20260112", 0, 0, 0, 0, 0), recon("saturday", "20260124", 0, 0, 0, 0, 0)],
+  { weekday: 3, saturday: 0, sunday: 1 }, { weekday: "20260112", saturday: "20260124", sunday: null }));
+
 export default { scripts: ["js/core/gtfs-schedule.js"], cases };

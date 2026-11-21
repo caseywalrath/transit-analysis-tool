@@ -1208,7 +1208,7 @@
   // Copies one shape as an editable Line; returns the new line's array index,
   // or -1 when nothing was created. opts (optional): { multi: true } appends
   // " – <shape_id>" to the name; { group } sets attributes.group;
-  // { serviceId, direction } set those attributes (grouped-Service copy).
+  // { serviceId, direction, service, runTime } set those attributes (grouped-Service copy).
   function copyShapeToLine(props, opts) {
     opts = opts || {};
     var shapeId = props.shape_id;
@@ -1240,6 +1240,9 @@
     if (opts.group) attrs.group = opts.group;
     if (opts.serviceId) attrs.serviceId = opts.serviceId;
     if (opts.direction) attrs.direction = opts.direction;
+    if (opts.service) attrs.service = JSON.parse(JSON.stringify(opts.service));
+    if (typeof opts.runTime === "number") attrs.runTime = opts.runTime;
+    if (typeof opts.avgSpeed === "number") attrs.avgSpeed = opts.avgSpeed;
     var notesParts = [];
     if (props.route_id) notesParts.push("route_id: " + props.route_id);
     if (shapeId) notesParts.push("shape_id: " + shapeId);
@@ -1387,12 +1390,26 @@
           var groups = [], byRoute = {};
           feats.forEach(function (f) {
             var rk = f.properties.route_id || "";
-            if (!byRoute[rk]) { byRoute[rk] = { name: shapeName(f.properties), items: [] }; groups.push(byRoute[rk]); }
+            if (!byRoute[rk]) { byRoute[rk] = { name: shapeName(f.properties), routeId: rk, items: [] }; groups.push(byRoute[rk]); }
             byRoute[rk].items.push({ props: f.properties, trips: shapeTripCount(f.properties.shape_id) });
           });
           groups.forEach(function (g) {
             g.items.sort(function (a, b) { return (b.trips || 0) - (a.trips || 0); });
             if (groups.length > 1) options.push({ divider: true, label: g.name });
+            // Offered only when the feed has a timetable for this route; a route
+            // without one has nothing more to copy than its lines.
+            if (g.routeId && App.gtfsHasSchedule(g.routeId)) {
+              options.push({
+                label: "Copy route as Service with schedule" + (groups.length > 1 ? "" : ": " + g.name),
+                action: function () {
+                  var made = App.gtfsCopy({ routeId: g.routeId, mode: "service" }) || [];
+                  if (made.length && typeof App.selectFeature === "function") App.selectFeature("line", made[0]);
+                  if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+                  if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+                  if (made.note && typeof App.gtfsShowCopyNote === "function") App.gtfsShowCopyNote(made.note);
+                }
+              });
+            }
             g.items.forEach(function (it) {
               var props = it.props, label = "Copy as line";
               if (multiple) {
@@ -1989,6 +2006,194 @@
     if (any) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 16 });
   };
 
+  // ---- Copy a route as a Service with its timetable ----
+
+  var _repDatesCache = null;   // { feed, date, value }: busiestDate walks a whole year, so keep the answer
+
+  // One date per day type: the analysis date when it is an ordinary day of that type, else the busiest
+  // such date in the feed. Null for a type the feed never runs.
+  function representativeDates() {
+    if (!_feed) return { weekday: null, saturday: null, sunday: null };
+    if (_repDatesCache && _repDatesCache.feed === _feed && _repDatesCache.date === _analysisDate) {
+      return _repDatesCache.value;
+    }
+    var S = window.GtfsSchedule, info = _analysisDate ? S.dayType(_feed, _analysisDate) : null, out = {};
+    ["weekday", "saturday", "sunday"].forEach(function (type) {
+      out[type] = (info && info.dayType === type && !info.exception) ? _analysisDate : S.busiestDate(_feed, type);
+    });
+    _repDatesCache = { feed: _feed, date: _analysisDate, value: out };
+    return out;
+  }
+
+  function scheduleRouteId(routeKey) {
+    var r = findIndexRoute(routeKey);
+    return r ? r.route_id : String(routeKey == null ? "" : routeKey);
+  }
+
+  // True when the loaded feed has timetable trips for this route on a representative date; without it
+  // a service copy keeps the plain geometry-only behaviour.
+  App.gtfsHasSchedule = function (routeKey) {
+    if (!_feed) return false;
+    var id = scheduleRouteId(routeKey);
+    if (!id) return false;
+    var S = window.GtfsSchedule, dates = representativeDates();
+    return ["weekday", "saturday", "sunday"].some(function (type) {
+      return !!dates[type] && S.tripsOnDate(_feed, dates[type], { routeIds: [id] }).trips.length > 0;
+    });
+  };
+
+  function metersBetween(lon1, lat1, lon2, lat2) {
+    var rad = Math.PI / 180, dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 6371008.8 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  var _stopRowsFeed = null, _stopRowsById = null;
+  function stopRow(stopId) {
+    if (_stopRowsFeed !== _feed) {
+      _stopRowsFeed = _feed;
+      _stopRowsById = Object.create(null);
+      var t = _feed && _feed.tables && _feed.tables["stops.txt"];
+      ((t && t.rows) || []).forEach(function (r) {
+        var id = typeof r.stop_id === "string" ? r.stop_id.trim() : "";
+        if (id && !_stopRowsById[id]) _stopRowsById[id] = r;
+      });
+    }
+    return _stopRowsById[stopId] || null;
+  }
+
+  // Direction for a copied shape: from direction_id when the plan has several shapes; a single shape has
+  // no opposite to pair with, so it is a Loop when it ends where it starts, else Both.
+  function copiedDirection(planShape, onlyOne, shapeCoords) {
+    if (onlyOne) {
+      var a = shapeCoords[0], b = shapeCoords[shapeCoords.length - 1];
+      return metersBetween(a[0], a[1], b[0], b[1]) <= 100 ? "Loop" : "Both";
+    }
+    return planShape.directionId === "0" ? "Outbound" : planShape.directionId === "1" ? "Inbound" : "";
+  }
+
+  // Route Costing defaults to its speed mode, which ignores Run time; a speed of
+  // shape length / run time gives the same one-way time in either mode, so the
+  // copy costs without manual setup.
+  function impliedSpeed(coords, runTime) {
+    if (!(runTime > 0) || typeof turf === "undefined") return undefined;
+    var mi;
+    try { mi = turf.length(turf.lineString(coords), { units: "miles" }); } catch (e) { return undefined; }
+    var mph = Math.round(mi / (runTime / 60) * 10) / 10;
+    return mph > 0 ? mph : undefined;
+  }
+
+  function copyServiceWithSchedule(opts) {
+    var S = window.GtfsSchedule;
+    var route = findIndexRoute(opts.routeId);
+    var routeId = scheduleRouteId(opts.routeId);
+    var displayName = route ? routeDisplayName(route) : routeId;
+    var plan = S.serviceCopyPlan(_feed, { routeId: routeId, dates: representativeDates() });
+
+    var usable = [], missing = [];
+    plan.shapes.forEach(function (ps) { (shapeFeature(ps.shapeId) ? usable : missing).push(ps); });
+
+    var created = [];
+    created.stops = { created: 0, reused: 0, skipped: 0 };
+    if (usable.length === 0) {
+      created.note = (S.reconciliationNote(plan, displayName) + "\n" +
+        "Nothing was copied: no trip on the sampled days uses a shape that is on the map.").replace(/^\n/, "");
+      return created;
+    }
+
+    var existing = [];
+    (App.routes || []).concat(App.lines || []).forEach(function (f) {
+      var a = f && f.properties && f.properties.attributes;
+      if (a && a.serviceId) existing.push(a.serviceId);
+    });
+    var serviceId = uniqueServiceId(displayName, existing);
+    var multi = usable.length > 1;
+    var lineByShape = {};
+
+    function copyAll() {
+      usable.forEach(function (ps) {
+        var f = shapeFeature(ps.shapeId);
+        var idx = copyShapeToLine(f.properties, {
+          multi: multi, group: displayName, serviceId: serviceId,
+          direction: copiedDirection(ps, !multi, f.geometry.coordinates),
+          service: ps.service, runTime: ps.runTime === null ? undefined : ps.runTime,
+          avgSpeed: impliedSpeed(f.geometry.coordinates, ps.runTime)
+        });
+        if (idx < 0) return;
+        created.push(idx);
+        lineByShape[ps.shapeId] = idx;
+      });
+      if (opts.stops !== false && created.length) copyServiceStops(usable, lineByShape, displayName, created.stops);
+    }
+    if (App.undo && typeof App.undo.batch === "function") App.undo.batch(copyAll); else copyAll();
+
+    // Trips on shapes that are not drawn were never copied, so the trip check would say nothing true.
+    var notePlan = plan;
+    if (missing.length) notePlan = Object.assign({}, plan, { shapes: usable, reconciliation: [] });
+    var lines = [S.reconciliationNote(notePlan, displayName)];
+    if (missing.length) {
+      lines.push("Not copied, shape is not on the map: " + missing.map(function (m) { return m.shapeId; }).join(", ") +
+        ". The trip check was skipped.");
+    }
+    if (opts.stops !== false) {
+      var st = created.stops;
+      lines.push(st.created + " stops copied, " + st.reused + " already on the map" +
+        (st.skipped ? ", " + st.skipped + " skipped (no coordinates)" : "") + ".");
+    }
+    created.note = lines.join("\n");
+    if (App.cache && typeof App.cache.save === "function") App.cache.save();
+    return created;
+  }
+
+  // Points for the stops the copied shapes serve. A stop already on the map (same stopId, within 2 m)
+  // is reused and only gains the new lines in its associatedRoutes.
+  function copyServiceStops(planShapes, lineByShape, displayName, tally) {
+    var order = [], serving = Object.create(null);
+    planShapes.forEach(function (ps) {
+      if (lineByShape[ps.shapeId] === undefined) return;
+      ps.stops.forEach(function (sid) {
+        if (!serving[sid]) { serving[sid] = []; order.push(sid); }
+        if (serving[sid].indexOf(ps.shapeId) < 0) serving[sid].push(ps.shapeId);
+      });
+    });
+    order.forEach(function (sid) {
+      var rec = _feed._stops[sid];
+      if (!rec || typeof rec.lat !== "number" || typeof rec.lon !== "number") { tally.skipped++; return; }
+      var links = serving[sid].map(function (shapeId) {
+        var line = App.lines[lineByShape[shapeId]];
+        return { featureType: "line", featureId: line.properties.lineIdx, name: line.properties.name };
+      });
+      var found = null;
+      (App.points || []).some(function (p) {
+        var a = p.properties && p.properties.attributes;
+        if (!a || a.stopId !== sid) return false;
+        var c = p.geometry.coordinates;
+        if (metersBetween(c[0], c[1], rec.lon, rec.lat) > 2) return false;
+        found = p;
+        return true;
+      });
+      if (found) {
+        var a = found.properties.attributes;
+        var list = Array.isArray(a.associatedRoutes) ? a.associatedRoutes.slice() : [];
+        links.forEach(function (l) {
+          var dup = list.some(function (r) { return r.featureType === l.featureType && r.featureId === l.featureId; });
+          if (!dup) list.push(l);
+        });
+        a.associatedRoutes = list;
+        tally.reused++;
+        return;
+      }
+      var row = stopRow(sid), nm = row && typeof row.stop_name === "string" ? row.stop_name.trim() : "";
+      App.addPointWithOpts(rec.lon, rec.lat, {
+        name: nm || sid,
+        attributes: { stopId: sid, group: displayName + " stops", associatedRoutes: links }
+      });
+      tally.created++;
+    });
+    if (tally.reused && typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+  }
+
   // opts = { routeId, mode: "representative"|"each"|"shape"|"service", shapeId }.
   // "service" copies every shape like "each" and also groups them as ONE
   // transit Service: shared attributes.serviceId (route name, made unique)
@@ -1996,6 +2201,9 @@
   // Returns the array indices (into App.lines) of the created lines.
   App.gtfsCopy = function (opts) {
     opts = opts || {};
+    if (opts.mode === "service" && opts.routeId != null && App.gtfsHasSchedule(opts.routeId)) {
+      return copyServiceWithSchedule(opts);
+    }
     var created = [];
     var route = opts.routeId != null ? findIndexRoute(opts.routeId) : null;
     var shapes = [];

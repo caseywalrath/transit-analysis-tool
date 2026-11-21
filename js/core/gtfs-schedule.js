@@ -842,6 +842,371 @@
     return bestCount > 0 ? best : null;
   }
 
+  // ---------------------------------------------------------------- headway bands
+
+  // Default cut points for turning departures into Service headway bands. The last part has no end,
+  // so departures after 24:00 still fall in a part.
+  var DEFAULT_DAY_PARTS = [
+    { id: "early", label: "Early", start: "00:00" },
+    { id: "am", label: "AM peak", start: "06:00" },
+    { id: "midday", label: "Midday", start: "09:00" },
+    { id: "pm", label: "PM peak", start: "15:00" },
+    { id: "evening", label: "Evening", start: "18:00" },
+    { id: "night", label: "Night", start: "21:00" }
+  ];
+
+  // Headways a planner would recognise. Tried first so bands get round numbers when they can.
+  var HEADWAY_CANDIDATES = [2, 3, 4, 5, 6, 7.5, 8, 10, 12, 15, 20, 30, 40, 45, 60, 90, 120];
+
+  // Band edges snap to 5-minute marks so a band in the editor reads cleanly.
+  var BAND_EDGE_SEC = 300;
+
+  // "H:MM" / "HH:MM" as minutes after midnight, or -1. Hour 24 is accepted, as Route Costing does.
+  function parseHM(s) {
+    if (typeof s !== "string") return -1;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+    if (!m) return -1;
+    var h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+    return h > 24 || min >= 60 ? -1 : h * 60 + min;
+  }
+
+  // Same parse and float hours as route-costing.js parseBandTime. Trip counts must reproduce Route
+  // Costing's arithmetic bit for bit, so do not replace this with integer seconds.
+  function parseBandClock(s) {
+    if (typeof s !== "string") return NaN;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+    if (!m) return NaN;
+    var h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+    if (h < 0 || h > 24 || min < 0 || min >= 60) return NaN;
+    return h + min / 60;
+  }
+
+  // Band length in minutes as Route Costing sees it: a band ending at or before its start wraps past midnight.
+  function bandSpanMinutes(from, to) {
+    var hrs = parseBandClock(to) - parseBandClock(from);
+    if (hrs <= 0) hrs += 24;
+    return hrs * 60;
+  }
+
+  function bandTripCount(from, to, headway) {
+    if (typeof headway !== "number" || !(headway > 0)) return NaN;
+    var span = bandSpanMinutes(from, to);
+    if (!isFinite(span)) return NaN;
+    return Math.ceil(span / headway);
+  }
+
+  // Seconds to "HH:MM" with the hour taken modulo 24, so a band after midnight reads 01:30, not 25:30.
+  function bandClock(sec) {
+    var mins = Math.floor(sec / 60);
+    return pad2(Math.floor(mins / 60) % 24) + ":" + pad2(mins % 60);
+  }
+
+  function floorTo5(sec) { return Math.floor(sec / BAND_EDGE_SEC) * BAND_EDGE_SEC; }
+  function ceilTo5(sec) { return Math.ceil(sec / BAND_EDGE_SEC) * BAND_EDGE_SEC; }
+
+  // Headway for a band that must produce exactly n trips. Tries round headways first, then the largest
+  // value with 1 to 4 decimals that still gives n (for n = 1 the rounded-up band length). The last
+  // resort is the plain average, which can miss n by float error; the invariant test catches that.
+  function bandFrequency(from, to, n) {
+    var i, h;
+    for (i = 0; i < HEADWAY_CANDIDATES.length; i++) {
+      if (bandTripCount(from, to, HEADWAY_CANDIDATES[i]) === n) return HEADWAY_CANDIDATES[i];
+    }
+    var len = bandSpanMinutes(from, to), d, scale, k, top, bottom;
+    for (d = 1; d <= 4; d++) {
+      scale = Math.pow(10, d);
+      if (n === 1) {
+        h = Math.ceil(len * scale) / scale;
+        if (bandTripCount(from, to, h) === 1) return h;
+        continue;
+      }
+      // ceil(len / h) = n holds for h in [len / n, len / (n - 1)); scan down from the open upper end.
+      top = Math.ceil(len / (n - 1) * scale);
+      bottom = Math.max(1, Math.floor(len / n * scale) - 1);
+      for (k = top; k >= bottom; k--) {
+        h = k / scale;
+        if (bandTripCount(from, to, h) === n) return h;
+      }
+    }
+    return len / n;
+  }
+
+  // departures: departure times in seconds after service-day midnight (any order; negatives and
+  // non-numbers are ignored). Returns [{from, to, frequency, trips, part}] for the parts that have
+  // departures. A departure before the first part's start is counted in the first part so no trip is lost.
+  function headwayBands(departures, dayParts) {
+    var src = dayParts || DEFAULT_DAY_PARTS, parts = [], i;
+    for (i = 0; i < src.length; i++) {
+      var ps = parseHM(src[i] && src[i].start);
+      if (ps >= 0) parts.push({ id: src[i].id, start: ps * 60 });
+    }
+    parts.sort(function (p, q) { return p.start - q.start; });
+    var deps = [];
+    if (Array.isArray(departures)) {
+      for (i = 0; i < departures.length; i++) {
+        var v = departures[i];
+        if (typeof v === "number" && isFinite(v) && v >= 0) deps.push(v);
+      }
+    }
+    if (deps.length === 0 || parts.length === 0) return [];
+    deps.sort(function (p, q) { return p - q; });
+
+    var groups = [], pi = 0;
+    for (i = 0; i < deps.length; i++) {
+      while (pi + 1 < parts.length && parts[pi + 1].start <= deps[i]) pi++;
+      if (groups.length === 0 || groups[groups.length - 1].pi !== pi) groups.push({ pi: pi, deps: [] });
+      groups[groups.length - 1].deps.push(deps[i]);
+    }
+
+    var bands = [];
+    for (i = 0; i < groups.length; i++) {
+      var g = groups[i], n = g.deps.length, startSec, endSec;
+      startSec = i === 0 ? floorTo5(g.deps[0]) : parts[g.pi].start;
+      if (i === groups.length - 1) endSec = ceilTo5(g.deps[n - 1]);
+      else endSec = parts[g.pi + 1].start;
+      if (endSec === startSec) endSec = startSec + BAND_EDGE_SEC;
+      var from = bandClock(startSec), to = bandClock(endSec);
+      bands.push({
+        from: from, to: to, frequency: bandFrequency(from, to, n), trips: n, part: parts[g.pi].id
+      });
+    }
+    return bands;
+  }
+
+  // Mean of end - start over entries that end after they start, in minutes to one decimal; null if none.
+  function meanTripMinutes(trips) {
+    if (!Array.isArray(trips)) return null;
+    var sum = 0, n = 0;
+    for (var i = 0; i < trips.length; i++) {
+      var t = trips[i];
+      var d = t ? t.end - t.start : NaN;
+      if (isFinite(d) && d > 0) { sum += d; n++; }
+    }
+    if (n === 0) return null;
+    return Math.round(sum / n / 60 * 10) / 10;
+  }
+
+  // Equal when the same number of bands have the same from, to and frequency (trips and part ignored).
+  function bandsEqual(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      var x = a[i] || {}, y = b[i] || {};
+      if (x.from !== y.from || x.to !== y.to || x.frequency !== y.frequency) return false;
+    }
+    return true;
+  }
+
+  // Test helper: 200 pseudo-random departure sets from a fixed LCG. Returns how many bands fail to
+  // reproduce their own trip count through bandTripCount (must be 0) and how many bands were checked.
+  function bandInvariant(seed) {
+    var x = (+seed) >>> 0;
+    function next() {
+      x = (x * 1664525 + 1013904223) % 4294967296;
+      return x / 4294967296;
+    }
+    var violations = 0, checked = 0;
+    for (var s = 0; s < 200; s++) {
+      var n = Math.floor(next() * 60);
+      var grid = next() < 0.5 ? 60 : 1;
+      var deps = [];
+      for (var k = 0; k < n; k++) {
+        if (next() < 0.1) deps.push(-1 - Math.floor(next() * 1000));
+        else deps.push(Math.floor(next() * 130000 / grid) * grid);
+      }
+      var bands = headwayBands(deps, null);
+      for (var b = 0; b < bands.length; b++) {
+        checked++;
+        if (bandTripCount(bands[b].from, bands[b].to, bands[b].frequency) !== bands[b].trips) violations++;
+      }
+    }
+    return { violations: violations, checked: checked };
+  }
+
+  // ---------------------------------------------------------------- copy plan
+
+  var PLAN_DAYS = ["weekday", "saturday", "sunday"];
+
+  function round1(x) { return Math.round(x * 10) / 10; }
+  function round2(x) { return Math.round(x * 100) / 100; }
+
+  // What a copied Service would hold for one route: per shape, bands per day type, a run time, a
+  // direction and the stop sequence, plus a per-day check against the timetable. Pure so the same
+  // numbers can be pinned by golden cases. opts: { routeId, dates: {weekday, saturday, sunday},
+  // dayParts }. A date that is not "YYYYMMDD" counts as absent.
+  function serviceCopyPlan(feed, opts) {
+    opts = opts || {};
+    var routeId = opts.routeId, d, i, j;
+    var dates = {}, unshaped = {};
+    for (d = 0; d < PLAN_DAYS.length; d++) {
+      var want = opts.dates && opts.dates[PLAN_DAYS[d]];
+      dates[PLAN_DAYS[d]] = typeof want === "string" && isDate(want) ? want : null;
+      unshaped[PLAN_DAYS[d]] = 0;
+    }
+    var plan = { routeId: routeId, dates: dates, shapes: [], unshaped: unshaped, reconciliation: [] };
+    if (!feed || !feed._routes[routeId]) {
+      for (d = 0; d < PLAN_DAYS.length; d++) {
+        if (dates[PLAN_DAYS[d]]) plan.reconciliation.push(emptyReconRow(PLAN_DAYS[d], dates[PLAN_DAYS[d]]));
+      }
+      return plan;
+    }
+
+    var byShape = Object.create(null), order = [], seqCache = Object.create(null);
+    function seqOf(trip) {
+      var key = trip.templateId || trip.tripId;
+      var hit = seqCache[key];
+      if (!hit) {
+        var st = tripStopTimes(feed, key), ids = [];
+        for (var k = 0; k < st.length; k++) ids.push(st[k].stopId);
+        hit = seqCache[key] = { ids: ids, joined: ids.join("\u0001") };
+      }
+      return hit;
+    }
+    for (d = 0; d < PLAN_DAYS.length; d++) {
+      var day = PLAN_DAYS[d];
+      if (!dates[day]) continue;
+      var trips = tripsOnDate(feed, dates[day], { routeIds: [routeId] }).trips;
+      for (i = 0; i < trips.length; i++) {
+        var t = trips[i];
+        if (!t.shapeId) { unshaped[day]++; continue; }
+        var rec = byShape[t.shapeId];
+        if (!rec) {
+          rec = byShape[t.shapeId] = { shapeId: t.shapeId, days: { weekday: [], saturday: [], sunday: [] },
+            dirs: Object.create(null), seqs: Object.create(null), total: 0 };
+          order.push(rec);
+        }
+        rec.days[day].push(t);
+        rec.dirs[t.directionId] = true;
+        rec.total++;
+        var sq = seqOf(t), s = rec.seqs[sq.joined];
+        if (!s) s = rec.seqs[sq.joined] = { ids: sq.ids, joined: sq.joined, count: 0 };
+        s.count++;
+      }
+    }
+
+    order.sort(function (a, b) {
+      if (a.total !== b.total) return b.total - a.total;
+      return a.shapeId < b.shapeId ? -1 : a.shapeId > b.shapeId ? 1 : 0;
+    });
+
+    for (i = 0; i < order.length; i++) {
+      var r = order[i], service = {}, perDay = {}, bands = {};
+      for (d = 0; d < PLAN_DAYS.length; d++) {
+        var dn = PLAN_DAYS[d], list = r.days[dn], deps = [], run = 0;
+        for (j = 0; j < list.length; j++) { deps.push(list[j].start); run += list[j].end - list[j].start; }
+        var raw = headwayBands(deps, opts.dayParts || null), clean = [];
+        for (j = 0; j < raw.length; j++) clean.push({ from: raw[j].from, to: raw[j].to, frequency: raw[j].frequency });
+        bands[dn] = clean;
+        perDay[dn] = { trips: list.length, runningSec: run };
+      }
+      var mirrors = bands.sunday.length > 0 && bandsEqual(bands.saturday, bands.sunday);
+      service.weekday = bands.weekday;
+      service.saturday = bands.saturday;
+      service.sunday = mirrors ? [] : bands.sunday;
+      service.sundayMirrorsSaturday = mirrors;
+
+      var runTime = null, runTimeDay = null;
+      for (d = 0; d < PLAN_DAYS.length && runTime === null; d++) {
+        var m = meanTripMinutes(r.days[PLAN_DAYS[d]]);
+        if (m !== null) { runTime = m; runTimeDay = PLAN_DAYS[d]; }
+      }
+
+      var dirKeys = Object.keys(r.dirs);
+      var directionId = dirKeys.length === 1 && (dirKeys[0] === "0" || dirKeys[0] === "1") ? dirKeys[0] : "";
+
+      var best = null;
+      for (var sk in r.seqs) {
+        var c = r.seqs[sk];
+        if (!best || c.count > best.count ||
+            (c.count === best.count && (c.ids.length > best.ids.length ||
+              (c.ids.length === best.ids.length && c.joined < best.joined)))) best = c;
+      }
+      plan.shapes.push({
+        shapeId: r.shapeId, directionId: directionId, service: service,
+        runTime: runTime, runTimeDay: runTimeDay,
+        stops: best ? best.ids.slice() : [], perDay: perDay
+      });
+    }
+
+    for (d = 0; d < PLAN_DAYS.length; d++) {
+      var dy = PLAN_DAYS[d];
+      if (!dates[dy]) continue;
+      var gtfsTrips = 0, copyTrips = 0, gtfsSec = 0, copyMin = 0;
+      for (i = 0; i < plan.shapes.length; i++) {
+        var sh = plan.shapes[i];
+        var applied = getBands(sh.service, dy), n = 0;
+        for (j = 0; j < applied.length; j++) n += bandTripCount(applied[j].from, applied[j].to, applied[j].frequency);
+        gtfsTrips += sh.perDay[dy].trips;
+        gtfsSec += sh.perDay[dy].runningSec;
+        copyTrips += n;
+        copyMin += n * (sh.runTime || 0);
+      }
+      var gtfsHours = round2(gtfsSec / 3600), copyHours = round2(copyMin / 60);
+      var diffPct = gtfsSec > 0 ? round1((copyMin / 60 - gtfsSec / 3600) / (gtfsSec / 3600) * 100) : 0;
+      plan.reconciliation.push({
+        day: dy, date: dates[dy], gtfsTrips: gtfsTrips, copyTrips: copyTrips,
+        gtfsHours: gtfsHours, copyHours: copyHours, diffPct: diffPct,
+        tripsOk: gtfsTrips === copyTrips, hoursOk: Math.abs(diffPct) <= 3
+      });
+    }
+    return plan;
+  }
+
+  function emptyReconRow(day, date) {
+    return { day: day, date: date, gtfsTrips: 0, copyTrips: 0, gtfsHours: 0, copyHours: 0,
+      diffPct: 0, tripsOk: true, hoursOk: true };
+  }
+
+  // The bands a day really gets: Sunday borrows Saturday's when the plan says it mirrors.
+  function getBands(service, day) {
+    if (day === "sunday" && service.sundayMirrorsSaturday) return service.saturday;
+    return service[day];
+  }
+
+  var MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // "Mon Jan 12, 2026", built by hand so the text does not depend on the browser's locale.
+  function dateText(date) {
+    return WEEKDAY_ABBR[weekdayIndex(date)] + " " + MONTH_ABBR[+date.substring(4, 6) - 1] + " " +
+      (+date.substring(6, 8)) + ", " + date.substring(0, 4);
+  }
+
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+  // Plain-text check of a plan against the timetable, one line per day type plus a line for trips that
+  // could not be copied. Trip counts must match exactly; hours only need to be within 3%.
+  function reconciliationNote(plan, routeName) {
+    var lines = [], name = routeName || (plan && plan.routeId) || "Route", byDay = {}, i, d;
+    if (!plan) return "";
+    for (i = 0; i < (plan.reconciliation || []).length; i++) byDay[plan.reconciliation[i].day] = plan.reconciliation[i];
+    for (d = 0; d < PLAN_DAYS.length; d++) {
+      var day = PLAN_DAYS[d], row = byDay[day], uns = (plan.unshaped && plan.unshaped[day]) || 0;
+      var cap = day.charAt(0).toUpperCase() + day.slice(1);
+      if (!row) {
+        if (!plan.dates || !plan.dates[day]) lines.push(cap + ": no service.");
+      } else if (row.gtfsTrips === 0 && row.copyTrips === 0) {
+        if (uns === 0) lines.push(cap + ": no service.");
+      } else {
+        var head = name + " — " + cap + " (" + dateText(row.date) + "): ";
+        if (!row.tripsOk) {
+          lines.push(head + plural(row.gtfsTrips, "trip", "trips") + " in the timetable but " +
+            plural(row.copyTrips, "trip", "trips") + " on the copy.");
+        } else if (row.hoursOk) {
+          lines.push(head + plural(row.copyTrips, "trip", "trips") + ", matches the timetable.");
+        } else {
+          lines.push(head + plural(row.copyTrips, "trip", "trips") + ", running hours " + row.copyHours.toFixed(2) +
+            " on the copy vs " + row.gtfsHours.toFixed(2) + " in the timetable (" + (row.diffPct > 0 ? "+" : "") +
+            row.diffPct.toFixed(1) + "%): trip times vary through the day and the copy uses one average run time.");
+        }
+      }
+      if (uns > 0) {
+        lines.push(uns === 1 ? "1 " + day + " trip has no shape and was not copied."
+          : uns + " " + day + " trips have no shape and were not copied.");
+      }
+    }
+    return lines.join("\n");
+  }
+
   // ---------------------------------------------------------------- test helper
 
   function evaluate(texts, fnName, args) {
@@ -867,6 +1232,9 @@
     tripsOnDate: tripsOnDate, tripStopTimes: tripStopTimes, departuresAtStop: departuresAtStop,
     medianHeadway: medianHeadway, patterns: patterns, dominantPattern: dominantPattern,
     routeDaySummary: routeDaySummary, peakVehicles: peakVehicles,
-    stopAccessibility: stopAccessibility, busiestDate: busiestDate, evaluate: evaluate
+    stopAccessibility: stopAccessibility, busiestDate: busiestDate, evaluate: evaluate,
+    DEFAULT_DAY_PARTS: DEFAULT_DAY_PARTS, bandTripCount: bandTripCount, headwayBands: headwayBands,
+    meanTripMinutes: meanTripMinutes, bandsEqual: bandsEqual, _bandInvariant: bandInvariant,
+    serviceCopyPlan: serviceCopyPlan, reconciliationNote: reconciliationNote
   };
 })();

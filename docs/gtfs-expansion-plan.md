@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0, A1 and A2 complete; next phase A3 or A4.
+> **Status:** Approved at Gate G0 (2026-11-21). A0, A1, A2 and A3 complete; next phase A4.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -371,7 +371,7 @@ Use `CLAUDE.md` § Testing:
 | A0 | Test feeds and a speed baseline (nothing visible) | Ready | O | — | G0a–b | Done (2026-11-21) |
 | A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Done (2026-11-21) |
 | A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Done |
-| A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Not started |
+| A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Done |
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Not started |
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Not started |
 | A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Not started |
@@ -971,8 +971,8 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G1c | A1 | Route Costing rate basis | Keep platform default, add revenue | Revenue-hour default (Option B) | 2026-11-21 |
 | G2a | A2 | GTFS inside session files | Original ZIP | Original ZIP (Option A) | 2026-11-21 |
 | G2b | A2 | Choosing the day to analyze | Day type → typical date, changeable | Exact date always (Option B) | 2026-11-21 |
-| G3a | A3 | Detail of copied headway bands | Standard day parts | | |
-| G3b | A3 | Copy stops too | Yes, up to 5 routes | | |
+| G3a | A3 | Detail of copied headway bands | Standard day parts | Standard day parts (Option A) | 2026-11-21 |
+| G3b | A3 | Copy stops too | Yes, up to 5 routes | Yes, up to 5 routes (Option A) | 2026-11-21 |
 | G4a | A4 | Where details appear | Left details panel | | |
 | G4b | A4 | Instant results for schedule-only figures | Yes | | |
 | G4c | A4 | Peak / off-peak definition | Shared editable day parts | | |
@@ -1180,3 +1180,25 @@ All A0 targets are met: load ≤ 15 s, freeze ≤ 250 ms, memory ≤ 100 MB. The
 - `_gtfsData` entries for `stop_times.txt` and `shapes.txt` are `columnar` with `rows: null`. Code reading `.rows` must handle that.
 - Session format: `state.gtfsZip = {name, base64}`, or the legacy `state.gtfsData`. `App.serializeGTFSZip()` returns a Promise; `App.restoreGTFSFromZip(payload)` re-loads the ZIP like an upload.
 - Hidden routes are not yet applied to schedule queries (D9). A4–A6 must filter with `tripsOnDate(..., {routeIds})` using `App.gtfsHiddenState()`.
+
+### A3 — 2026-11-21
+
+Gates: G3a standard day parts; G3b copy stops (up to 5 routes; the UI copies one route at a time, so no confirmation prompt is needed yet).
+
+- A3.1 card pass [Opus]:
+  - Stop recognition: an existing Point whose `stopId` equals the GTFS stop_id and lies within 2 m is reused (no new attribute field).
+  - Menus: the new label appears only when the feed has a timetable for the route, so feeds without one (and the existing smoke test) keep the old menus.
+  - The note shows in a closable notice over the map.
+- A3.2 band converter [Haiku]: `DEFAULT_DAY_PARTS`, `bandTripCount`, `headwayBands`, `meanTripMinutes`, `bandsEqual` in `js/core/gtfs-schedule.js`; 23 golden cases, incl. a random test of 1,006 bands with 0 trip-count mismatches.
+- A3.3 apply copies [Sonnet]: `serviceCopyPlan`, `reconciliationNote`; `App.gtfsHasSchedule`, the schedule path of `App.gtfsCopy`, stop Points; 12 golden cases; `test/browser/gtfs-copy-service.test.mjs` (16 checks).
+- A3.4 menus [Opus]: Layers-tab route menu and map right-click; `App.gtfsShowCopyNote`.
+- A3.5 review [Opus]:
+  - Route Costing skipped the copy in its default speed mode ("missing Avg speed"). Fixed: copies get Avg speed = shape length ÷ run time (deviation from "average speed left blank"; it gives the same one-way time). On the mini feed Route B1 now costs with 6 weekday trips and 2.0 running hours, matching the timetable.
+  - Transit Coverage and Transit Travelshed list the copied lines with no setup.
+  - Note day names capitalised (golden note cases re-recorded; no numbers moved).
+  - `test/gtfs-stop-select-smoke.mjs` fails 5 drag-select checks in this container both with and without A3 changes (pre-existing, not caused by A3).
+
+**Hand-off:**
+- Day parts are `GtfsSchedule.DEFAULT_DAY_PARTS`; `headwayBands` and `serviceCopyPlan` take a `dayParts` argument, so A4 (G4c) can make them an editable setting.
+- Copies use one date per day type (analysis date if it is an ordinary day of that type, else the busiest such date).
+

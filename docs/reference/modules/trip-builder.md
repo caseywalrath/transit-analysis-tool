@@ -26,6 +26,8 @@ Generates a high-level trip schedule (Start/End per direction per day type) from
 
 **Persistence:** `App.cache.registerModule("trip-builder", …)` — `selectedKey`, `tripsByService`. Schema **v2** (ID-based solo keys); v1 keys migrate via `App.migrateServiceKey`, unresolvable ones dropped. `getFeatureFromPattern` resolves by `featureId` at use time. `update()` marks state stale when features change.
 
+**Copied GTFS Services:** a schedule copy (see `gtfs.md`) is ready for Trip Builder: directions from `direction_id`, bands per day part. Generated trips follow the bands (even headways), not the timetable's exact departure times.
+
 **Not built:** add-trip, layovers between trips, per-pattern offsets (enter them in bands), blocking, Route Costing integration.
 
 `App._tbTest` → `{parseHHMMtoMin, formatMin, mergeIntervals, resolveColumnLabels, generateAllTrips}`. Test-only hook (exists only when `window.__MAT_TEST__`; used by `test/run-golden.mjs`).

@@ -32,6 +32,8 @@ Daily/annual operating cost for transit Services assembled from drawn Routes/Lin
 
 **Persistence:** `App.cache.registerModule("route-costing", …)` — `settings`, `selectedKeys`, `interlineGroups`, `rateOverrides`, `lastSummary` (per-Service `perDay` totals, no band breakdown). Schema **v4** (adds `settings.rateBasis` and `rateOverrides`); v3 (solo Service keys ID-based, e.g. `"solo-route-id12"`) restores with the platform basis; v2/v1 restore (v1 summaries dropped). `restoreRcState` migrates `"group-…"` → `"service-…"` and index solo keys → ID keys via `App.migrateServiceKey` in selections, interline groups and summary rows (unresolvable keys dropped from selections/groups, kept verbatim in the summary). Checkbox state is re-read by key on every `update()`, so selection survives deletes/merges of earlier features.
 
+**Copied GTFS Services:** a route copied with "Copy as Service with schedule" (see `gtfs.md`) arrives with bands, Run time and an Avg speed derived from it, so it costs in either runtime mode with no setup. Its trips per day equal the timetable's exactly; running hours equal trips × the average run time, so they differ from the timetable when run times vary through the day (the copy's note says by how much).
+
 **Not built:** fare revenue, inflation.
 
 ## route-costing-popup.html

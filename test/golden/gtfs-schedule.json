@@ -1753,5 +1753,834 @@
   },
   "edge-cal-bad-duplicate-row-skipped": [
     "WK"
-  ]
+  ],
+  "bands-every15-0600-0900": [
+    {
+      "from": "06:00",
+      "to": "09:00",
+      "frequency": 15,
+      "trips": 12,
+      "part": "am"
+    },
+    {
+      "from": "09:00",
+      "to": "09:05",
+      "frequency": 6,
+      "trips": 1,
+      "part": "midday"
+    }
+  ],
+  "bands-alt-14-16-midday": [
+    {
+      "from": "09:00",
+      "to": "15:00",
+      "frequency": 15,
+      "trips": 24,
+      "part": "midday"
+    },
+    {
+      "from": "15:00",
+      "to": "15:05",
+      "frequency": 6,
+      "trips": 1,
+      "part": "pm"
+    }
+  ],
+  "bands-one-dep-0700": [
+    {
+      "from": "07:00",
+      "to": "07:05",
+      "frequency": 5,
+      "trips": 1,
+      "part": "am"
+    }
+  ],
+  "bands-one-dep-0703": [
+    {
+      "from": "07:00",
+      "to": "07:05",
+      "frequency": 5,
+      "trips": 1,
+      "part": "am"
+    }
+  ],
+  "bands-night-cross-midnight": [
+    {
+      "from": "21:30",
+      "to": "01:30",
+      "frequency": 59.9,
+      "trips": 5,
+      "part": "night"
+    }
+  ],
+  "bands-whole-day-every20": [
+    {
+      "from": "05:10",
+      "to": "06:00",
+      "frequency": 20,
+      "trips": 3,
+      "part": "early"
+    },
+    {
+      "from": "06:00",
+      "to": "09:00",
+      "frequency": 20,
+      "trips": 9,
+      "part": "am"
+    },
+    {
+      "from": "09:00",
+      "to": "15:00",
+      "frequency": 20,
+      "trips": 18,
+      "part": "midday"
+    },
+    {
+      "from": "15:00",
+      "to": "18:00",
+      "frequency": 20,
+      "trips": 9,
+      "part": "pm"
+    },
+    {
+      "from": "18:00",
+      "to": "21:00",
+      "frequency": 20,
+      "trips": 9,
+      "part": "evening"
+    },
+    {
+      "from": "21:00",
+      "to": "00:50",
+      "frequency": 20,
+      "trips": 12,
+      "part": "night"
+    }
+  ],
+  "bands-decimal-fallback-7-in-30": [
+    {
+      "from": "06:00",
+      "to": "06:30",
+      "frequency": 4.9,
+      "trips": 7,
+      "part": "am"
+    }
+  ],
+  "bands-40-in-60": [
+    {
+      "from": "06:00",
+      "to": "07:00",
+      "frequency": 1.5,
+      "trips": 40,
+      "part": "am"
+    }
+  ],
+  "bands-100-in-180": [
+    {
+      "from": "06:00",
+      "to": "09:00",
+      "frequency": 1.8,
+      "trips": 100,
+      "part": "am"
+    }
+  ],
+  "bands-empty": [],
+  "bands-unsorted": [
+    {
+      "from": "07:00",
+      "to": "09:00",
+      "frequency": 40,
+      "trips": 3,
+      "part": "am"
+    },
+    {
+      "from": "09:00",
+      "to": "09:30",
+      "frequency": 30,
+      "trips": 1,
+      "part": "midday"
+    }
+  ],
+  "bands-negative-ignored": [
+    {
+      "from": "07:00",
+      "to": "07:05",
+      "frequency": 3,
+      "trips": 2,
+      "part": "am"
+    }
+  ],
+  "bands-custom-two-parts": [
+    {
+      "from": "06:00",
+      "to": "12:00",
+      "frequency": 30,
+      "trips": 12,
+      "part": "a"
+    },
+    {
+      "from": "12:00",
+      "to": "13:00",
+      "frequency": 20,
+      "trips": 3,
+      "part": "b"
+    }
+  ],
+  "bands-invariant": {
+    "violations": 0,
+    "checked": 1006
+  },
+  "bands-trip-count-wrap": 8,
+  "bands-trip-count-bad-time": {
+    "__num__": "NaN"
+  },
+  "bands-trip-count-zero-headway": {
+    "__num__": "NaN"
+  },
+  "bands-mean-trip-minutes": 12.5,
+  "bands-mean-trip-empty": null,
+  "bands-mean-trip-zero-only": null,
+  "bands-equal-same": true,
+  "bands-equal-frequency": false,
+  "bands-equal-length": false,
+  "plan-b1": {
+    "routeId": "B1",
+    "dates": {
+      "weekday": "20260130",
+      "saturday": "20260124",
+      "sunday": "20260111"
+    },
+    "shapes": [
+      {
+        "shapeId": "SH_B1_0",
+        "directionId": "0",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:00",
+              "to": "09:00",
+              "frequency": 60
+            },
+            {
+              "from": "09:00",
+              "to": "15:00",
+              "frequency": 360
+            },
+            {
+              "from": "21:00",
+              "to": "00:50",
+              "frequency": 230
+            }
+          ],
+          "saturday": [
+            {
+              "from": "09:00",
+              "to": "09:05",
+              "frequency": 6
+            }
+          ],
+          "sunday": [
+            {
+              "from": "10:00",
+              "to": "10:05",
+              "frequency": 6
+            }
+          ],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S1",
+          "S2",
+          "S3"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 4,
+            "runningSec": 4800
+          },
+          "saturday": {
+            "trips": 1,
+            "runningSec": 1200
+          },
+          "sunday": {
+            "trips": 1,
+            "runningSec": 1200
+          }
+        }
+      },
+      {
+        "shapeId": "SH_B1_1",
+        "directionId": "1",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:15",
+              "to": "07:30",
+              "frequency": 7.5
+            }
+          ],
+          "saturday": [],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S3",
+          "S2",
+          "S1"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 2,
+            "runningSec": 2400
+          },
+          "saturday": {
+            "trips": 0,
+            "runningSec": 0
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      }
+    ],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260130",
+        "gtfsTrips": 6,
+        "copyTrips": 6,
+        "gtfsHours": 2,
+        "copyHours": 2,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "saturday",
+        "date": "20260124",
+        "gtfsTrips": 1,
+        "copyTrips": 1,
+        "gtfsHours": 0.33,
+        "copyHours": 0.33,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "sunday",
+        "date": "20260111",
+        "gtfsTrips": 1,
+        "copyTrips": 1,
+        "gtfsHours": 0.33,
+        "copyHours": 0.33,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "plan-r1": {
+    "routeId": "R1",
+    "dates": {
+      "weekday": "20260130",
+      "saturday": "20260124",
+      "sunday": "20260111"
+    },
+    "shapes": [
+      {
+        "shapeId": "SH_R1_0",
+        "directionId": "0",
+        "service": {
+          "weekday": [
+            {
+              "from": "06:00",
+              "to": "08:00",
+              "frequency": 60
+            }
+          ],
+          "saturday": [
+            {
+              "from": "08:00",
+              "to": "09:00",
+              "frequency": 60
+            },
+            {
+              "from": "21:00",
+              "to": "22:00",
+              "frequency": 60
+            }
+          ],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 37,
+        "runTimeDay": "weekday",
+        "stops": [
+          "P1",
+          "R2"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 2,
+            "runningSec": 4440
+          },
+          "saturday": {
+            "trips": 2,
+            "runningSec": 4440
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      },
+      {
+        "shapeId": "SH_R1_1",
+        "directionId": "1",
+        "service": {
+          "weekday": [
+            {
+              "from": "06:45",
+              "to": "06:50",
+              "frequency": 5
+            }
+          ],
+          "saturday": [],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 37,
+        "runTimeDay": "weekday",
+        "stops": [
+          "R2",
+          "P1"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 1,
+            "runningSec": 2220
+          },
+          "saturday": {
+            "trips": 0,
+            "runningSec": 0
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      }
+    ],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260130",
+        "gtfsTrips": 3,
+        "copyTrips": 3,
+        "gtfsHours": 1.85,
+        "copyHours": 1.85,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "saturday",
+        "date": "20260124",
+        "gtfsTrips": 2,
+        "copyTrips": 2,
+        "gtfsHours": 1.23,
+        "copyHours": 1.23,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "sunday",
+        "date": "20260111",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "plan-f1-all-unshaped": {
+    "routeId": "F1",
+    "dates": {
+      "weekday": "20260130",
+      "saturday": "20260124",
+      "sunday": "20260111"
+    },
+    "shapes": [],
+    "unshaped": {
+      "weekday": 22,
+      "saturday": 4,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260130",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "saturday",
+        "date": "20260124",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "sunday",
+        "date": "20260111",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "plan-unknown-route": {
+    "routeId": "NOPE",
+    "dates": {
+      "weekday": "20260130",
+      "saturday": "20260124",
+      "sunday": "20260111"
+    },
+    "shapes": [],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260130",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "saturday",
+        "date": "20260124",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "sunday",
+        "date": "20260111",
+        "gtfsTrips": 0,
+        "copyTrips": 0,
+        "gtfsHours": 0,
+        "copyHours": 0,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "plan-weekday-only": {
+    "routeId": "B1",
+    "dates": {
+      "weekday": "20260112",
+      "saturday": null,
+      "sunday": null
+    },
+    "shapes": [
+      {
+        "shapeId": "SH_B1_0",
+        "directionId": "0",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:00",
+              "to": "09:00",
+              "frequency": 60
+            },
+            {
+              "from": "21:00",
+              "to": "00:50",
+              "frequency": 230
+            }
+          ],
+          "saturday": [],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S1",
+          "S2",
+          "S3"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 3,
+            "runningSec": 3600
+          },
+          "saturday": {
+            "trips": 0,
+            "runningSec": 0
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      },
+      {
+        "shapeId": "SH_B1_1",
+        "directionId": "1",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:15",
+              "to": "07:30",
+              "frequency": 7.5
+            }
+          ],
+          "saturday": [],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S3",
+          "S2",
+          "S1"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 2,
+            "runningSec": 2400
+          },
+          "saturday": {
+            "trips": 0,
+            "runningSec": 0
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      }
+    ],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260112",
+        "gtfsTrips": 5,
+        "copyTrips": 5,
+        "gtfsHours": 1.67,
+        "copyHours": 1.67,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "plan-no-dates": {
+    "routeId": "B1",
+    "dates": {
+      "weekday": null,
+      "saturday": null,
+      "sunday": null
+    },
+    "shapes": [],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": []
+  },
+  "plan-custom-day-parts": {
+    "routeId": "B1",
+    "dates": {
+      "weekday": "20260130",
+      "saturday": "20260124",
+      "sunday": "20260111"
+    },
+    "shapes": [
+      {
+        "shapeId": "SH_B1_0",
+        "directionId": "0",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:00",
+              "to": "00:50",
+              "frequency": 356.6
+            }
+          ],
+          "saturday": [
+            {
+              "from": "09:00",
+              "to": "09:05",
+              "frequency": 6
+            }
+          ],
+          "sunday": [
+            {
+              "from": "10:00",
+              "to": "10:05",
+              "frequency": 6
+            }
+          ],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S1",
+          "S2",
+          "S3"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 4,
+            "runningSec": 4800
+          },
+          "saturday": {
+            "trips": 1,
+            "runningSec": 1200
+          },
+          "sunday": {
+            "trips": 1,
+            "runningSec": 1200
+          }
+        }
+      },
+      {
+        "shapeId": "SH_B1_1",
+        "directionId": "1",
+        "service": {
+          "weekday": [
+            {
+              "from": "07:15",
+              "to": "07:30",
+              "frequency": 7.5
+            }
+          ],
+          "saturday": [],
+          "sunday": [],
+          "sundayMirrorsSaturday": false
+        },
+        "runTime": 20,
+        "runTimeDay": "weekday",
+        "stops": [
+          "S3",
+          "S2",
+          "S1"
+        ],
+        "perDay": {
+          "weekday": {
+            "trips": 2,
+            "runningSec": 2400
+          },
+          "saturday": {
+            "trips": 0,
+            "runningSec": 0
+          },
+          "sunday": {
+            "trips": 0,
+            "runningSec": 0
+          }
+        }
+      }
+    ],
+    "unshaped": {
+      "weekday": 0,
+      "saturday": 0,
+      "sunday": 0
+    },
+    "reconciliation": [
+      {
+        "day": "weekday",
+        "date": "20260130",
+        "gtfsTrips": 6,
+        "copyTrips": 6,
+        "gtfsHours": 2,
+        "copyHours": 2,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "saturday",
+        "date": "20260124",
+        "gtfsTrips": 1,
+        "copyTrips": 1,
+        "gtfsHours": 0.33,
+        "copyHours": 0.33,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      },
+      {
+        "day": "sunday",
+        "date": "20260111",
+        "gtfsTrips": 1,
+        "copyTrips": 1,
+        "gtfsHours": 0.33,
+        "copyHours": 0.33,
+        "diffPct": 0,
+        "tripsOk": true,
+        "hoursOk": true
+      }
+    ]
+  },
+  "note-matches": "Red — Weekday (Mon Jan 12, 2026): 25 trips, matches the timetable.",
+  "note-hours-off": "Red — Weekday (Mon Jan 12, 2026): 25 trips, running hours 5.10 on the copy vs 4.70 in the timetable (+8.5%): trip times vary through the day and the copy uses one average run time.",
+  "note-hours-off-negative": "Red — Saturday (Sat Jan 24, 2026): 1 trip, running hours 0.32 on the copy vs 0.33 in the timetable (-3.2%): trip times vary through the day and the copy uses one average run time.",
+  "note-trip-mismatch": "Red — Weekday (Mon Jan 12, 2026): 25 trips in the timetable but 24 trips on the copy.",
+  "note-no-service-and-unshaped": "3 weekday trips have no shape and were not copied.\nSaturday: no service.\nSunday: no service.\n1 sunday trip has no shape and was not copied."
 }

@@ -5805,6 +5805,24 @@ body.dark-mode .result-error td { color: #fc8181; }
 .gtfs-date-desc { font-size: var(--text-sm); color: var(--text-primary, inherit); margin-top: 4px; }
 .gtfs-date-range { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
 
+/* Reconciliation note shown after copying a GTFS route as a Service. */
+.gtfs-copy-note {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  z-index: 1200; max-width: min(560px, calc(100vw - 32px));
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 10px 36px 10px 14px; font-size: var(--text-sm); line-height: 1.45;
+}
+.gtfs-copy-note-title { font-weight: 600; margin-bottom: 4px; }
+.gtfs-copy-note-line { margin: 2px 0; }
+.gtfs-copy-note-close {
+  position: absolute; top: 6px; right: 6px; border: none; background: transparent;
+  color: var(--text-secondary); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.gtfs-copy-note-close:hover { background: var(--surface-hover); }
+
 .gtfs-table-truncated td {
   text-align: center;
   color: var(--muted);
