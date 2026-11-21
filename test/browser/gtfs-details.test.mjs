@@ -82,7 +82,7 @@ MINI_FILES.forEach((f) => { mini[f] = readFileSync(join(MINI_DIR, f), "utf8"); }
 
     // 2
     const tabs2 = await tabTexts();
-    check("2. a stop shows Details, Trips and Spacing tabs", tabs2.join(",") === "Details,Trips,Spacing", tabs2.join(","));
+    check("2. a stop shows Details, Trips, Spacing and Coverage tabs", tabs2.join(",") === "Details,Trips,Spacing,Coverage", tabs2.join(","));
 
     // 3
     await page.evaluate(() => App.gtfsOpenDetails({ kind: "stop", stopId: "S1" }));

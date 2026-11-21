@@ -2404,6 +2404,94 @@
     emptyNote(box, "Straight-line distance to the neighbouring stops on each route's most common pattern.");
   }
 
+  // Walk distance the coverage analyses use around a stop, by mode.
+  var COVERAGE_MILES = { bus: 0.25, rail: 0.5 };
+  var FREQUENT_PEAK_SEC = 15 * 60;
+
+  function milesText(mi) { return mi === 0.25 ? "¼ mi" : mi === 0.5 ? "½ mi" : mi + " mi"; }
+
+  // Residents within radiusMi of a point, from 2020 census blocks (POP100 at each block's internal
+  // point). Block groups around the circle only name which blocks to download; the distance test decides.
+  async function countResidents(lat, lon, radiusMi) {
+    var circle = turf.circle([lon, lat], radiusMi, { steps: 64, units: "miles" });
+    var geos = await App.fetchTigerwebGeos("bg", circle);
+    var blocks = await App.fetchBlockPopulations(geos);
+    var total = 0;
+    blocks.forEach(function (b) {
+      if (window.ServiceEquity.distanceMi(lat, lon, b.lat, b.lon) <= radiusMi) total += b.pop;
+    });
+    return total;
+  }
+
+  function renderStopCoverage(box, id, state, refresh) {
+    var S = window.GtfsSchedule, date = App.gtfsAnalysisDate.get();
+    if (!_feed || !date) { emptyNote(box, "Load a GTFS feed with stop_times.txt to see coverage."); return; }
+    var routeIds = scheduleRouteIds(false), parts = dayParts();
+    // A station has no departures of its own (its platforms do), so the summary supplies the routes
+    // and the table row supplies the same trips and headway as the Trips tab.
+    var sum = S.stopSummary(_feed, date, id, { routeIds: routeIds, dayParts: parts });
+    var rows = S.stopServiceTable(_feed, date, { routeIds: routeIds, dayParts: parts, stopIds: [id] });
+    var row = rows.length ? rows[0] : null;
+    var rail = sum.routes.some(function (r) {
+      var rr = routeRow(r.routeId);
+      return window.AnalysisNetwork.modeOf(rr ? rr.route_type : "") === "rail";
+    });
+    var radius = rail ? COVERAGE_MILES.rail : COVERAGE_MILES.bus;
+    var peak = row && typeof row.peakHeadwaySec === "number" ? row.peakHeadwaySec : null;
+
+    var tbl = el("table", "gtfs-fields");
+    var body = el("tbody");
+    function add(k, v) {
+      var tr = el("tr");
+      tr.appendChild(el("th", "", k));
+      tr.appendChild(el("td", "", v));
+      body.appendChild(tr);
+    }
+    add("Mode", rail ? "Rail" : "Bus");
+    add("Walk distance", milesText(radius));
+    add("Trips on this day", String(row ? row.trips : 0));
+    add("Peak headway", peak === null ? "—" : minutesText(peak));
+    add("Frequent (peak headway ≤ 15 min)", peak !== null && peak <= FREQUENT_PEAK_SEC ? "Yes" : "No");
+    tbl.appendChild(body);
+    box.appendChild(tbl);
+
+    // The count belongs to one radius; a date change that flips the mode makes it stale, so it is dropped.
+    var cov = state.coverage;
+    if (cov && cov.radiusMi !== radius) cov = state.coverage = null;
+    var busy = !!cov && cov.status === "busy";
+    var btn = el("button", "rf-btn-sm", "Count residents");
+    btn.type = "button";
+    btn.disabled = busy;
+    btn.addEventListener("click", function () {
+      var s = _feed && _feed._stops[id];
+      if (!s || typeof s.lat !== "number" || typeof s.lon !== "number") {
+        state.coverage = { radiusMi: radius, status: "error", text: "This stop has no coordinates." };
+        refresh();
+        return;
+      }
+      var mine = state.coverage = { radiusMi: radius, status: "busy" };
+      refresh();
+      countResidents(s.lat, s.lon, radius).then(function (n) {
+        if (state.coverage !== mine) return;
+        state.coverage = { radiusMi: radius, status: "done", count: n };
+      }, function (err) {
+        if (state.coverage !== mine) return;
+        state.coverage = { radiusMi: radius, status: "error", text: (err && err.message) || "Census download failed." };
+      }).then(refresh);
+    });
+    box.appendChild(btn);
+
+    var out = el("div", "gtfs-dt-summary");
+    out.setAttribute("data-coverage-result", cov ? cov.status : "idle");
+    if (cov && cov.status === "busy") out.textContent = "Counting…";
+    else if (cov && cov.status === "done") {
+      out.textContent = "About " + cov.count.toLocaleString("en-US") + " residents live within " +
+        milesText(radius) + " (2020 census blocks).";
+    } else if (cov && cov.status === "error") out.textContent = "Could not count residents: " + cov.text;
+    box.appendChild(out);
+    emptyNote(box, "Rail stops use a ½ mi walk and bus stops ¼ mi. Counting downloads census blocks from the Census Bureau only when you press the button.");
+  }
+
   // The route's timetable for the day to analyze, or null after writing the reason into box.
   function routeTimetable(box, routeKey) {
     var r = findIndexRoute(routeKey), date = App.gtfsAnalysisDate.get();
@@ -2474,7 +2562,8 @@
 
   _stopTabs.push(
     { id: "trips", label: "Trips", render: renderStopTrips },
-    { id: "spacing", label: "Spacing", render: renderStopSpacing }
+    { id: "spacing", label: "Spacing", render: renderStopSpacing },
+    { id: "coverage", label: "Coverage", render: renderStopCoverage }
   );
   _routeTabs.push(
     { id: "stops", label: "Stops", render: renderRouteStops },
@@ -2487,6 +2576,14 @@
     if (!tab || !tab.id || typeof tab.render !== "function") return;
     _routeTabs.push({ id: tab.id, label: tab.label || tab.id, render: function (el, id, state, refresh) {
       tab.render(el, scheduleRouteId(id), state, refresh);
+    } });
+    refreshDetails();
+  };
+  // Stop-view twin of gtfsAddRouteTab: render(el, stopId, state, refresh) with the schedule stop_id.
+  App.gtfsAddStopTab = function (tab) {
+    if (!tab || !tab.id || typeof tab.render !== "function") return;
+    _stopTabs.push({ id: tab.id, label: tab.label || tab.id, render: function (el, id, state, refresh) {
+      tab.render(el, id, state, refresh);
     } });
     refreshDetails();
   };
