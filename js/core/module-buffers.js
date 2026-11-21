@@ -240,6 +240,48 @@
     };
   }
 
+  // Point features (App.points) associated with a route/line via
+  // attributes.associatedRoutes. Matches on the draw-time counter (routeIdx /
+  // lineIdx), resolved by scanning App.points: array indices shift on delete,
+  // the counter does not. A point is returned once however many refs match.
+  // opts.includeHidden (default false): when false, hidden points are skipped.
+  function associatedStopPoints(type, feature, opts) {
+    var includeHidden = !!(opts && opts.includeHidden);
+    var idProp = (type === "route") ? "routeIdx" : "lineIdx";
+    var featureId = feature && feature.properties ? feature.properties[idProp] : null;
+    if (featureId == null) return [];
+    var points = App.points || [];
+    var out = [];
+    for (var i = 0; i < points.length; i++) {
+      var pf = points[i];
+      if (!pf || !pf.properties) continue;
+      if (pf.properties.hidden && !includeHidden) continue;
+      var assoc = pf.properties.attributes && pf.properties.attributes.associatedRoutes;
+      if (!Array.isArray(assoc)) continue;
+      for (var a = 0; a < assoc.length; a++) {
+        var ref = assoc[a];
+        if (ref && ref.featureType === type && ref.featureId === featureId) {
+          out.push(pf);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Union of plain circles around each point (never walksheds). Null for none.
+  function buildStopCircleUnion(points, miles) {
+    var circles = [];
+    for (var i = 0; i < (points || []).length; i++) {
+      try {
+        circles.push(turf.circle(turf.point(points[i].geometry.coordinates), miles, { units: "miles", steps: 32 }));
+      } catch (e) { /* skip a bad point */ }
+    }
+    return foldAnalysisUnion(circles);
+  }
+
+  App.associatedStopPoints  = associatedStopPoints;
+  App.buildStopCircleUnion  = buildStopCircleUnion;
   App.foldAnalysisUnion     = foldAnalysisUnion;
   App.buildAnalysisBuffer   = buildAnalysisBuffer;
   App.buildDisplayBufferSet = buildDisplayBufferSet;

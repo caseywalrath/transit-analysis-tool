@@ -19,6 +19,7 @@
   // (including newly drawn features) is checked.
   var _uncheckedRefs     = [];
   var _useDisplayBuffers = false;
+  var _coverageFrom      = "stops";  // "stops" | "line"; new work defaults to stops, a saved session without the key restores as "line"
   var _includeHidden     = false;   // one toggle for BOTH lists (docs/archive/hidden-features-analysis-plan.md)
   // Taken at run time so update() can tell a relevant change from an unrelated
   // hide/show (notifyProject fires on every visibility change).
@@ -299,6 +300,11 @@
     var toggle = document.getElementById("tcUseDisplayBuffers");
     if (input) input.disabled = _useDisplayBuffers;
     if (toggle) toggle.checked = _useDisplayBuffers;
+    var from = document.getElementById("tcCoverageFrom");
+    if (from) {
+      from.value = _coverageFrom;
+      from.disabled = _useDisplayBuffers;   // display buffers ignore this setting
+    }
   }
 
   function renderInputs(collapsed) {
@@ -412,13 +418,16 @@
   // App.routeBuffers / App.lineBuffers (those belong to the shared
   // Feature Settings buffer radius, a different concern).
 
-  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers, includeHidden) {
+  function buildCoverageUnions(sel, miles, dayType, thresholdMin, useDisplayBuffers, includeHidden, coverageFrom) {
     var headwayRows = [];
     var allBuffers = [];
     var qualifyingBuffers = [];
     var bufferSet = useDisplayBuffers
       ? App.buildDisplayBufferSet(sel, { includeHidden: !!includeHidden })
       : App.buildAnalysisBufferSet(sel, miles, { includeHidden: !!includeHidden });
+
+    // Display buffers always win: they are the drawn line buffers, so coverageFrom does not apply.
+    var useStops = coverageFrom === "stops" && !useDisplayBuffers;
 
     function featureIdOf(type, idx) {
       var ref = App.featureRef(type, idx);
@@ -432,12 +441,28 @@
       var attrs = (feature.properties && feature.properties.attributes) || {};
       var peak = computePeakHeadway(attrs.service, dayType);
       var qualifies = thresholdMin != null && peak != null && peak <= thresholdMin;
-      headwayRows.push({
+      var row = {
         name: name, featureType: type, featureId: featureIdOf(type, idx),
-        peakHeadway: peak, qualifies: qualifies
-      });
+        peakHeadway: peak, qualifies: qualifies,
+        coverageSource: "line", stopCount: 0
+      };
+      headwayRows.push(row);
 
       var buf = bufferSet.get(type, idx);
+      // A hidden feature left out of the buffer set (include-hidden off) stays out
+      // even when its stops are visible.
+      var excluded = !!(feature.properties && feature.properties.hidden) && !includeHidden;
+      if (useStops && !excluded) {
+        var stops = App.associatedStopPoints(type, feature, { includeHidden: !!includeHidden });
+        if (stops.length >= 1) {
+          var circles = App.buildStopCircleUnion(stops, miles);
+          if (circles) {
+            buf = circles;
+            row.coverageSource = "stops";
+            row.stopCount = stops.length;
+          }
+        }
+      }
       if (buf) {
         allBuffers.push(buf);
         if (qualifies) qualifyingBuffers.push(buf);
@@ -652,7 +677,9 @@
       }
 
       _useDisplayBuffers = !!(document.getElementById("tcUseDisplayBuffers") || {}).checked;
-      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers, _includeHidden);
+      var coverageFromEl = document.getElementById("tcCoverageFrom");
+      if (coverageFromEl) _coverageFrom = coverageFromEl.value === "stops" ? "stops" : "line";
+      var unions = buildCoverageUnions(featSel, bufferMiles, dayType, thresholdMin, _useDisplayBuffers, _includeHidden, _coverageFrom);
       var snap = makeRunSnap(checkedRefsIn("tcFeatureList").concat(checkedRefsIn("tcAreaList")));
       // Hidden features that took part: route/line from the buffer set, plus hidden service-area polygons.
       var hiddenIncluded = (unions.hiddenCount && unions.hiddenCount.included) || 0;
@@ -707,7 +734,8 @@
 
       _lastResult = {
         geoLevel: geoLevel, year: year,
-        bufferMiles: bufferMiles, useDisplayBuffers: _useDisplayBuffers, dayType: dayType, thresholdMin: thresholdMin,
+        bufferMiles: bufferMiles, useDisplayBuffers: _useDisplayBuffers, coverageFrom: _coverageFrom,
+        dayType: dayType, thresholdMin: thresholdMin,
         popTotal: popTotal, popCovered: popCovered, popThreshold: popThreshold,
         jobsTotal: jobsTotal, jobsCovered: jobsCovered, jobsThreshold: jobsThreshold,
         headwayRows: headwayRows,
@@ -809,12 +837,20 @@
       var itemsHtml = rows.map(function (r) {
         var headwayText = (r.peakHeadway != null) ? (r.peakHeadway + " min") : "no service";
         var meetsText = hasThreshold ? (r.qualifies ? " — meets threshold" : " — does not meet threshold") : "";
-        return '<div class="tiny">' + escapeHTML(r.name) + ': ' + headwayText + meetsText + '</div>';
+        var srcText = r.coverageSource === "stops" ? " (from " + r.stopCount + " stop" + (r.stopCount === 1 ? "" : "s") + ")"
+                    : r.coverageSource === "line" ? " (from line)" : "";
+        return '<div class="tiny">' + escapeHTML(r.name) + srcText + ': ' + headwayText + meetsText + '</div>';
       }).join("");
+      var withSource = rows.filter(function (r) { return r.coverageSource; });
+      var fromStops = withSource.filter(function (r) { return r.coverageSource === "stops"; }).length;
+      var sourceNote = withSource.length
+        ? '<p class="tiny u-mt-2">Coverage measured around stops for ' + fromStops + ' of ' + withSource.length +
+          ' features; along the line for the rest.</p>'
+        : "";
       headwayListEl.innerHTML =
         '<details><summary>Peak headways (' + rows.length + ' feature' + (rows.length === 1 ? "" : "s") + ')</summary>' +
         itemsHtml +
-        '</details>';
+        '</details>' + sourceNote;
     }
   }
 
@@ -851,6 +887,8 @@
     lines.push("# Geography: "             + (r.geoLevel || ""));
     lines.push("# ACS Year: "               + (r.year || ""));
     lines.push("# Buffer distance (mi): "  + r.bufferMiles);
+    lines.push("# Coverage from: "         + (r.useDisplayBuffers ? "display buffers (coverage-from setting ignored)"
+      : (r.coverageFrom === "stops" ? "stops when present, else along the line" : "along the whole line")));
     lines.push("# Day type: "               + r.dayType);
     lines.push("# Headway threshold (min): " + (hasThreshold ? r.thresholdMin : ""));
     lines.push("# Population is apportioned by area; jobs are counted by whole LODES block.");
@@ -865,14 +903,16 @@
     }
 
     lines.push("");
-    lines.push("feature,peak_headway_min,meets_threshold");
+    lines.push("feature,peak_headway_min,meets_threshold,coverage_source,stops_used");
     var headwayRows = r.headwayRows || [];
     for (var i = 0; i < headwayRows.length; i++) {
       var hr = headwayRows[i];
       lines.push([
         _csvField(hr.name),
         (hr.peakHeadway != null) ? hr.peakHeadway : "",
-        hasThreshold ? (hr.qualifies ? "yes" : "no") : ""
+        hasThreshold ? (hr.qualifies ? "yes" : "no") : "",
+        hr.coverageSource || "",
+        hr.coverageSource ? hr.stopCount : ""
       ].join(","));
     }
 
@@ -969,6 +1009,11 @@
     if (displayBuffersInput) displayBuffersInput.addEventListener("change", function () {
       _useDisplayBuffers = displayBuffersInput.checked;
       syncBufferControl();
+      markStale();
+    });
+    var coverageFromSel = document.getElementById("tcCoverageFrom");
+    if (coverageFromSel) coverageFromSel.addEventListener("change", function () {
+      _coverageFrom = coverageFromSel.value === "stops" ? "stops" : "line";
       markStale();
     });
     syncBufferControl();
@@ -1108,6 +1153,7 @@
     var settings = {
       bufferMiles:      null,
       useDisplayBuffers: _useDisplayBuffers,
+      coverageFrom:     _coverageFrom,
       includeHidden:    _includeHidden,   // additive, no schema bump
       dayType:          null,
       headwayThreshold: null,
@@ -1152,6 +1198,7 @@
         year:            _lastResult.year,
         bufferMiles:     _lastResult.bufferMiles,
         useDisplayBuffers: _lastResult.useDisplayBuffers,
+        coverageFrom:    _lastResult.coverageFrom,
         dayType:         _lastResult.dayType,
         thresholdMin:    _lastResult.thresholdMin,
         hiddenIncluded:  _lastResult.hiddenIncluded || 0,
@@ -1164,7 +1211,8 @@
         headwayRows:     (_lastResult.headwayRows || []).map(function (r) {
           return {
             name: r.name, featureType: r.featureType, featureId: r.featureId,
-            peakHeadway: r.peakHeadway, qualifies: r.qualifies
+            peakHeadway: r.peakHeadway, qualifies: r.qualifies,
+            coverageSource: r.coverageSource, stopCount: r.stopCount
           };
         })
       };
@@ -1205,6 +1253,7 @@
 
     if (bufferEl && Number.isFinite(settings.bufferMiles)) bufferEl.value = String(settings.bufferMiles);
     if (settings.useDisplayBuffers != null) _useDisplayBuffers = !!settings.useDisplayBuffers;
+    _coverageFrom = settings.coverageFrom === "stops" ? "stops" : "line";   // old sessions measured along the line
     if (typeof settings.includeHidden === "boolean") _includeHidden = settings.includeHidden;
     var ihRestoreEl = document.getElementById("tcIncludeHidden");
     if (ihRestoreEl) ihRestoreEl.checked = _includeHidden;
@@ -1224,6 +1273,7 @@
       year:             s.year,
       bufferMiles:      s.bufferMiles,
       useDisplayBuffers: !!s.useDisplayBuffers,
+      coverageFrom:     s.coverageFrom === "stops" ? "stops" : "line",
       dayType:          s.dayType,
       thresholdMin:     s.thresholdMin,
       hiddenIncluded:   s.hiddenIncluded || 0,
