@@ -29,6 +29,20 @@
 
       </div>
 
+      <!-- Only shown while a GTFS feed is loaded -->
+      <div class="data-input-group" data-input-group="gtfs-routes" id="tcGtfsSection" style="display:none;">
+
+      <div class="rf-section-title form-section">GTFS routes</div>
+      <p id="tcGtfsDate" class="tiny u-muted"></p>
+      <div class="rf-feature-select-actions">
+        <a href="#" id="tcGtfsSelectAll">Select all</a>&nbsp;<span class="u-muted">|</span>&nbsp;<a href="#" id="tcGtfsSelectNone">Clear</a>
+      </div>
+      <div id="tcGtfsList" class="rf-feature-checklist">
+        <div class="rf-empty-note">No GTFS routes.</div>
+      </div>
+
+      </div>
+
       <div class="data-input-group" data-input-group="geography">
 
       <div class="rf-section-title form-section">Geography</div>
@@ -72,6 +86,24 @@
         <select id="tcCoverageFrom" class="rf-select u-mt-2">
           <option value="stops" selected>Around stops when the route has them</option>
           <option value="line">Along the whole line</option>
+        </select>
+      </div>
+
+      <div class="form-field tc-gtfs-buffers" id="tcGtfsBuffers" style="display:none;">
+        <label class="tiny" for="tcBusBufferMi">GTFS stop buffer (mi)</label>
+        <div class="tc-buffer-pair">
+          <label class="tiny" for="tcBusBufferMi">Bus</label>
+          <input type="number" id="tcBusBufferMi" class="rf-number-input" value="0.25" min="0.05" max="5" step="0.05">
+          <label class="tiny" for="tcRailBufferMi">Rail</label>
+          <input type="number" id="tcRailBufferMi" class="rf-number-input" value="0.5" min="0.05" max="5" step="0.05">
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label class="tiny" for="tcDistanceMode">Distance measured</label>
+        <select id="tcDistanceMode" class="rf-select">
+          <option value="straight" selected>Straight line</option>
+          <option value="streets">Along streets</option>
         </select>
       </div>
 
@@ -129,8 +161,11 @@
 
         <p id="tcApportionNote" class="rf-status rf-status-stale u-mt-2" style="display:none"></p>
 
+        <p id="tcDistanceNote" class="rf-status rf-status-stale u-mt-2" style="display:none"></p>
+
         <p class="tiny u-mt-2 u-muted">
           <span id="tcApportionFootnote">Residents counted by land area; jobs are counted by whole LODES block.</span>
+          <span id="tcDistanceFootnote"></span>
           <span id="tcHiddenNote"></span>
         </p>
       </div>

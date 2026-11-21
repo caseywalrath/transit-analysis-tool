@@ -3249,6 +3249,19 @@ body.dark-mode .cs-feature-badge { background: #2d3748; color: #cbd5e0; }
   font-size: var(--text-sm);
 }
 .tc-results-table td:nth-child(n+2) { text-align: right; }
+.tc-buffer-pair {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tc-route-chip {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
 
 /* ---- Walkshed popup ---- */
 .ws-body {

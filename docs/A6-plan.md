@@ -1,6 +1,6 @@
 # A6 — Coverage, Title VI equity and travel times on real schedules (sub-plan)
 
-**Status:** A6a partly committed; A6a.3 (Transit Coverage) and A6a.5 (review) remain. Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
+**Status:** A6a done; next A6b (cards to write from the outline below). Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
 
 A6 ships as three steps, each reviewed and committed on its own: **A6a** analysis network and coverage,
 **A6b** Title VI service equity, **A6c** travel times. Each step's cards are written when it starts, from
@@ -104,3 +104,16 @@ network is loaded).
   `docs/a6-cards/card-a6a.3.md` with the rules block `docs/a6-cards/rules.md`. Then A6a.5: code review at high,
   screenshots, check FAA's collapsed inputs summary reads well with only GTFS stops ("0 features" seen), archive
   this plan and move the cards out of `docs/a6-cards/`.
+- 2026-11-21 (resumed): A6a.3 Transit Coverage [Sonnet], restarted fresh from its card: GTFS routes checklist,
+  bus / rail stop buffers, per-stop combined peak headway, along-streets distance; 32/32 browser checks, golden
+  1098/1098. Deviations accepted: a local pairwise union for thousands of circles (foldAnalysisUnion took
+  minutes on RTD); a route's stops are those it departs from, so arrival-only termini are not counted. Opus
+  fixes: Feature Area Analysis collapsed summary read "0 features + GTFS stops" (now "N GTFS stops"); the
+  coverage table label with both buffers wrapped five lines (now "stop buffers", distances in the footnote).
+  The high-effort code-review pass was skipped to save usage; run it over A6a's diff (`c6ed9ef..HEAD`) at the
+  start of A6b. RTD: whole straight-line run about 3.1 s; along-streets not timed (no RTD street network offline).
+
+**Hand-off (A6b, A6c):** `App.buildAnalysisNetwork({date, includeHidden, gtfs, proposals})` →
+network (see `docs/reference/modules/gtfs.md` "Analysis network"); `AnalysisNetwork.stopService(network,
+dayParts)` gives per-stop trips and peak headway for the equity test; `App.computeMultiWalkCostMap(origins,
+km)` / `App.multiWalkPolygon` give walk distances from many stops (transfers and access for RAPTOR).

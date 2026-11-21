@@ -1394,7 +1394,15 @@
       geoLabel + " \u00b7 " + (yearEl ? yearEl.value : _state.year) + " \u00b7 " +
       (apportionEl && !apportionEl.checked ? "whole geographies"
         : (readApportionMethod() === "area" ? "area apportioned" : "block-population apportioned")) + " \u00b7 " +
-      featureCount + " feature" + (featureCount === 1 ? "" : "s") + (gtfsRowChecked() ? " + GTFS stops" : "");
+      featureText(featureCount);
+  }
+
+  // "2 features", "2 features + 3 GTFS stops", or "3 GTFS stops" when only the stop row is ticked.
+  function featureText(featureCount) {
+    var drawn = featureCount + " feature" + (featureCount === 1 ? "" : "s");
+    if (!gtfsRowChecked()) return drawn;
+    var n = gtfsStopPoints().length, stops = n + " GTFS stop" + (n === 1 ? "" : "s");
+    return featureCount > 0 ? drawn + " + " + stops : stops;
   }
 
   function renderInputs(collapsed) {
