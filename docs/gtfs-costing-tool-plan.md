@@ -256,6 +256,7 @@ If you say "your call": Option A now; revisit B when stop-centred views are want
 - how timepoint stop IDs per pattern (Decision 0080) merge;
 - stops with no ID;
 - a timepoint and a stop that share an ID.
+- **From the Analysis app's export (A8):** stops come from linked Points (`point-<n>`) or are generated every 0.25 mi as `<service key>#<pattern>#<k>` (the id contains `#`). Generated stops are never shared between Services, even at the same spot, so a merge by stop ID will not join them. Decide whether C5's import also merges nearby stops with different IDs.
 
 ### C2 — GTFS export
 
@@ -372,7 +373,9 @@ If you say "your call": Option A.
 
 - **Import selection:** pick a feed and one or more routes. The interface works one route at a time; the sub-plan sets limits.
 - **What the import creates:** the Route, timepoint Nodes, patterns (one per unique stop sequence), stops with locations, run-time profiles built from observed times, and trips with their exact times.
-- **Optional parts:** blocks from `block_id`; service days and annual counts from the calendar; planned frequencies from `frequencies.txt`.
+- **Frequency-based trips (required):** read `frequencies.txt` and expand every window into its trips. With `exact_times=1`, trips depart at `start_time + k × headway_secs` below `end_time`, each a copy of the template trip's stop times shifted in time. The Analysis app's export lists only one template trip per regular band in `trips.txt`, so an importer that skips this file loads one trip per band instead of the timetable.
+- **Optional parts:** blocks from `block_id`; service days and annual counts from the calendar; planned frequencies from `frequencies.txt` windows (see "Windows to planned frequencies" below).
+- **Windows to planned frequencies:** the Analysis app writes one window per pattern, per direction, per band. A planned frequency (Decision 0058) is one set of non-overlapping periods per Route and Service day, shared by both directions. The sub-plan gives the merge rule and what happens when windows overlap, or when directions or patterns disagree (Gate G-C5e).
 - **No new libraries (D12):** the sub-plan specifies unzipping with browser built-ins, for example a small ZIP reader plus `DecompressionStream`.
 
 **Draft gates:**
@@ -381,7 +384,7 @@ If you say "your call": Option A.
 Question: The Costing tool schedules by timepoints. Which of a route's stops should become timepoints?
 - Option A (recommended): the stops the feed marks as timepoints; if the feed marks none, you pick, starting from a suggestion (terminals and major transfer stops).
 - Option B: every stop.
-Example: route 120 has 64 stops per direction; its feed might mark 8 of them as timepoints.
+Example: route 120 has 64 stops per direction; its feed might mark 8 of them as timepoints. A sketch exported from the Analysis app marks only the first and last stop of each trip, so under A it imports with its two terminals as timepoints; its other stop times are spread evenly by distance along the drawn line, with no dwell.
 What changes: B creates very large run-time tables (64 columns instead of 8). Under A, the other stops still import as Route stops with derived times (Decision 0079).
 If you say "your call": Option A.
 
@@ -410,6 +413,22 @@ Example: a 07:12 trip that really takes 41 minutes keeps 41 minutes under A. Und
 What changes: A reproduces today's service faithfully, and its costs match the agency's schedule. The trips show as "run times changed" until you choose to regenerate them.
 If you say "your call": Option A.
 
+**Gate G-C5e — Frequency windows that do not fit one plan per route**
+Question: The Analysis app exports a window per pattern and direction. When a route's windows overlap, or differ between directions or patterns, what should the planned frequency be?
+- Option A (recommended): import the windows of the direction with the most trips as the route's plan, and list every window that was left out or conflicted for you to review.
+- Option B: import no plan when any windows conflict; trips still import.
+Example: northbound runs 06:00–09:00 every 12 min and southbound 06:00–09:00 every 15 min. Under A the plan takes the busier direction (12 min) and lists the 15-minute window.
+What changes: A always gives a starting plan; B never guesses.
+If you say "your call": Option A.
+
+**What the Analysis app's export carries (A8 hand-off, `docs/reference/modules/gtfs.md` in the Analysis app):**
+- Service ids `WK`, `SA`, `SU`, Monday–Friday, Saturday and Sunday, over one date range; no `calendar_dates.txt`, so no holidays.
+- No `block_id`; vehicles come from the Costing tool's own blocking.
+- Directions: 0 for NB, EB, Outbound, CW, Loop and Both lines, 1 for the opposite. A "Both" line becomes two directions, and the return uses the reversed shape (shape id ending `-r`). Map this onto Inbound and Outbound (Decision 0011).
+- Routes: blank short name; long name is the Service name; route ids from Service keys (for example `service-B1`). `route_type` comes from the line's mode.
+- Shapes follow the drawn lines. There is no `shape_dist_traveled` (fits D5).
+- Trip ids `<route>-<WK|SA|SU>-<pattern>-<direction>-<first departure seconds>`; stable when the sketch is unchanged.
+
 ---
 
 ## Part 6 — Joint phase J1: round trip between the apps
@@ -426,6 +445,10 @@ If you say "your call": Option A.
 6. Compare (A7) and analyse (A5, A6).
 
 The sub-plan produces a reconciliation table of trips, running hours, revenue hours and peak vehicles at each step, and a list of anything lost in transit.
+
+- **Peak vehicles change method along the way.** The sketch export has no vehicle blocks, so at step 2 peak vehicles are the Analysis app's estimate from trip times. Real blocks first appear after blocking in the Costing tool (step 3). The table names the method at each step, so a difference is not mistaken for a loss.
+- **Run times** of an imported sketch have terminal-only timepoints (Gate G-C5a), so expect two-column run-time tables.
+- **Start check:** before J1, run an Analysis app export through the MobilityData GTFS validator and confirm it has no errors (the user's step; instructions in the Analysis app's `docs/reference/modules/gtfs.md`).
 
 **Draft gate:**
 
@@ -456,6 +479,7 @@ Each gate is answered in its section. Record answers here and in the progress lo
 | G-C4b | C4 | Estimated deadheads | 1.3 × distance ÷ 20 mph | | |
 | G-C4c | C4 | Cost split for shared vehicles | By revenue hours | | |
 | G-C5a | C5 | Which stops become timepoints | Feed's timepoints, else suggested | | |
+| G-C5e | C5 | Frequency windows that do not fit one plan | Busiest direction, conflicts listed | | |
 | G-C5b | C5 | Run-time bands from real times | Hourly medians | | |
 | G-C5c | C5 | Days and annual counts | From calendar, confirmed | | |
 | G-C5d | C5 | Trips exact or rebuilt | Exact | | |
@@ -499,3 +523,8 @@ Each gate is answered in its section. Record answers here and in the progress lo
 - No change was made to the Costing tool repository. A backlog pointer added earlier the same day was reverted (Costing tool commit `80d8917`); that branch matches its `main`.
 
 **Hand-off:** nothing to do until the Analysis app plan is complete. Then follow 1.2.
+
+### 2026-11-21 — Updated after the Analysis app plan closed (Opus)
+
+- Read the A8 export as built and added what C1, C5 and J1 need: C5 must expand `frequencies.txt` (the export writes one template trip per regular band); a rule for merging per-direction windows into planned frequencies (new Gate G-C5e); the export's ids, directions, service days, missing blocks and holidays; terminal-only timepoints for sketches; peak-vehicle method in J1's table; validator run as a J1 start check.
+- No change to the Costing tool repository.
