@@ -1069,7 +1069,10 @@ Each gate is answered in its phase section. Record answers here and in the progr
 
 - **Gates:** G0a approved (Option A). G0b "your call": RTD (`rtd-denver.com/files/gtfs/google_transit.zip`, 10.8 MB ZIP) as the large feed; BART (`bart.gov/dev/schedules/google_transit.zip`, 1.0 MB) as the small one, since the Summit Stage and Santa Fe links tried were dead. Neither feed is committed.
 - **A0.1 [Opus]:** `test/fixtures/gtfs/mini/` (9 files) and `EXPECTED.md`. Answers worked by hand for 2026-01-12, -19, -24 and -30. `EXPECTED.md` fixes nine counting conventions A2 must adopt or deliberately change; it includes the mixed-block rule (unblocked trips count as their own block) and a 10-minute sweep layover.
-- **Independent check [Haiku, high]:** recomputes the same answers from the raw files, without seeing `EXPECTED.md`; the result is recorded in the next entry.
+- **Independent check [Haiku, high]:** recomputed every answer from the raw files with its own parser, without seeing `EXPECTED.md`. All values agree, for all four dates and the whole-feed items. Haiku's notes for A2:
+  - "last departure" means the latest trip start;
+  - interpolated times round to whole seconds;
+  - an invalid trip is reported only on dates its service runs.
 - **A0.2 [Sonnet, deviation: plan said Opus]:** `test/perf/gtfs-baseline.mjs` + `test/perf/README.md`. Opus reviewed the script and re-ran it twice on RTD; the results repeat within 10%.
 
 **Baseline, current code (headless Chromium in the cloud container):**
