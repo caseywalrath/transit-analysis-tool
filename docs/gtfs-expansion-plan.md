@@ -376,7 +376,7 @@ Use `CLAUDE.md` § Testing:
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Done (sub-plan `docs/archive/A5-plan.md`) |
 | A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Done (sub-plan `docs/archive/A6-plan.md`) |
 | A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Done (sub-plan `docs/archive/A7-plan.md`) |
-| A8 | Export drawn Services as GTFS; decide Trip Builder's future | Sub-plan | S, H, O | A6 | G8a–b | Not started |
+| A8 | Export drawn Services as GTFS; decide Trip Builder's future | Sub-plan | S, H, O | A6 | G8a–b | Done |
 
 ```
 A0 ─► A1
@@ -986,8 +986,8 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G6d | A6 | Wider buffer for frequent stops | Optional, off | Optional switch, off (Option A) | 2026-11-21 |
 | G7a | A7 | What can be compared | Two feeds | Two feeds plus edited copies (Option B) | 2026-11-21 |
 | G7b | A7 | Which health checks | Listed set | The seven listed (Option A) | 2026-11-21 |
-| G8a | A8 | Trip Builder's future | Retire once the export works | | |
-| G8b | A8 | Headway bands in exports | Yes | | |
+| G8a | A8 | Trip Builder's future | Retire once the export works | Retire (Option A) | 2026-11-21 |
+| G8b | A8 | Headway bands in exports | Yes | Yes (Option A) | 2026-11-21 |
 
 ---
 
@@ -1238,3 +1238,15 @@ Gates: G5a annual day counts; G5b one tabbed analysis; G5c vehicle blocks when p
 - Module: tabs via `[data-tab]` in `projects/gtfs-service-analysis-popup.html`; A7 adds Compare and Feed health there. Results hold `{feed, sig, inputs, ...}`; staleness = signature compare on `App.gtfsOnInputsChange`.
 - A6 adds the stop Coverage tab with an `App.gtfsAddStopTab` hook alongside `App.gtfsAddRouteTab`.
 
+
+### A8 — 2026-11-21
+
+- Gates: G8a retire Trip Builder (Option A); G8b frequency windows (Option A). Sub-plan and cards: `docs/archive/A8-plan.md`, `docs/archive/a8-cards/`.
+- A8.1 `window.GtfsExport` [Haiku xhigh]: clean first time, 19 golden cases. A8.2 `App.gtfsExportInput` [Opus]. A8.3 export dialog [Sonnet]: clean, 9/9; Opus fixed field alignment and dark-mode inputs. A8.4 [Opus]: Trip Builder script tag commented out (file kept for its golden cases; old sessions' Trip Builder state ignored), screenshot baselines removed, docs.
+- Deviation (G8b): each eligible band is one template trip plus one `exact_times=1` row, not every trip *and* a window, which would double the service in any GTFS reader. The file still describes every departure exactly.
+- Verification: the ZIP loads back through the app's GTFS reader with the same trips on a test date (browser test). The MobilityData validator run is the user's step; instructions are in `docs/reference/modules/gtfs.md`.
+- Not done: the high-effort code review over `4e4b446..HEAD` (A7 and A8) was skipped to save usage. `hidden-features.test.mjs` "toggle survives a reload" failed intermittently (2 of 9 runs, different modules each time, also once with Trip Builder restored); it passed 6/6 on the pre-A8 commit and 3/3 afterwards. Not resolved.
+
+**Hand-off (contract for `docs/gtfs-costing-tool-plan.md`):** the exact files and columns are in `docs/reference/modules/gtfs.md` § "Export drawn Services as GTFS". Service ids WK/SA/SU; trip ids `<route>-<WK|SA|SU>-<pattern>-<direction>-<first departure seconds>`; first and last stop of each trip are timepoints; bands become `frequencies.txt` rows `trip_id, start, end (exclusive, = last departure + headway), headway_secs (whole, ≥ 60), exact_times=1`, matching the Costing tool's planned periods (Decision 0058).
+
+**This plan is complete.**

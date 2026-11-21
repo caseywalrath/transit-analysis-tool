@@ -18,7 +18,7 @@ layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call 
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
 gtfs-schedule.js     Pure engine, window.GtfsSchedule; reads nothing at load time (golden-tested alone). Before gtfs.js, which calls it only at load-feed time
-analysis-network.js  Pure engine, window.AnalysisNetwork; reads window.GtfsSchedule at call time only. Before trip-builder.js, which calls bandTrips
+analysis-network.js  Pure engine, window.AnalysisNetwork; reads window.GtfsSchedule at call time only. Before gtfs-export.js, which calls proposalTrips at call time
 raptor.js            Pure engine, window.Raptor; reads only the network passed in. After analysis-network.js
 service-compare.js   Pure engine, window.ServiceCompare (Build vs No-Build); no App, DOM or turf. After service-equity.js
 gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
@@ -76,7 +76,7 @@ walkshed.js          needs road-network.js exports
 transit-travelshed.js needs window.Travelshed, road-network.js exports, App.getEffectiveServiceBands
 transit-coverage.js  needs census.js, lodes.js, App.getEffectiveServiceBands
 (mitigation-needs-data.js, mitigation-needs.js — commented out, dormant)
-route-costing.js / trip-builder.js   need service-assembly.js
+route-costing.js   needs service-assembly.js (trip-builder.js is retired: tag commented out)
 title-vi-engine.js   window.TitleVI
 title-vi.js          needs TitleVI
 gtfs.js              needs JSZip, PapaParse
@@ -86,6 +86,10 @@ js/core/present-overlays.js  after modules; listens for `mat:present-mode-change
 
 **Call-time cross-file names** (used inside functions, so only presence matters): feature arrays `App.points`/`App.lines`/`App.routes`/`App.polygons`; `App.setStatus`, `App.exitDrawMode`, `App.getSelectedFeatures`, `App.selectFeature`, `App.removePoint`, `App.rerenderForType`, `App.onFeatureDelete`, `App.nextFeatureId`, `App._nextColorSeq`, `App.featureRef`; appearance — `App.buildScrubber`, `App._openFpSlider`, `App.openColorPicker`, `App.updateFeatureColor`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, `App.sectionColors`, `App.featureSettings`, `App.layerStyles`, `App.closeAppearancePopup`, `App.isAppearancePopupOpen`; attributes — `App.closeAttrDock`, `App.isAttrDockOpen`, `App.getAttrDockFeature`; network/buffers — `App.roadNetworkLoaded`, `App.computeWalkshed`, `App.fetchRouteGeometry`, `App.ensurePointWalksheds`, `App.refreshBuffers`, `App.buildAnalysisBuffer`, `App.readAnalysisBufferMiles`, `App.ANALYSIS_BUFFER_DEFAULT_MILES`; `App.renderCensusOverlay` (TPI, RF).
 
-**Active modules:** Feature Area Analysis (`buffer-summary`), Transit Propensity, FTA Small Starts, Ridership Forecasting, Corridor Scoring, Walkshed, Transit Travelshed, Transit Coverage, Route Costing, Trip Builder, Title VI, GTFS Feed Viewer. Attribute Summary is a **system module** (`system: true`, hidden from the Analysis menu).
+**Active modules:** Feature Area Analysis (`buffer-summary`), Transit Propensity, FTA Small Starts, Ridership Forecasting, Corridor Scoring, Walkshed, Transit Travelshed, Transit Coverage, Route Costing, Title VI, GTFS Feed Viewer. Attribute Summary is a **system module** (`system: true`, hidden from the Analysis menu).
 
 **Dormant module:** Wetland & Channel Mitigation Needs (`js/projects/mitigation-needs.js` + `mitigation-needs-data.js`, `projects/mitigation-needs-popup.html` + `mitigation-needs-legend.html`) — illustration only; its two script tags are commented out in `index.html`. Re-enable by uncommenting both.
+
+
+gtfs-export.js       Pure engine, window.GtfsExport; reads window.AnalysisNetwork at call time only (after raptor.js)
+gtfs-export-ui.js    App.openGtfsExportDialog / App.gtfsExportBlob; needs App.gtfsExportInput (analysis-network-source.js) and JSZip at call time

@@ -159,3 +159,38 @@ share a street segment), transfers by straight line × 1.3 up to the
 transfer cap, one `route` per departure (yielding every 3), the chosen statistic per stop over ride arrivals only (a stop reached on foot does not seed a second walk), then
 `App.computeOffsetWalkCostMap` walks out from each reached stop (its travel time as a starting cost, egress cap) and
 traces the bands.
+
+## Export drawn Services as GTFS
+
+Toolbar **Export → Drawn Services as GTFS (ZIP)** (`js/core/gtfs-export-ui.js`, dialog `#gex-dialog`). The user ticks
+Services, enters agency name, website, time zone and language (remembered in `localStorage["mat.gtfsExport.agency"]`),
+a service date range, and whether to include headway windows. `App.gtfsExportBlob(keys, opts)` → `{blob, result,
+skipped}`; input from `App.gtfsExportInput(keys, opts)` (`analysis-network-source.js`), files from the pure
+`GtfsExport.build(input)` (`js/core/gtfs-export.js`, golden `test/cases/gtfs-export.mjs`), zipped with JSZip.
+Browser test: `test/browser/gtfs-export.test.mjs` (the ZIP loads back with the same trips).
+
+**File contract** (what the later Costing tool importer reads):
+
+| File | Columns |
+|---|---|
+| agency.txt | agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone |
+| stops.txt | stop_id,stop_name,stop_lat,stop_lon |
+| routes.txt | route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color |
+| trips.txt | route_id,service_id,trip_id,direction_id,shape_id |
+| stop_times.txt | trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint |
+| calendar.txt | service_id,monday,…,sunday,start_date,end_date (WK, SA, SU) |
+| shapes.txt | shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence |
+| frequencies.txt | trip_id,start_time,end_time,headway_secs,exact_times |
+| feed_info.txt | feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version |
+
+- Route ids are Service keys with characters other than letters, digits, `-`, `_` replaced by `_`; route_long_name is the
+  Service name; route_type from the Line's mode (light rail/streetcar 0, subway/metro 1, other rail 2, else 3).
+- Trip ids `<route>-<WK|SA|SU>-<pattern>-<direction>-<first departure seconds>`; stops are the Service's associated Points
+  (`point-<id>`) or stops generated every 0.25 mi; the first and last stop of each trip are timepoints (1), others 0.
+- **Bands → frequencies.txt:** each band × direction with a whole-second headway of at least 60 s and two or more trips
+  is written as one template trip plus one `exact_times=1` row (start = first departure, end = last departure + headway,
+  exclusive). This is exactly the trips the band makes, and matches the Costing tool's planned periods
+  (`startTime + k × headwaySeconds` below `endTime`). Other bands, or all bands with the switch off, are written trip by trip.
+- **Validator:** download the MobilityData GTFS Validator desktop app (gtfs-validator.mobilitydata.org) or use its web
+  version, choose the exported ZIP, run, and open the report; it should list no errors (warnings such as missing
+  contact email are expected).

@@ -1,6 +1,6 @@
 # A8 — Export drawn Services as GTFS; retire Trip Builder (sub-plan)
 
-**Status:** In progress. Parent plan: `docs/gtfs-expansion-plan.md` § A8. Base commit `808c797`.
+**Status:** Done. Archived. Parent plan: `docs/gtfs-expansion-plan.md` § A8. Base commit `808c797`.
 
 ## Gate answers (2026-11-21)
 
@@ -53,3 +53,4 @@ every trip is written one by one.
   route_type from the Line's mode text). A8.1 `window.GtfsExport` [Haiku xhigh]: clean first time, 19 golden cases,
   every card value matched. Accepted readings: null entries skipped; blank directionId read as "0"; the no-shape
   warning fires only for patterns that write trips.
+- 2026-11-21: A8.3 dialog [Sonnet] clean 9/9; A8.4 Trip Builder retired, docs, archived (Opus). See the parent plan's A8 log entry.

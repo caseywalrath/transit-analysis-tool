@@ -74,7 +74,6 @@ const MODULE_IDS = [
   "transit-travelshed",
   "transit-coverage",
   "route-costing",
-  "trip-builder",
   "title-vi",
   "gtfs",
   "attribute-summary"

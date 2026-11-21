@@ -1,5 +1,7 @@
 # Trip builder
 
+**Status: retired (2026-11-21, gate G8a).** The script tag in `index.html` is commented out and the panel is gone from the Analysis menu; saved Trip Builder state in old sessions is ignored. Its trip generator lives on as `AnalysisNetwork.bandTrips` / `proposalTrips`, used by the GTFS export and the travel-time analyses. The file stays for its golden cases.
+
 Read the code when this and the code disagree.
 
 ## trip-builder.js (module `"trip-builder"`, no public API)

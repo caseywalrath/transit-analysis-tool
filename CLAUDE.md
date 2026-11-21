@@ -86,7 +86,8 @@ js/core/
   network-store.js          IndexedDB cache of the road network   [road-network]
   gtfs-store.js             IndexedDB cache of the loaded GTFS feed's ZIP   [gtfs]
   gtfs-schedule.js          window.GtfsSchedule — GTFS CSV reader, compact stop_times store, calendar and schedule queries (pure)   [gtfs]
-  analysis-network.js       window.AnalysisNetwork — GTFS + drawn-proposal trips as one network; Trip Builder's trip generator (pure)   [gtfs]
+  analysis-network.js       window.AnalysisNetwork — GTFS + drawn-proposal trips as one network; the synthetic trip generator (pure)   [gtfs]
+  gtfs-export.js            window.GtfsExport — drawn Services → GTFS file texts, frequencies.txt windows (pure)   [gtfs]
   raptor.js                 window.Raptor — schedule router over the analysis network: earliest arrivals, departure-window profiles (pure)   [gtfs]
   gpkg-store.js             IndexedDB cache of imported GeoPackage files   [layers-and-styling]
   walk-tiles-source.js      App.walkTilesSource — FLM tile folder by address or picked folder, dialog wiring   [road-network]
@@ -126,7 +127,8 @@ js/core/
   popup.js                  Analysis panel manager + floating widgets   [core-app]
   service-assembly.js       Transit Service assembly for Route Costing / Trip Builder   [drawing-and-features]
   module-buffers.js         Module-owned analysis buffers   [core-app]
-  analysis-network-source.js  App.buildAnalysisNetwork; schedule travelshed; Build vs No-Build summaries and people near stops   [gtfs]
+  analysis-network-source.js  App.buildAnalysisNetwork; App.gtfsExportInput; schedule travelshed; Build vs No-Build summaries and people near stops   [gtfs]
+  gtfs-export-ui.js         Export menu → "Drawn Services as GTFS (ZIP)" dialog (App.openGtfsExportDialog, App.gtfsExportBlob)   [gtfs]
   analysis-checklist.js     Hidden-feature handling for analysis checklists   [core-app]
   choropleth.js             Shared choropleth engine (App.choropleth)   [core-app]
   present-overlays.js       Presentation-mode legend/north arrow/title   [core-app]
@@ -140,7 +142,7 @@ js/projects/                Analysis modules, one reference doc each under docs/
   transit-travelshed.js     Transit Travelshed   [transit-travelshed]
   transit-coverage.js       Transit Coverage   [transit-coverage]
   route-costing.js          Route Costing   [route-costing]
-  trip-builder.js           Trip Builder   [trip-builder]
+  trip-builder.js           Trip Builder — retired: script tag commented out; kept for its golden cases   [trip-builder]
   title-vi-engine.js + title-vi.js   window.TitleVI engine + Title VI module   [title-vi]
   gtfs.js                   GTFS Feed Viewer + route browser engine + stop selection   [gtfs]
   gtfs-service-analysis.js  GTFS Service Analysis: service, cost and stop reports from the timetable   [gtfs-service-analysis]
@@ -155,27 +157,27 @@ test/                       Golden, browser and UI-screenshot harnesses, comment
 
 ## Script Load Order
 
-Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `gtfs-schedule`, `analysis-network`, `raptor`, `walk-tiles`, `cdot-roads`, `gpkg-reader`, `gpkg-filter`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `apportion`, `service-equity`, `service-compare`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
+Plain `<script>` tags in `index.html`; a file may only use what loads before it at load time. Engine files (`walk-cost`, `gtfs-schedule`, `analysis-network`, `gtfs-export`, `raptor`, `walk-tiles`, `cdot-roads`, `gpkg-reader`, `gpkg-filter`, `layer-palettes`, `point-icons`, `travelshed`, `connector-graph`, `walk-shape`, `attr-bulk`, `apportion`, `service-equity`, `service-compare`, `choropleth`) read `App`/map only at call time so the golden harness can load them alone. Full per-file dependencies: `docs/reference/script-load-order.md`.
 
 ```
-config → utils → sidebar → map → search → walk-cost → walk-tiles → cdot-roads → layer-palettes → network-store → gtfs-store → gtfs-schedule → analysis-network → raptor → gpkg-store → walk-tiles-source → cdot-source → road-network
+config → utils → sidebar → map → search → walk-cost → walk-tiles → cdot-roads → layer-palettes → network-store → gtfs-store → gtfs-schedule → analysis-network → raptor → gtfs-export → gpkg-store → walk-tiles-source → cdot-source → road-network
 → network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → gpkg-filter → point-icons → points → lines → routes → polygons
 → labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
 → feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → gpkg-filter-ui → apportion → service-equity → service-compare → census → lodes → projections
-→ cache → undo → popup → service-assembly → module-buffers → analysis-network-source → analysis-checklist → choropleth → app.js
+→ cache → undo → popup → service-assembly → module-buffers → analysis-network-source → gtfs-export-ui → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
    ridership-forecasting, corridor-scoring, walkshed, transit-travelshed, transit-coverage, route-costing,
-   trip-builder, title-vi-engine, title-vi, gtfs, gtfs-service-analysis, attribute-summary) → present-overlays
+   title-vi-engine, title-vi, gtfs, gtfs-service-analysis, attribute-summary) → present-overlays
 ```
 
 Hard ordering rules: `config.js` first (map.js/census.js read the keys at init); `merge.js` before `attribute-summary.js`; each `*-scoring.js`/`*-engine.js` before its module; `present-overlays.js` after all modules.
 
-**Modules:** every module in the list above is enabled. Attribute Summary is a system module (hidden from the Analysis menu, opened from Feature Settings). Wetland & Channel Mitigation Needs is dormant: its two script tags are commented out; uncomment both to re-enable.
+**Modules:** every module in the list above is enabled. Attribute Summary is a system module (hidden from the Analysis menu, opened from Feature Settings). Wetland & Channel Mitigation Needs is dormant: its two script tags are commented out; uncomment both to re-enable. Trip Builder is retired the same way (one commented-out tag); the GTFS export replaced it.
 
 ## Conventions
 
 - **No build tools.** Plain `<script>` tags in dependency order; external libraries come from CDN (MapLibre GL JS, Turf.js, pako, PapaParse, JSZip, shapefile.js, sql.js and proj4 (lazy-loaded by gpkg-layers.js)).
-- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.WalkTiles`, `window.CdotRoads`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.Apportion`, `window.ServiceEquity`, `window.ServiceCompare`, `window.GtfsSchedule`, `window.AnalysisNetwork`, `window.Raptor`, `window.GpkgReader`, `window.GpkgFilter`).
+- **Global namespace.** Shared state and functions live on `window.App`; each file is an IIFE that reads `var App = window.App` and assigns its exports. Pure engines use their own namespaces (`window.TPI`, `window.RidershipModel`, `window.TitleVI`, `window.Travelshed`, `window.WalkCost`, `window.WalkTiles`, `window.CdotRoads`, `window.ConnectorGraph`, `window.WalkShape`, `window.WalkAudit`, `window.LayerPalette`, `window.AttrBulk`, `window.Apportion`, `window.ServiceEquity`, `window.ServiceCompare`, `window.GtfsSchedule`, `window.AnalysisNetwork`, `window.GtfsExport`, `window.Raptor`, `window.GpkgReader`, `window.GpkgFilter`).
 - **Module-local state stays private** inside the IIFE closure (`_lastResult`, `_stale`, `_running`, …), never on `App`.
 - **Dormant sidebar.** `#sidebar-wrap`, `sidebar-v2.css` and `js/core/sidebar.js` ship hidden and unused. Data actions live in the toolbar Add Data menu and analyses in the toolbar Analysis menu. Never describe the sidebar as live.
 - **Analysis panels** are non-modal floating panels over a live map, managed by `App.popup` (load, init/open/close, Escape, docking, collapse). Single-step modules declare `panelWidths` and call `App.popup.setLayoutMode("setup" | "results" | "workspace")`; a successful run collapses Inputs via `App.renderModuleInputs()` (failed runs leave them open). Keep movable input sections in `data-input-group` wrappers and Run buttons in `.module-input-actions`. Width rules: `docs/reference/analysis-modules.md`.
