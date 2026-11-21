@@ -1,0 +1,1343 @@
+{
+  "compare-basic": {
+    "rows": [
+      {
+        "aKey": "10",
+        "bKey": "10",
+        "name": "10",
+        "match": "id",
+        "status": "changed",
+        "metrics": {
+          "trips": {
+            "a": 1000,
+            "b": 1000,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 500,
+            "b": 500,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 600,
+            "b": 720,
+            "diff": 120,
+            "pct": 20
+          },
+          "platformHrs": {
+            "a": 690,
+            "b": 828,
+            "diff": 138,
+            "pct": 20
+          },
+          "cost": {
+            "a": 90000,
+            "b": 108000,
+            "diff": 18000,
+            "pct": 20
+          },
+          "peakVehicles": {
+            "a": 8,
+            "b": 8,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 18,
+            "b": 18,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": "15",
+        "bKey": "15X",
+        "name": "15",
+        "match": "short",
+        "status": "unchanged",
+        "metrics": {
+          "trips": {
+            "a": 400,
+            "b": 400,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 200,
+            "b": 200,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 240,
+            "b": 240,
+            "diff": 0,
+            "pct": 0
+          },
+          "platformHrs": {
+            "a": 276,
+            "b": 276,
+            "diff": 0,
+            "pct": 0
+          },
+          "cost": {
+            "a": 36000,
+            "b": 36000,
+            "diff": 0,
+            "pct": 0
+          },
+          "peakVehicles": {
+            "a": 3,
+            "b": 3,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 14,
+            "b": 14,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": "20",
+        "bKey": null,
+        "name": "20",
+        "match": null,
+        "status": "removed",
+        "metrics": {
+          "trips": {
+            "a": 300,
+            "b": 0,
+            "diff": -300,
+            "pct": -100
+          },
+          "runningHrs": {
+            "a": 150,
+            "b": 0,
+            "diff": -150,
+            "pct": -100
+          },
+          "revenueHrs": {
+            "a": 180,
+            "b": 0,
+            "diff": -180,
+            "pct": -100
+          },
+          "platformHrs": {
+            "a": 207,
+            "b": 0,
+            "diff": -207,
+            "pct": -100
+          },
+          "cost": {
+            "a": 27000,
+            "b": 0,
+            "diff": -27000,
+            "pct": -100
+          },
+          "peakVehicles": {
+            "a": 2,
+            "b": 0,
+            "diff": -2,
+            "pct": -100
+          },
+          "spanHrs": {
+            "a": 12,
+            "b": 0,
+            "diff": -12,
+            "pct": -100
+          }
+        }
+      },
+      {
+        "aKey": "R1",
+        "bKey": "R1-new",
+        "name": "Airport Rail",
+        "match": "long",
+        "status": "unchanged",
+        "metrics": {
+          "trips": {
+            "a": 200,
+            "b": 200,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 300,
+            "b": 300,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 330,
+            "b": 330,
+            "diff": 0,
+            "pct": 0
+          },
+          "platformHrs": {
+            "a": 380,
+            "b": 380,
+            "diff": 0,
+            "pct": 0
+          },
+          "cost": {
+            "a": 49500,
+            "b": 49500,
+            "diff": 0,
+            "pct": 0
+          },
+          "peakVehicles": {
+            "a": 4,
+            "b": 4,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 19,
+            "b": 19,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": null,
+        "bKey": "d:svc1",
+        "name": "Crosstown",
+        "match": null,
+        "status": "added",
+        "metrics": {
+          "trips": {
+            "a": 0,
+            "b": 500,
+            "diff": 500,
+            "pct": null
+          },
+          "runningHrs": {
+            "a": 0,
+            "b": 250,
+            "diff": 250,
+            "pct": null
+          },
+          "revenueHrs": {
+            "a": 0,
+            "b": 300,
+            "diff": 300,
+            "pct": null
+          },
+          "platformHrs": {
+            "a": 0,
+            "b": 345,
+            "diff": 345,
+            "pct": null
+          },
+          "cost": {
+            "a": 0,
+            "b": 45000,
+            "diff": 45000,
+            "pct": null
+          },
+          "peakVehicles": {
+            "a": 0,
+            "b": 4,
+            "diff": 4,
+            "pct": null
+          },
+          "spanHrs": {
+            "a": 0,
+            "b": 16,
+            "diff": 16,
+            "pct": null
+          }
+        }
+      }
+    ],
+    "total": {
+      "metrics": {
+        "trips": {
+          "a": 1900,
+          "b": 2100,
+          "diff": 200,
+          "pct": 10.53
+        },
+        "runningHrs": {
+          "a": 1150,
+          "b": 1250,
+          "diff": 100,
+          "pct": 8.7
+        },
+        "revenueHrs": {
+          "a": 1350,
+          "b": 1590,
+          "diff": 240,
+          "pct": 17.78
+        },
+        "platformHrs": {
+          "a": 1553,
+          "b": 1749,
+          "diff": 196,
+          "pct": 12.62
+        },
+        "cost": {
+          "a": 202500,
+          "b": 238500,
+          "diff": 36000,
+          "pct": 17.78
+        },
+        "peakVehicles": {
+          "a": 17,
+          "b": 19,
+          "diff": 2,
+          "pct": 11.76
+        },
+        "spanHrs": {
+          "a": 20,
+          "b": 20,
+          "diff": 0,
+          "pct": 0
+        }
+      }
+    },
+    "counts": {
+      "added": 1,
+      "removed": 1,
+      "changed": 1,
+      "unchanged": 2
+    }
+  },
+  "compare-pairs": {
+    "rows": [
+      {
+        "aKey": "10",
+        "bKey": "10",
+        "name": "10",
+        "match": "id",
+        "status": "changed",
+        "metrics": {
+          "trips": {
+            "a": 1000,
+            "b": 1000,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 500,
+            "b": 500,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 600,
+            "b": 720,
+            "diff": 120,
+            "pct": 20
+          },
+          "platformHrs": {
+            "a": 690,
+            "b": 828,
+            "diff": 138,
+            "pct": 20
+          },
+          "cost": {
+            "a": 90000,
+            "b": 108000,
+            "diff": 18000,
+            "pct": 20
+          },
+          "peakVehicles": {
+            "a": 8,
+            "b": 8,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 18,
+            "b": 18,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": "15",
+        "bKey": "15X",
+        "name": "15",
+        "match": "short",
+        "status": "unchanged",
+        "metrics": {
+          "trips": {
+            "a": 400,
+            "b": 400,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 200,
+            "b": 200,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 240,
+            "b": 240,
+            "diff": 0,
+            "pct": 0
+          },
+          "platformHrs": {
+            "a": 276,
+            "b": 276,
+            "diff": 0,
+            "pct": 0
+          },
+          "cost": {
+            "a": 36000,
+            "b": 36000,
+            "diff": 0,
+            "pct": 0
+          },
+          "peakVehicles": {
+            "a": 3,
+            "b": 3,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 14,
+            "b": 14,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": "20",
+        "bKey": "d:svc1",
+        "name": "20",
+        "match": "pair",
+        "status": "changed",
+        "metrics": {
+          "trips": {
+            "a": 300,
+            "b": 500,
+            "diff": 200,
+            "pct": 66.67
+          },
+          "runningHrs": {
+            "a": 150,
+            "b": 250,
+            "diff": 100,
+            "pct": 66.67
+          },
+          "revenueHrs": {
+            "a": 180,
+            "b": 300,
+            "diff": 120,
+            "pct": 66.67
+          },
+          "platformHrs": {
+            "a": 207,
+            "b": 345,
+            "diff": 138,
+            "pct": 66.67
+          },
+          "cost": {
+            "a": 27000,
+            "b": 45000,
+            "diff": 18000,
+            "pct": 66.67
+          },
+          "peakVehicles": {
+            "a": 2,
+            "b": 4,
+            "diff": 2,
+            "pct": 100
+          },
+          "spanHrs": {
+            "a": 12,
+            "b": 16,
+            "diff": 4,
+            "pct": 33.33
+          }
+        }
+      },
+      {
+        "aKey": "R1",
+        "bKey": "R1-new",
+        "name": "Airport Rail",
+        "match": "long",
+        "status": "unchanged",
+        "metrics": {
+          "trips": {
+            "a": 200,
+            "b": 200,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 300,
+            "b": 300,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 330,
+            "b": 330,
+            "diff": 0,
+            "pct": 0
+          },
+          "platformHrs": {
+            "a": 380,
+            "b": 380,
+            "diff": 0,
+            "pct": 0
+          },
+          "cost": {
+            "a": 49500,
+            "b": 49500,
+            "diff": 0,
+            "pct": 0
+          },
+          "peakVehicles": {
+            "a": 4,
+            "b": 4,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 19,
+            "b": 19,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      }
+    ],
+    "total": {
+      "metrics": {
+        "trips": {
+          "a": 1900,
+          "b": 2100,
+          "diff": 200,
+          "pct": 10.53
+        },
+        "runningHrs": {
+          "a": 1150,
+          "b": 1250,
+          "diff": 100,
+          "pct": 8.7
+        },
+        "revenueHrs": {
+          "a": 1350,
+          "b": 1590,
+          "diff": 240,
+          "pct": 17.78
+        },
+        "platformHrs": {
+          "a": 1553,
+          "b": 1749,
+          "diff": 196,
+          "pct": 12.62
+        },
+        "cost": {
+          "a": 202500,
+          "b": 238500,
+          "diff": 36000,
+          "pct": 17.78
+        },
+        "peakVehicles": {
+          "a": 17,
+          "b": 19,
+          "diff": 2,
+          "pct": 11.76
+        },
+        "spanHrs": {
+          "a": 20,
+          "b": 20,
+          "diff": 0,
+          "pct": 0
+        }
+      }
+    },
+    "counts": {
+      "added": 0,
+      "removed": 0,
+      "changed": 2,
+      "unchanged": 2
+    }
+  },
+  "compare-pair-removed": {
+    "rows": [
+      {
+        "aKey": "10",
+        "bKey": "10",
+        "name": "10",
+        "match": "id",
+        "status": "changed",
+        "metrics": {
+          "trips": {
+            "a": 1000,
+            "b": 1000,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 500,
+            "b": 500,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 600,
+            "b": 720,
+            "diff": 120,
+            "pct": 20
+          },
+          "platformHrs": {
+            "a": 690,
+            "b": 828,
+            "diff": 138,
+            "pct": 20
+          },
+          "cost": {
+            "a": 90000,
+            "b": 108000,
+            "diff": 18000,
+            "pct": 20
+          },
+          "peakVehicles": {
+            "a": 8,
+            "b": 8,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 18,
+            "b": 18,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": null,
+        "bKey": "15X",
+        "name": "15",
+        "match": null,
+        "status": "added",
+        "metrics": {
+          "trips": {
+            "a": 0,
+            "b": 400,
+            "diff": 400,
+            "pct": null
+          },
+          "runningHrs": {
+            "a": 0,
+            "b": 200,
+            "diff": 200,
+            "pct": null
+          },
+          "revenueHrs": {
+            "a": 0,
+            "b": 240,
+            "diff": 240,
+            "pct": null
+          },
+          "platformHrs": {
+            "a": 0,
+            "b": 276,
+            "diff": 276,
+            "pct": null
+          },
+          "cost": {
+            "a": 0,
+            "b": 36000,
+            "diff": 36000,
+            "pct": null
+          },
+          "peakVehicles": {
+            "a": 0,
+            "b": 3,
+            "diff": 3,
+            "pct": null
+          },
+          "spanHrs": {
+            "a": 0,
+            "b": 14,
+            "diff": 14,
+            "pct": null
+          }
+        }
+      },
+      {
+        "aKey": "15",
+        "bKey": null,
+        "name": "15",
+        "match": "pair",
+        "status": "removed",
+        "metrics": {
+          "trips": {
+            "a": 400,
+            "b": 0,
+            "diff": -400,
+            "pct": -100
+          },
+          "runningHrs": {
+            "a": 200,
+            "b": 0,
+            "diff": -200,
+            "pct": -100
+          },
+          "revenueHrs": {
+            "a": 240,
+            "b": 0,
+            "diff": -240,
+            "pct": -100
+          },
+          "platformHrs": {
+            "a": 276,
+            "b": 0,
+            "diff": -276,
+            "pct": -100
+          },
+          "cost": {
+            "a": 36000,
+            "b": 0,
+            "diff": -36000,
+            "pct": -100
+          },
+          "peakVehicles": {
+            "a": 3,
+            "b": 0,
+            "diff": -3,
+            "pct": -100
+          },
+          "spanHrs": {
+            "a": 14,
+            "b": 0,
+            "diff": -14,
+            "pct": -100
+          }
+        }
+      },
+      {
+        "aKey": "20",
+        "bKey": null,
+        "name": "20",
+        "match": null,
+        "status": "removed",
+        "metrics": {
+          "trips": {
+            "a": 300,
+            "b": 0,
+            "diff": -300,
+            "pct": -100
+          },
+          "runningHrs": {
+            "a": 150,
+            "b": 0,
+            "diff": -150,
+            "pct": -100
+          },
+          "revenueHrs": {
+            "a": 180,
+            "b": 0,
+            "diff": -180,
+            "pct": -100
+          },
+          "platformHrs": {
+            "a": 207,
+            "b": 0,
+            "diff": -207,
+            "pct": -100
+          },
+          "cost": {
+            "a": 27000,
+            "b": 0,
+            "diff": -27000,
+            "pct": -100
+          },
+          "peakVehicles": {
+            "a": 2,
+            "b": 0,
+            "diff": -2,
+            "pct": -100
+          },
+          "spanHrs": {
+            "a": 12,
+            "b": 0,
+            "diff": -12,
+            "pct": -100
+          }
+        }
+      },
+      {
+        "aKey": "R1",
+        "bKey": "R1-new",
+        "name": "Airport Rail",
+        "match": "long",
+        "status": "unchanged",
+        "metrics": {
+          "trips": {
+            "a": 200,
+            "b": 200,
+            "diff": 0,
+            "pct": 0
+          },
+          "runningHrs": {
+            "a": 300,
+            "b": 300,
+            "diff": 0,
+            "pct": 0
+          },
+          "revenueHrs": {
+            "a": 330,
+            "b": 330,
+            "diff": 0,
+            "pct": 0
+          },
+          "platformHrs": {
+            "a": 380,
+            "b": 380,
+            "diff": 0,
+            "pct": 0
+          },
+          "cost": {
+            "a": 49500,
+            "b": 49500,
+            "diff": 0,
+            "pct": 0
+          },
+          "peakVehicles": {
+            "a": 4,
+            "b": 4,
+            "diff": 0,
+            "pct": 0
+          },
+          "spanHrs": {
+            "a": 19,
+            "b": 19,
+            "diff": 0,
+            "pct": 0
+          }
+        }
+      },
+      {
+        "aKey": null,
+        "bKey": "d:svc1",
+        "name": "Crosstown",
+        "match": null,
+        "status": "added",
+        "metrics": {
+          "trips": {
+            "a": 0,
+            "b": 500,
+            "diff": 500,
+            "pct": null
+          },
+          "runningHrs": {
+            "a": 0,
+            "b": 250,
+            "diff": 250,
+            "pct": null
+          },
+          "revenueHrs": {
+            "a": 0,
+            "b": 300,
+            "diff": 300,
+            "pct": null
+          },
+          "platformHrs": {
+            "a": 0,
+            "b": 345,
+            "diff": 345,
+            "pct": null
+          },
+          "cost": {
+            "a": 0,
+            "b": 45000,
+            "diff": 45000,
+            "pct": null
+          },
+          "peakVehicles": {
+            "a": 0,
+            "b": 4,
+            "diff": 4,
+            "pct": null
+          },
+          "spanHrs": {
+            "a": 0,
+            "b": 16,
+            "diff": 16,
+            "pct": null
+          }
+        }
+      }
+    ],
+    "total": {
+      "metrics": {
+        "trips": {
+          "a": 1900,
+          "b": 2100,
+          "diff": 200,
+          "pct": 10.53
+        },
+        "runningHrs": {
+          "a": 1150,
+          "b": 1250,
+          "diff": 100,
+          "pct": 8.7
+        },
+        "revenueHrs": {
+          "a": 1350,
+          "b": 1590,
+          "diff": 240,
+          "pct": 17.78
+        },
+        "platformHrs": {
+          "a": 1553,
+          "b": 1749,
+          "diff": 196,
+          "pct": 12.62
+        },
+        "cost": {
+          "a": 202500,
+          "b": 238500,
+          "diff": 36000,
+          "pct": 17.78
+        },
+        "peakVehicles": {
+          "a": 17,
+          "b": 19,
+          "diff": 2,
+          "pct": 11.76
+        },
+        "spanHrs": {
+          "a": 20,
+          "b": 20,
+          "diff": 0,
+          "pct": 0
+        }
+      }
+    },
+    "counts": {
+      "added": 2,
+      "removed": 2,
+      "changed": 1,
+      "unchanged": 1
+    }
+  },
+  "compare-empty": {
+    "rows": [],
+    "total": {
+      "metrics": {
+        "trips": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "runningHrs": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "revenueHrs": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "platformHrs": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "cost": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "peakVehicles": {
+          "a": 0,
+          "b": 0,
+          "diff": 0,
+          "pct": null
+        },
+        "spanHrs": {
+          "a": null,
+          "b": null,
+          "diff": null,
+          "pct": null
+        }
+      }
+    },
+    "counts": {
+      "added": 0,
+      "removed": 0,
+      "changed": 0,
+      "unchanged": 0
+    }
+  },
+  "match-dup-short": [
+    {
+      "a": null,
+      "b": "x2",
+      "how": null
+    },
+    {
+      "a": "10",
+      "b": "x1",
+      "how": "long"
+    }
+  ],
+  "precheck-default": [
+    {
+      "aKey": "10",
+      "bKey": "10",
+      "name": "10",
+      "changeType": "adjustment",
+      "revenueHoursPct": 20,
+      "spanHoursPct": 0,
+      "triggers": [],
+      "suggested": false
+    },
+    {
+      "aKey": "20",
+      "bKey": null,
+      "name": "20",
+      "changeType": "elimination",
+      "revenueHoursPct": -100,
+      "spanHoursPct": -100,
+      "triggers": [
+        "revenueHoursPct",
+        "spanHoursPct",
+        "routeElimination"
+      ],
+      "suggested": true
+    },
+    {
+      "aKey": null,
+      "bKey": "d:svc1",
+      "name": "Crosstown",
+      "changeType": "new_route",
+      "revenueHoursPct": null,
+      "spanHoursPct": null,
+      "triggers": [],
+      "suggested": false
+    }
+  ],
+  "precheck-threshold-15": [
+    {
+      "aKey": "10",
+      "bKey": "10",
+      "name": "10",
+      "changeType": "adjustment",
+      "revenueHoursPct": 20,
+      "spanHoursPct": 0,
+      "triggers": [
+        "revenueHoursPct"
+      ],
+      "suggested": true
+    },
+    {
+      "aKey": "20",
+      "bKey": null,
+      "name": "20",
+      "changeType": "elimination",
+      "revenueHoursPct": -100,
+      "spanHoursPct": -100,
+      "triggers": [
+        "revenueHoursPct",
+        "spanHoursPct",
+        "routeElimination"
+      ],
+      "suggested": true
+    },
+    {
+      "aKey": null,
+      "bKey": "d:svc1",
+      "name": "Crosstown",
+      "changeType": "new_route",
+      "revenueHoursPct": null,
+      "spanHoursPct": null,
+      "triggers": [],
+      "suggested": false
+    }
+  ],
+  "precheck-none": [
+    {
+      "aKey": "10",
+      "bKey": "10",
+      "name": "10",
+      "changeType": "adjustment",
+      "revenueHoursPct": 20,
+      "spanHoursPct": 0,
+      "triggers": [],
+      "suggested": false
+    },
+    {
+      "aKey": "20",
+      "bKey": null,
+      "name": "20",
+      "changeType": "elimination",
+      "revenueHoursPct": -100,
+      "spanHoursPct": -100,
+      "triggers": [],
+      "suggested": false
+    },
+    {
+      "aKey": null,
+      "bKey": "d:svc1",
+      "name": "Crosstown",
+      "changeType": "new_route",
+      "revenueHoursPct": null,
+      "spanHoursPct": null,
+      "triggers": [],
+      "suggested": false
+    }
+  ],
+  "csv-basic": {
+    "header": [
+      "Route",
+      "Status",
+      "Matched by",
+      "Trips/yr (No-Build)",
+      "Trips/yr (Build)",
+      "Trips/yr change",
+      "Trips/yr change %",
+      "Running hr/yr (No-Build)",
+      "Running hr/yr (Build)",
+      "Running hr/yr change",
+      "Running hr/yr change %",
+      "Revenue hr/yr (No-Build)",
+      "Revenue hr/yr (Build)",
+      "Revenue hr/yr change",
+      "Revenue hr/yr change %",
+      "Platform hr/yr (No-Build)",
+      "Platform hr/yr (Build)",
+      "Platform hr/yr change",
+      "Platform hr/yr change %",
+      "Cost/yr (No-Build)",
+      "Cost/yr (Build)",
+      "Cost/yr change",
+      "Cost/yr change %",
+      "Peak vehicles (No-Build)",
+      "Peak vehicles (Build)",
+      "Peak vehicles change",
+      "Peak vehicles change %",
+      "Weekday span hr (No-Build)",
+      "Weekday span hr (Build)",
+      "Weekday span hr change",
+      "Weekday span hr change %"
+    ],
+    "rows": [
+      [
+        "10",
+        "changed",
+        "id",
+        1000,
+        1000,
+        0,
+        0,
+        500,
+        500,
+        0,
+        0,
+        600,
+        720,
+        120,
+        20,
+        690,
+        828,
+        138,
+        20,
+        90000,
+        108000,
+        18000,
+        20,
+        8,
+        8,
+        0,
+        0,
+        18,
+        18,
+        0,
+        0
+      ],
+      [
+        "15",
+        "unchanged",
+        "short",
+        400,
+        400,
+        0,
+        0,
+        200,
+        200,
+        0,
+        0,
+        240,
+        240,
+        0,
+        0,
+        276,
+        276,
+        0,
+        0,
+        36000,
+        36000,
+        0,
+        0,
+        3,
+        3,
+        0,
+        0,
+        14,
+        14,
+        0,
+        0
+      ],
+      [
+        "20",
+        "removed",
+        "",
+        300,
+        0,
+        -300,
+        -100,
+        150,
+        0,
+        -150,
+        -100,
+        180,
+        0,
+        -180,
+        -100,
+        207,
+        0,
+        -207,
+        -100,
+        27000,
+        0,
+        -27000,
+        -100,
+        2,
+        0,
+        -2,
+        -100,
+        12,
+        0,
+        -12,
+        -100
+      ],
+      [
+        "Airport Rail",
+        "unchanged",
+        "long",
+        200,
+        200,
+        0,
+        0,
+        300,
+        300,
+        0,
+        0,
+        330,
+        330,
+        0,
+        0,
+        380,
+        380,
+        0,
+        0,
+        49500,
+        49500,
+        0,
+        0,
+        4,
+        4,
+        0,
+        0,
+        19,
+        19,
+        0,
+        0
+      ],
+      [
+        "Crosstown",
+        "added",
+        "",
+        0,
+        500,
+        500,
+        "",
+        0,
+        250,
+        250,
+        "",
+        0,
+        300,
+        300,
+        "",
+        0,
+        345,
+        345,
+        "",
+        0,
+        45000,
+        45000,
+        "",
+        0,
+        4,
+        4,
+        "",
+        0,
+        16,
+        16,
+        ""
+      ],
+      [
+        "Total",
+        "",
+        "",
+        1900,
+        2100,
+        200,
+        10.53,
+        1150,
+        1250,
+        100,
+        8.7,
+        1350,
+        1590,
+        240,
+        17.78,
+        1553,
+        1749,
+        196,
+        12.62,
+        202500,
+        238500,
+        36000,
+        17.78,
+        17,
+        19,
+        2,
+        11.76,
+        20,
+        20,
+        0,
+        0
+      ]
+    ]
+  }
+}
