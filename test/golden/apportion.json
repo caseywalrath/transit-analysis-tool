@@ -1,0 +1,134 @@
+{
+  "bp-basic": {
+    "fractions": {
+      "080310001001": 0.3333333333333333
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-all-park-inside": {
+    "fractions": {
+      "080310001001": 0
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-zero-pop-uses-hu": {
+    "fractions": {
+      "080310001001": 0.25
+    },
+    "basis": {
+      "080310001001": "hu"
+    }
+  },
+  "bp-zero-all-uses-area": {
+    "fractions": {
+      "080310001001": 0.3
+    },
+    "basis": {
+      "080310001001": "area"
+    }
+  },
+  "bp-no-blocks-no-area": {
+    "fractions": {
+      "080310009999": 0
+    },
+    "basis": {
+      "080310009999": "none"
+    }
+  },
+  "bp-tract-prefix": {
+    "fractions": {
+      "08031000100": 0.5
+    },
+    "basis": {
+      "08031000100": "pop"
+    }
+  },
+  "bp-mixed-lengths": {
+    "fractions": {
+      "080310001001": 0.4,
+      "08031000200": 0.6
+    },
+    "basis": {
+      "080310001001": "pop",
+      "08031000200": "pop"
+    }
+  },
+  "bp-negative-nan": {
+    "fractions": {
+      "080310001001": 0.4
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-duplicate-block": {
+    "fractions": {
+      "080310001001": 0.4
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-null-inputs": {
+    "fractions": {},
+    "basis": {}
+  },
+  "bp-all-inside": {
+    "fractions": {
+      "080310001001": 1
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-cross-county": {
+    "fractions": {
+      "080310001001": 0.5,
+      "560210001001": 0.1
+    },
+    "basis": {
+      "080310001001": "pop",
+      "560210001001": "pop"
+    }
+  },
+  "bp-area-clamp-high": {
+    "fractions": {
+      "080310001001": 1
+    },
+    "basis": {
+      "080310001001": "area"
+    }
+  },
+  "bp-area-clamp-low": {
+    "fractions": {
+      "080310001001": 0
+    },
+    "basis": {
+      "080310001001": "area"
+    }
+  },
+  "bp-non-string-geoid-skipped": {
+    "fractions": {
+      "080310001001": 0.3333333333333333
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "bp-duplicate-geoid": {
+    "fractions": {
+      "080310001001": 0.3333333333333333
+    },
+    "basis": {
+      "080310001001": "pop"
+    }
+  },
+  "method-label-blockpop": "2020 census-block population",
+  "method-label-area": "land area",
+  "method-label-whole": "whole geographies (no apportionment)",
+  "method-label-unknown": "land area"
+}
