@@ -1,0 +1,255 @@
+{
+  "direct-ride": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      30000,
+      30600,
+      29520
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      2,
+      2,
+      1
+    ]
+  },
+  "one-transfer-at-C-onto-T2": {
+    "arrival": [
+      null,
+      28800,
+      29400,
+      30000,
+      30600,
+      29520
+    ],
+    "rounds": [
+      -1,
+      0,
+      1,
+      2,
+      1,
+      1
+    ]
+  },
+  "missed-connection-minT-180": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      null,
+      30600,
+      29520
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      -1,
+      2,
+      1
+    ]
+  },
+  "walk-transfer-C-to-F": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      30000,
+      30600,
+      29520
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      2,
+      2,
+      1
+    ]
+  },
+  "maxRounds-1-D-unreached": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      null,
+      null,
+      29520
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      -1,
+      -1,
+      1
+    ]
+  },
+  "maxSec-600": {
+    "arrival": [
+      28740,
+      29100,
+      null,
+      null,
+      null,
+      null
+    ],
+    "rounds": [
+      0,
+      1,
+      -1,
+      -1,
+      -1,
+      -1
+    ]
+  },
+  "two-access-later-walk-faster": {
+    "arrival": [
+      28740,
+      29080,
+      29400,
+      30000,
+      30600,
+      29520
+    ],
+    "rounds": [
+      0,
+      0,
+      1,
+      2,
+      1,
+      1
+    ]
+  },
+  "profile-card-window": {
+    "departures": 5,
+    "best": [
+      60,
+      900,
+      1200,
+      1800,
+      2400,
+      1320
+    ],
+    "typical": [
+      60,
+      1500,
+      1800,
+      null,
+      null,
+      1920
+    ],
+    "worst": [
+      60,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "profile-even-count-lower-median": {
+    "departures": 4,
+    "best": [
+      60,
+      900,
+      1200,
+      1800,
+      2400,
+      1320
+    ],
+    "typical": [
+      60,
+      900,
+      1200,
+      null,
+      null,
+      1320
+    ],
+    "worst": [
+      60,
+      2100,
+      2400,
+      null,
+      null,
+      2520
+    ]
+  },
+  "profile-default-step": {
+    "departures": 3,
+    "best": [
+      60,
+      660,
+      960,
+      1560,
+      2160,
+      1080
+    ],
+    "typical": [
+      60,
+      780,
+      1080,
+      1680,
+      2280,
+      1200
+    ],
+    "worst": [
+      60,
+      900,
+      1200,
+      1800,
+      2400,
+      1320
+    ]
+  },
+  "profile-empty-network": {
+    "departures": 5,
+    "best": [],
+    "typical": [],
+    "worst": []
+  },
+  "route-empty-network": {
+    "arrival": [],
+    "rounds": []
+  },
+  "no-chain-walk-after-walk": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      30000,
+      30600,
+      28840
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      2,
+      2,
+      0
+    ]
+  },
+  "access-duplicate-min": {
+    "arrival": [
+      28740,
+      29100,
+      29400,
+      null,
+      null,
+      29520
+    ],
+    "rounds": [
+      0,
+      1,
+      1,
+      -1,
+      -1,
+      1
+    ]
+  }
+}
