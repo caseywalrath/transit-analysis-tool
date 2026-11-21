@@ -2149,6 +2149,36 @@
     });
   }
 
+  // ---- Hand-off from GTFS Service Analysis (Build vs No-Build) ----
+
+  // The major-change rules as the user set them (a copy), for pre-checking changed routes.
+  App.titleViMajorChangePolicy = function () {
+    return JSON.parse(JSON.stringify((_policy && _policy.majorChange) || {}));
+  };
+
+  // spec = { name, alterations: [{ name, changeType, after (feature ref or null), revenueHours: {before, after},
+  //          spanHours: {before, after} }] }. Adds a scenario, makes it active and returns its name. Route geometry
+  // (before / after Lines) is left for the user to pick: GTFS routes are not drawn features.
+  App.titleViAddScenario = function (spec) {
+    spec = spec || {};
+    var sc = TV.createScenario(spec.name || "Service change");
+    (spec.alterations || []).forEach(function (a) {
+      var alt = TV.createAlteration(a.name || "");
+      alt.changeType = a.changeType === "elimination" || a.changeType === "new_route" ? a.changeType : "adjustment";
+      alt.after = a.after || null;
+      ["revenueHours", "spanHours"].forEach(function (k) {
+        var v = a[k] || {};
+        alt.manual[k] = { before: Number.isFinite(v.before) ? v.before : null, after: Number.isFinite(v.after) ? v.after : null };
+      });
+      sc.alterations.push(alt);
+    });
+    _scenarios.push(sc);
+    _activeScenarioIdx = _scenarios.length - 1;
+    if (_initialized) { populateScenarioDropdown(); switchScenario(_activeScenarioIdx); }
+    saveState();
+    return sc.name;
+  };
+
   // ---- Feature usage (Split / Merge dialogs) ----
   // A before/after reference points at ONE feature: after a split it covers
   // only part of the route; after a merge it resolves to the survivor or goes
