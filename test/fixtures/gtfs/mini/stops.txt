@@ -1,0 +1,8 @@
+﻿stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding,platform_note
+S1,"Main St & 1st Ave, Shared",39.7400,-104.9900,0,,1,
+S2,Main St & 5th Ave,39.7400,-104.9800,0,,2,
+S3,Main St & 9th Ave,39.7400,-104.9700,0,,0,
+STN,Union Station,39.7500,-105.0000,1,,1,
+P1,Union Station Track 1,39.7501,-105.0001,0,STN,,north end
+R2,Airport,39.8500,-104.6700,0,,1,
+F2,Park Terminal,39.7300,-104.9900,0,,,

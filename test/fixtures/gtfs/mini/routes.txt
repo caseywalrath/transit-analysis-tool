@@ -1,0 +1,4 @@
+route_id,agency_id,route_short_name,route_long_name,route_type,route_color
+B1,MINI,B1,"Main St, Crosstown",3,0055AA
+R1,MINI,R1,Airport Rail,0,AA3300
+F1,MINI,F1,Park Shuttle,3,228822

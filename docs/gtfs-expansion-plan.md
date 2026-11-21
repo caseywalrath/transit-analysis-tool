@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Draft, awaiting user approval at Gate G0 (2026-11-20). No phase has started.
+> **Status:** Approved at Gate G0 (2026-11-21). A0 complete; next phase A1 or A2.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -368,7 +368,7 @@ Use `CLAUDE.md` § Testing:
 
 | Phase | What the user gets | Detail | Lead classes | Needs | Gates | Status |
 |---|---|---|---|---|---|---|
-| A0 | Test feeds and a speed baseline (nothing visible) | Ready | O | — | G0a–b | Not started |
+| A0 | Test feeds and a speed baseline (nothing visible) | Ready | O | — | G0a–b | Done (2026-11-21) |
 | A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Not started |
 | A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Not started |
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Not started |
@@ -964,8 +964,8 @@ Each gate is answered in its phase section. Record answers here and in the progr
 
 | Gate | Phase | Question (short) | Recommendation | Answer | Date |
 |---|---|---|---|---|---|
-| G0a | A0 | Approve plan; never copy GTFS·X code | Approve | | |
-| G0b | A0 | Real feeds for testing | RTD + one small feed | | |
+| G0a | A0 | Approve plan; never copy GTFS·X code | Approve | Approved (Option A) | 2026-11-21 |
+| G0b | A0 | Real feeds for testing | RTD + one small feed | "Your call": RTD + BART (small) | 2026-11-21 |
 | G1a | A1 | Count people by area or by 2020 blocks | Blocks for new runs | | |
 | G1b | A1 | Coverage from stops or line | Stops when present | | |
 | G1c | A1 | Route Costing rate basis | Keep platform default, add revenue | | |
@@ -1064,3 +1064,29 @@ Each gate is answered in its phase section. Record answers here and in the progr
 - A8 gained a read-only compatibility check and a hand-off note that defines the export the later plan starts from.
 
 **Hand-off:** next step is Gate G0 (a–b) with the user, then phase A0.
+
+### 2026-11-21 — A0 Setup and baselines (Opus orchestrating)
+
+- **Gates:** G0a approved (Option A). G0b "your call": RTD (`rtd-denver.com/files/gtfs/google_transit.zip`, 10.8 MB ZIP) as the large feed; BART (`bart.gov/dev/schedules/google_transit.zip`, 1.0 MB) as the small one, since the Summit Stage and Santa Fe links tried were dead. Neither feed is committed.
+- **A0.1 [Opus]:** `test/fixtures/gtfs/mini/` (9 files) and `EXPECTED.md`. Answers worked by hand for 2026-01-12, -19, -24 and -30. `EXPECTED.md` fixes nine counting conventions A2 must adopt or deliberately change; it includes the mixed-block rule (unblocked trips count as their own block) and a 10-minute sweep layover.
+- **Independent check [Haiku, high]:** recomputes the same answers from the raw files, without seeing `EXPECTED.md`; the result is recorded in the next entry.
+- **A0.2 [Sonnet, deviation: plan said Opus]:** `test/perf/gtfs-baseline.mjs` + `test/perf/README.md`. Opus reviewed the script and re-ran it twice on RTD; the results repeat within 10%.
+
+**Baseline, current code (headless Chromium in the cloud container):**
+
+| Feed | Rows (stop_times) | Parse | To map | Longest freeze | Heap growth | GTFS part of session |
+|---|---|---|---|---|---|---|
+| BART | 76,409 | 0.4 s | 0.7 s | 0.10 s | 23 MB | 22 M chars |
+| RTD | 814,413 | 3.0 s | 4.0–4.4 s | **1.41–1.47 s** | **210 MB** | **240 M chars** |
+
+**Targets for A2 (an RTD-sized feed on a typical laptop):**
+
+- Load time: the current 4 s is already inside the 15 s target, so A2 must not get slower; ≤ 15 s stays the ceiling for laptops slower than this container.
+- Freezes: the current 1.4 s blocks the page, so the ≤ 250 ms target is the main work.
+- Memory: ≤ 100 MB, against 210 MB now.
+- Sessions: the 240 M-character GTFS part already exceeds the app's 50 MB "Continue?" prompt in `exportFullState`. This confirms that G2a (store the original ZIP in sessions) is needed.
+
+**Hand-off:**
+
+- Mini feed path: `test/fixtures/gtfs/mini/`.
+- Baseline command: `NODE_PATH=/opt/node-tools/node_modules node test/perf/gtfs-baseline.mjs <zip> [--runs N]`. Its final line is `RESULT {json}`, with fields `parseMs`, `toMapMs`, `longestFreezeMs`, `heapDeltaMB` and `gtfsSessionChars`.
