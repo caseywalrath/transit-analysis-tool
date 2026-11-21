@@ -411,9 +411,14 @@
       _blockCache.set(bbox, rows);
     }
 
+    // A prefix set per prefix length: thousands of geographies times tens of thousands of blocks made
+    // a scan over every prefix take seconds.
+    var byLen = Object.create(null);
+    prefixes.forEach(function (pre) { (byLen[pre.length] || (byLen[pre.length] = new Set())).add(pre); });
+    var lens = Object.keys(byLen).map(Number);
     return rows.filter(function (r) {
-      for (var j = 0; j < prefixes.length; j++) {
-        if (r.geoid.indexOf(prefixes[j]) === 0) return true;
+      for (var j = 0; j < lens.length; j++) {
+        if (byLen[lens[j]].has(r.geoid.slice(0, lens[j]))) return true;
       }
       return false;
     });
@@ -547,6 +552,7 @@
   App.computeGeoOverlapFractions = computeGeoOverlapFractions;
   App.computeAcsValueOnly = computeAcsValueOnly;
   App.computeApportionFractions = computeApportionFractions;
+  App.fetchBlockPopulations = fetchBlockPopulations;
   App.APPORTION_DEFAULT = "blockPop";
   // Old sessions saved a boolean apportionByArea; undefined means the old default (area).
   App.apportionMethodFromLegacy = function (apportionByArea) { return apportionByArea === false ? "whole" : "area"; };
