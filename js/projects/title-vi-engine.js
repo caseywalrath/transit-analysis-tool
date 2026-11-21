@@ -523,6 +523,7 @@
   TitleVI.fetchLowIncomeValues = async function (geoLevel, year, definition, geoids, popByGeo) {
     var spec = window.ServiceEquity ? window.ServiceEquity.lowIncomeSpec(definition)
       : { id: "poverty100", vars: ["B17001_002E"] };
+    spec.universe = spec.id === "poverty200" ? "C17002_001E" : "B17001_001E";
     // One variable goes through the cached single-variable fetch, as before; a sum needs the multi fetch.
     var fetchSum = function (level, ids) {
       return spec.vars.length === 1 ? App.fetchACSValues(level, year, spec.vars[0], ids)
@@ -543,7 +544,9 @@
       if (!seen[t]) { seen[t] = true; tractIds.push(t); }
     });
     var tLow = await fetchSum("tract", tractIds);
-    var tPop = await App.fetchACSValues("tract", year, "B01003_001E", tractIds);
+    // The rate's denominator is the poverty universe (people whose poverty status is known), not total
+    // population: group-quarters residents are outside it and would dilute the rate.
+    var tPop = await App.fetchACSValues("tract", year, spec.universe || "B01003_001E", tractIds);
     var out = new Map();
     geoids.forEach(function (id) {
       var t = id.substring(0, 11), lo = tLow.get(t), tp = tPop.get(t), bp = popByGeo ? popByGeo.get(id) : NaN;
@@ -733,7 +736,15 @@
     try { hull = stops.length >= 3 ? turf.convex(pts) : null; } catch (e) { hull = null; }
     var maxR = 0;
     stops.forEach(function (s) { if (s.radiusMi > maxR) maxR = s.radiusMi; });
-    var region = turf.buffer(hull || turf.bboxPolygon(turf.bbox(pts)), maxR, { units: "miles" });
+    // One stop, or stops in a straight line, have no hull; a zero-area bbox does not buffer reliably, so
+    // widen the bbox by the buffer distance instead.
+    var region;
+    if (hull) region = turf.buffer(hull, maxR, { units: "miles" });
+    else {
+      var bb = turf.bbox(pts), midLat = (bb[1] + bb[3]) / 2;
+      var dLat = maxR / 69, dLon = maxR / (69 * Math.max(0.01, Math.cos(midLat * Math.PI / 180)));
+      region = turf.bboxPolygon([bb[0] - dLon, bb[1] - dLat, bb[2] + dLon, bb[3] + dLat]);
+    }
 
     progress("Fetching census geographies\u2026");
     var geos = await core.fetchTigerwebGeos(geoLevel, region);

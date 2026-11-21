@@ -1,6 +1,6 @@
 # A6 — Coverage, Title VI equity and travel times on real schedules (sub-plan)
 
-**Status:** A6a done; next A6b (cards to write from the outline below). Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
+**Status:** A6a and A6b done; next A6c (cards to write from the outline below). Parent plan: `docs/gtfs-expansion-plan.md` § A6. Base commit `c6ed9ef`.
 
 A6 ships as three steps, each reviewed and committed on its own: **A6a** analysis network and coverage,
 **A6b** Title VI service equity, **A6c** travel times. Each step's cards are written when it starts, from
@@ -121,6 +121,18 @@ network is loaded).
   restored GTFS runs compare their saved date, epoch / feed signature only when used, off-network note).
   Golden 1099/1099; browser transit-coverage-gtfs 37/37, multi-walk-flood 11/11, faa-gtfs-stops 14/14,
   hidden-features 138/138, analysis-network 17/17, walkshed-contour 24/24.
+
+- 2026-11-21: A6b. Cards `card-a6b.1..3.md`. A6b.1 pure `window.ServiceEquity` [Haiku xhigh]: clean, 24 golden
+  cases, one sound deviation (poleward cosine for the longitude window) — Haiku handled a fully specified pure
+  engine well. Opus: `TitleVI.fetchLowIncomeValues` / `serviceEquityStops` / `runServiceEquity`, `App.fetchBlockPopulations`
+  (prefix-set filter), and a pre-existing bug fix: block-group low-income took each tract's whole count (now tract
+  rate over the poverty universe × block-group population). A6b.2 Title VI Service Equity tab + low-income setting
+  [Sonnet]; A6b.3 GTFS stop Coverage tab + `App.gtfsAddStopTab` [Sonnet]. Review (medium): 9 findings fixed (stale
+  signature gaps, one-stop region, mixed low-income definitions in instant re-evaluation, Clear mid-run, four-fifths
+  range); documented G4b exception for Count residents. Moved to A7: revenue-hours / span % from two feeds.
+  Golden 1123/1123; browser title-vi-service-equity 58/58 (twice), gtfs-stop-coverage 12/12, gtfs-details 19/19,
+  tvi-clear 4/4, hidden-features 138/138, clear-all 6/6. Known gap: day-part or GTFS route-hide edits refresh the
+  Service Equity banner only on the next input / tab / update event.
 
 **Hand-off (A6b, A6c):** `App.buildAnalysisNetwork({date, includeHidden, gtfs, proposals})` →
 network (see `docs/reference/modules/gtfs.md` "Analysis network"); `AnalysisNetwork.stopService(network,

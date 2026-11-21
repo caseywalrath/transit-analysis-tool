@@ -4740,6 +4740,9 @@ select.fp-attr-input,
 .tvi-session-import { margin-top: var(--space-3); }
 .tvi-session-file { font-size: var(--text-sm); margin-top: var(--space-1); }
 .tvi-value-right { text-align: right; }
+.tvi-se-intro { margin-bottom: var(--space-1); }
+.tvi-se-notes { margin: var(--space-2) 0 0; padding-left: var(--space-4); }
+.tvi-se-notes li { margin-bottom: var(--space-1); }
 
 .tvi-tabs {
   display: flex;
