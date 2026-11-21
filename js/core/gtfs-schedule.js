@@ -842,6 +842,332 @@
     return bestCount > 0 ? best : null;
   }
 
+  // ---------------------------------------------------------------- details views
+
+  // Median of a numeric array, null when empty. Sorts a copy so the caller's order is kept.
+  function medianSec(gaps) {
+    if (!gaps || gaps.length === 0) return null;
+    var s = gaps.slice().sort(function (p, q) { return p - q; });
+    var m = s.length;
+    return m % 2 === 1 ? s[(m - 1) / 2] : (s[m / 2 - 1] + s[m / 2]) / 2;
+  }
+
+  // trip_id -> trip_headsign, built once per feed. The first row of a repeated trip_id wins, the same
+  // rule buildFeed applies to trips, so a headsign always comes from the trip the engine actually runs.
+  function headsignMap(feed) {
+    if (feed._headsigns) return feed._headsigns;
+    var map = Object.create(null), t = feed.tables && feed.tables["trips.txt"];
+    var rows = t ? t.rows : [], i;
+    for (i = 0; i < rows.length; i++) {
+      var id = g(rows[i], "trip_id");
+      if (id !== "" && map[id] === undefined) map[id] = g(rows[i], "trip_headsign");
+    }
+    feed._headsigns = map;
+    return map;
+  }
+
+  // A generated frequency run has no trips.txt row of its own, so it reads its template's headsign.
+  function headsignOf(map, trip) {
+    var h = map[trip.generated ? trip.templateId : trip.tripId];
+    return typeof h === "string" ? h : "";
+  }
+
+  // Most common headsign in a tally of {text: count}. Ties go to the smaller text; "" when there is none.
+  function topHeadsign(tally) {
+    var best = "", bestN = 0, k;
+    if (!tally) return "";
+    for (k in tally) {
+      var n = tally[k];
+      if (n > bestN || (n === bestN && k < best)) { best = k; bestN = n; }
+    }
+    return best;
+  }
+
+  // Day parts read the way headwayBands reads them: unparsable starts are dropped and the rest sorted by
+  // start, ties keeping the caller's order. Starts are printed as HH:MM so "6:00" and "06:00" agree.
+  function dayPartList(dayParts) {
+    var src = dayParts || DEFAULT_DAY_PARTS, out = [], i;
+    for (i = 0; i < src.length; i++) {
+      var p = src[i], ps = parseHM(p && p.start);
+      if (ps < 0) continue;
+      out.push({
+        id: typeof p.id === "string" ? p.id : "",
+        label: typeof p.label === "string" ? p.label : "",
+        start: ps * 60,
+        text: pad2(Math.floor(ps / 60)) + ":" + pad2(ps % 60),
+        order: i
+      });
+    }
+    out.sort(function (a, b) { return a.start !== b.start ? a.start - b.start : a.order - b.order; });
+    return out;
+  }
+
+  // Index of the part a time belongs to: the last part whose start is at or before it. A time before the
+  // first start belongs to the first part, so no departure is dropped. -1 when there are no parts.
+  function partIndexOf(parts, sec) {
+    if (parts.length === 0) return -1;
+    var idx = 0, i;
+    for (i = 1; i < parts.length; i++) if (parts[i].start <= sec) idx = i;
+    return idx;
+  }
+
+  // Count and median headway for each part. times must be sorted ascending. A gap counts only when both of
+  // its ends fall in the same part, so no gap straddles a part boundary.
+  function partHeadways(times, parts) {
+    var out = [], idx = [], i, p;
+    for (p = 0; p < parts.length; p++) out.push({ count: 0, gaps: [] });
+    for (i = 0; i < times.length; i++) {
+      var pi = partIndexOf(parts, times[i]);
+      idx.push(pi);
+      if (pi < 0) continue;
+      out[pi].count++;
+      if (i > 0 && idx[i - 1] === pi) out[pi].gaps.push(times[i] - times[i - 1]);
+    }
+    for (p = 0; p < parts.length; p++) out[p].headwaySec = medianSec(out[p].gaps);
+    return out;
+  }
+
+  function isPeakPart(id) { return id === "am" || id === "pm"; }
+  function isOffPeakPart(id) { return id === "midday"; }
+
+  // Median over the gaps of every part that matches. Peak and off-peak headways pool their parts' gaps
+  // rather than averaging the part medians, so a long part does not count for less than a short one.
+  function pooledHeadway(perPart, parts, matches) {
+    var all = [], p;
+    for (p = 0; p < parts.length; p++) if (matches(parts[p].id)) all = all.concat(perPart[p].gaps);
+    return medianSec(all);
+  }
+
+  // Great-circle metres between two stops, rounded to whole metres; null when either lacks coordinates.
+  function stopMeters(feed, idA, idB) {
+    var a = feed._stops[idA], b = feed._stops[idB];
+    if (!a || !b || typeof a.lat !== "number" || typeof a.lon !== "number" ||
+        typeof b.lat !== "number" || typeof b.lon !== "number") return null;
+    return Math.round(haversine(a.lat, a.lon, b.lat, b.lon));
+  }
+
+  // A real calendar date in YYYYMMDD form. The round trip matters: Date.UTC would quietly roll 20261340 over.
+  function isRealDate(s) {
+    if (typeof s !== "string" || !isDate(s)) return false;
+    var y = +s.substring(0, 4), m = +s.substring(4, 6), d = +s.substring(6, 8);
+    var t = new Date(Date.UTC(y, m - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+  }
+
+  // Whole days since the epoch for a YYYYMMDD date. Differences of two of these are exact day counts.
+  function utcDay(s) {
+    return Date.UTC(+s.substring(0, 4), +s.substring(4, 6) - 1, +s.substring(6, 8)) / 86400000;
+  }
+
+  // Every stop-time row at the stop, or at a child of it, on each trip running that date, the last row
+  // included. Times are read as departuresAtStop reads them (interpolated, plus the frequency offset); a
+  // blank time stays -1. Rows are ordered by the time a rider uses: a trip's last row by arrival, any other
+  // row by departure. Rows with no such time sort last, then by trip id.
+  function stopDepartures(feed, date, stopId, opts) {
+    var st = feed.st, ids = [stopId], i;
+    var s = feed._stops[stopId];
+    if (s) for (i = 0; i < s.children.length; i++) ids.push(s.children[i]);
+    var mask = new Uint8Array(st.stopIds.length), any = false;
+    for (i = 0; i < ids.length; i++) {
+      var ix = feed._stopIdx[ids[i]];
+      if (ix !== undefined) { mask[ix] = 1; any = true; }
+    }
+    if (!any) return [];
+    var ents = filteredEntries(feed, date, opts), hs = headsignMap(feed), out = [];
+    for (i = 0; i < ents.length; i++) {
+      var e = ents[i], a = st.tripStart[e.ti], b = st.tripStart[e.ti + 1], tf = null;
+      for (var r = a; r < b; r++) {
+        if (!mask[st.stop[r]]) continue;
+        if (tf === null) tf = timesFor(feed, e.ti, true);
+        var arr = tf.arr[r - a], dep = tf.dep[r - a];
+        out.push({
+          tripId: e.trip.tripId, routeId: e.trip.routeId, directionId: e.trip.directionId,
+          headsign: headsignOf(hs, e.trip), stopId: st.stopIds[st.stop[r]],
+          arr: arr >= 0 ? arr + e.off : -1, dep: dep >= 0 ? dep + e.off : -1,
+          last: r === b - 1
+        });
+      }
+    }
+    out.sort(function (p, q) {
+      var kp = p.last ? p.arr : p.dep, kq = q.last ? q.arr : q.dep;
+      if ((kp < 0) !== (kq < 0)) return kp < 0 ? 1 : -1;
+      if (kp !== kq) return kp - kq;
+      return p.tripId < q.tripId ? -1 : p.tripId > q.tripId ? 1 : 0;
+    });
+    return out;
+  }
+
+  // Departures at a stop on the date (a trip's last row is an arrival, so it is left out), counted per
+  // route and per day part. Headways use the combined departure list across routes, so the stop's
+  // effective frequency is what a rider waiting there sees.
+  function stopSummary(feed, date, stopId, opts) {
+    var parts = dayPartList(opts && opts.dayParts);
+    var rows = stopDepartures(feed, date, stopId, { routeIds: opts && opts.routeIds }), i;
+    var deps = [], perRoute = Object.create(null), routeOrder = [];
+    for (i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row.last || row.dep < 0) continue;
+      deps.push(row.dep);
+      if (perRoute[row.routeId] === undefined) { perRoute[row.routeId] = 0; routeOrder.push(row.routeId); }
+      perRoute[row.routeId]++;
+    }
+    deps.sort(function (p, q) { return p - q; });
+    var heads = partHeadways(deps, parts), routes = [];
+    for (i = 0; i < routeOrder.length; i++) routes.push({ routeId: routeOrder[i], departures: perRoute[routeOrder[i]] });
+    routes.sort(function (p, q) {
+      if (p.departures !== q.departures) return q.departures - p.departures;
+      return p.routeId < q.routeId ? -1 : p.routeId > q.routeId ? 1 : 0;
+    });
+    var partRows = [];
+    for (i = 0; i < parts.length; i++) {
+      partRows.push({
+        id: parts[i].id, label: parts[i].label, start: parts[i].text,
+        departures: heads[i].count, headwaySec: heads[i].headwaySec
+      });
+    }
+    return {
+      departures: deps.length,
+      routes: routes,
+      span: deps.length > 0 ? { first: deps[0], last: deps[deps.length - 1] } : null,
+      parts: partRows,
+      peakHeadwaySec: pooledHeadway(heads, parts, isPeakPart),
+      offPeakHeadwaySec: pooledHeadway(heads, parts, isOffPeakPart)
+    };
+  }
+
+  // The stop's neighbours on each route and direction that serves it on the date. Neighbours come from the
+  // route's most-used pattern for that direction, so they follow the order a rider sees, not one trip's
+  // stop list. A stop served twice by one pattern takes its first position.
+  function stopSpacing(feed, date, stopId, opts) {
+    var rows = stopDepartures(feed, date, stopId, opts), i, j, k;
+    var mask = Object.create(null), s = feed._stops[stopId];
+    mask[stopId] = true;
+    if (s) for (i = 0; i < s.children.length; i++) mask[s.children[i]] = true;
+    var pairs = [], seen = Object.create(null);
+    for (i = 0; i < rows.length; i++) {
+      var key = JSON.stringify([rows[i].routeId, rows[i].directionId]);
+      if (seen[key]) continue;
+      seen[key] = true;
+      pairs.push({ routeId: rows[i].routeId, directionId: rows[i].directionId });
+    }
+    pairs.sort(function (p, q) {
+      if (p.routeId !== q.routeId) return p.routeId < q.routeId ? -1 : 1;
+      return p.directionId < q.directionId ? -1 : p.directionId > q.directionId ? 1 : 0;
+    });
+    var patCache = Object.create(null), out = [];
+    for (i = 0; i < pairs.length; i++) {
+      var pr = pairs[i];
+      if (patCache[pr.routeId] === undefined) patCache[pr.routeId] = patterns(feed, date, pr.routeId);
+      var list = patCache[pr.routeId], stops = null, pos = -1;
+      for (j = 0; j < list.length && pos < 0; j++) {
+        if (list[j].directionId !== pr.directionId) continue;
+        for (k = 0; k < list[j].stops.length; k++) {
+          if (mask[list[j].stops[k]]) { stops = list[j].stops; pos = k; break; }
+        }
+      }
+      if (pos < 0) continue;
+      var prev = pos > 0 ? stops[pos - 1] : null, next = pos + 1 < stops.length ? stops[pos + 1] : null;
+      out.push({
+        routeId: pr.routeId, directionId: pr.directionId,
+        prevStopId: prev, prevMeters: prev === null ? null : stopMeters(feed, stops[pos], prev),
+        nextStopId: next, nextMeters: next === null ? null : stopMeters(feed, stops[pos], next)
+      });
+    }
+    return out;
+  }
+
+  // One route's trips on the date, grouped by direction. Headways come from start times in each day part;
+  // each pattern carries its most common non-blank headsign.
+  function routeSchedule(feed, date, routeId, opts) {
+    var parts = dayPartList(opts && opts.dayParts);
+    var ents = filteredEntries(feed, date, { routeIds: [routeId] }), hs = headsignMap(feed), st = feed.st;
+    var byDir = Object.create(null), dirOrder = [], tallies = Object.create(null), i, r;
+    for (i = 0; i < ents.length; i++) {
+      var e = ents[i], dir = e.trip.directionId, stopsList = [];
+      for (r = st.tripStart[e.ti]; r < st.tripStart[e.ti + 1]; r++) stopsList.push(st.stopIds[st.stop[r]]);
+      // Same key as patterns() builds, so each pattern finds its own headsign tally below.
+      var key = dir + "|" + stopsList.join(","), text = headsignOf(hs, e.trip);
+      var tally = tallies[key] || (tallies[key] = Object.create(null));
+      if (text !== "") tally[text] = (tally[text] || 0) + 1;
+      var rec = byDir[dir];
+      if (!rec) { rec = byDir[dir] = { directionId: dir, trips: 0, runningSec: 0, starts: [] }; dirOrder.push(dir); }
+      rec.trips++;
+      rec.runningSec += e.trip.end - e.trip.start;
+      rec.starts.push(e.trip.start);
+    }
+    var pats = patterns(feed, date, routeId);
+    dirOrder.sort();
+    var directions = [];
+    for (i = 0; i < dirOrder.length; i++) {
+      var d = byDir[dirOrder[i]], j;
+      d.starts.sort(function (p, q) { return p - q; });
+      var heads = partHeadways(d.starts, parts), partRows = [], dirPatterns = [];
+      for (j = 0; j < parts.length; j++) {
+        partRows.push({
+          id: parts[j].id, label: parts[j].label, start: parts[j].text,
+          trips: heads[j].count, headwaySec: heads[j].headwaySec
+        });
+      }
+      for (j = 0; j < pats.length; j++) {
+        if (pats[j].directionId !== d.directionId) continue;
+        dirPatterns.push({
+          stops: pats[j].stops, trips: pats[j].trips,
+          headsign: topHeadsign(tallies[pats[j].directionId + "|" + pats[j].stops.join(",")])
+        });
+      }
+      directions.push({
+        directionId: d.directionId, trips: d.trips, runningSec: d.runningSec,
+        span: d.starts.length > 0 ? { first: d.starts[0], last: d.starts[d.starts.length - 1] } : null,
+        parts: partRows,
+        peakHeadwaySec: pooledHeadway(heads, parts, isPeakPart),
+        offPeakHeadwaySec: pooledHeadway(heads, parts, isOffPeakPart),
+        patterns: dirPatterns
+      });
+    }
+    return { trips: ents.length, directions: directions };
+  }
+
+  // Overview of the loaded feed: agencies, the service window and how many days of it remain, counts of
+  // routes and stops, and the trips each of the three sample day types would run. Counts are of the whole
+  // feed, not of one date.
+  function feedOverview(feed, opts) {
+    opts = opts || {};
+    var dates = opts.dates || {}, i, k;
+    var agencyT = feed.tables && feed.tables["agency.txt"], arows = agencyT ? agencyT.rows : [];
+    var agencies = [];
+    for (i = 0; i < arows.length; i++) {
+      agencies.push({
+        id: g(arows[i], "agency_id"), name: g(arows[i], "agency_name"),
+        url: g(arows[i], "agency_url"), timezone: g(arows[i], "agency_timezone")
+      });
+    }
+    var range = dateRange(feed);
+    var daysLeft = null;
+    if (range && isRealDate(opts.today)) daysLeft = utcDay(range.end) - utcDay(opts.today);
+    var stops = 0, stations = 0;
+    for (k in feed._stops) {
+      var lt = feed._stops[k].locationType;
+      if (lt === "" || lt === "0") stops++;
+      else if (lt === "1") stations++;
+    }
+    var types = ["weekday", "saturday", "sunday"], dayTypes = [];
+    for (i = 0; i < types.length; i++) {
+      var d = dates[types[i]];
+      if (typeof d !== "string") continue;
+      dayTypes.push({ type: types[i], date: d, trips: tripsOnDate(feed, d).trips.length });
+    }
+    return {
+      agencies: agencies,
+      range: range ? { start: range.start, end: range.end } : null,
+      daysLeft: daysLeft,
+      routes: Object.keys(feed._routes).length,
+      stops: stops,
+      stations: stations,
+      trips: feed._trips.length,
+      dayTypes: dayTypes
+    };
+  }
+
   // ---------------------------------------------------------------- headway bands
 
   // Default cut points for turning departures into Service headway bands. The last part has no end,
@@ -1235,6 +1561,8 @@
     stopAccessibility: stopAccessibility, busiestDate: busiestDate, evaluate: evaluate,
     DEFAULT_DAY_PARTS: DEFAULT_DAY_PARTS, bandTripCount: bandTripCount, headwayBands: headwayBands,
     meanTripMinutes: meanTripMinutes, bandsEqual: bandsEqual, _bandInvariant: bandInvariant,
-    serviceCopyPlan: serviceCopyPlan, reconciliationNote: reconciliationNote
+    serviceCopyPlan: serviceCopyPlan, reconciliationNote: reconciliationNote,
+    stopDepartures: stopDepartures, stopSummary: stopSummary, stopSpacing: stopSpacing,
+    routeSchedule: routeSchedule, feedOverview: feedOverview
   };
 })();

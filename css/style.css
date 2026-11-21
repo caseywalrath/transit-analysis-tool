@@ -1913,6 +1913,17 @@ body.present-mode #attr-dock { display: none !important; }
 #attr-dock .fp-attr-row.ad-info-row { min-height: 18px; margin-bottom: 2px; }
 .ad-section-closed .ad-section-body { display: none; }
 .ad-empty { font-size: var(--text-sm); color: var(--muted); padding: 2px 0 4px; }
+/* Read-only views (GTFS stop/route details): tab bar + one pane. */
+.ad-swatch-static { cursor: default; }
+.ad-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 var(--space-2); }
+.ad-tab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 6px 10px; font: inherit; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;
+}
+.ad-tab:hover { color: var(--text-primary); }
+.ad-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.ad-tab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+.ad-tab-pane { font-size: var(--text-sm); color: var(--text-primary); }
 .ad-usage { list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--text-primary); }
 .ad-usage li { padding: 1px 0; }
 .ad-usage-warn strong { color: var(--warn-text); }
@@ -5869,37 +5880,58 @@ body.dark-mode .result-error td { color: #fc8181; }
   display: none;
 }
 
-/* ---- Click detail popup ---- */
+/* ---- Stop / route details in the attributes dock ---- */
 
-.gtfs-detail {
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  max-width: 300px;
+.gtfs-fields { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+.gtfs-fields th, .gtfs-fields td {
+  text-align: left; vertical-align: top; padding: 3px 6px 3px 0;
+  border-bottom: 1px solid var(--border); overflow-wrap: anywhere;
 }
+.gtfs-fields th { width: 40%; font-weight: var(--weight-semibold); color: var(--text-secondary); font-family: var(--font-mono); }
+.gtfs-fields tr.gtfs-fields-friendly th { font-family: inherit; }
 
-.gtfs-detail-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+/* Stop / route detail tabs: trips, spacing, stops, schedule. */
+.gtfs-dt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.gtfs-dt-seg.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.gtfs-dt-hidden { font-size: var(--text-xs); color: var(--text-secondary); }
+.gtfs-dt-summary { line-height: var(--leading-snug); margin-bottom: var(--space-2); }
+.gtfs-dt-summary > div { margin-bottom: 2px; }
+.gtfs-dt-table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); margin: var(--space-1) 0 var(--space-2); }
+.gtfs-dt-table th, .gtfs-dt-table td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.gtfs-dt-table th { font-weight: var(--weight-semibold); color: var(--text-secondary); }
+.gtfs-dt-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gtfs-dt-trips td { font-variant-numeric: tabular-nums; }
+.gtfs-dt-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-1) 0; }
+.gtfs-dt-chip { display: inline-block; padding: 1px 8px; border-radius: var(--radius-lg); background: var(--surface-alt); border: 1px solid var(--border); font-size: var(--text-xs); }
+.gtfs-dt-head { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.gtfs-dt-stops { margin: 0 0 var(--space-2); padding-left: 22px; font-size: var(--text-sm); }
+.gtfs-dt-id { color: var(--text-faint); font-size: var(--text-xs); }
+.gtfs-dt-link { background: none; border: none; padding: 1px 0; font: inherit; color: var(--accent); text-align: left; cursor: pointer; }
+.gtfs-dt-link:hover { text-decoration: underline; }
+.gtfs-dt-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+
+/* GTFS Feed Attributes panel: Overview / Files tabs and the overview content. */
+.gtfs-ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 var(--space-3); }
+.gtfs-ptab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 6px 12px; font: inherit; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;
 }
-
-.gtfs-detail-row { padding: 1px 0; }
-.gtfs-detail-key { font-weight: var(--weight-semibold); color: var(--muted); }
-.gtfs-detail-val { color: var(--text-primary); }
-
-.gtfs-route-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  border: 1px solid rgba(0,0,0,0.15);
-}
+.gtfs-ptab:hover { color: var(--text-primary); }
+.gtfs-ptab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: var(--weight-semibold); }
+.gtfs-ptab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+.gtfs-overview { padding: 0 var(--space-1); }
+.gtfs-ov-agency { font-weight: var(--weight-semibold); font-size: var(--text-base); margin-bottom: var(--space-1); }
+.gtfs-ov-range { font-size: var(--text-sm); color: var(--text-secondary); }
+.gtfs-ov-warn { color: var(--warn-text); font-weight: var(--weight-semibold); }
+.gtfs-ov-bad { color: var(--danger); font-weight: var(--weight-semibold); }
+.gtfs-ov-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--space-2); margin: var(--space-3) 0; }
+.gtfs-ov-stat { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-alt); }
+.gtfs-ov-num { font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.gtfs-ov-label { font-size: var(--text-xs); color: var(--text-secondary); }
+.gtfs-dayparts { margin-bottom: var(--space-3); }
+.gtfs-dp-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.gtfs-dp-label { width: 90px; font-size: var(--text-sm); }
+.gtfs-dp-input { width: 140px; }
 
 /* ---- Dark mode ---- */
 
@@ -5914,8 +5946,6 @@ body.dark-mode .gtfs-table tr:hover td { background: rgba(255,255,255,0.03); }
 body.dark-mode .gtfs-table-truncated td { color: #718096; }
 body.dark-mode .gtfs-table-wrapper { border-color: #3a3a50; }
 body.dark-mode .gtfs-map-controls { border-color: #3a3a50; }
-body.dark-mode .gtfs-detail-val { color: #ccc; }
-body.dark-mode .gtfs-detail-title { border-color: #3a3a50; }
 
 /* ================================================================
    Route Costing module

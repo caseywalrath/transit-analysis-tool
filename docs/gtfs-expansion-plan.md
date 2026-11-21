@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0, A1, A2 and A3 complete; next phase A4.
+> **Status:** Approved at Gate G0 (2026-11-21). A0–A4 complete; next phase A5.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -372,7 +372,7 @@ Use `CLAUDE.md` § Testing:
 | A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Done (2026-11-21) |
 | A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Done |
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Done |
-| A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Not started |
+| A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Done (sub-plan `docs/archive/A4-plan.md`) |
 | A5 | GTFS service and cost summary; Stop Analysis | Sub-plan | S, H, O | A2, A4 | G5a–d | Not started |
 | A6 | Coverage, Title VI equity and travel times on real schedules, with proposals mixed in | Sub-plan | O, H, S | A1, A2, A3 | G6a–d | Not started |
 | A7 | Build vs No-Build comparison; feed health checks | Sub-plan | S, O | A5, A6 | G7a–b | Not started |
@@ -973,9 +973,9 @@ Each gate is answered in its phase section. Record answers here and in the progr
 | G2b | A2 | Choosing the day to analyze | Day type → typical date, changeable | Exact date always (Option B) | 2026-11-21 |
 | G3a | A3 | Detail of copied headway bands | Standard day parts | Standard day parts (Option A) | 2026-11-21 |
 | G3b | A3 | Copy stops too | Yes, up to 5 routes | Yes, up to 5 routes (Option A) | 2026-11-21 |
-| G4a | A4 | Where details appear | Left details panel | | |
-| G4b | A4 | Instant results for schedule-only figures | Yes | | |
-| G4c | A4 | Peak / off-peak definition | Shared editable day parts | | |
+| G4a | A4 | Where details appear | Left details panel | Left details panel (Option A) | 2026-11-21 |
+| G4b | A4 | Instant results for schedule-only figures | Yes | Yes (Option A) | 2026-11-21 |
+| G4c | A4 | Peak / off-peak definition | Shared editable day parts | Shared editable day parts (Option A) | 2026-11-21 |
 | G5a | A5 | One day → a year | Annual day counts | | |
 | G5b | A5 | Where reports live | One tabbed analysis | | |
 | G5c | A5 | Layover without vehicle blocks | Blocks if present, else setting | | |
@@ -1201,4 +1201,22 @@ Gates: G3a standard day parts; G3b copy stops (up to 5 routes; the UI copies one
 **Hand-off:**
 - Day parts are `GtfsSchedule.DEFAULT_DAY_PARTS`; `headwayBands` and `serviceCopyPlan` take a `dayParts` argument, so A4 (G4c) can make them an editable setting.
 - Copies use one date per day type (analysis date if it is an ordinary day of that type, else the busiest such date).
+
+### A4 — 2026-11-21
+
+Gates: G4a left details panel; G4b instant results; G4c the shared, editable parts of the day.
+
+- Sub-plan [Opus]: `docs/archive/A4-plan.md`. Shape decision: the stop **Coverage** tab's Census figures (¼ / ½ mi population, households, workers, equity shares) move to A6, which builds the block method on real schedules; A4 ships the schedule-only part as a **Spacing** tab. The phase text allowed the sub-plan to decide this.
+- A4.1 engine [Haiku, xhigh]: `stopDepartures`, `stopSummary`, `stopSpacing`, `routeSchedule`, `feedOverview`; 21 golden cases (`a4-*`), all hand-checked against the mini fixture, no existing value changed. Card was precise enough for Haiku to succeed first time.
+- A4.2 dock view and click ownership [Opus]: `App.openDockView` / `refreshDockView` / `getDockViewKey` in `feature-attributes.js`; `editing.js` asks `App.gtfsPickAt` when no drawn feature is under a click; the MapLibre click popup is removed (hover tooltip and right-click menu stay); `App.gtfsDayParts`; instant redraws.
+- A4.3 tabs, Overview and test [Sonnet]: Trips / Spacing / Stops / Schedule tabs, Overview + Files tabs in the GTFS panel with the day-parts editor, `test/browser/gtfs-details.test.mjs` (19 checks). `test/browser/gtfs-schedule.test.mjs` gained one click on the new Files tab (deliberate UI change, by Opus).
+- A4.4 review [Opus]: `code-review` at high, 10 findings, all fixed directly: routes without shapes dropped from stop figures when any route was hidden; day-part inputs lost focus mid-edit; a route view's swatch repainted by type-colour changes; GTFS clicks in presentation mode (now skipped); unassigned shapes showed no shape id or highlight; session restore didn't redraw for restored day parts; Copy as Point at 0,0 for stops without coordinates; a dead `routes.txt` fallback; per-redraw feed-wide accessibility scan; panel tabs now follow the `[data-tab]` + `switchTab` convention.
+- Performance (RTD, busiest stop 17717, 713 departures): open 8 ms, Trips 27 ms, Show all 36 ms, Spacing 35 ms, route Schedule 12 ms, date change redraw 22 ms.
+
+**Hand-off:**
+- Engine: `GtfsSchedule.stopDepartures(feed, date, stopId, {routeIds})`, `stopSummary(feed, date, stopId, {routeIds, dayParts})`, `stopSpacing(feed, date, stopId, {routeIds})`, `routeSchedule(feed, date, routeId, {dayParts})`, `feedOverview(feed, {today, dates})`. Peak = parts `am`+`pm`, off-peak = `midday`.
+- Day parts: `App.gtfsDayParts.get()/set(starts)/reset()/isDefault()`; session key `gtfs-browse.dayParts`.
+- Details: `App.gtfsOpenDetails({kind:"stop", stopId} | {kind:"route", routeId, shapeId})`; private tab lists `_stopTabs` / `_routeTabs` in `gtfs.js` take `{id, label, render(el, id, state, refresh)}` — A5 adds the route Cost tab by pushing onto `_routeTabs`; A6 adds the stop Coverage tab to `_stopTabs`.
+- Hidden routes: private `scheduleRouteIds(includeHidden)` gives the `routeIds` filter (null = all).
+- `#gtfsHealth` in the Overview is reserved for A7's feed-health flags.
 

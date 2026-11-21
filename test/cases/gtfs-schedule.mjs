@@ -256,4 +256,53 @@ add("note-no-service-and-unshaped", noteCall(
   [recon("weekday", "20260112", 0, 0, 0, 0, 0), recon("saturday", "20260124", 0, 0, 0, 0, 0)],
   { weekday: 3, saturday: 0, sunday: 1 }, { weekday: "20260112", saturday: "20260124", sunday: null }));
 
+// ---- details views -----------------------------------------------------
+// Stop, route and feed summaries. The values were checked by hand against test/fixtures/gtfs/mini; the
+// comment above each group says what the fixture requires. Times are service-day seconds.
+const A4_PARTS = [{ id: "am", label: "A", start: "00:00" }, { id: "midday", label: "B", start: "12:00" }];
+const A4_DATES = { weekday: D1, saturday: D3, sunday: null };
+
+// stopDepartures at S1 on 0112: B1_W_1 and B1_W_3 end at S1, so their rows are last-row arrivals; F1 adds
+// its generated runs under F1_W_FREQ@HH:MM:SS and F1_W_PM@HH:MM:SS ids.
+add("a4-stop-departures-s1-d1", mini("stopDepartures", D1, "S1"));
+add("a4-stop-departures-s1-b1-only", mini("stopDepartures", D1, "S1", { routeIds: ["B1"] }));
+// The parent STN has no stop times of its own; its child platform P1 supplies the row, with stopId "P1".
+add("a4-stop-departures-stn-d1", mini("stopDepartures", D1, "STN"));
+// S3 is the last stop of B1 direction 0, so its rows are arrivals and sort by arr.
+add("a4-stop-departures-s3-d1", mini("stopDepartures", D1, "S3"));
+add("a4-stop-departures-unknown", mini("stopDepartures", D1, "NOPE"));
+
+// stopSummary: S1 on 0112 has 21 departures (B1 3, F1 18). With the default parts AM holds 12, PM 8 and
+// night 1; early, midday and evening are empty.
+add("a4-stop-summary-s1-d1", mini("stopSummary", D1, "S1", {}));
+add("a4-stop-summary-s1-d1-two-parts", mini("stopSummary", D1, "S1", { dayParts: A4_PARTS }));
+add("a4-stop-summary-s1-no-service", mini("stopSummary", "20250101", "S1", {}));
+// S2 includes the interpolated 08:10 time of B1_W_2.
+add("a4-stop-summary-s2-d1", mini("stopSummary", D1, "S2", {}));
+
+// stopSpacing: S2 has a neighbour on each side in both B1 patterns, 855 m each way. S1 is the first stop of
+// B1 direction 0 and the last of direction 1; on F1 it is the first stop, with F2 1112 m on. STN's platform
+// P1 starts R1 direction 0 and ends direction 1, so one neighbour is null on each row.
+add("a4-stop-spacing-s2-d1", mini("stopSpacing", D1, "S2"));
+add("a4-stop-spacing-s1-d1", mini("stopSpacing", D1, "S1"));
+add("a4-stop-spacing-stn-d1", mini("stopSpacing", D1, "STN"));
+
+// routeSchedule: B1 on 0112 has 5 trips, 3 in direction 0 and 2 in direction 1; the invalid B1_W_BAD is
+// left out. F1 has 17 generated frequency runs and one ordinary trip. R1 on Saturday 0124 includes the
+// EVT trip R1_E_0.
+add("a4-route-schedule-b1-d1", mini("routeSchedule", D1, "B1", {}));
+add("a4-route-schedule-f1-d1", mini("routeSchedule", D1, "F1", {}));
+add("a4-route-schedule-r1-d3", mini("routeSchedule", D3, "R1", {}));
+add("a4-route-schedule-unknown", mini("routeSchedule", D1, "NOPE", {}));
+add("a4-route-schedule-b1-d1-two-parts", mini("routeSchedule", D1, "B1", { dayParts: A4_PARTS }));
+
+// feedOverview: the mini calendar ends 2026-02-01, so daysLeft is 22 on 20260110 and -28 on 20260301.
+// Counts: 3 routes, 6 stops (the station is not one of them), 1 station, 16 trips.
+add("a4-feed-overview-mini", mini("feedOverview", { today: "20260110", dates: A4_DATES }));
+add("a4-feed-overview-expired", mini("feedOverview", { today: "20260301", dates: A4_DATES }));
+add("a4-feed-overview-no-today", mini("feedOverview", { today: null, dates: A4_DATES }));
+// No calendar at all: no range, so daysLeft is null even with a valid today; dayTypes count zero trips.
+add("a4-feed-overview-agency-only", inline({ "agency.txt": "agency_name\nSolo\n" }, "feedOverview",
+  { today: "20260110", dates: A4_DATES }));
+
 export default { scripts: ["js/core/gtfs-schedule.js"], cases };

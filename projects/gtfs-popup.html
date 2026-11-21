@@ -3,17 +3,33 @@
      Two-column layout: left = file directory, right = CSV table view. -->
 
 <div class="gtfs-popup-layout">
+  <div class="gtfs-ptabs" role="tablist"><button type="button" class="gtfs-ptab active" data-tab="overview" role="tab" aria-selected="true">Overview</button><button type="button" class="gtfs-ptab" data-tab="files" role="tab" aria-selected="false">Files</button></div>
+
+  <div id="gtfsOverview" class="gtfs-overview gtfs-ptab-pane" data-tab="overview">
+    <div id="gtfsOverviewEmpty" class="gtfs-empty-state">No GTFS feed loaded.<br>Use Add Data&nbsp;(+) &rarr; GTFS to load a feed.</div>
+    <div id="gtfsOverviewBody"></div>
+
+    <div id="gtfsDateControls" class="gtfs-date-controls" style="display:none;">
+      <div class="rf-section-title">Day to analyze</div>
+      <input type="date" id="gtfsAnalysisDate" class="rf-select" aria-label="Day to analyze">
+      <div id="gtfsAnalysisDateDesc" class="gtfs-date-desc"></div>
+      <div id="gtfsAnalysisDateRange" class="gtfs-date-range"></div>
+    </div>
+
+    <div id="gtfsDayParts" class="gtfs-dayparts" style="display:none;">
+      <div class="rf-section-title">Parts of the day</div>
+      <div id="gtfsDayPartsRows"></div>
+      <div class="btn-row"><button type="button" id="gtfsDayPartsReset" class="rf-btn-sm">Reset to standard</button></div>
+      <div id="gtfsDayPartsMsg" class="gtfs-date-desc"></div>
+    </div>
+    <div id="gtfsHealth" hidden></div>
+  </div>
+
+  <div class="gtfs-ptab-pane" data-tab="files" hidden>
   <div class="rf-section-row">
 
     <!-- Left: file directory + map controls -->
     <div class="rf-settings-col">
-
-      <div id="gtfsDateControls" class="gtfs-date-controls" style="display:none;">
-        <div class="rf-section-title">Day to analyze</div>
-        <input type="date" id="gtfsAnalysisDate" class="rf-select" aria-label="Day to analyze">
-        <div id="gtfsAnalysisDateDesc" class="gtfs-date-desc"></div>
-        <div id="gtfsAnalysisDateRange" class="gtfs-date-range"></div>
-      </div>
 
       <div class="rf-section-title">Feed Files</div>
       <div id="gtfsFileList" class="gtfs-file-list">
@@ -55,5 +71,6 @@
 
     </div>
 
+  </div>
   </div>
 </div>

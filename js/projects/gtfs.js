@@ -17,8 +17,7 @@
   var _showRoutes   = true;
   var _showStops    = true;
   var _shapesFC     = null;  // stored shapes FeatureCollection for full-geometry lookup
-  var _hoverPopup   = null;  // maplibregl.Popup for hover tooltips
-  var _clickPopup   = null;  // maplibregl.Popup for click details
+  var _hoverPopup   = null;  // maplibregl.Popup for hover tooltips (clicks open the attributes dock)
   var _layerListeners = [];  // [{ event, layerId, handler }] for explicit map.off() on tear-down
 
   // ---- Stop selection state (docs/archive/gtfs-stop-selection-plan.md Phase 2) ----
@@ -399,15 +398,12 @@
       _hoverPopup = new maplibregl.Popup({
         closeButton: false, closeOnClick: false, maxWidth: "280px"
       });
-    if (!_clickPopup)
-      _clickPopup = new maplibregl.Popup({
-        closeButton: true, closeOnClick: true, maxWidth: "320px"
-      });
   }
 
   function removePopups() {
     if (_hoverPopup) _hoverPopup.remove();
-    if (_clickPopup) _clickPopup.remove();
+    if (typeof App.getDockViewKey === "function" && /^gtfs:/.test(App.getDockViewKey() || "") &&
+        typeof App.closeAttrDock === "function") App.closeAttrDock({ keepSelection: true });
   }
 
   // ---- ZIP / CSV parsing ----
@@ -696,6 +692,7 @@
       try { fn(_analysisDate); } catch (e) { console.warn("GTFS date listener failed:", e); }
     });
     renderDateControls();
+    if (isPopupVisible()) renderOverview();
   }
 
   // Keeps a session's date when the feed covers it; otherwise starts on the
@@ -776,6 +773,7 @@
     updateDropdownUI();
     changed();
     if (isPopupVisible()) {
+      renderOverview();
       renderFileList();
       showSelectPrompt();
       var mc = document.getElementById("gtfsMapControls");
@@ -1349,16 +1347,6 @@
         if (_hoverPopup) _hoverPopup.remove();
       });
 
-      addListener("click", layerId, function (e) {
-        if (!e.features || !e.features.length) return;
-        if (_hoverPopup) _hoverPopup.remove();
-        ensurePopups();
-        _clickPopup
-          .setLngLat(e.lngLat)
-          .setHTML(buildClickHTML(e.features[0].properties, isStop))
-          .addTo(map);
-      });
-
       addListener("contextmenu", layerId, function (e) {
         var feats = featuresNear(e, layerId, function (p) { return keyFor(p, isStop); });
         if (!feats.length) return;
@@ -1517,55 +1505,6 @@
       }
       html += buildHoverEntry(list[i].properties, isStop, !!flagged[i]);
     }
-    html += "</div>";
-    return html;
-  }
-
-  function detailRow(label, val) {
-    if (val == null || val === "") return "";
-    return '<div class="gtfs-detail-row">' +
-           '<span class="gtfs-detail-key">' + escHtml(label) + ':</span> ' +
-           '<span class="gtfs-detail-val">' + escHtml(String(val)) + '</span>' +
-           '</div>';
-  }
-
-  function buildClickHTML(props, isStop) {
-    var html = '<div class="gtfs-detail">';
-
-    if (isStop) {
-      var title = props.stop_name || props.stop_id || "Stop";
-      html += '<div class="gtfs-detail-title">' + escHtml(title) + '</div>';
-      html += detailRow("stop_id",   props.stop_id);
-      html += detailRow("stop_code", props.stop_code);
-      html += detailRow("desc",      props.stop_desc);
-      var ltLabel = LOCATION_TYPE_LABELS[String(props.location_type)] || "";
-      if (ltLabel) html += detailRow("type", ltLabel);
-      var wlLabel = WHEELCHAIR_LABELS[String(props.wheelchair_boarding)] || "";
-      if (wlLabel) html += detailRow("wheelchair", wlLabel);
-      html += detailRow("parent_station", props.parent_station);
-      html += detailRow("zone_id",        props.zone_id);
-    } else {
-      // Build title with optional color swatch
-      var routeName = props.route_short_name || props.route_long_name || props.shape_id || "Route";
-      var titleHtml = '<div class="gtfs-detail-title">';
-      var color = (props.route_color || "").replace(/^#/, "");
-      if (color && color.toLowerCase() !== "ffffff" && color.length === 6) {
-        titleHtml += '<span class="gtfs-route-swatch" style="background:#' +
-                     escHtml(color) + '"></span>';
-      }
-      titleHtml += escHtml(routeName) + "</div>";
-      html += titleHtml;
-
-      html += detailRow("route_id",    props.route_id);
-      html += detailRow("short_name",  props.route_short_name);
-      html += detailRow("long_name",   props.route_long_name);
-      html += detailRow("desc",        props.route_desc);
-      var rtLabel = ROUTE_TYPE_LABELS[parseInt(props.route_type, 10)] || props.route_type || "";
-      if (rtLabel) html += detailRow("mode", rtLabel);
-      html += detailRow("agency_id",   props.agency_id);
-      html += detailRow("shape_id",    props.shape_id);
-    }
-
     html += "</div>";
     return html;
   }
@@ -1822,6 +1761,8 @@
       });
     }
 
+    wireOverview();
+
     var clearBtn = document.getElementById("gtfsClearBtn");
     if (clearBtn) {
       clearBtn.addEventListener("click", function () {
@@ -1838,6 +1779,8 @@
 
     renderFileList();
     renderDateControls();
+    renderOverview();
+    switchTab();
 
     if (_selectedFile && _gtfsData && _gtfsData.has(_selectedFile)) {
       renderTable(_selectedFile);
@@ -1927,6 +1870,7 @@
       map.setFilter("gtfs-shapes-layer", buildVisibilityFilter(_hiddenRoutes, _hiddenShapes));
     }
     if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+    refreshDetails();
     if (App.cache && typeof App.cache.save === "function") App.cache.save();
   }
   function applyPendingHidden() {
@@ -2005,6 +1949,658 @@
     });
     if (any) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 16 });
   };
+
+  // ---- Day parts: one setting for copied headway bands and every headway report ----
+
+  var _dayParts = null;   // null = GtfsSchedule.DEFAULT_DAY_PARTS
+
+  function dayParts() { return _dayParts || window.GtfsSchedule.DEFAULT_DAY_PARTS; }
+
+  // starts: one "HH:MM" per default part, the first fixed at 00:00 (so every trip falls in a part),
+  // strictly increasing. Ids and labels stay the defaults: reports find peak/off-peak by id.
+  function partsFromStarts(starts) {
+    var D = window.GtfsSchedule.DEFAULT_DAY_PARTS;
+    if (!Array.isArray(starts) || starts.length !== D.length || starts[0] !== "00:00") return null;
+    var prev = -1, out = [];
+    for (var i = 0; i < D.length; i++) {
+      var m = /^(\d{2}):(\d{2})$/.exec(String(starts[i]));
+      if (!m || +m[1] > 23 || +m[2] > 59) return null;
+      var mins = +m[1] * 60 + +m[2];
+      if (mins <= prev) return null;
+      prev = mins;
+      out.push({ id: D[i].id, label: D[i].label, start: starts[i] });
+    }
+    return out;
+  }
+
+  function isDefaultParts(parts) {
+    var D = window.GtfsSchedule.DEFAULT_DAY_PARTS;
+    return parts.every(function (p, i) { return p.start === D[i].start; });
+  }
+
+  App.gtfsDayParts = {
+    get: function () { return dayParts().map(function (p) { return { id: p.id, label: p.label, start: p.start }; }); },
+    // Returns false (and changes nothing) for an invalid list.
+    set: function (starts) {
+      var parts = partsFromStarts(starts);
+      if (!parts) return false;
+      _dayParts = isDefaultParts(parts) ? null : parts;
+      afterDetailsInputChange();
+      if (App.cache && typeof App.cache.save === "function") App.cache.save();
+      return true;
+    },
+    reset: function () { return App.gtfsDayParts.set(window.GtfsSchedule.DEFAULT_DAY_PARTS.map(function (p) { return p.start; })); },
+    isDefault: function () { return !_dayParts; }
+  };
+
+  // ---- Stop and route details (read-only views in the attributes dock) ----
+
+  var STOP_LAYER = "gtfs-stops-layer", SHAPE_LAYER = "gtfs-shapes-layer";
+
+  // Route ids the schedule figures count. Hidden routes drop out unless includeHidden, so the
+  // details agree with what the map shows. Null = every route (nothing hidden).
+  function scheduleRouteIds(includeHidden) {
+    if (includeHidden || !_feed) return null;
+    var hidden = Object.keys(_hiddenRoutes);
+    if (!hidden.length) return null;
+    // Every timetable route except the hidden ones: routes without a drawn shape are not in the
+    // route index, but are never hidden.
+    return Object.keys(_feed._routes).filter(function (id) { return !_hiddenRoutes[id]; });
+  }
+
+  function routeRow(routeId) {
+    var t = _feed && _feed.tables && _feed.tables["routes.txt"];
+    var rows = (t && t.rows) || [];
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i].route_id || "").trim() === routeId) return rows[i];
+    }
+    return null;
+  }
+
+  // A key/value table of every field of one CSV row, in file order, with friendly
+  // labels added for coded fields.
+  function fieldTable(el, row, friendly) {
+    var tbl = document.createElement("table");
+    tbl.className = "gtfs-fields";
+    var body = document.createElement("tbody");
+    function add(k, v, cls) {
+      var tr = document.createElement("tr");
+      if (cls) tr.className = cls;
+      var th = document.createElement("th"); th.scope = "row"; th.textContent = k;
+      var td = document.createElement("td"); td.textContent = v;
+      tr.appendChild(th); tr.appendChild(td); body.appendChild(tr);
+    }
+    (friendly || []).forEach(function (f) { if (f[1]) add(f[0], f[1], "gtfs-fields-friendly"); });
+    Object.keys(row || {}).forEach(function (k) {
+      var v = row[k] == null ? "" : String(row[k]).trim();
+      if (v !== "") add(k, v);
+    });
+    tbl.appendChild(body);
+    el.appendChild(tbl);
+  }
+
+  function emptyNote(el, text) {
+    var d = document.createElement("div");
+    d.className = "ad-empty";
+    d.textContent = text;
+    el.appendChild(d);
+  }
+
+  function renderStopDetails(el, stopId) {
+    var row = stopRow(stopId);
+    if (!row) { emptyNote(el, "This stop is not in stops.txt."); return; }
+    // Same rule as GtfsSchedule.stopAccessibility, for one stop (that call walks the whole feed).
+    var s = _feed && _feed._stops[stopId], wl = "";
+    if (s) {
+      var v = s.wheelchair, inherited = false;
+      if (v !== "1" && v !== "2" && s.parent && _feed._stops[s.parent]) { v = _feed._stops[s.parent].wheelchair; inherited = true; }
+      if (v === "1" || v === "2") wl = WHEELCHAIR_LABELS[v] + (inherited ? " (from its station)" : "");
+    }
+    fieldTable(el, row, [
+      ["Type", LOCATION_TYPE_LABELS[String(row.location_type || "0").trim() || "0"] || ""],
+      ["Wheelchair", wl]
+    ]);
+  }
+
+  function renderRouteDetails(el, routeKey) {
+    var r = findIndexRoute(routeKey);
+    var row = r && r.route_id ? routeRow(r.route_id) : null;
+    if (!r) { emptyNote(el, "This route is no longer in the feed."); return; }
+    var mode = ROUTE_TYPE_LABELS[parseInt(r.type, 10)] || "";
+    fieldTable(el, row || { route_id: r.route_id }, [
+      ["Mode", mode],
+      ["Shapes", String(r.shapes.length)]
+    ]);
+  }
+
+  // Filled in by the details tab renderers below; each takes (el, id, state).
+  var _stopTabs = [
+    { id: "details", label: "Details", render: function (el, id) { renderStopDetails(el, id); } }
+  ];
+  var _routeTabs = [
+    { id: "details", label: "Details", render: function (el, id) { renderRouteDetails(el, id); } }
+  ];
+
+  // Per-view switches (show hidden routes, sort order) that survive instant refreshes.
+  var _viewState = {};
+
+  function viewTabs(list, id, key) {
+    var state = _viewState[key] || (_viewState[key] = {});
+    return list.map(function (t) {
+      return { id: t.id, label: t.label, render: function (el) { t.render(el, id, state, refreshDetails); } };
+    });
+  }
+
+  function stopView(stopId) {
+    var row = stopRow(stopId) || {};
+    var name = String(row.stop_name || "").trim() || stopId;
+    var code = String(row.stop_code || "").trim();
+    var key = "gtfs:stop:" + stopId;
+    var lon = parseFloat(row.stop_lon), lat = parseFloat(row.stop_lat);
+    var placed = isFinite(lon) && isFinite(lat);
+    var toolbar = [];
+    if (placed) {
+      toolbar.push({ label: "Zoom to", action: function () {
+        if (App.map) App.map.easeTo({ center: [lon, lat], zoom: Math.max(App.map.getZoom(), 16) });
+      } });
+      toolbar.push({ label: "Copy as Point", action: function () {
+        copyStopToPoint(Object.assign({ stop_id: stopId }, row), { lng: lon, lat: lat });
+        if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+      } });
+    }
+    toolbar.push({ label: App.gtfsStops.has(stopId) ? "Remove from stop selection" : "Add to stop selection", action: function () {
+      if (App.gtfsStops.has(stopId)) App.gtfsStops.remove([stopId]); else App.gtfsStops.add([stopId]);
+      refreshDetails();
+    } });
+    return {
+      key: key,
+      title: name,
+      typeText: "GTFS stop · " + (code ? "#" + code : stopId),
+      tabs: viewTabs(_stopTabs, stopId, key),
+      toolbar: toolbar
+    };
+  }
+
+  // shapeId names the clicked shape; it matters for shapes without a route, which all share one key.
+  function routeView(routeKey, shapeId) {
+    var r = findIndexRoute(routeKey);
+    var unassigned = routeKey === UNASSIGNED_KEY;
+    var key = "gtfs:route:" + routeKey + (unassigned && shapeId ? "|" + shapeId : "");
+    var color = r && r.color ? r.color : null;
+    var mode = ROUTE_TYPE_LABELS[parseInt(r ? r.type : "", 10)] || "route";
+    var toolbar = [
+      { label: "Zoom to", action: function () {
+        App.gtfsZoomTo(unassigned && shapeId ? { shapeId: shapeId } : { routeId: routeKey });
+      } }
+    ];
+    if (r && !unassigned && App.gtfsHasSchedule(routeKey)) {
+      toolbar.push({ label: "Copy as Service with schedule", action: function () {
+        var made = App.gtfsCopy({ routeId: routeKey, mode: "service" }) || [];
+        if (made.length && typeof App.selectFeature === "function") App.selectFeature("line", made[0]);
+        if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
+        if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();
+        if (made.note && typeof App.gtfsShowCopyNote === "function") App.gtfsShowCopyNote(made.note);
+      } });
+    }
+    var typeText = unassigned
+      ? "GTFS shape" + (shapeId ? " · " + shapeId : "") + " · no route"
+      : "GTFS " + mode.toLowerCase() + (r && r.long && r.short ? " · " + r.long : "");
+    return {
+      key: key,
+      title: r ? routeDisplayName(r) : String(routeKey),
+      typeText: typeText,
+      color: color,
+      tabs: viewTabs(_routeTabs, routeKey, key),
+      toolbar: toolbar,
+      onClose: function () {
+        if (typeof App.gtfsRestoreHighlight === "function") App.gtfsRestoreHighlight();
+        else App.gtfsHighlight(null);
+      }
+    };
+  }
+
+  var _openTarget = null;   // what the open GTFS view shows, for in-place redraws
+
+  function viewFor(target) {
+    if (!target) return null;
+    if (target.kind === "stop") return stopView(String(target.stopId));
+    if (target.kind === "route") return routeView(target.routeId, target.shapeId);
+    return null;
+  }
+
+  // The GTFS stop (preferred) or route under a map point, or null.
+  App.gtfsPickAt = function (point) {
+    var map = App.map;
+    if (!map || !point) return null;
+    var T = 5, box = [[point.x - T, point.y - T], [point.x + T, point.y + T]];
+    if (map.getLayer(STOP_LAYER)) {
+      var st = map.queryRenderedFeatures(box, { layers: [STOP_LAYER] });
+      for (var i = 0; i < st.length; i++) {
+        if (st[i].properties && st[i].properties.stop_id != null) return { kind: "stop", stopId: String(st[i].properties.stop_id) };
+      }
+    }
+    if (map.getLayer(SHAPE_LAYER)) {
+      var sh = map.queryRenderedFeatures(box, { layers: [SHAPE_LAYER] });
+      if (sh.length) {
+        var p = sh[0].properties || {};
+        return { kind: "route", routeId: p.route_id ? String(p.route_id) : UNASSIGNED_KEY, shapeId: p.shape_id };
+      }
+    }
+    return null;
+  };
+
+  // Gesture entry point: opens the dock on a GTFS stop or route.
+  App.gtfsOpenDetails = function (target) {
+    var view = viewFor(target);
+    if (!view || typeof App.openDockView !== "function") return;
+    if (_hoverPopup) _hoverPopup.remove();
+    App.openDockView(view);
+    _openTarget = target;
+    if (target.kind === "route") {
+      App.gtfsHighlight(target.routeId === UNASSIGNED_KEY && target.shapeId ? { shapeId: target.shapeId } : { routeId: target.routeId });
+    }
+  };
+
+  // Schedule-only figures never go stale: any change to their inputs redraws them at once.
+  function refreshDetails() {
+    var key = typeof App.getDockViewKey === "function" ? App.getDockViewKey() : null;
+    if (!key || key.indexOf("gtfs:") !== 0 || !_openTarget) return;
+    var view = viewFor(_openTarget);
+    if (view && view.key === key) App.refreshDockView({ view: view });
+  }
+
+  function afterDetailsInputChange() {
+    refreshDetails();
+    if (isPopupVisible() && typeof renderOverview === "function") renderOverview();
+  }
+
+  _dateListeners.push(function () { refreshDetails(); });
+
+  // ---- Details tabs and feed overview ----
+
+  function clockText(sec) {
+    if (typeof sec !== "number" || !isFinite(sec) || sec < 0) return "—";
+    var mins = Math.floor(Math.round(sec) / 60), over = mins >= 1440;
+    if (over) mins -= 1440;
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m + (over ? " (+1)" : "");
+  }
+
+  function minutesText(sec) {
+    return typeof sec !== "number" || !isFinite(sec) ? "—" : Math.round(sec / 60) + " min";
+  }
+
+  function distanceText(m) {
+    if (typeof m !== "number" || !isFinite(m)) return "—";
+    var ft = m * 3.28084;
+    return ft < 1000 ? Math.round(ft) + " ft" : (m / 1609.344).toFixed(2) + " mi";
+  }
+
+  function stopName(id) {
+    var row = stopRow(id);
+    var n = row ? String(row.stop_name || "").trim() : "";
+    return n || id;
+  }
+
+  function routeName(routeId) {
+    var r = findIndexRoute(routeId);
+    return r ? routeDisplayName(r) : routeId;
+  }
+
+  function dirText(d) { return d === "0" ? "Direction 0" : d === "1" ? "Direction 1" : "No direction"; }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  // A table whose cells are plain text. numCols: indexes of right-aligned numeric columns.
+  function textTable(cls, heads, numCols) {
+    var tbl = el("table", "gtfs-dt-table" + (cls ? " " + cls : ""));
+    var tr = el("tr");
+    heads.forEach(function (h, i) {
+      var th = el("th", numCols.indexOf(i) >= 0 ? "num" : "", h);
+      th.scope = "col";
+      tr.appendChild(th);
+    });
+    var thead = el("thead");
+    thead.appendChild(tr);
+    var body = el("tbody");
+    tbl.appendChild(thead);
+    tbl.appendChild(body);
+    tbl.addRow = function (cells, title) {
+      var r = el("tr");
+      if (title) r.title = title;
+      cells.forEach(function (c, i) { r.appendChild(el("td", numCols.indexOf(i) >= 0 ? "num" : "", c)); });
+      body.appendChild(r);
+    };
+    return tbl;
+  }
+
+  function partsTable(parts, countHead) {
+    var t = textTable("", ["Part", "From", countHead, "Every"], [1, 2, 3]);
+    parts.forEach(function (p) { t.addRow([p.label, p.start, String(p.departures != null ? p.departures : p.trips), minutesText(p.headwaySec)]); });
+    return t;
+  }
+
+  function everyLine(o) {
+    return "Peak every " + minutesText(o.peakHeadwaySec) + " · Off-peak every " + minutesText(o.offPeakHeadwaySec);
+  }
+
+  var TRIP_ROW_LIMIT = 200;
+
+  function renderStopTrips(box, id, state, refresh) {
+    var S = window.GtfsSchedule, date = App.gtfsAnalysisDate.get();
+    if (!_feed || !date) { emptyNote(box, "Load a GTFS feed with stop_times.txt to see trips."); return; }
+    var mode = state.mode === "arr" ? "arr" : "dep";
+    var sort = state.sort === "route" ? "route" : "time";
+
+    var ctl = el("div", "gtfs-dt-controls");
+    [["dep", "Departures"], ["arr", "Arrivals"]].forEach(function (m) {
+      var b = el("button", "gtfs-dt-seg rf-btn-sm" + (mode === m[0] ? " active" : ""), m[1]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", mode === m[0] ? "true" : "false");
+      b.addEventListener("click", function () { state.mode = m[0]; state.showAll = false; refresh(); });
+      ctl.appendChild(b);
+    });
+    var sel = el("select", "rf-select gtfs-dt-sort");
+    sel.setAttribute("aria-label", "Sort trips");
+    [["time", "By time"], ["route", "By route"]].forEach(function (o) {
+      var op = el("option", "", o[1]);
+      op.value = o[0];
+      if (o[0] === sort) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener("change", function () { state.sort = sel.value; refresh(); });
+    ctl.appendChild(sel);
+    if (scheduleRouteIds(false)) {
+      var lab = el("label", "gtfs-dt-hidden");
+      var cb = el("input");
+      cb.type = "checkbox";
+      cb.checked = !!state.includeHidden;
+      cb.addEventListener("change", function () { state.includeHidden = cb.checked; state.showAll = false; refresh(); });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" Show hidden routes"));
+      ctl.appendChild(lab);
+    }
+    box.appendChild(ctl);
+
+    var routeIds = scheduleRouteIds(!!state.includeHidden);
+    var sum = S.stopSummary(_feed, date, id, { routeIds: routeIds, dayParts: dayParts() });
+    var summary = el("div", "gtfs-dt-summary");
+    summary.appendChild(el("div", "", describeDate(date).split(" · ")[0]));
+    if (!sum.departures) {
+      summary.appendChild(el("div", "", "No departures on this day."));
+    } else {
+      summary.appendChild(el("div", "", sum.departures + " departure" + (sum.departures === 1 ? "" : "s") +
+        " · first " + clockText(sum.span.first) + " · last " + clockText(sum.span.last)));
+      summary.appendChild(el("div", "", everyLine(sum)));
+      summary.appendChild(partsTable(sum.parts, "Departures"));
+      var chips = el("div", "gtfs-dt-chips");
+      sum.routes.forEach(function (r) {
+        chips.appendChild(el("span", "gtfs-dt-chip", routeName(r.routeId) + " · " + r.departures));
+      });
+      summary.appendChild(chips);
+    }
+    box.appendChild(summary);
+
+    var items = [];
+    S.stopDepartures(_feed, date, id, { routeIds: routeIds }).forEach(function (r) {
+      var t = mode === "dep" ? (!r.last && r.dep >= 0 ? r.dep : -1) : r.arr;
+      if (t >= 0) items.push({ t: t, route: routeName(r.routeId), row: r });
+    });
+    items.sort(function (a, b) {
+      var c = sort === "route" ? naturalCompare(a.route, b.route) : 0;
+      return c || a.t - b.t || (a.row.tripId < b.row.tripId ? -1 : a.row.tripId > b.row.tripId ? 1 : 0);
+    });
+    if (items.length) {
+      var tbl = textTable("gtfs-dt-trips", ["Time", "Route", "To"], []);
+      var shown = state.showAll ? items : items.slice(0, TRIP_ROW_LIMIT);
+      shown.forEach(function (it) {
+        var to = it.row.headsign;
+        if (!to) {
+          var sts = S.tripStopTimes(_feed, it.row.tripId);
+          to = sts.length ? stopName(sts[sts.length - 1].stopId) : "—";
+        }
+        tbl.addRow([clockText(it.t), it.route, to], it.row.tripId);
+      });
+      box.appendChild(tbl);
+      if (shown.length < items.length) {
+        var more = el("button", "rf-btn-sm", "Show all " + items.length);
+        more.type = "button";
+        more.addEventListener("click", function () { state.showAll = true; refresh(); });
+        box.appendChild(more);
+      }
+    } else if (mode === "arr") {
+      emptyNote(box, "No arrivals on this day.");
+    }
+    emptyNote(box, "Times are from the timetable for the day to analyze. Change the day in GTFS Feed Attributes.");
+  }
+
+  function renderStopSpacing(box, id) {
+    var date = App.gtfsAnalysisDate.get();
+    if (!_feed || !date) { emptyNote(box, "Load a GTFS feed with stop_times.txt to see spacing."); return; }
+    var rows = window.GtfsSchedule.stopSpacing(_feed, date, id, { routeIds: scheduleRouteIds(false) });
+    if (!rows.length) { emptyNote(box, "No route stops here on this day."); return; }
+    var tbl = textTable("", ["Route", "Direction", "Previous stop", "Next stop"], []);
+    function side(stopId, m) { return stopId ? stopName(stopId) + " · " + distanceText(m) : "—"; }
+    rows.forEach(function (r) {
+      tbl.addRow([routeName(r.routeId), dirText(r.directionId), side(r.prevStopId, r.prevMeters), side(r.nextStopId, r.nextMeters)]);
+    });
+    box.appendChild(tbl);
+    emptyNote(box, "Straight-line distance to the neighbouring stops on each route's most common pattern.");
+  }
+
+  // The route's timetable for the day to analyze, or null after writing the reason into box.
+  function routeTimetable(box, routeKey) {
+    var r = findIndexRoute(routeKey), date = App.gtfsAnalysisDate.get();
+    if (!_feed || !date || !r || !r.route_id) { emptyNote(box, "No timetable for these shapes."); return null; }
+    var sched = window.GtfsSchedule.routeSchedule(_feed, date, r.route_id, { dayParts: dayParts() });
+    if (!sched.trips) { emptyNote(box, "This route does not run on this day."); return null; }
+    return { route: r, date: date, sched: sched };
+  }
+
+  function directionHeading(d) {
+    var hs = d.patterns.length ? d.patterns[0].headsign : "";
+    return el("h4", "gtfs-dt-head", dirText(d.directionId) + (hs ? " · to " + hs : "") +
+      " (" + d.trips + " trip" + (d.trips === 1 ? "" : "s") + ")");
+  }
+
+  function renderRouteStops(box, routeKey) {
+    var tt = routeTimetable(box, routeKey);
+    if (!tt) return;
+    tt.sched.directions.forEach(function (d) {
+      box.appendChild(directionHeading(d));
+      var ol = el("ol", "gtfs-dt-stops");
+      (d.patterns.length ? d.patterns[0].stops : []).forEach(function (sid) {
+        var li = el("li");
+        var b = el("button", "gtfs-dt-link", stopName(sid));
+        b.type = "button";
+        b.addEventListener("click", function () { App.gtfsOpenDetails({ kind: "stop", stopId: sid }); });
+        li.appendChild(b);
+        li.appendChild(el("span", "gtfs-dt-id", " " + sid));
+        ol.appendChild(li);
+      });
+      box.appendChild(ol);
+      if (d.patterns.length > 1) emptyNote(box, "Showing the most common of " + d.patterns.length + " stop patterns.");
+    });
+  }
+
+  function renderRouteSchedule(box, routeKey) {
+    var tt = routeTimetable(box, routeKey);
+    if (!tt) return;
+    var S = window.GtfsSchedule;
+    box.appendChild(el("div", "gtfs-dt-summary", describeDate(tt.date).split(" · ")[0]));
+    tt.sched.directions.forEach(function (d) {
+      box.appendChild(directionHeading(d));
+      var sum = el("div", "gtfs-dt-summary");
+      sum.appendChild(el("div", "", d.trips + " trip" + (d.trips === 1 ? "" : "s") +
+        (d.span ? " · first " + clockText(d.span.first) + " · last " + clockText(d.span.last) : "") +
+        " · " + (d.runningSec / 3600).toFixed(1) + " running hours"));
+      sum.appendChild(el("div", "", everyLine(d)));
+      sum.appendChild(partsTable(d.parts, "Trips"));
+      box.appendChild(sum);
+      var pt = textTable("", ["Trips", "Stops", "To"], [0, 1]);
+      d.patterns.forEach(function (p) {
+        var to = p.headsign || (p.stops.length ? stopName(p.stops[p.stops.length - 1]) : "—");
+        pt.addRow([String(p.trips), String(p.stops.length), to]);
+      });
+      box.appendChild(pt);
+    });
+    box.appendChild(el("h4", "gtfs-dt-head", "By day type"));
+    var reps = representativeDates();
+    var dt = textTable("", ["Day", "Date", "Trips"], [2]);
+    [["weekday", "Weekday"], ["saturday", "Saturday"], ["sunday", "Sunday"]].forEach(function (t) {
+      var date = reps[t[0]];
+      var n = date ? S.tripsOnDate(_feed, date, { routeIds: [tt.route.route_id] }).trips.length : 0;
+      dt.addRow([t[1], date ? isoOf(date) : "—", String(n)]);
+    });
+    box.appendChild(dt);
+    emptyNote(box, "Headways are the median gap between departures in each part of the day. Edit the parts of the day in GTFS Feed Attributes.");
+  }
+
+  _stopTabs.push(
+    { id: "trips", label: "Trips", render: renderStopTrips },
+    { id: "spacing", label: "Spacing", render: renderStopSpacing }
+  );
+  _routeTabs.push(
+    { id: "stops", label: "Stops", render: renderRouteStops },
+    { id: "schedule", label: "Schedule", render: renderRouteSchedule }
+  );
+
+  // ---- Feed attributes panel: Overview tab ----
+
+  var _popupTab = "overview";
+
+  // Panel tab switch, kept in the closure across opens.
+  function switchTab(id) {
+    if (id) _popupTab = id;
+    Array.prototype.forEach.call(document.querySelectorAll(".gtfs-ptab"), function (b) {
+      var on = b.getAttribute("data-tab") === _popupTab;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.tabIndex = on ? 0 : -1;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".gtfs-ptab-pane"), function (p) {
+      p.hidden = p.getAttribute("data-tab") !== _popupTab;
+    });
+  }
+
+  function wireOverview() {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll(".gtfs-ptab"));
+    tabs.forEach(function (b, i) {
+      b.addEventListener("click", function () { switchTab(b.getAttribute("data-tab")); });
+      b.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        var other = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+        switchTab(other.getAttribute("data-tab"));
+        other.focus();
+      });
+    });
+    switchTab();
+    var reset = document.getElementById("gtfsDayPartsReset");
+    if (reset) reset.addEventListener("click", function () {
+      var msg = document.getElementById("gtfsDayPartsMsg");
+      if (msg) msg.textContent = "";
+      App.gtfsDayParts.reset();
+    });
+  }
+
+  function localToday() {
+    var d = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  function renderDayPartRows() {
+    var box = document.getElementById("gtfsDayPartsRows");
+    if (!box) return;
+    // Mid-edit redraws (after a valid change) must not replace the input being typed in.
+    var cur = App.gtfsDayParts.get(), inputs = box.querySelectorAll(".gtfs-dp-input");
+    var same = inputs.length === cur.length && cur.every(function (p, i) { return inputs[i].value === p.start; });
+    var note = box.querySelector(".gtfs-dp-note");
+    if (same && box.contains(document.activeElement)) {
+      if (note) note.hidden = App.gtfsDayParts.isDefault();
+      return;
+    }
+    box.textContent = "";
+    App.gtfsDayParts.get().forEach(function (p, i) {
+      var row = el("div", "gtfs-dp-row");
+      var lab = el("label", "gtfs-dp-label", p.label);
+      var inp = el("input", "rf-select gtfs-dp-input");
+      inp.type = "time";
+      inp.step = "300";
+      inp.value = p.start;
+      inp.id = "gtfsDayPart" + i;
+      lab.htmlFor = inp.id;
+      if (i === 0) inp.disabled = true;
+      inp.addEventListener("change", onDayPartChange);
+      row.appendChild(lab);
+      row.appendChild(inp);
+      box.appendChild(row);
+    });
+    var n = el("div", "gtfs-date-desc gtfs-dp-note", "Copied Services and every headway report use these parts.");
+    n.hidden = App.gtfsDayParts.isDefault();
+    box.appendChild(n);
+  }
+
+  function onDayPartChange() {
+    var msg = document.getElementById("gtfsDayPartsMsg");
+    var values = Array.prototype.map.call(document.querySelectorAll("#gtfsDayPartsRows .gtfs-dp-input"), function (i) { return i.value; });
+    if (App.gtfsDayParts.set(values)) {
+      if (msg) msg.textContent = "";
+    } else {
+      if (msg) msg.textContent = "Each part must start after the one before. Times are 24-hour.";
+      renderDayPartRows();
+    }
+  }
+
+  function renderOverview() {
+    if (typeof document === "undefined") return;
+    var body = document.getElementById("gtfsOverviewBody");
+    if (!body) return;
+    var empty = document.getElementById("gtfsOverviewEmpty");
+    var parts = document.getElementById("gtfsDayParts");
+    body.textContent = "";
+    if (!_feed) {
+      if (empty) empty.style.display = "";
+      if (parts) parts.style.display = "none";
+      renderDateControls();
+      return;
+    }
+    if (empty) empty.style.display = "none";
+    if (parts) parts.style.display = "";
+
+    var ov = window.GtfsSchedule.feedOverview(_feed, { today: localToday(), dates: representativeDates() });
+    body.appendChild(el("div", "gtfs-ov-agency", ov.agencies.map(function (a) { return a.name; }).filter(Boolean).join(", ")));
+    if (ov.range) {
+      var line = el("div", "gtfs-ov-range", "Service " + isoOf(ov.range.start) + " to " + isoOf(ov.range.end) + " ");
+      if (ov.daysLeft != null) {
+        var n = Math.abs(ov.daysLeft);
+        var txt = ov.daysLeft < 0 ? "expired " + n + " day" + (n === 1 ? "" : "s") + " ago"
+          : ov.daysLeft === 0 ? "expires today" : "expires in " + n + " day" + (n === 1 ? "" : "s");
+        line.appendChild(el("span", "gtfs-ov-expiry" + (ov.daysLeft < 0 ? " gtfs-ov-bad" : ov.daysLeft < 30 ? " gtfs-ov-warn" : ""), txt));
+      }
+      body.appendChild(line);
+    }
+    var grid = el("div", "gtfs-ov-stats");
+    [["Routes", ov.routes], ["Stops", ov.stops], ["Stations", ov.stations], ["Trips", ov.trips]].forEach(function (s) {
+      var c = el("div", "gtfs-ov-stat");
+      c.appendChild(el("div", "gtfs-ov-num", s[1].toLocaleString()));
+      c.appendChild(el("div", "gtfs-ov-label", s[0]));
+      grid.appendChild(c);
+    });
+    body.appendChild(grid);
+    var labels = { weekday: "Weekday", saturday: "Saturday", sunday: "Sunday" };
+    var tbl = textTable("", ["Day", "Date", "Trips"], [2]);
+    ov.dayTypes.forEach(function (t) { tbl.addRow([labels[t.type] || t.type, isoOf(t.date), t.trips.toLocaleString()]); });
+    body.appendChild(tbl);
+
+    renderDayPartRows();
+    renderDateControls();
+  }
 
   // ---- Copy a route as a Service with its timetable ----
 
@@ -2089,7 +2685,7 @@
     var route = findIndexRoute(opts.routeId);
     var routeId = scheduleRouteId(opts.routeId);
     var displayName = route ? routeDisplayName(route) : routeId;
-    var plan = S.serviceCopyPlan(_feed, { routeId: routeId, dates: representativeDates() });
+    var plan = S.serviceCopyPlan(_feed, { routeId: routeId, dates: representativeDates(), dayParts: dayParts() });
 
     var usable = [], missing = [];
     plan.shapes.forEach(function (ps) { (shapeFeature(ps.shapeId) ? usable : missing).push(ps); });
@@ -2251,6 +2847,7 @@
         out.stops = _selectedStops.slice();
         out.feedFile = _feedFileName;
         if (_analysisDate) out.analysisDate = _analysisDate;
+        if (_dayParts) out.dayParts = _dayParts.map(function (p) { return p.start; });
         return out;
       },
       apply: function (data) {
@@ -2270,6 +2867,10 @@
           _pendingDate = data.analysisDate;
           if (_feed) setAnalysisDate(data.analysisDate);
         }
+        // A session without the key uses the standard parts; a bad list is ignored.
+        _dayParts = data && data.dayParts ? partsFromStarts(data.dayParts) : null;
+        if (_dayParts && isDefaultParts(_dayParts)) _dayParts = null;
+        afterDetailsInputChange();
         var map = App.map;
         if (map && map.getLayer(SEL_LAYER)) map.setFilter(SEL_LAYER, selectedStopsFilter());
         if (typeof App.refreshLayersPanel === "function") App.refreshLayersPanel();

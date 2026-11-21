@@ -130,6 +130,8 @@ async function newPage(browser, port, extraHandler) {
     check("6. changing the date input updates the day and flags special service",
       afterInput.d === "20260119" && afterInput.desc.includes("special service"), JSON.stringify(afterInput));
 
+    // The raw files sit on the panel's Files tab (Overview opens first).
+    await page.locator('.gtfs-ptab[data-tab="files"]').click();
     await page.locator("#gtfsFileList .gtfs-file-item", { hasText: "stop_times.txt" }).click();
     const tbl = await page.evaluate(() => ({
       heads: Array.from(document.querySelectorAll("#gtfsTableHead th")).map((th) => th.textContent).join(", "),

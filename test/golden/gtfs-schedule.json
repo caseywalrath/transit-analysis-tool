@@ -2582,5 +2582,1117 @@
   "note-hours-off": "Red — Weekday (Mon Jan 12, 2026): 25 trips, running hours 5.10 on the copy vs 4.70 in the timetable (+8.5%): trip times vary through the day and the copy uses one average run time.",
   "note-hours-off-negative": "Red — Saturday (Sat Jan 24, 2026): 1 trip, running hours 0.32 on the copy vs 0.33 in the timetable (-3.2%): trip times vary through the day and the copy uses one average run time.",
   "note-trip-mismatch": "Red — Weekday (Mon Jan 12, 2026): 25 trips in the timetable but 24 trips on the copy.",
-  "note-no-service-and-unshaped": "3 weekday trips have no shape and were not copied.\nSaturday: no service.\nSunday: no service.\n1 sunday trip has no shape and was not copied."
+  "note-no-service-and-unshaped": "3 weekday trips have no shape and were not copied.\nSaturday: no service.\nSunday: no service.\n1 sunday trip has no shape and was not copied.",
+  "a4-stop-departures-s1-d1": [
+    {
+      "tripId": "F1_W_FREQ@06:00:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 21600,
+      "dep": 21600,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@06:20:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 22800,
+      "dep": 22800,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@06:40:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 24000,
+      "dep": 24000,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_0",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 25200,
+      "dep": 25200,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@07:00:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 25200,
+      "dep": 25200,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@07:20:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 26400,
+      "dep": 26400,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_3",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 27300,
+      "dep": 27300,
+      "last": true
+    },
+    {
+      "tripId": "F1_W_FREQ@07:40:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 27600,
+      "dep": 27600,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_X",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 27900,
+      "dep": 27900,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_1",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 28200,
+      "dep": 28200,
+      "last": true
+    },
+    {
+      "tripId": "B1_W_2",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 28800,
+      "dep": 28800,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@08:00:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 28800,
+      "dep": 28800,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@08:20:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 30000,
+      "dep": 30000,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_FREQ@08:40:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 31200,
+      "dep": 31200,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@16:00:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 57600,
+      "dep": 57600,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@16:15:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 58500,
+      "dep": 58500,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@16:30:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 59400,
+      "dep": 59400,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@16:45:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 60300,
+      "dep": 60300,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@17:00:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 61200,
+      "dep": 61200,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@17:15:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 62100,
+      "dep": 62100,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@17:30:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 63000,
+      "dep": 63000,
+      "last": false
+    },
+    {
+      "tripId": "F1_W_PM@17:45:00",
+      "routeId": "F1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 63900,
+      "dep": 63900,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_OWL",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 89400,
+      "dep": 89400,
+      "last": false
+    }
+  ],
+  "a4-stop-departures-s1-b1-only": [
+    {
+      "tripId": "B1_W_0",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 25200,
+      "dep": 25200,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_3",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 27300,
+      "dep": 27300,
+      "last": true
+    },
+    {
+      "tripId": "B1_W_1",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 28200,
+      "dep": 28200,
+      "last": true
+    },
+    {
+      "tripId": "B1_W_2",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 28800,
+      "dep": 28800,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_OWL",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S1",
+      "arr": 89400,
+      "dep": 89400,
+      "last": false
+    }
+  ],
+  "a4-stop-departures-stn-d1": [
+    {
+      "tripId": "R1_W_0",
+      "routeId": "R1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "P1",
+      "arr": 21600,
+      "dep": 21600,
+      "last": false
+    },
+    {
+      "tripId": "R1_W_1",
+      "routeId": "R1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "P1",
+      "arr": 26520,
+      "dep": 26520,
+      "last": true
+    }
+  ],
+  "a4-stop-departures-s3-d1": [
+    {
+      "tripId": "B1_W_3",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S3",
+      "arr": 26100,
+      "dep": 26100,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_0",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S3",
+      "arr": 26400,
+      "dep": 26400,
+      "last": true
+    },
+    {
+      "tripId": "B1_W_1",
+      "routeId": "B1",
+      "directionId": "1",
+      "headsign": "",
+      "stopId": "S3",
+      "arr": 27000,
+      "dep": 27000,
+      "last": false
+    },
+    {
+      "tripId": "B1_W_2",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S3",
+      "arr": 30000,
+      "dep": 30000,
+      "last": true
+    },
+    {
+      "tripId": "B1_W_OWL",
+      "routeId": "B1",
+      "directionId": "0",
+      "headsign": "",
+      "stopId": "S3",
+      "arr": 90600,
+      "dep": 90600,
+      "last": true
+    }
+  ],
+  "a4-stop-departures-unknown": [],
+  "a4-stop-summary-s1-d1": {
+    "departures": 21,
+    "routes": [
+      {
+        "routeId": "F1",
+        "departures": 18
+      },
+      {
+        "routeId": "B1",
+        "departures": 3
+      }
+    ],
+    "span": {
+      "first": 21600,
+      "last": 89400
+    },
+    "parts": [
+      {
+        "id": "early",
+        "label": "Early",
+        "start": "00:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "am",
+        "label": "AM peak",
+        "start": "06:00",
+        "departures": 12,
+        "headwaySec": 1200
+      },
+      {
+        "id": "midday",
+        "label": "Midday",
+        "start": "09:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "pm",
+        "label": "PM peak",
+        "start": "15:00",
+        "departures": 8,
+        "headwaySec": 900
+      },
+      {
+        "id": "evening",
+        "label": "Evening",
+        "start": "18:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "night",
+        "label": "Night",
+        "start": "21:00",
+        "departures": 1,
+        "headwaySec": null
+      }
+    ],
+    "peakHeadwaySec": 900,
+    "offPeakHeadwaySec": null
+  },
+  "a4-stop-summary-s1-d1-two-parts": {
+    "departures": 21,
+    "routes": [
+      {
+        "routeId": "F1",
+        "departures": 18
+      },
+      {
+        "routeId": "B1",
+        "departures": 3
+      }
+    ],
+    "span": {
+      "first": 21600,
+      "last": 89400
+    },
+    "parts": [
+      {
+        "id": "am",
+        "label": "A",
+        "start": "00:00",
+        "departures": 12,
+        "headwaySec": 1200
+      },
+      {
+        "id": "midday",
+        "label": "B",
+        "start": "12:00",
+        "departures": 9,
+        "headwaySec": 900
+      }
+    ],
+    "peakHeadwaySec": 1200,
+    "offPeakHeadwaySec": 900
+  },
+  "a4-stop-summary-s1-no-service": {
+    "departures": 0,
+    "routes": [],
+    "span": null,
+    "parts": [
+      {
+        "id": "early",
+        "label": "Early",
+        "start": "00:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "am",
+        "label": "AM peak",
+        "start": "06:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "midday",
+        "label": "Midday",
+        "start": "09:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "pm",
+        "label": "PM peak",
+        "start": "15:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "evening",
+        "label": "Evening",
+        "start": "18:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "night",
+        "label": "Night",
+        "start": "21:00",
+        "departures": 0,
+        "headwaySec": null
+      }
+    ],
+    "peakHeadwaySec": null,
+    "offPeakHeadwaySec": null
+  },
+  "a4-stop-summary-s2-d1": {
+    "departures": 5,
+    "routes": [
+      {
+        "routeId": "B1",
+        "departures": 5
+      }
+    ],
+    "span": {
+      "first": 25800,
+      "last": 90000
+    },
+    "parts": [
+      {
+        "id": "early",
+        "label": "Early",
+        "start": "00:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "am",
+        "label": "AM peak",
+        "start": "06:00",
+        "departures": 4,
+        "headwaySec": 900
+      },
+      {
+        "id": "midday",
+        "label": "Midday",
+        "start": "09:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "pm",
+        "label": "PM peak",
+        "start": "15:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "evening",
+        "label": "Evening",
+        "start": "18:00",
+        "departures": 0,
+        "headwaySec": null
+      },
+      {
+        "id": "night",
+        "label": "Night",
+        "start": "21:00",
+        "departures": 1,
+        "headwaySec": null
+      }
+    ],
+    "peakHeadwaySec": 900,
+    "offPeakHeadwaySec": null
+  },
+  "a4-stop-spacing-s2-d1": [
+    {
+      "routeId": "B1",
+      "directionId": "0",
+      "prevStopId": "S1",
+      "prevMeters": 855,
+      "nextStopId": "S3",
+      "nextMeters": 855
+    },
+    {
+      "routeId": "B1",
+      "directionId": "1",
+      "prevStopId": "S3",
+      "prevMeters": 855,
+      "nextStopId": "S1",
+      "nextMeters": 855
+    }
+  ],
+  "a4-stop-spacing-s1-d1": [
+    {
+      "routeId": "B1",
+      "directionId": "0",
+      "prevStopId": null,
+      "prevMeters": null,
+      "nextStopId": "S2",
+      "nextMeters": 855
+    },
+    {
+      "routeId": "B1",
+      "directionId": "1",
+      "prevStopId": "S2",
+      "prevMeters": 855,
+      "nextStopId": null,
+      "nextMeters": null
+    },
+    {
+      "routeId": "F1",
+      "directionId": "0",
+      "prevStopId": null,
+      "prevMeters": null,
+      "nextStopId": "F2",
+      "nextMeters": 1112
+    }
+  ],
+  "a4-stop-spacing-stn-d1": [
+    {
+      "routeId": "R1",
+      "directionId": "0",
+      "prevStopId": null,
+      "prevMeters": null,
+      "nextStopId": "R2",
+      "nextMeters": 30309
+    },
+    {
+      "routeId": "R1",
+      "directionId": "1",
+      "prevStopId": "R2",
+      "prevMeters": 30309,
+      "nextStopId": null,
+      "nextMeters": null
+    }
+  ],
+  "a4-route-schedule-b1-d1": {
+    "trips": 5,
+    "directions": [
+      {
+        "directionId": "0",
+        "trips": 3,
+        "runningSec": 3600,
+        "span": {
+          "first": 25200,
+          "last": 89400
+        },
+        "parts": [
+          {
+            "id": "early",
+            "label": "Early",
+            "start": "00:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "am",
+            "label": "AM peak",
+            "start": "06:00",
+            "trips": 2,
+            "headwaySec": 3600
+          },
+          {
+            "id": "midday",
+            "label": "Midday",
+            "start": "09:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "pm",
+            "label": "PM peak",
+            "start": "15:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "evening",
+            "label": "Evening",
+            "start": "18:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "night",
+            "label": "Night",
+            "start": "21:00",
+            "trips": 1,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": 3600,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "S1",
+              "S2",
+              "S3"
+            ],
+            "trips": 3,
+            "headsign": ""
+          }
+        ]
+      },
+      {
+        "directionId": "1",
+        "trips": 2,
+        "runningSec": 2400,
+        "span": {
+          "first": 26100,
+          "last": 27000
+        },
+        "parts": [
+          {
+            "id": "early",
+            "label": "Early",
+            "start": "00:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "am",
+            "label": "AM peak",
+            "start": "06:00",
+            "trips": 2,
+            "headwaySec": 900
+          },
+          {
+            "id": "midday",
+            "label": "Midday",
+            "start": "09:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "pm",
+            "label": "PM peak",
+            "start": "15:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "evening",
+            "label": "Evening",
+            "start": "18:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "night",
+            "label": "Night",
+            "start": "21:00",
+            "trips": 0,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": 900,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "S3",
+              "S2",
+              "S1"
+            ],
+            "trips": 2,
+            "headsign": ""
+          }
+        ]
+      }
+    ]
+  },
+  "a4-route-schedule-f1-d1": {
+    "trips": 18,
+    "directions": [
+      {
+        "directionId": "0",
+        "trips": 18,
+        "runningSec": 16200,
+        "span": {
+          "first": 21600,
+          "last": 63900
+        },
+        "parts": [
+          {
+            "id": "early",
+            "label": "Early",
+            "start": "00:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "am",
+            "label": "AM peak",
+            "start": "06:00",
+            "trips": 10,
+            "headwaySec": 1200
+          },
+          {
+            "id": "midday",
+            "label": "Midday",
+            "start": "09:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "pm",
+            "label": "PM peak",
+            "start": "15:00",
+            "trips": 8,
+            "headwaySec": 900
+          },
+          {
+            "id": "evening",
+            "label": "Evening",
+            "start": "18:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "night",
+            "label": "Night",
+            "start": "21:00",
+            "trips": 0,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": 900,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "S1",
+              "F2"
+            ],
+            "trips": 18,
+            "headsign": ""
+          }
+        ]
+      }
+    ]
+  },
+  "a4-route-schedule-r1-d3": {
+    "trips": 2,
+    "directions": [
+      {
+        "directionId": "0",
+        "trips": 2,
+        "runningSec": 4440,
+        "span": {
+          "first": 28800,
+          "last": 79200
+        },
+        "parts": [
+          {
+            "id": "early",
+            "label": "Early",
+            "start": "00:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "am",
+            "label": "AM peak",
+            "start": "06:00",
+            "trips": 1,
+            "headwaySec": null
+          },
+          {
+            "id": "midday",
+            "label": "Midday",
+            "start": "09:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "pm",
+            "label": "PM peak",
+            "start": "15:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "evening",
+            "label": "Evening",
+            "start": "18:00",
+            "trips": 0,
+            "headwaySec": null
+          },
+          {
+            "id": "night",
+            "label": "Night",
+            "start": "21:00",
+            "trips": 1,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": null,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "P1",
+              "R2"
+            ],
+            "trips": 2,
+            "headsign": ""
+          }
+        ]
+      }
+    ]
+  },
+  "a4-route-schedule-unknown": {
+    "trips": 0,
+    "directions": []
+  },
+  "a4-route-schedule-b1-d1-two-parts": {
+    "trips": 5,
+    "directions": [
+      {
+        "directionId": "0",
+        "trips": 3,
+        "runningSec": 3600,
+        "span": {
+          "first": 25200,
+          "last": 89400
+        },
+        "parts": [
+          {
+            "id": "am",
+            "label": "A",
+            "start": "00:00",
+            "trips": 2,
+            "headwaySec": 3600
+          },
+          {
+            "id": "midday",
+            "label": "B",
+            "start": "12:00",
+            "trips": 1,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": 3600,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "S1",
+              "S2",
+              "S3"
+            ],
+            "trips": 3,
+            "headsign": ""
+          }
+        ]
+      },
+      {
+        "directionId": "1",
+        "trips": 2,
+        "runningSec": 2400,
+        "span": {
+          "first": 26100,
+          "last": 27000
+        },
+        "parts": [
+          {
+            "id": "am",
+            "label": "A",
+            "start": "00:00",
+            "trips": 2,
+            "headwaySec": 900
+          },
+          {
+            "id": "midday",
+            "label": "B",
+            "start": "12:00",
+            "trips": 0,
+            "headwaySec": null
+          }
+        ],
+        "peakHeadwaySec": 900,
+        "offPeakHeadwaySec": null,
+        "patterns": [
+          {
+            "stops": [
+              "S3",
+              "S2",
+              "S1"
+            ],
+            "trips": 2,
+            "headsign": ""
+          }
+        ]
+      }
+    ]
+  },
+  "a4-feed-overview-mini": {
+    "agencies": [
+      {
+        "id": "MINI",
+        "name": "Mini Test Transit",
+        "url": "https://example.invalid/",
+        "timezone": "America/Denver"
+      }
+    ],
+    "range": {
+      "start": "20260105",
+      "end": "20260201"
+    },
+    "daysLeft": 22,
+    "routes": 3,
+    "stops": 6,
+    "stations": 1,
+    "trips": 16,
+    "dayTypes": [
+      {
+        "type": "weekday",
+        "date": "20260112",
+        "trips": 25
+      },
+      {
+        "type": "saturday",
+        "date": "20260124",
+        "trips": 7
+      }
+    ]
+  },
+  "a4-feed-overview-expired": {
+    "agencies": [
+      {
+        "id": "MINI",
+        "name": "Mini Test Transit",
+        "url": "https://example.invalid/",
+        "timezone": "America/Denver"
+      }
+    ],
+    "range": {
+      "start": "20260105",
+      "end": "20260201"
+    },
+    "daysLeft": -28,
+    "routes": 3,
+    "stops": 6,
+    "stations": 1,
+    "trips": 16,
+    "dayTypes": [
+      {
+        "type": "weekday",
+        "date": "20260112",
+        "trips": 25
+      },
+      {
+        "type": "saturday",
+        "date": "20260124",
+        "trips": 7
+      }
+    ]
+  },
+  "a4-feed-overview-no-today": {
+    "agencies": [
+      {
+        "id": "MINI",
+        "name": "Mini Test Transit",
+        "url": "https://example.invalid/",
+        "timezone": "America/Denver"
+      }
+    ],
+    "range": {
+      "start": "20260105",
+      "end": "20260201"
+    },
+    "daysLeft": null,
+    "routes": 3,
+    "stops": 6,
+    "stations": 1,
+    "trips": 16,
+    "dayTypes": [
+      {
+        "type": "weekday",
+        "date": "20260112",
+        "trips": 25
+      },
+      {
+        "type": "saturday",
+        "date": "20260124",
+        "trips": 7
+      }
+    ]
+  },
+  "a4-feed-overview-agency-only": {
+    "agencies": [
+      {
+        "id": "",
+        "name": "Solo",
+        "url": "",
+        "timezone": ""
+      }
+    ],
+    "range": null,
+    "daysLeft": null,
+    "routes": 0,
+    "stops": 0,
+    "stations": 0,
+    "trips": 0,
+    "dayTypes": [
+      {
+        "type": "weekday",
+        "date": "20260112",
+        "trips": 0
+      },
+      {
+        "type": "saturday",
+        "date": "20260124",
+        "trips": 0
+      }
+    ]
+  }
 }
