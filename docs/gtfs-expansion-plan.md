@@ -1,6 +1,6 @@
 # GTFS expansion and cross-app handoff — implementation plan
 
-> **Status:** Approved at Gate G0 (2026-11-21). A0 complete; next phase A1 or A2.
+> **Status:** Approved at Gate G0 (2026-11-21). A0 and A1 complete; next phase A2.
 >
 > **Scope: the Analysis app only** (`caseywalrath/transit-analysis-tool`). Work on the Transit Costing Tool (`caseywalrath/transit-costing-tool`, the **Costing tool**) is in a separate plan, `docs/gtfs-costing-tool-plan.md`. It starts only after this plan is complete. **Nothing under this plan changes the Costing tool repository** (D14).
 >
@@ -369,7 +369,7 @@ Use `CLAUDE.md` § Testing:
 | Phase | What the user gets | Detail | Lead classes | Needs | Gates | Status |
 |---|---|---|---|---|---|---|
 | A0 | Test feeds and a speed baseline (nothing visible) | Ready | O | — | G0a–b | Done (2026-11-21) |
-| A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Not started |
+| A1 | Better census counts everywhere; clearer Route Costing; coverage from stops | Ready | S, H; O review | A0 (G0 only) | G1a–c | Done (2026-11-21) |
 | A2 | Large GTFS feeds load without freezing; one "day to analyze" | Ready | O, H, S | A0 | G2a–b | Not started |
 | A3 | Copy a GTFS route as an editable Service with headways, run time and stops | Ready | H, S, O | A2 | G3a–b | Not started |
 | A4 | Feed overview; click a stop or route for its details | Sub-plan | O, H, S | A2 | G4a–c | Not started |
@@ -966,9 +966,9 @@ Each gate is answered in its phase section. Record answers here and in the progr
 |---|---|---|---|---|---|
 | G0a | A0 | Approve plan; never copy GTFS·X code | Approve | Approved (Option A) | 2026-11-21 |
 | G0b | A0 | Real feeds for testing | RTD + one small feed | "Your call": RTD + BART (small) | 2026-11-21 |
-| G1a | A1 | Count people by area or by 2020 blocks | Blocks for new runs | | |
-| G1b | A1 | Coverage from stops or line | Stops when present | | |
-| G1c | A1 | Route Costing rate basis | Keep platform default, add revenue | | |
+| G1a | A1 | Count people by area or by 2020 blocks | Blocks for new runs | Blocks for new runs (Option B) | 2026-11-21 |
+| G1b | A1 | Coverage from stops or line | Stops when present | Stops when present (Option A) | 2026-11-21 |
+| G1c | A1 | Route Costing rate basis | Keep platform default, add revenue | Revenue-hour default (Option B) | 2026-11-21 |
 | G2a | A2 | GTFS inside session files | Original ZIP | | |
 | G2b | A2 | Choosing the day to analyze | Day type → typical date, changeable | | |
 | G3a | A3 | Detail of copied headway bands | Standard day parts | | |
@@ -1093,3 +1093,37 @@ Each gate is answered in its phase section. Record answers here and in the progr
 
 - Mini feed path: `test/fixtures/gtfs/mini/`.
 - Baseline command: `NODE_PATH=/opt/node-tools/node_modules node test/perf/gtfs-baseline.mjs <zip> [--runs N]`. Its final line is `RESULT {json}`, with fields `parseMs`, `toMapMs`, `longestFreezeMs`, `heapDeltaMB` and `gtfsSessionChars`.
+
+### 2026-11-21 — A1 Quick wins (Opus orchestrating)
+
+**Gates:**
+- G1a: census blocks for new runs.
+- G1b: coverage from stops when present.
+- G1c: **revenue-hour default** (Option B, not the recommendation). The engine's default is still platform, so golden values and old sessions keep platform. New work starts on revenue.
+
+**Packages, in commit order:**
+
+| Package | Model | Commit | What it delivered |
+|---|---|---|---|
+| A1.2 | Haiku, high | `dab9868` | `window.Apportion` engine, 20 golden cases |
+| A1.3 | Sonnet | `f2a6df1` | Census block fetch and shared method helper, browser test `apportion-fetch` (7 checks) |
+| A1.6 | Sonnet | `f92113c` | Coverage measured from stops |
+| A1.4c | Sonnet | `cff9dc8` | Coverage apportionment |
+| A1.4a | Sonnet, plus an Opus fix | `8c1cc6a` | Feature Area Analysis and Title VI |
+| A1.4b | Sonnet | `68d1852` | TPI, Ridership Forecasting and Corridor Scoring |
+| A1.5 | Sonnet | this commit's parent | Route Costing |
+
+**Deviations:**
+- A1.1, the card pass, was done by Opus inline; no separate document.
+- A1.4 was split three ways so the parts could run in parallel on separate files.
+- Opus fix in Title VI: an analysis is refused when its baseline was counted by a different method (older baselines count as land area).
+- TPI-family modules still default "Apportion to buffer" to **off**. The new block-population method applies only when that box is on, because turning apportionment on by default would change scores beyond G1a.
+- There are no golden cases for `App.associatedStopPoints` or `App.buildStopCircleUnion`, because they depend on `App` and turf; a browser test covers them indirectly. Transit Travelshed still has its own copy of the stop lookup; moving it to the shared helper is left for later (an Opus-only refactor).
+- The existing Route Costing golden entries gained new keys. No values changed.
+- Browser tests run by several agents at once were flaky (shared ports and timeouts). Run one file at a time after A1, every browser test file passes.
+
+**Hand-off:**
+- `App.computeApportionFractions(union, geos, method, {onProgress})` returns `{fractions: Map, method, methodUsed, basis, note, blockCount}`. Pass the fractions to `App.aggregateWithinUnion(..., {fractions})`.
+- Related names: `App.APPORTION_DEFAULT = "blockPop"`, `App.apportionMethodFromLegacy(bool)` and `Apportion.methodLabel(m)`.
+- `App.associatedStopPoints(type, feature, {includeHidden})` and `App.buildStopCircleUnion(points, miles)`.
+- Route Costing: `settings.rateBasis` and `_rateOverrides` (saved as `rateOverrides`, state v4). Per-day `revenueHrs`, plus `dailyRevenueHrs` and `annualRevenueHrs`. Test hooks: `App._rcTest.sanitizeRate` and `effectiveRate`.
