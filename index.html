@@ -190,6 +190,7 @@
               <button data-format="share-link">Share Link</button>
               <button data-format="road-network" style="display:none;" id="export-road-net">Local Map Data</button>
               <button data-format="gtfs-stops" style="display:none;" id="export-gtfs-stops">Selected GTFS stops (CSV)</button>
+              <button data-format="gtfs-export">Drawn Services as GTFS (ZIP)</button>
             </div>
           </div>
           <div class="analysis-wrapper">
@@ -435,6 +436,24 @@
         <button id="gp-add" class="rf-action-primary" disabled>Add to map</button>
       </div>
     </div>
+    <div id="gex-dialog" class="gp-dialog gex-dialog" role="dialog" aria-modal="true" aria-labelledby="gex-title" hidden>
+      <h2 id="gex-title" class="gp-title">Export drawn Services as GTFS</h2>
+      <div id="gex-services" class="gex-services"></div>
+      <div class="gex-grid">
+        <label class="form-field">Agency name <input id="gex-agency-name" type="text"></label>
+        <label class="form-field">Agency website <input id="gex-agency-url" type="url" placeholder="https://"></label>
+        <label class="form-field">Time zone <input id="gex-agency-tz" type="text"></label>
+        <label class="form-field">Language <input id="gex-agency-lang" type="text" value="en"></label>
+        <label class="form-field">Service starts <input id="gex-start" type="date"></label>
+        <label class="form-field">Service ends <input id="gex-end" type="date"></label>
+      </div>
+      <label class="gex-check"><input id="gex-frequencies" type="checkbox" checked> Include headway windows (frequencies.txt)</label>
+      <div id="gex-status" class="gex-status" aria-live="polite"></div>
+      <div class="btn-row">
+        <button id="gex-cancel" class="rf-btn-sm">Close</button>
+        <button id="gex-export" class="rf-action-primary">Export ZIP</button>
+      </div>
+    </div>
     <!-- Core modules (order matters) -->
     <script src="js/core/config.js"></script>
     <script src="js/core/utils.js"></script>
@@ -447,6 +466,10 @@
     <script src="js/core/layer-palettes.js"></script>
     <script src="js/core/network-store.js"></script>
     <script src="js/core/gtfs-store.js"></script>
+    <script src="js/core/gtfs-schedule.js"></script>
+    <script src="js/core/analysis-network.js"></script>
+    <script src="js/core/raptor.js"></script>
+    <script src="js/core/gtfs-export.js"></script>
     <script src="js/core/gpkg-store.js"></script>
     <script src="js/core/walk-tiles-source.js"></script>
     <script src="js/core/cdot-source.js"></script>
@@ -481,6 +504,9 @@
     <script src="js/core/gpkg-layers.js"></script>
     <script src="js/core/gpkg-table.js"></script>
     <script src="js/core/gpkg-filter-ui.js"></script>
+    <script src="js/core/apportion.js"></script>
+    <script src="js/core/service-equity.js"></script>
+    <script src="js/core/service-compare.js"></script>
     <script src="js/core/census.js"></script>
     <script src="js/core/lodes.js"></script>
     <script src="js/core/projections.js"></script>
@@ -489,6 +515,8 @@
     <script src="js/core/popup.js"></script>
     <script src="js/core/service-assembly.js"></script>
     <script src="js/core/module-buffers.js"></script>
+    <script src="js/core/analysis-network-source.js"></script>
+    <script src="js/core/gtfs-export-ui.js"></script>
     <script src="js/core/analysis-checklist.js"></script>
     <script src="js/core/choropleth.js"></script>
     <script src="js/app.js"></script>
@@ -512,10 +540,14 @@
     <!-- <script src="js/projects/mitigation-needs-data.js"></script> -->
     <!-- <script src="js/projects/mitigation-needs.js"></script> -->
     <script src="js/projects/route-costing.js"></script>
-    <script src="js/projects/trip-builder.js"></script>
+    <!-- Trip Builder is retired (gate G8a): the GTFS export and the travel-time analyses use its trip
+         generator (AnalysisNetwork.bandTrips). The file stays for its golden cases; old sessions' saved
+         Trip Builder state is ignored. -->
+    <!-- <script src="js/projects/trip-builder.js"></script> -->
     <script src="js/projects/title-vi-engine.js"></script>
     <script src="js/projects/title-vi.js"></script>
     <script src="js/projects/gtfs.js"></script>
+    <script src="js/projects/gtfs-service-analysis.js"></script>
     <script src="js/projects/attribute-summary.js"></script>
     <script src="js/core/present-overlays.js"></script>
   </body>

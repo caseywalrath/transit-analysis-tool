@@ -58,8 +58,12 @@
           </label>
           <label class="rf-toggle-row u-mt-2">
             <input type="checkbox" id="rfCalibApportionByArea">
-            <span>Apportion by Area</span>
+            <span>Apportion to buffer</span>
           </label>
+          <select id="rfCalibApportionMethod" class="rf-select">
+            <option value="blockPop">by 2020 census-block population</option>
+            <option value="area">by land area</option>
+          </select>
           </div>
 
           <div class="data-input-group" data-input-group="settings">
@@ -283,8 +287,12 @@
 
           <label class="rf-toggle-row u-mt-2">
             <input type="checkbox" id="rfApportionByArea">
-            <span>Apportion by Area</span>
+            <span>Apportion to buffer</span>
           </label>
+          <select id="rfApportionMethod" class="rf-select">
+            <option value="blockPop">by 2020 census-block population</option>
+            <option value="area">by land area</option>
+          </select>
 
           <label class="tiny u-mt-2">Segment length (mi)</label>
           <div class="rf-input-row">

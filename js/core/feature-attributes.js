@@ -1477,6 +1477,7 @@
   }
 
   function renderSingle(featureType, featureIndex, feature) {
+    endView();
     if (_overlaps && (_overlaps.anchor.type !== featureType || _overlaps.anchor.index !== featureIndex)) _overlaps = null;
     setHeader(feature.properties.name || "",
       TYPE_LABELS[featureType] || featureType,
@@ -1716,6 +1717,7 @@
   // Pinned dock with nothing selected: stays open, shows a prompt instead of
   // a stale feature.
   function renderEmpty() {
+    endView();
     _overlaps = null;
     _cur = null;
     setHeader("", "Nothing selected", null, null, null);
@@ -1729,6 +1731,7 @@
   }
 
   function renderMulti(list) {
+    endView();
     _overlaps = null;
     setHeader(list.length + " features selected", "Selection", null, null, null);
     var usable = App.bulkFeatures ? App.bulkFeatures.usable(list) : [];
@@ -1862,7 +1865,9 @@
     try {
       commitActiveEdit();
       _dockEl.style.display = "none";
+      var view = currentView();
       _cur = null;
+      if (view && typeof view.onClose === "function") { try { view.onClose(); } catch (e) {} }
       syncAppClasses();
       if (!(opts && opts.keepSelection) && typeof App.clearSelection === "function") App.clearSelection();
     } finally {
@@ -1876,7 +1881,9 @@
   function syncAttrDock() {
     if (!isDockOpen() || _closing) return;
     var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];
+    var view = currentView();
     if (!sel.length) {
+      if (view) return;   // a read-only view has no selection behind it
       if (_cur && _cur.type === "textbox" && featureFor("textbox", _cur.index) === _cur.feature) return;
       if (isPinned()) { commitActiveEdit(); renderEmpty(); return; }
       closeAttrDock({ keepSelection: true });
@@ -1905,6 +1912,125 @@
     renderEmpty();
   }
 
+  /* ---- Read-only views supplied by other modules (GTFS stop/route details) ---- */
+
+  // A view is not a selection: it opens only from a gesture (its owner's map
+  // click), survives empty-selection syncs, and is replaced as soon as a drawn
+  // feature is selected. view = { key, title, typeText, color?, toolbar?: [{label, action}],
+  // tabs: [{id, label, render(el)}], activeTab?, onClose? }.
+  function renderView(view) {
+    _overlaps = null;
+    setHeader(view.title || "", view.typeText || "", null, null, null);
+    var slot = _dockEl.querySelector(".ad-swatch-slot");
+    if (view.color) {
+      var sw = document.createElement("span");
+      sw.className = "ad-swatch ad-swatch-static";
+      sw.style.background = view.color;
+      slot.appendChild(sw);
+    }
+    setToolbar(view.toolbar || []);
+    var body = freshBody();
+    body.classList.add("ad-view-body");
+    var tabs = view.tabs || [];
+    if (!tabs.some(function (t) { return t.id === view.activeTab; })) view.activeTab = tabs.length ? tabs[0].id : null;
+    var bar = null;
+    if (tabs.length > 1) {
+      bar = document.createElement("div");
+      bar.className = "ad-tabs";
+      bar.setAttribute("role", "tablist");
+      body.appendChild(bar);
+    }
+    var pane = document.createElement("div");
+    pane.className = "ad-tab-pane";
+    pane.setAttribute("role", "tabpanel");
+    body.appendChild(pane);
+    function show(id, focus) {
+      view.activeTab = id;
+      if (bar) {
+        Array.prototype.forEach.call(bar.children, function (b) {
+          var on = b.getAttribute("data-tab") === id;
+          b.classList.toggle("active", on);
+          b.setAttribute("aria-selected", on ? "true" : "false");
+          b.tabIndex = on ? 0 : -1;
+          if (on && focus) b.focus();
+        });
+      }
+      pane.innerHTML = "";
+      var tab = tabs.filter(function (t) { return t.id === id; })[0];
+      if (!tab) return;
+      try { tab.render(pane); } catch (e) {
+        console.warn("Details tab failed:", e);
+        pane.textContent = "These details could not be shown.";
+      }
+    }
+    if (bar) {
+      tabs.forEach(function (t, i) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "ad-tab";
+        b.setAttribute("role", "tab");
+        b.setAttribute("data-tab", t.id);
+        b.textContent = t.label;
+        b.addEventListener("click", function (e) { e.stopPropagation(); show(t.id); });
+        b.addEventListener("keydown", function (e) {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          e.preventDefault();
+          var j = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+          show(tabs[j].id, true);
+        });
+        bar.appendChild(b);
+      });
+    }
+    show(view.activeTab);
+    _cur = { view: view };
+  }
+
+  function currentView() { return _cur && _cur.view ? _cur.view : null; }
+
+  // A drawn feature, a multi-selection or the empty prompt replacing a view ends it.
+  function endView() {
+    var v = currentView();
+    if (!v) return;
+    _cur = null;
+    if (typeof v.onClose === "function") { try { v.onClose(); } catch (e) {} }
+  }
+
+  // Gesture entry point for a view. A view with the same key keeps its tab.
+  function openDockView(view) {
+    if (!view) return;
+    buildDockEl();
+    commitActiveEdit();
+    var prev = currentView();
+    if (prev && prev !== view) {
+      if (prev.key === view.key && !view.activeTab) view.activeTab = prev.activeTab;
+      if (typeof prev.onClose === "function") { try { prev.onClose(); } catch (e) {} }
+    }
+    renderView(view);
+    show();
+  }
+
+  // Re-draws the open view in place (figures that follow the analysis date or
+  // hidden routes). opts.view replaces the view object, keeping its tab.
+  function refreshDockView(opts) {
+    var v = currentView();
+    if (!v || !isDockOpen()) return;
+    var next = opts && opts.view;
+    if (next && next !== v) { if (!next.activeTab) next.activeTab = v.activeTab; v = next; }
+    var scroller = _dockEl.querySelector(".ad-body");
+    var top = scroller ? scroller.scrollTop : 0;
+    renderView(v);
+    scroller = _dockEl.querySelector(".ad-body");
+    if (scroller) scroller.scrollTop = top;
+  }
+
+  App.openDockView = openDockView;
+  App.refreshDockView = refreshDockView;
+  // The open view's key, else null.
+  App.getDockViewKey = function () {
+    var v = isDockOpen() ? currentView() : null;
+    return v ? v.key : null;
+  };
+
   App.openAttrDock   = openAttrDock;
   App.showAttrDockEmpty = showAttrDockEmpty;
   App.closeAttrDock  = closeAttrDock;
@@ -1913,7 +2039,7 @@
   App.isAttrDockPinned = isPinned;
   // The single feature shown → { featureType, featureIndex }, else null.
   App.getAttrDockFeature = function () {
-    if (!isDockOpen() || !_cur || _cur.multi) return null;
+    if (!isDockOpen() || !_cur || _cur.multi || _cur.view) return null;
     return { featureType: _cur.type, featureIndex: _cur.index };
   };
   // Width the dock currently covers on the map (0 when closed), for fit padding.
@@ -1933,7 +2059,7 @@
   // Re-read the header swatch after a color change made elsewhere (the
   // Appearance popover, a type-wide color set in the Layers tab).
   App.refreshAttrDockSwatch = function () {
-    if (!isDockOpen() || !_cur || _cur.multi) return;
+    if (!isDockOpen() || !_cur || _cur.multi || _cur.view) return;
     var sw = _dockEl.querySelector(".ad-swatch");
     if (sw) sw.style.background = App.resolveFeatureColor(_cur.type, _cur.feature);
   };

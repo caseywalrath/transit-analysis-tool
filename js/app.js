@@ -1815,6 +1815,7 @@
         if (App.gtfsStops && typeof App.gtfsStops.exportCSV === "function") App.gtfsStops.exportCSV();
         return;
       }
+      if (fmt === "gtfs-export") { if (typeof App.openGtfsExportDialog === "function") App.openGtfsExportDialog(); return; }
       if (typeof App.cache === "undefined") return;
       if (fmt === "json-features") App.cache.exportFeaturesOnly(exportScope);
       else if (fmt === "json-all") App.cache.exportToFile(exportScope);

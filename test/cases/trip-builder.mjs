@@ -7,7 +7,7 @@
 // which the harness stubs as a no-op.
 
 export default {
-  scripts: ["js/core/service-assembly.js", "js/projects/trip-builder.js"],
+  scripts: ["js/core/gtfs-schedule.js", "js/core/analysis-network.js", "js/core/service-assembly.js", "js/projects/trip-builder.js"],
   cases: [
     // --- parseHHMMtoMin: "H:MM" -> minutes-from-midnight (NaN on bad) ------
     { id: "parseHHMM/valid", call: "App._tbTest.parseHHMMtoMin", args: ["6:30"] },

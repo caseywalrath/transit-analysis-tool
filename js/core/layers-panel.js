@@ -1435,17 +1435,53 @@
   // Public: re-apply the Layers panel's pinned GTFS highlight (or clear it).
   // Used by the map right-click menu to undo its hover preview.
   App.gtfsRestoreHighlight = gtfsRestoreHighlight;
+  // Shows the copy's reconciliation note until closed or replaced by the next copy.
+  // Text only (textContent): the note quotes feed values such as route names.
+  function showGtfsCopyNote(note) {
+    var old = document.getElementById("gtfs-copy-note");
+    if (old) old.remove();
+    if (!note) return;
+    var box = document.createElement("div");
+    box.id = "gtfs-copy-note";
+    box.className = "gtfs-copy-note";
+    box.setAttribute("role", "status");
+    var title = document.createElement("div");
+    title.className = "gtfs-copy-note-title";
+    title.textContent = "Copied from the GTFS timetable";
+    box.appendChild(title);
+    String(note).split("\n").forEach(function (line) {
+      if (!line.trim()) return;
+      var p = document.createElement("div");
+      p.className = "gtfs-copy-note-line";
+      p.textContent = line;
+      box.appendChild(p);
+    });
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "gtfs-copy-note-close";
+    close.setAttribute("aria-label", "Close note");
+    close.textContent = "×";
+    close.addEventListener("click", function () { box.remove(); });
+    box.appendChild(close);
+    document.body.appendChild(box);
+  }
+  App.gtfsShowCopyNote = showGtfsCopyNote;
   function gtfsCopyAndSelect(opts) {
     var created = (typeof App.gtfsCopy === "function" && App.gtfsCopy(opts)) || [];
     if (created.length && typeof App.selectFeature === "function") App.selectFeature("line", created[0]);
     if (typeof App.refreshFeaturePanel === "function") App.refreshFeaturePanel();
     refreshLayersPanel();
+    if (created.note) showGtfsCopyNote(created.note);
   }
   function gtfsRouteMenu(r) {
+    // With a timetable the Service copy also carries bands, run time and stops,
+    // so it gets the clearer label; without one it is the plain grouped copy.
+    var scheduled = typeof App.gtfsHasSchedule === "function" && App.gtfsHasSchedule(r.routeKey);
     return [
       { label: "Copy as line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "representative" }); } },
       { label: "Copy each shape as a line", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "each" }); } },
-      { label: "Copy all as grouped Service", action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "service" }); } },
+      { label: scheduled ? "Copy as Service with schedule" : "Copy all as grouped Service",
+        action: function () { gtfsCopyAndSelect({ routeId: r.routeKey, mode: "service" }); } },
       { label: "Show only this", action: function () { App.gtfsShowOnly([r.routeKey]); } },
       { label: "Zoom to", action: function () { App.gtfsZoomTo({ routeId: r.routeKey }); } }
     ];

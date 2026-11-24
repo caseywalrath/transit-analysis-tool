@@ -23,6 +23,7 @@
   var _running           = false;
   var _initialized       = false;
   var _apportionByArea   = false;
+  var _apportionMethod   = App.APPORTION_DEFAULT;   // "blockPop" | "area"; read only while _apportionByArea is on
   var _bufferMiles       = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
   var _includeHidden     = false;  // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
@@ -390,6 +391,7 @@
       geoLevel:        _lastResult ? _lastResult.geoLevel : null,
       acsYear:         _lastResult ? _lastResult.year     : null,
       apportionByArea: _lastResult ? _lastResult.apportionByArea : false,
+      apportionMethodUsed: _lastResult ? _lastResult.apportionMethodUsed : null,
       bufferMiles:     _lastResult ? _lastResult.bufferMiles : App.ANALYSIS_BUFFER_DEFAULT_MILES,
       weights:         _lastResult ? _lastResult.weights  : null
     };
@@ -416,6 +418,7 @@
     lines.push("# Geography: "       + (meta.geoLevel || ""));
     lines.push("# ACS Year: "        + (meta.acsYear  || ""));
     lines.push("# Apportion by area: " + (meta.apportionByArea ? "yes" : "no"));
+    if (meta.apportionByArea && window.Apportion) lines.push("# Apportionment method: " + window.Apportion.methodLabel(meta.apportionMethodUsed || "area"));
     lines.push(header.join(","));
 
     for (var i = 0; i < rows.length; i++) {
@@ -848,6 +851,7 @@
         weights:         _weights,
         lodesData:       App.lodesData,
         apportionByArea: _apportionByArea,
+        apportionMethod: _apportionMethod,
         unionPolygon:    unionPolygon,
         featureFilter:   featureFilter,
         bufferSet:       _lastBufferSet,
@@ -868,6 +872,9 @@
         geoLevel:        geoLevel,
         year:            year,
         apportionByArea: _apportionByArea,
+        apportionMethod: _apportionMethod,
+        apportionMethodUsed: result.tpiResult ? result.tpiResult.apportionMethodUsed : null,
+        apportionNote:   result.tpiResult ? result.tpiResult.apportionNote : null,
         bufferMiles:     _bufferMiles,
         unionPolygon:    unionPolygon,
         featureRefs:     featureRefs,
@@ -879,7 +886,8 @@
 
       var geoCount = (result.tpiResult && result.tpiResult.geos) ? result.tpiResult.geos.length : 0;
       setStatus("Scored " + ranked.length + " corridor" + (ranked.length === 1 ? "" : "s") +
-                " — " + geoCount + " geographies.", "done");
+                " — " + geoCount + " geographies." +
+                (_lastResult.apportionNote ? " " + _lastResult.apportionNote : ""), "done");
 
       renderResultsTable(_lastResult);
       renderInputs(true);
@@ -918,6 +926,17 @@
       apportionCb.checked = _apportionByArea;
       apportionCb.addEventListener("change", function () {
         _apportionByArea = apportionCb.checked;
+        var methodSel0 = document.getElementById("csApportionMethod");
+        if (methodSel0) methodSel0.disabled = !_apportionByArea;
+        markStale();
+      });
+    }
+    var methodSel = document.getElementById("csApportionMethod");
+    if (methodSel) {
+      methodSel.value = _apportionMethod;
+      methodSel.disabled = !_apportionByArea;
+      methodSel.addEventListener("change", function () {
+        _apportionMethod = methodSel.value;
         markStale();
       });
     }
@@ -1030,6 +1049,8 @@
     document.querySelectorAll(".cc-status").forEach(function (s) { if (s.refresh) s.refresh(); });
     var apportionCb = document.getElementById("csApportionByArea");
     if (apportionCb) apportionCb.checked = _apportionByArea;
+    var methodSelOpen = document.getElementById("csApportionMethod");
+    if (methodSelOpen) { methodSelOpen.value = _apportionMethod; methodSelOpen.disabled = !_apportionByArea; }
     var bufferMilesEl = document.getElementById("csBufferMiles");
     if (bufferMilesEl) bufferMilesEl.value = String(_bufferMiles);
     syncBufferControl();
@@ -1109,6 +1130,7 @@
       version:         2,
       weights:         Object.assign({}, _weights),
       apportionByArea: _apportionByArea,
+      apportionMethod: _apportionMethod,
       bufferMiles:     _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
       includeHidden:   _includeHidden,   // additive, no schema bump
@@ -1128,6 +1150,8 @@
         geoLevel:        _lastResult.geoLevel,
         year:            _lastResult.year,
         apportionByArea: _lastResult.apportionByArea,
+        apportionMethod: _lastResult.apportionMethod || "area",
+        apportionMethodUsed: _lastResult.apportionMethodUsed || (_lastResult.apportionByArea ? "area" : null),
         bufferMiles:     _lastResult.bufferMiles,
         weights:         Object.assign({}, _lastResult.weights || {}),
         featureRefs:     (_lastResult.featureRefs || []).slice(),
@@ -1163,6 +1187,10 @@
     if (!data) return;
     if (data.weights)          _weights         = Object.assign({}, data.weights);
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
+    // Sessions saved before the method choice existed apportioned by land area.
+    _apportionMethod = data.apportionMethod === "blockPop" ? "blockPop" : "area";
+    var methodRestoreEl = document.getElementById("csApportionMethod");
+    if (methodRestoreEl) { methodRestoreEl.value = _apportionMethod; methodRestoreEl.disabled = !_apportionByArea; }
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
     if (typeof data.includeHidden === "boolean") _includeHidden = data.includeHidden;
@@ -1221,6 +1249,8 @@
       geoLevel:        s.geoLevel,
       year:            s.year,
       apportionByArea: s.apportionByArea,
+      apportionMethod: s.apportionMethod || "area",
+      apportionMethodUsed: s.apportionMethodUsed || (s.apportionByArea ? "area" : null),
       bufferMiles:     s.bufferMiles != null ? s.bufferMiles : App.ANALYSIS_BUFFER_DEFAULT_MILES,
       unionPolygon:    null,
       featureRefs:     legacy ? App.indexFilterToRefs(s.featureFilter) : (s.featureRefs || []),

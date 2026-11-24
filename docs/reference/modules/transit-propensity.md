@@ -10,6 +10,8 @@ Reference for changing TPI. Read the code when this and the code disagree.
 
 **Tract-level fallbacks** in `computeTPI()` when `geoLevel === "bg"`: (1) *static* — factors with `tractOnly: true` (zero_car, poverty, disability, lep) are always fetched at tract level and mapped to block groups by parent-tract GEOID slicing; (2) *dynamic* (skipped when `apportionByArea`) — any ACS factor with missing/non-finite values at some BGs is re-fetched at tract level to fill those BGs. Downstream modules (RF, Corridor Scoring) get this automatically.
 
+**Apportionment method.** With `apportionByArea` on, `computeTPI` option `apportionMethod` (`"blockPop"` | `"area"`; absent = `"area"`) picks how a partly covered geography is scaled: 2020 census-block population via `App.computeApportionFractions`, or land area. Area fractions are always computed first (clipped geometries, fallback); block fractions then replace them, with 0 for geographies the block pass leaves out. The result carries `apportionMethod` (requested), `apportionMethodUsed` and `apportionNote` (set when the block download failed and area was used; the module shows it). Without `App.computeApportionFractions` (golden sandbox) it falls back to area, so `computeTPI` itself has no golden case. `recomputeWithGrowthFactors` copies the three fields. The module keeps `_apportionMethod` (default `App.APPORTION_DEFAULT`), saves `apportionMethod` in state and result, restores a missing value as `"area"`, and writes `# Apportionment method:` in export headers.
+
 ## transit-propensity.js (module `"transit-propensity"`)
 
 Popup `projects/transit-propensity-popup.html` (`panelWidths` 520/520). `projects/transit-propensity.html` and `tpi-weights.html` are legacy; `tpi-legend.html` is the static 1–5 legend widget.

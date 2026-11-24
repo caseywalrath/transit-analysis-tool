@@ -1,0 +1,665 @@
+{
+  "li-undefined": {
+    "id": "poverty100",
+    "label": "Below the poverty level",
+    "vars": [
+      "B17001_002E"
+    ]
+  },
+  "li-poverty100": {
+    "id": "poverty100",
+    "label": "Below the poverty level",
+    "vars": [
+      "B17001_002E"
+    ]
+  },
+  "li-poverty200": {
+    "id": "poverty200",
+    "label": "Below 200% of the poverty level",
+    "vars": [
+      "C17002_002E",
+      "C17002_003E",
+      "C17002_004E",
+      "C17002_005E",
+      "C17002_006E",
+      "C17002_007E"
+    ]
+  },
+  "li-bogus": {
+    "id": "poverty100",
+    "label": "Below the poverty level",
+    "vars": [
+      "B17001_002E"
+    ]
+  },
+  "dist-same-point": 0,
+  "dist-0.1deg-lat": 6.909341898552706,
+  "dist-1deg-lon-equator": 69.093418985531,
+  "alloc-two-block-groups": {
+    "tripsByGeo": {
+      "080310001001": 30,
+      "080310001002": 70
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 1
+  },
+  "alloc-outside-and-zero-pop": {
+    "tripsByGeo": {
+      "080310001001": 100
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 1
+  },
+  "alloc-no-populated-block": {
+    "tripsByGeo": {},
+    "unallocated": [
+      "S-EMPTY"
+    ],
+    "unallocatedTrips": 40,
+    "allocatedStops": 0
+  },
+  "alloc-parent-tract": {
+    "tripsByGeo": {
+      "08031000100": 100
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 1
+  },
+  "alloc-overlap-adds-up": {
+    "tripsByGeo": {
+      "080310001001": 160
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 2
+  },
+  "alloc-bad-stops-ignored": {
+    "tripsByGeo": {
+      "080310001001": 100
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 1
+  },
+  "alloc-null-geoid-excluded": {
+    "tripsByGeo": {
+      "080310001001": 100
+    },
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 1
+  },
+  "alloc-null-inputs": {
+    "tripsByGeo": {},
+    "unallocated": [],
+    "unallocatedTrips": 0,
+    "allocatedStops": 0
+  },
+  "ev-four-geos-disparity": {
+    "totals": {
+      "pop": 400,
+      "trips": 120,
+      "perCapita": 0.3
+    },
+    "minority": {
+      "avgShare": 0.45,
+      "protected": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 20,
+        "perCapita": 0.1
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5
+      },
+      "ratio": 0.2,
+      "band": "disparity"
+    },
+    "lowIncome": {
+      "avgShare": 0.25,
+      "protected": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 20,
+        "perCapita": 0.1
+      },
+      "ratio": 5,
+      "band": "no-disparity"
+    },
+    "geos": [
+      {
+        "geoid": "G1",
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0.2,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "G2",
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0.2,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "G3",
+        "pop": 100,
+        "trips": 50,
+        "perCapita": 0.5,
+        "minorityShare": 0.1,
+        "lowIncomeShare": 0.3,
+        "isMinority": false,
+        "isLowIncome": true
+      },
+      {
+        "geoid": "G4",
+        "pop": 100,
+        "trips": 50,
+        "perCapita": 0.5,
+        "minorityShare": 0.1,
+        "lowIncomeShare": 0.3,
+        "isMinority": false,
+        "isLowIncome": true
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-all-equal-insufficient": {
+    "totals": {
+      "pop": 200,
+      "trips": 40,
+      "perCapita": 0.2
+    },
+    "minority": {
+      "avgShare": 0.5,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 40,
+        "perCapita": 0.2
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "lowIncome": {
+      "avgShare": 0.2,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 200,
+        "trips": 40,
+        "perCapita": 0.2
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [
+      {
+        "geoid": "A",
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1,
+        "minorityShare": 0.5,
+        "lowIncomeShare": 0.2,
+        "isMinority": false,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "B",
+        "pop": 100,
+        "trips": 30,
+        "perCapita": 0.3,
+        "minorityShare": 0.5,
+        "lowIncomeShare": 0.2,
+        "isMinority": false,
+        "isLowIncome": false
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-empty-rows": {
+    "totals": {
+      "pop": 0,
+      "trips": 0,
+      "perCapita": 0
+    },
+    "minority": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "lowIncome": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [],
+    "fourFifths": 0.8
+  },
+  "ev-null-rows": {
+    "totals": {
+      "pop": 0,
+      "trips": 0,
+      "perCapita": 0
+    },
+    "minority": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "lowIncome": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [],
+    "fourFifths": 0.8
+  },
+  "ev-pop0-row-in-neither-group": {
+    "totals": {
+      "pop": 200,
+      "trips": 65,
+      "perCapita": 0.325
+    },
+    "minority": {
+      "avgShare": 0.45,
+      "protected": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 50,
+        "perCapita": 0.5
+      },
+      "ratio": 0.2,
+      "band": "disparity"
+    },
+    "lowIncome": {
+      "avgShare": 0.25,
+      "protected": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 50,
+        "perCapita": 0.5
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1
+      },
+      "ratio": 5,
+      "band": "no-disparity"
+    },
+    "geos": [
+      {
+        "geoid": "Z",
+        "pop": 0,
+        "trips": 5,
+        "perCapita": 0,
+        "minorityShare": 0,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "A",
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0.2,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "B",
+        "pop": 100,
+        "trips": 50,
+        "perCapita": 0.5,
+        "minorityShare": 0.1,
+        "lowIncomeShare": 0.3,
+        "isMinority": false,
+        "isLowIncome": true
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-bad-values-as-zero": {
+    "totals": {
+      "pop": 100,
+      "trips": 15,
+      "perCapita": 0.15
+    },
+    "minority": {
+      "avgShare": 0.01,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "lowIncome": {
+      "avgShare": 0.01,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [
+      {
+        "geoid": "X",
+        "pop": 0,
+        "trips": 5,
+        "perCapita": 0,
+        "minorityShare": 0,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "Y",
+        "pop": 100,
+        "trips": 10,
+        "perCapita": 0.1,
+        "minorityShare": 0,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-ratio-exactly-threshold": {
+    "totals": {
+      "pop": 400,
+      "trips": 180,
+      "perCapita": 0.45
+    },
+    "minority": {
+      "avgShare": 0.5,
+      "protected": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 80,
+        "perCapita": 0.4
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5
+      },
+      "ratio": 0.8,
+      "band": "no-disparity"
+    },
+    "lowIncome": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 400,
+        "trips": 180,
+        "perCapita": 0.45
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [
+      {
+        "geoid": "A",
+        "pop": 200,
+        "trips": 80,
+        "perCapita": 0.4,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "B",
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5,
+        "minorityShare": 0.2,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-default-threshold-0.85": {
+    "totals": {
+      "pop": 400,
+      "trips": 185,
+      "perCapita": 0.4625
+    },
+    "minority": {
+      "avgShare": 0.5,
+      "protected": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 85,
+        "perCapita": 0.425
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5
+      },
+      "ratio": 0.85,
+      "band": "no-disparity"
+    },
+    "lowIncome": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 400,
+        "trips": 185,
+        "perCapita": 0.4625
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [
+      {
+        "geoid": "A",
+        "pop": 200,
+        "trips": 85,
+        "perCapita": 0.425,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "B",
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5,
+        "minorityShare": 0.2,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      }
+    ],
+    "fourFifths": 0.8
+  },
+  "ev-fourFifths-0.9-changes-band": {
+    "totals": {
+      "pop": 400,
+      "trips": 185,
+      "perCapita": 0.4625
+    },
+    "minority": {
+      "avgShare": 0.5,
+      "protected": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 85,
+        "perCapita": 0.425
+      },
+      "other": {
+        "geoCount": 1,
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5
+      },
+      "ratio": 0.85,
+      "band": "disparity"
+    },
+    "lowIncome": {
+      "avgShare": 0,
+      "protected": {
+        "geoCount": 0,
+        "pop": 0,
+        "trips": 0,
+        "perCapita": 0
+      },
+      "other": {
+        "geoCount": 2,
+        "pop": 400,
+        "trips": 185,
+        "perCapita": 0.4625
+      },
+      "ratio": null,
+      "band": "insufficient"
+    },
+    "geos": [
+      {
+        "geoid": "A",
+        "pop": 200,
+        "trips": 85,
+        "perCapita": 0.425,
+        "minorityShare": 0.8,
+        "lowIncomeShare": 0,
+        "isMinority": true,
+        "isLowIncome": false
+      },
+      {
+        "geoid": "B",
+        "pop": 200,
+        "trips": 100,
+        "perCapita": 0.5,
+        "minorityShare": 0.2,
+        "lowIncomeShare": 0,
+        "isMinority": false,
+        "isLowIncome": false
+      }
+    ],
+    "fourFifths": 0.9
+  }
+}
