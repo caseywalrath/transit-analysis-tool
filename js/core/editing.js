@@ -821,7 +821,14 @@
       var stHits = safeQuery(e.point, App.pointLayerIds());
       var fHits  = safeQuery(e.point, App.lineStyleLayerIds().concat(["polygons-fill"]));
       var hit    = (stHits.length ? stHits : fHits)[0];
-      if (!hit) return;
+      if (!hit) {
+        // Empty map: offer only "Copy coordinates" (coord-pin.js).
+        if (App.coordPin && typeof App.showContextMenu === "function") {
+          e.preventDefault();
+          App.showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY, [App.coordPin.menuItem(e.lngLat)]);
+        }
+        return;
+      }
 
       e.preventDefault();
       var layerId      = hit.layer.id;
@@ -842,8 +849,9 @@
         var gMerge = gSel ? { label: "Merge\u2026", action: function () {
           App.merge.openDialog(gSel.type, gSel.indices, gSel.primaryFor(featureType, featureIndex));
         }} : null;
-        App.showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY,
-          App.bulkFeatures.groupMenuItems(curSel, gMerge));
+        var gItems = App.bulkFeatures.groupMenuItems(curSel, gMerge);
+        if (App.coordPin) gItems = gItems.concat([App.coordPin.menuItem(e.lngLat)]);
+        App.showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY, gItems);
         return;
       }
 
@@ -887,6 +895,9 @@
                 var fn = removeFns[featureType];
                 if (typeof fn === "function") fn(featureIndex);
                 if (typeof App.onFeatureDelete === "function") App.onFeatureDelete();
+            }},
+            { label: "Copy coordinates", hidden: !App.coordPin, action: function () {
+                App.coordPin.menuItem(e.lngLat).action();
             }}
         ];
         App.showContextMenu(

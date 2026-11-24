@@ -2843,6 +2843,38 @@ code { font-family: var(--font-mono); }
   justify-content: center;
 }
 
+/* ---- Pinned click coordinates (coord-pin.js) ---- */
+/* clear:none lets it float on the scale bar's row instead of stacking a new one. */
+#map .maplibregl-ctrl-bottom-left .coord-pin {
+  clear: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 1px 2px 1px 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: 11px/1.4 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+#map .maplibregl-ctrl-bottom-left .coord-pin[hidden] { display: none; }
+.coord-pin-text { user-select: text; cursor: text; white-space: nowrap; }
+.coord-pin-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0;
+  background: transparent; border: none; border-radius: 3px;
+  color: var(--text-secondary); cursor: pointer; font-size: 14px; line-height: 1;
+}
+.coord-pin-btn:hover { background: var(--surface-hover, var(--border)); color: var(--text-primary); }
+.coord-pin-btn.copied { color: var(--accent); }
+.coord-pin-marker {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #e8453c; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
 /* ---- Analysis module popup ---- */
 .module-popup {
   position: fixed;
