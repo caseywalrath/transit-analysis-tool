@@ -100,6 +100,8 @@
       var oe = e.originalEvent || {};
       if (App.drawMode || oe.shiftKey || oe.ctrlKey || oe.metaKey) return;
       if (hitsDrawnFeature(e.point)) return; // clicking a feature selects it; leave the pin alone
+      // A GTFS stop/route click opens its details (editing.js); don't pin it too.
+      if (typeof App.gtfsPickAt === "function" && App.gtfsPickAt(e.point)) return;
       pin(e.lngLat);
     });
     document.addEventListener("keydown", function (e) {

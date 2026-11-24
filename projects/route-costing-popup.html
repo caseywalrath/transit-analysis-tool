@@ -8,8 +8,14 @@
 
     <div class="rc-settings-grid">
 
-      <label class="tiny">Cost per platform hour ($)</label>
+      <label class="tiny">Cost per hour ($)</label>
       <input type="number" id="rcCostPerHour" class="rf-number-input" min="0" step="1" value="150">
+
+      <label class="tiny">Rate basis</label>
+      <select id="rcRateBasis" class="rf-select">
+        <option value="revenue">per revenue hour (running + layover; NTD)</option>
+        <option value="platform">per platform hour (revenue + deadhead)</option>
+      </select>
 
       <label class="tiny">Deadhead %</label>
       <input type="number" id="rcDeadheadPct" class="rf-number-input" min="0" max="100" step="1" value="15">
@@ -105,7 +111,7 @@
 
       <div class="rc-service-actions">
         <button id="rcSettingsBtn" type="button" class="rf-btn-sm">Costing Settings</button>
-        <button id="rcInterlinesBtn" type="button" class="rf-btn-sm" disabled title="Interlines — coming soon">Interlines</button>
+        <button id="rcInterlinesBtn" type="button" class="rf-btn-sm" disabled title="Interlining across routes is planned for the Transit Costing Tool; not available here.">Interlines</button>
       </div>
       <button id="rcCostBtn" type="button" class="rf-action-primary u-mt-2">
         Cost Services

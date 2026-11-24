@@ -1,6 +1,6 @@
 // js/projects/route-costing.js
-// Route Costing: per-Service daily/annual operating cost, trips, revenue and
-// platform hours, and peak vehicles from feature attributes + Costing Settings.
+// Route Costing: per-Service daily/annual operating cost, trips, running,
+// revenue and platform hours, and peak vehicles from feature attributes + Costing Settings.
 // Service assembly lives in js/core/service-assembly.js. No public API.
 // Detail: docs/reference/modules/route-costing.md
 
@@ -11,8 +11,9 @@
   // ---- Defaults (module-wide costing settings) ----
 
   var DEFAULT_SETTINGS = {
-    costPerHour:    150,    // $ per platform hour
-    deadheadPct:    15,     // % added to revenue hours to get platform hours
+    costPerHour:    150,    // $ per hour of the chosen rateBasis
+    rateBasis:      "revenue", // "revenue" (running + layover; NTD) | "platform" (revenue + deadhead)
+    deadheadPct:    15,     // % of running hours added as deadhead (platform hours)
     layoverMode:    "minutes", // "minutes" | "percent"
     layoverValue:   10,     // minutes or percent (per mode)
     daysWeekday:    255,
@@ -32,6 +33,10 @@
   var _stale           = false;
   var _running         = false;
   var _initialized     = false;
+
+  // Per-Service $/hr overrides, keyed by Service key. Kept here (not in feature
+  // attributes) so Attribute Summary and the attributes dock stay untouched.
+  var _rateOverrides   = {};
 
   var _interlineGroups   = [];   // [{ id, name, serviceKeys:[], days:{weekday,saturday,sunday} }]
   var _pendingInterlines = null; // temp copy while Interlines modal is open
@@ -229,6 +234,7 @@
   function syncSettingsToInputs(s) {
     var byId = function (id) { return document.getElementById(id); };
     if (byId("rcCostPerHour"))   byId("rcCostPerHour").value   = s.costPerHour;
+    if (byId("rcRateBasis"))     byId("rcRateBasis").value     = s.rateBasis === "platform" ? "platform" : "revenue";
     if (byId("rcDeadheadPct"))   byId("rcDeadheadPct").value   = s.deadheadPct;
     if (byId("rcLayoverValue"))  byId("rcLayoverValue").value  = s.layoverValue;
     if (byId("rcDaysWeekday"))   byId("rcDaysWeekday").value   = s.daysWeekday;
@@ -261,6 +267,7 @@
     }
     _pendingSettings = {
       costPerHour:   num(byId("rcCostPerHour"),   DEFAULT_SETTINGS.costPerHour),
+      rateBasis:     (byId("rcRateBasis") && byId("rcRateBasis").value === "platform") ? "platform" : "revenue",
       deadheadPct:   num(byId("rcDeadheadPct"),   DEFAULT_SETTINGS.deadheadPct),
       layoverMode:   mode,
       layoverValue:  num(byId("rcLayoverValue"),  DEFAULT_SETTINGS.layoverValue),
@@ -379,6 +386,21 @@
     return h + min / 60;
   }
 
+  // A usable override is a finite number above zero; blank, 0, negative or text
+  // fall back to the default rate.
+  function sanitizeRate(v) {
+    var n = (typeof v === "number") ? v : parseFloat(v);
+    return (isFinite(n) && n > 0) ? n : null;
+  }
+
+  // Effective hourly rate for one Service: its override when valid, else the
+  // settings rate.
+  function effectiveRate(settings, override) {
+    var o = sanitizeRate(override);
+    return o != null ? { rate: o, isOverride: true }
+                     : { rate: settings.costPerHour, isOverride: false };
+  }
+
   function emptyDay() {
     return { trips: 0, revHrs: 0, miles: 0, platHrs: 0, cost: 0 };
   }
@@ -437,7 +459,9 @@
       oneWayRuntimeHrsFromSettings: oneWayRuntimeHrsFromSettings,
       computeRoundTrip: computeRoundTrip,
       computeLayoverHrs: computeLayoverHrs,
-      computeService: function (svc, settings) { return computeService(svc, settings); }
+      computeService: function (svc, settings) { return computeService(svc, settings); },
+      sanitizeRate: sanitizeRate,
+      effectiveRate: effectiveRate
     };
   }
 
@@ -540,6 +564,8 @@
     });
 
     var dh = settings.deadheadPct / 100;
+    // A call without rateBasis keeps the original per-platform-hour math.
+    var basis = settings.rateBasis === "revenue" ? "revenue" : "platform";
     var daysMap = {
       weekday:  settings.daysWeekday  || 0,
       saturday: settings.daysSaturday || 0,
@@ -556,7 +582,9 @@
         : d.cycles * layHrs;
       d.deadheadHrs = d.revHrs * dh;
       d.platHrs     = d.revHrs + d.layoverHrs + d.deadheadHrs;
-      d.cost        = d.platHrs * settings.costPerHour;
+      // revHrs is running time only; NTD revenue hours add layover back in.
+      d.revenueHrs  = d.revHrs + d.layoverHrs;
+      d.cost        = (basis === "revenue" ? d.revenueHrs : d.platHrs) * settings.costPerHour;
       d.annualCost  = d.cost    * daysMap[day];
       // Per-day fleet
       if (multi && isFinite(d.minHeadway) && d.minHeadway > 0) {
@@ -578,12 +606,13 @@
     });
 
     // Annual aggregates (sum across day types with their day counts).
-    var annual = { revHrs: 0, platHrs: 0, layoverHrs: 0, deadheadHrs: 0,
+    var annual = { revHrs: 0, revenueHrs: 0, platHrs: 0, layoverHrs: 0, deadheadHrs: 0,
                    cost: 0, trips: 0, miles: 0 };
     DAYS.forEach(function (day) {
       var d  = perDay[day];
       var dd = daysMap[day];
       annual.revHrs      += d.revHrs      * dd;
+      annual.revenueHrs  += d.revenueHrs  * dd;
       annual.platHrs     += d.platHrs     * dd;
       annual.layoverHrs  += d.layoverHrs  * dd;
       annual.deadheadHrs += d.deadheadHrs * dd;
@@ -633,6 +662,10 @@
       tripsPerCycle:    tripsPerCycle,
       peakHeadwayMin:   isFinite(minHeadwayAcrossAll) ? minHeadwayAcrossAll : null,
 
+      rateBasis:        basis,
+      rateUsed:         settings.costPerHour,
+      rateIsOverride:   false,   // runCosting sets true when it swaps in an override
+
       perDay: perDay,
       daily:  daily,    // alias of perDay (legacy key)
       annual: annual,
@@ -648,9 +681,9 @@
     var DAYS = ["weekday", "saturday", "sunday"];
     var emptyDayAgg = function () {
       return {
-        services: 0, dailyTrips: 0, dailyRevHrs: 0, dailyPlatHrs: 0,
+        services: 0, dailyTrips: 0, dailyRevHrs: 0, dailyRevenueHrs: 0, dailyPlatHrs: 0,
         dailyLayoverHrs: 0, dailyDeadheadHrs: 0, dailyCost: 0, dailyMiles: 0,
-        annualTrips: 0, annualRevHrs: 0, annualPlatHrs: 0, annualMiles: 0, annualCost: 0,
+        annualTrips: 0, annualRevHrs: 0, annualRevenueHrs: 0, annualPlatHrs: 0, annualMiles: 0, annualCost: 0,
         fleetSumRounded: 0, fleetSumRaw: 0
       };
     };
@@ -659,13 +692,14 @@
       servicesSkipped: 0,
       perDay: { weekday: emptyDayAgg(), saturday: emptyDayAgg(), sunday: emptyDayAgg() },
       total: {
-        annualTrips: 0, annualRevHrs: 0, annualPlatHrs: 0, annualMiles: 0, annualCost: 0
+        annualTrips: 0, annualRevHrs: 0, annualRevenueHrs: 0, annualPlatHrs: 0, annualMiles: 0, annualCost: 0
       },
       daysMap: {
         weekday:  settings.daysWeekday  || 0,
         saturday: settings.daysSaturday || 0,
         sunday:   settings.daysSunday   || 0
       },
+      rateBasis: settings.rateBasis === "revenue" ? "revenue" : "platform",
       spareRatioPct: settings.spareRatio,
       costBasisYear: settings.costBasisYear || ""
     };
@@ -681,6 +715,7 @@
         if (d.hasService) agg.services++;
         agg.dailyTrips        += d.trips;
         agg.dailyRevHrs       += d.revHrs;
+        agg.dailyRevenueHrs   += d.revenueHrs;
         agg.dailyPlatHrs      += d.platHrs;
         agg.dailyLayoverHrs   += d.layoverHrs;
         agg.dailyDeadheadHrs  += d.deadheadHrs;
@@ -693,6 +728,7 @@
       // Annual totals
       out.total.annualTrips    += r.annual.trips;
       out.total.annualRevHrs   += r.annual.revHrs;
+      out.total.annualRevenueHrs += r.annual.revenueHrs;
       out.total.annualPlatHrs  += r.annual.platHrs;
       out.total.annualMiles    += r.annual.miles;
       out.total.annualCost     += r.annual.cost;
@@ -704,6 +740,7 @@
       var dd  = out.daysMap[day];
       agg.annualTrips    = agg.dailyTrips    * dd;
       agg.annualRevHrs   = agg.dailyRevHrs   * dd;
+      agg.annualRevenueHrs = agg.dailyRevenueHrs * dd;
       agg.annualPlatHrs  = agg.dailyPlatHrs  * dd;
       agg.annualMiles    = agg.dailyMiles    * dd;
       agg.annualCost     = agg.dailyCost     * dd;
@@ -864,7 +901,8 @@
     // Wire expand toggling on Total table only (band breakdown lives there)
     var mainRows = wrap.querySelectorAll('tr.rc-row-main[data-totalrow]');
     for (var i = 0; i < mainRows.length; i++) {
-      mainRows[i].addEventListener("click", function () {
+      mainRows[i].addEventListener("click", function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains("rc-rate-override")) return;
         var idx = this.getAttribute("data-idx");
         var details = wrap.querySelector('tr.rc-row-details[data-idx="' + idx + '"]');
         if (!details) return;
@@ -884,7 +922,8 @@
       '<th class="rc-num">Run time (min)</th>' +
       '<th class="rc-num">Cycle time (min)</th>' +
       '<th class="rc-num">Trips</th>' +
-      '<th class="rc-num">Daily rev-hr</th>' +
+      '<th class="rc-num">Daily running-hr</th>' +
+      '<th class="rc-num" title="Running + layover (NTD revenue hours)">Daily revenue-hr (incl. layover)</th>' +
       '<th class="rc-num">Daily plat-hr</th>' +
       '<th class="rc-num">Annual cost</th>' +
       '<th class="rc-num">Peak pullout</th>' +
@@ -905,6 +944,7 @@
           '<td class="rc-num">' + fmtInt(r.cycleMin) + '</td>' +
           '<td class="rc-num">' + fmtInt(d.trips) + '</td>' +
           '<td class="rc-num">' + fmtDec(d.revHrs, 1) + '</td>' +
+          '<td class="rc-num">' + fmtDec(d.revenueHrs, 1) + '</td>' +
           '<td class="rc-num">' + fmtDec(d.platHrs, 1) + '</td>' +
           '<td class="rc-num rc-cost">' + fmtMoney(d.annualCost) + '</td>' +
           '<td class="rc-num">' + fmtInt(d.peakVehiclesRounded) + '</td>' +
@@ -919,10 +959,12 @@
       '<th>Service</th>' +
       '<th class="rc-num">RT mi</th>' +
       '<th class="rc-num">Annual trips</th>' +
-      '<th class="rc-num">Annual rev-hr</th>' +
+      '<th class="rc-num">Annual running-hr</th>' +
+      '<th class="rc-num" title="Running + layover (NTD revenue hours)">Annual revenue-hr (incl. layover)</th>' +
       '<th class="rc-num">Annual plat-hr</th>' +
       '<th class="rc-num">Annual cost</th>' +
       '<th class="rc-num" title="Max across day types">Peak pullout</th>' +
+      '<th class="rc-num" title="Optional per-Service $/hr; blank uses the Costing Settings rate">Rate ($/hr)</th>' +
       '</tr>';
     var body = "";
     rows.forEach(function (r, idx) {
@@ -937,13 +979,17 @@
           '<td class="rc-num">' + fmtDec(r.rtMiles, 2) + '</td>' +
           '<td class="rc-num">' + fmtInt(r.annual.trips) + '</td>' +
           '<td class="rc-num">' + fmtInt(r.annual.revHrs) + '</td>' +
+          '<td class="rc-num">' + fmtInt(r.annual.revenueHrs) + '</td>' +
           '<td class="rc-num">' + fmtInt(r.annual.platHrs) + '</td>' +
           '<td class="rc-num rc-cost">' + fmtMoney(r.annual.cost) + '</td>' +
           '<td class="rc-num">' + fmtInt(r.peakVehiclesRounded) + '</td>' +
+          '<td class="rc-num"><input type="number" class="rf-number-input rc-rate-override" data-key="' +
+            escapeAttr(r.key) + '" min="0" step="1" placeholder="' + escapeAttr(_settings.costPerHour) +
+            '" value="' + (_rateOverrides[r.key] != null ? escapeAttr(_rateOverrides[r.key]) : '') + '"></td>' +
         '</tr>' +
         '<tr class="rc-row-details" data-idx="' + idx + '" style="display:none;">' +
           '<td></td>' +
-          '<td colspan="7">' + buildBandBreakdownHTML(r) + '</td>' +
+          '<td colspan="9">' + buildBandBreakdownHTML(r) + '</td>' +
         '</tr>';
     });
     return '<table class="rc-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
@@ -960,7 +1006,7 @@
     var html = '<table class="rc-band-table"><thead><tr>' +
       '<th>Day</th><th>Pattern</th><th>Band</th><th class="rc-num">Headway</th>' +
       '<th class="rc-num">Hours</th><th class="rc-num">Trips</th>' +
-      '<th class="rc-num">Rev-hr</th><th class="rc-num">Peak veh</th>' +
+      '<th class="rc-num">Running-hr</th><th class="rc-num">Peak veh</th>' +
       '</tr></thead><tbody>';
 
     ["weekday", "saturday", "sunday"].forEach(function (day) {
@@ -986,9 +1032,9 @@
     var wk = r.perDay.weekday, sa = r.perDay.saturday, su = r.perDay.sunday;
     html += '<div class="rc-day-totals tiny">' +
       'Daily totals — ' +
-      'Wk: ' + fmtInt(wk.trips) + ' trips, ' + fmtDec(wk.revHrs, 1) + ' rev-hr, ' + fmtMoney(wk.cost) + ' &middot; ' +
-      'Sa: ' + fmtInt(sa.trips) + ' trips, ' + fmtDec(sa.revHrs, 1) + ' rev-hr, ' + fmtMoney(sa.cost) + ' &middot; ' +
-      'Su: ' + fmtInt(su.trips) + ' trips, ' + fmtDec(su.revHrs, 1) + ' rev-hr, ' + fmtMoney(su.cost) +
+      'Wk: ' + fmtInt(wk.trips) + ' trips, ' + fmtDec(wk.revHrs, 1) + ' running-hr, ' + fmtMoney(wk.cost) + ' &middot; ' +
+      'Sa: ' + fmtInt(sa.trips) + ' trips, ' + fmtDec(sa.revHrs, 1) + ' running-hr, ' + fmtMoney(sa.cost) + ' &middot; ' +
+      'Su: ' + fmtInt(su.trips) + ' trips, ' + fmtDec(su.revHrs, 1) + ' running-hr, ' + fmtMoney(su.cost) +
       '</div>';
     return html;
   }
@@ -1007,11 +1053,13 @@
       ["Days/year",            fmtInt(summary.daysMap.weekday),  fmtInt(summary.daysMap.saturday),  fmtInt(summary.daysMap.sunday),  fmtInt(summary.daysMap.weekday + summary.daysMap.saturday + summary.daysMap.sunday)],
       ["Services in operation",fmtInt(wk.services),              fmtInt(sa.services),               fmtInt(su.services),             fmtInt(summary.servicesScored)],
       ["Daily trips",          fmtInt(wk.dailyTrips),            fmtInt(sa.dailyTrips),             fmtInt(su.dailyTrips),           DASH],
-      ["Daily rev-hr",         fmtDec(wk.dailyRevHrs, 1),        fmtDec(sa.dailyRevHrs, 1),         fmtDec(su.dailyRevHrs, 1),       DASH],
+      ["Daily running-hr",     fmtDec(wk.dailyRevHrs, 1),        fmtDec(sa.dailyRevHrs, 1),         fmtDec(su.dailyRevHrs, 1),       DASH],
+      ["Daily revenue-hr (incl. layover)", fmtDec(wk.dailyRevenueHrs, 1), fmtDec(sa.dailyRevenueHrs, 1), fmtDec(su.dailyRevenueHrs, 1),    DASH],
       ["Daily plat-hr",        fmtDec(wk.dailyPlatHrs, 1),       fmtDec(sa.dailyPlatHrs, 1),        fmtDec(su.dailyPlatHrs, 1),      DASH],
       ["Daily cost",           fmtMoney(wk.dailyCost),           fmtMoney(sa.dailyCost),            fmtMoney(su.dailyCost),          DASH],
       ["Annual trips",         fmtInt(wk.annualTrips),           fmtInt(sa.annualTrips),            fmtInt(su.annualTrips),          fmtInt(t.annualTrips)],
-      ["Annual rev-hr",        fmtInt(wk.annualRevHrs),          fmtInt(sa.annualRevHrs),           fmtInt(su.annualRevHrs),         fmtInt(t.annualRevHrs)],
+      ["Annual running-hr",    fmtInt(wk.annualRevHrs),          fmtInt(sa.annualRevHrs),           fmtInt(su.annualRevHrs),         fmtInt(t.annualRevHrs)],
+      ["Annual revenue-hr (incl. layover)", fmtInt(wk.annualRevenueHrs), fmtInt(sa.annualRevenueHrs), fmtInt(su.annualRevenueHrs),         fmtInt(t.annualRevenueHrs)],
       ["Annual plat-hr",       fmtInt(wk.annualPlatHrs),         fmtInt(sa.annualPlatHrs),          fmtInt(su.annualPlatHrs),        fmtInt(t.annualPlatHrs)],
       ["Annual rev miles",     fmtInt(wk.annualMiles),           fmtInt(sa.annualMiles),            fmtInt(su.annualMiles),          fmtInt(t.annualMiles)],
       ["Annual operating cost",fmtMoney(wk.annualCost),          fmtMoney(sa.annualCost),           fmtMoney(su.annualCost),         fmtMoney(t.annualCost)],
@@ -1064,6 +1112,11 @@
     });
     html += '</tbody></table>';
 
+    html += '<div class="tiny" style="margin-top:6px;color:var(--muted);">' +
+      (summary.rateBasis === "revenue"
+        ? 'Cost = rate &times; revenue hours (running + layover).'
+        : 'Cost = rate &times; platform hours (running + layover + deadhead).') +
+      '</div>';
     if (summary.servicesSkipped) {
       html += '<div class="tiny" style="margin-top:6px;color:var(--muted);">' +
         summary.servicesSkipped + ' service' + (summary.servicesSkipped === 1 ? '' : 's') + ' skipped (see warnings).</div>';
@@ -1124,7 +1177,8 @@
     lines.push("# Route Costing Export");
     lines.push("# Generated: " + now.toISOString());
     if (settings.costBasisYear) lines.push("# Cost basis: " + settings.costBasisYear);
-    lines.push("# Cost per platform hour ($): " + settings.costPerHour);
+    lines.push("# Cost basis: rate × " + (settings.rateBasis === "revenue" ? "revenue" : "platform") + " hours");
+    lines.push("# Default rate ($/hr): " + settings.costPerHour);
     lines.push("# Deadhead %: " + settings.deadheadPct);
     lines.push("# Layover: " + settings.layoverValue +
                (settings.layoverMode === "percent" ? "% of round-trip" : " min"));
@@ -1138,11 +1192,11 @@
     lines.push(csvRow([
       "Service","Type","Patterns","Day type",
       "RT mi","Frequency (min)","Run time (min)","Layover (min)","Cycle time (min)",
-      "Trips","Daily rev-hr","Daily plat-hr","Daily layover hr","Daily deadhead hr",
+      "Trips","Daily running-hr","Daily revenue-hr","Daily plat-hr","Daily layover hr","Daily deadhead hr",
       "Daily rev mi","Daily plat mi","Daily deadhead mi","Daily cost ($)",
-      "Annual rev-hr","Annual plat-hr","Annual rev mi","Annual plat mi","Annual cost ($)",
+      "Annual running-hr","Annual revenue-hr","Annual plat-hr","Annual rev mi","Annual plat mi","Annual cost ($)",
       "Peak veh (raw)","Peak pullout (rounded)",
-      "Skipped","Warnings"
+      "Skipped","Warnings","Rate ($/hr)","Rate source"
     ]));
 
     var DAY_NAME = { weekday: "Weekday", saturday: "Saturday", sunday: "Sunday" };
@@ -1155,11 +1209,11 @@
         lines.push(csvRow([
           r.name, r.isGroup ? "Paired" : "Solo", r.patternCount, "—",
           "","","","","",
-          "","","","","",
+          "","","","","","",
           "","","","",
-          "","","","","",
+          "","","","","","",
           "","",
-          "YES", warnStr
+          "YES", warnStr, "", ""
         ]));
         return;
       }
@@ -1172,6 +1226,7 @@
         var dailyDeadheadMi = d.miles * dh;
         var dailyPlatMi     = d.miles + dailyDeadheadMi;
         var annRevHr  = d.revHrs   * ddays;
+        var annRevenueHr = d.revenueHrs * ddays;
         var annPlatHr = d.platHrs  * ddays;
         var annRevMi  = d.miles    * ddays;
         var annPlatMi = dailyPlatMi * ddays;
@@ -1180,14 +1235,14 @@
           r.name, r.isGroup ? "Paired" : "Solo", r.patternCount, DAY_NAME[day],
           round2(r.rtMiles), roundI(d.minHeadway), roundI(r.runTimeMin),
           roundI(r.layoverMin), roundI(r.cycleMin),
-          roundI(d.trips), round1(d.revHrs), round1(d.platHrs),
+          roundI(d.trips), round1(d.revHrs), round1(d.revenueHrs), round1(d.platHrs),
           round1(d.layoverHrs), round1(d.deadheadHrs),
           round1(d.miles), round1(dailyPlatMi), round1(dailyDeadheadMi),
           roundI(d.cost),
-          roundI(annRevHr), roundI(annPlatHr), roundI(annRevMi), roundI(annPlatMi),
+          roundI(annRevHr), roundI(annRevenueHr), roundI(annPlatHr), roundI(annRevMi), roundI(annPlatMi),
           roundI(d.annualCost),
           round1(d.peakVehiclesRaw), roundI(d.peakVehiclesRounded),
-          "", ""
+          "", "", r.rateUsed, r.rateIsOverride ? "override" : "default"
         ]));
       });
 
@@ -1197,13 +1252,13 @@
       lines.push(csvRow([
         r.name, r.isGroup ? "Paired" : "Solo", r.patternCount, "Total",
         round2(r.rtMiles), "", roundI(r.runTimeMin), roundI(r.layoverMin), roundI(r.cycleMin),
-        "", "", "", "", "",
+        "", "", "", "", "", "",
         "", "", "", "",
-        roundI(r.annual.revHrs), roundI(r.annual.platHrs),
+        roundI(r.annual.revHrs), roundI(r.annual.revenueHrs), roundI(r.annual.platHrs),
         roundI(r.annual.miles), roundI(totalPlatMi),
         roundI(r.annual.cost),
         round1(r.peakVehiclesRaw), roundI(r.peakVehiclesRounded),
-        "", ""
+        "", "", r.rateUsed, r.rateIsOverride ? "override" : "default"
       ]));
     });
 
@@ -1216,11 +1271,13 @@
       summary.daysMap.weekday + summary.daysMap.saturday + summary.daysMap.sunday]));
     lines.push(csvRow(["Services in operation", wk.services, sa.services, su.services, summary.servicesScored]));
     lines.push(csvRow(["Daily trips", roundI(wk.dailyTrips), roundI(sa.dailyTrips), roundI(su.dailyTrips), ""]));
-    lines.push(csvRow(["Daily rev-hr", round1(wk.dailyRevHrs), round1(sa.dailyRevHrs), round1(su.dailyRevHrs), ""]));
+    lines.push(csvRow(["Daily running-hr", round1(wk.dailyRevHrs), round1(sa.dailyRevHrs), round1(su.dailyRevHrs), ""]));
+    lines.push(csvRow(["Daily revenue-hr", round1(wk.dailyRevenueHrs), round1(sa.dailyRevenueHrs), round1(su.dailyRevenueHrs), ""]));
     lines.push(csvRow(["Daily plat-hr", round1(wk.dailyPlatHrs), round1(sa.dailyPlatHrs), round1(su.dailyPlatHrs), ""]));
     lines.push(csvRow(["Daily cost ($)", roundI(wk.dailyCost), roundI(sa.dailyCost), roundI(su.dailyCost), ""]));
     lines.push(csvRow(["Annual trips", roundI(wk.annualTrips), roundI(sa.annualTrips), roundI(su.annualTrips), roundI(tot.annualTrips)]));
-    lines.push(csvRow(["Annual rev-hr", roundI(wk.annualRevHrs), roundI(sa.annualRevHrs), roundI(su.annualRevHrs), roundI(tot.annualRevHrs)]));
+    lines.push(csvRow(["Annual running-hr", roundI(wk.annualRevHrs), roundI(sa.annualRevHrs), roundI(su.annualRevHrs), roundI(tot.annualRevHrs)]));
+    lines.push(csvRow(["Annual revenue-hr", roundI(wk.annualRevenueHrs), roundI(sa.annualRevenueHrs), roundI(su.annualRevenueHrs), roundI(tot.annualRevenueHrs)]));
     lines.push(csvRow(["Annual plat-hr", roundI(wk.annualPlatHrs), roundI(sa.annualPlatHrs), roundI(su.annualPlatHrs), roundI(tot.annualPlatHrs)]));
     lines.push(csvRow(["Annual rev miles", roundI(wk.annualMiles), roundI(sa.annualMiles), roundI(su.annualMiles), roundI(tot.annualMiles)]));
     lines.push(csvRow(["Annual operating cost ($)", roundI(wk.annualCost), roundI(sa.annualCost), roundI(su.annualCost), roundI(tot.annualCost)]));
@@ -1263,7 +1320,12 @@
       _running = false;
       return;
     }
-    var results = selected.map(function (svc) { return computeService(svc, _settings); });
+    var results = selected.map(function (svc) {
+      var er = effectiveRate(_settings, _rateOverrides[svc.key]);
+      var res = computeService(svc, Object.assign({}, _settings, { costPerHour: er.rate }));
+      if (!res.skipped) res.rateIsOverride = er.isOverride;
+      return res;
+    });
     var summary = computeSystemSummary(results, _settings, _interlineGroups);
     _lastResult = { services: results, summary: summary, settings: Object.assign({}, _settings) };
     _stale = false;
@@ -1363,6 +1425,20 @@
       byId("rcCostBtn").addEventListener("click", runCosting);
     }
 
+    // Per-Service rate overrides (delegated: the table is rebuilt on every render)
+    if (byId("rcResultsTable")) {
+      byId("rcResultsTable").addEventListener("change", function (e) {
+        var t = e.target;
+        if (!t || !t.classList || !t.classList.contains("rc-rate-override")) return;
+        var key = t.getAttribute("data-key");
+        var n = sanitizeRate(t.value);
+        if (n != null) _rateOverrides[key] = n;
+        else { delete _rateOverrides[key]; t.value = ""; }
+        if (_lastResult) markStale();
+        if (App.cache) App.cache.save();
+      });
+    }
+
     // CSV export
     if (byId("rcExportCSV")) {
       byId("rcExportCSV").addEventListener("click", exportCSV);
@@ -1422,6 +1498,7 @@
 
   function clearAll() {
     _lastResult = null;
+    _rateOverrides = {};
     _interlineGroups = [];
     _stale = false;
     if (!isPopupVisible()) return;
@@ -1452,8 +1529,12 @@
 
   function saveRcState(/* mode */) {
     var data = {
-      version:        3,   // v3: solo Service keys are ID-based ("solo-route-id12"); v2: per-day-type structure
+      // v4: settings.rateBasis and rateOverrides (a save without rateBasis is v3 or
+      // older and was costed per platform hour); v3: solo Service keys are
+      // ID-based ("solo-route-id12"); v2: per-day-type structure.
+      version:        4,
       settings:       Object.assign({}, _settings),
+      rateOverrides:  Object.assign({}, _rateOverrides),
       selectedKeys:   getSelectedServiceKeys(),
       interlineGroups: _interlineGroups.map(function (g) {
         return { id: g.id, name: g.name, serviceKeys: g.serviceKeys.slice(), days: Object.assign({}, g.days) };
@@ -1481,6 +1562,7 @@
             cycleMin: r.cycleMin, layoverMin: r.layoverMin,
             tripsPerCycle: r.tripsPerCycle,
             peakHeadwayMin: r.peakHeadwayMin,
+            rateBasis: r.rateBasis, rateUsed: r.rateUsed, rateIsOverride: r.rateIsOverride,
             perDay: r.perDay,
             daily: r.perDay,   // legacy alias; always equal to perDay
             annual: r.annual,
@@ -1507,10 +1589,56 @@
     return out;
   }
 
+  // Saved results from before revenue hours existed lack those fields; derive
+  // them (revenue = running + layover) so the tables render without blanks.
+  // The basis falls back to platform, which is how those results were costed.
+  function backfillRevenueFields(lr) {
+    var st = lr.settings || {};
+    if (!st.rateBasis) st.rateBasis = "platform";
+    lr.settings = st;
+    var sm = lr.summary || {};
+    if (!sm.rateBasis) sm.rateBasis = st.rateBasis;
+    ["weekday", "saturday", "sunday"].forEach(function (day) {
+      var a = sm.perDay && sm.perDay[day];
+      if (a && a.dailyRevenueHrs == null) {
+        a.dailyRevenueHrs  = (a.dailyRevHrs || 0) + (a.dailyLayoverHrs || 0);
+        a.annualRevenueHrs = (a.annualRevHrs || 0) + (a.dailyLayoverHrs || 0) * ((sm.daysMap && sm.daysMap[day]) || 0);
+      }
+    });
+    if (sm.total && sm.total.annualRevenueHrs == null && sm.perDay) {
+      sm.total.annualRevenueHrs = ["weekday", "saturday", "sunday"].reduce(function (s, day) {
+        return s + ((sm.perDay[day] && sm.perDay[day].annualRevenueHrs) || 0);
+      }, 0);
+    }
+    (lr.services || []).forEach(function (r) {
+      if (r.skipped) return;
+      ["weekday", "saturday", "sunday"].forEach(function (day) {
+        var d = r.perDay && r.perDay[day];
+        if (d && d.revenueHrs == null) d.revenueHrs = (d.revHrs || 0) + (d.layoverHrs || 0);
+      });
+      if (r.annual && r.annual.revenueHrs == null) {
+        r.annual.revenueHrs = (r.annual.revHrs || 0) + (r.annual.layoverHrs || 0);
+      }
+      if (r.rateUsed == null) r.rateUsed = st.costPerHour;
+      if (r.rateIsOverride == null) r.rateIsOverride = false;
+    });
+  }
+
   function restoreRcState(data) {
     if (!data) return;
     if (data.settings) {
       _settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
+      // Sessions saved before the rate basis existed were costed per platform
+      // hour; keep their numbers rather than adopting the new default.
+      if (!data.settings.rateBasis) _settings.rateBasis = "platform";
+    }
+    _rateOverrides = {};
+    if (data.rateOverrides && typeof data.rateOverrides === "object") {
+      Object.keys(data.rateOverrides).forEach(function (k) {
+        var mk = App.migrateServiceKey(k);
+        var n = sanitizeRate(data.rateOverrides[k]);
+        if (mk && n != null) _rateOverrides[mk] = n;
+      });
     }
     if (Array.isArray(data.selectedKeys)) {
       // Migrate legacy "group-…" keys (pre-Service rename) to "service-…"
@@ -1540,6 +1668,7 @@
         summary:  data.lastSummary.summary || {},
         services: data.lastSummary.services
       };
+      backfillRevenueFields(_lastResult);
       // Same legacy-key upgrade for the per-Service rows (kept verbatim when a
       // legacy index no longer resolves — the row is display-only).
       _lastResult.services.forEach(function (r) {

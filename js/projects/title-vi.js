@@ -24,6 +24,13 @@
   var _core              = null;   // captured in init() for the stale-banner Re-run button
   var _baselineFeatureFilter = null;
 
+  // Service Equity tab: the settings live in _policy.serviceEquity; the last result carries the
+  // signature of the inputs it was computed from, so staleness is derived rather than latched.
+  var _seResult          = null;
+  var _seIncludeHidden   = false;
+  var _seRunning         = false;
+  var _seGen             = 0;      // bumped by clearAll() so a run that finishes after a Clear is dropped
+
   // Cached demographics per scenario (for instant threshold re-evaluation)
   var _cachedDemographics = {};  // scenarioId -> demographics object
   var _cachedImpactedGeom = {};  // scenarioId -> GeoJSON geometry
@@ -52,6 +59,8 @@
         panes[j].classList.remove("tvi-tab-visible");
       }
     }
+    // Scope or date changes made elsewhere while another tab was showing are caught here.
+    if (id === "service") { refreshSeDateLine(); refreshSeStale(); }
   }
 
   // ---- Policy read/write from DOM ----
@@ -76,6 +85,68 @@
     if (geoEl) _policy.geoLevel = geoEl.value;
     var yearEl = document.getElementById("tviYearSelect");
     if (yearEl) _policy.acsYear = yearEl.value;
+    var apEl = document.getElementById("tviApportionMethod");
+    if (apEl) _policy.apportionMethod = apEl.value === "area" ? "area" : "blockPop";
+    var liEl = document.getElementById("tviLowIncomeDef");
+    if (liEl) _policy.lowIncomeDefinition = liEl.value === "poverty200" ? "poverty200" : "poverty100";
+    readServiceEquityInputs();
+  }
+
+  // "Residents counted by <label>." plus the fallback note, for results and CSVs.
+  function apportionLine(methodUsed, method) {
+    return "Residents counted by " + Apportion.methodLabel(methodUsed || method) + ".";
+  }
+
+  // Results saved before the setting existed were counted as below poverty.
+  function lowIncomeLine(definition) {
+    return "Low-income: " + window.ServiceEquity.lowIncomeSpec(definition).label + ".";
+  }
+
+  function positiveOr(el, fallback) {
+    var v = parseFloat(el.value);
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  }
+
+  // Every element is optional: collectState and tab switches call this before the popup body exists.
+  function readServiceEquityInputs() {
+    var dflt = TV.defaultServiceEquity();
+    var se = _policy.serviceEquity = Object.assign(TV.defaultServiceEquity(), _policy.serviceEquity || {});
+    var el = document.getElementById("tviSeBusMi");
+    if (el) se.busBufferMiles = positiveOr(el, dflt.busBufferMiles);
+    el = document.getElementById("tviSeRailMi");
+    if (el) se.railBufferMiles = positiveOr(el, dflt.railBufferMiles);
+    el = document.getElementById("tviSeFrequent");
+    if (el) se.frequentHalfMile = !!el.checked;
+    el = document.getElementById("tviSeHeadway");
+    if (el) se.frequentHeadwayMin = positiveOr(el, dflt.frequentHeadwayMin);
+    el = document.getElementById("tviSeFourFifths");
+    if (el) {
+      // A ratio threshold above 1 would flag even equal service; anything outside (0, 1] is a typo.
+      var ff = parseFloat(el.value);
+      se.fourFifths = Number.isFinite(ff) && ff > 0 && ff <= 1 ? ff : dflt.fourFifths;
+    }
+    el = document.getElementById("tviSeIncludeHidden");
+    if (el) _seIncludeHidden = !!el.checked;
+  }
+
+  function writeServiceEquityInputs() {
+    var se = Object.assign(TV.defaultServiceEquity(), _policy.serviceEquity || {});
+    var set = function (id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+    set("tviSeBusMi", se.busBufferMiles);
+    set("tviSeRailMi", se.railBufferMiles);
+    set("tviSeHeadway", se.frequentHeadwayMin);
+    set("tviSeFourFifths", se.fourFifths);
+    var fq = document.getElementById("tviSeFrequent");
+    if (fq) fq.checked = !!se.frequentHalfMile;
+    var hid = document.getElementById("tviSeIncludeHidden");
+    if (hid) hid.checked = !!_seIncludeHidden;
+    syncFrequentHeadwayEnabled();
+  }
+
+  function syncFrequentHeadwayEnabled() {
+    var fq = document.getElementById("tviSeFrequent");
+    var hw = document.getElementById("tviSeHeadway");
+    if (fq && hw) hw.disabled = !fq.checked;
   }
 
   function writePolicyToDOM() {
@@ -98,6 +169,11 @@
     if (geoEl) geoEl.value = _policy.geoLevel;
     var yearEl = document.getElementById("tviYearSelect");
     if (yearEl) yearEl.value = _policy.acsYear;
+    var apEl = document.getElementById("tviApportionMethod");
+    if (apEl) apEl.value = _policy.apportionMethod === "area" ? "area" : "blockPop";
+    var liEl = document.getElementById("tviLowIncomeDef");
+    if (liEl) liEl.value = _policy.lowIncomeDefinition === "poverty200" ? "poverty200" : "poverty100";
+    writeServiceEquityInputs();
   }
 
   // ---- Feature checklist helpers ----
@@ -638,7 +714,8 @@
         return;
       }
 
-      var demographics = await TV.fetchDemographics(core, unionGeom, _policy.geoLevel, _policy.acsYear);
+      var demographics = await TV.fetchDemographics(core, unionGeom, _policy.geoLevel, _policy.acsYear,
+        { apportionMethod: _policy.apportionMethod, lowIncomeDefinition: _policy.lowIncomeDefinition });
 
       _baseline = {
         type: "system_population",
@@ -650,6 +727,10 @@
         minorityPop: demographics.minorityPop,
         lowIncomePop: demographics.lowIncomePop,
         geoCount: demographics.geoCount,
+        apportionMethod: _policy.apportionMethod,
+        lowIncomeDefinition: _policy.lowIncomeDefinition,
+        apportionMethodUsed: demographics.apportionMethodUsed,
+        apportionNote: demographics.apportionNote,
         computedAt: new Date().toISOString()
       };
 
@@ -674,6 +755,16 @@
     if (geoEl) geoEl.textContent = String(_baseline.geoCount);
     var popEl = document.getElementById("tviBaselinePop");
     if (popEl) popEl.textContent = _baseline.totalPop.toLocaleString();
+    setApportionLine("tviBaselineApportion", _baseline.apportionMethodUsed, _baseline.apportionNote,
+      _baseline.lowIncomeDefinition);
+  }
+
+  // Method line plus, when block data was unavailable, the fallback note, then the low-income definition.
+  function setApportionLine(id, methodUsed, note, lowIncomeDefinition) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!methodUsed) { el.textContent = ""; return; }
+    el.textContent = apportionLine(methodUsed) + (note ? " " + note : "") + " " + lowIncomeLine(lowIncomeDefinition);
   }
 
   // ---- Build union from feature filter ----
@@ -726,6 +817,23 @@
 
     try {
       readPolicyFromDOM();
+      // Comparing an impacted area and a baseline counted by different methods
+      // would mix two definitions of "residents inside"; older baselines were by area.
+      var baseMethod = _baseline.apportionMethod || "area";
+      if (baseMethod !== _policy.apportionMethod) {
+        if (statusEl) statusEl.textContent = "The system baseline counted residents by " +
+          Apportion.methodLabel(baseMethod) + ". Recompute the baseline so both use the same method.";
+        _running = false;
+        return;
+      }
+      // The same holds for the low-income definition: shares under two definitions are not comparable.
+      var baseLow = _baseline.lowIncomeDefinition || "poverty100";
+      if (baseLow !== _policy.lowIncomeDefinition) {
+        if (statusEl) statusEl.textContent = "The system baseline used low-income: " +
+          window.ServiceEquity.lowIncomeSpec(baseLow).label + ". Recompute the baseline so both use the same definition.";
+        _running = false;
+        return;
+      }
       var scenario = _scenarios[_activeScenarioIdx];
 
       // Update scenario's impact method from DOM
@@ -760,7 +868,8 @@
       }
 
       // 3. Fetch demographics for impacted area
-      var demographics = await TV.fetchDemographics(core, impactedArea.geometry, _policy.geoLevel, _policy.acsYear);
+      var demographics = await TV.fetchDemographics(core, impactedArea.geometry, _policy.geoLevel, _policy.acsYear,
+        { apportionMethod: _policy.apportionMethod, lowIncomeDefinition: _policy.lowIncomeDefinition });
 
       // 4. Evaluate findings
       var findings = TV.evaluateFindings(demographics, _baseline, _policy);
@@ -777,6 +886,7 @@
         majorChangeResult: mcResult,
         demographics: demographics,
         findings: findings,
+        lowIncomeDefinition: _policy.lowIncomeDefinition,
         impactedAreaGeometry: impactedArea.geometry,
         computedAt: new Date().toISOString()
       };
@@ -802,6 +912,9 @@
     if (!scenario) return;
     var cached = _cachedDemographics[scenario.id];
     if (!cached || !_baseline) return;
+    // Shares counted under two low-income definitions are not comparable (runAnalysis refuses the same).
+    var cachedRes = _results[scenario.id];
+    if ((cachedRes && cachedRes.lowIncomeDefinition || "poverty100") !== (_baseline.lowIncomeDefinition || "poverty100")) return;
 
     readPolicyFromDOM();
 
@@ -868,6 +981,8 @@
     if (geoEl) geoEl.textContent = String(result.demographics.geoCount);
     var popEl = document.getElementById("tviSummaryPop");
     if (popEl) popEl.textContent = result.demographics.totalPop.toLocaleString();
+    setApportionLine("tviSummaryApportion", result.demographics.apportionMethodUsed, result.demographics.apportionNote,
+      result.lowIncomeDefinition);
 
     // Enable export buttons
     var csvBtn = document.getElementById("tviExportCSV");
@@ -1046,8 +1161,17 @@
     _cachedDemographics = {};
     _cachedImpactedGeom = {};
     _stale = false;
+    _seResult = null;
+    _seGen++;
+    _seRunning = false;
     if (!_initialized) return;
+    var seRunBtn = document.getElementById("tviSeRun");
+    if (seRunBtn) seRunBtn.disabled = false;
     App.renderModuleState({ statusEl: "tviStaleWarning" });
+    App.renderModuleState({ statusEl: "tviSeStaleWarning" });
+    setSeStatus("");
+    displayServiceEquity();
+    refreshSeDateLine();
     var baseBox = document.getElementById("tviBaselineBox");
     if (baseBox) baseBox.style.display = "none";
     var emptyEl = document.getElementById("tviResultsEmpty");
@@ -1055,6 +1179,231 @@
     if (emptyEl) emptyEl.style.display = "";
     if (wrapEl) wrapEl.style.display = "none";
     updateComparisonTable();
+  }
+
+  // ---- Service Equity tab ----
+
+  var SE_BANDS = {
+    "disparity":    { text: "Potential disparity", cls: "low" },
+    "no-disparity": { text: "No disparity",        cls: "mh" },
+    "insufficient": { text: "Not enough data",     cls: "na" }
+  };
+
+  function byId(id) { return document.getElementById(id); }
+
+  function setText(id, text) {
+    var el = byId(id);
+    if (el) el.textContent = text;
+  }
+
+  function setSeStatus(text) { setText("tviSeStatus", text); }
+
+  function isoDate(d) {
+    return /^\d{8}$/.test(String(d || "")) ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) : String(d || "");
+  }
+
+  // A saved result keeps this short hash instead of the whole signature string, which carries every
+  // drawn feature's geometry and would bloat each autosave.
+  function hashStr(str) {
+    var h = 5381;
+    for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36) + "." + str.length.toString(36);
+  }
+
+  // Everything a run reads: its settings, the feed, the analysis date, day parts, the routes in scope and the
+  // drawn features (with their hidden flags).
+  // The street-network epoch is dropped because this test measures walk distance in a straight line, so a
+  // network loading afterwards must not stale it (same reasoning as Transit Coverage's straight-line runs).
+  var _seFeedIds = new WeakMap(), _seFeedSeq = 0;
+
+  // Identity of the loaded feed: a different feed with the same date and routes is a different result.
+  function seFeedId() {
+    var feed = typeof App.gtfsSchedule === "function" ? App.gtfsSchedule() : null;
+    if (!feed) return "none";
+    if (!_seFeedIds.has(feed)) _seFeedIds.set(feed, ++_seFeedSeq);
+    return String(_seFeedIds.get(feed));
+  }
+
+  // Hidden drawn Routes/Lines drop out of the network unless Include hidden is on, so their hidden
+  // flags matter (featureGeomSignature deliberately ignores them).
+  function seHiddenSig() {
+    if (_seIncludeHidden || typeof App.hiddenSignature !== "function") return "";
+    var refs = [];
+    (App.routes || []).forEach(function (f) { refs.push({ type: "route", id: f.properties && f.properties.routeIdx }); });
+    (App.lines || []).forEach(function (f) { refs.push({ type: "line", id: f.properties && f.properties.lineIdx }); });
+    return App.hiddenSignature(refs);
+  }
+
+  function seSignature() {
+    var settings = JSON.stringify([_policy.serviceEquity, _policy.lowIncomeDefinition, _policy.geoLevel,
+      _policy.acsYear, _seIncludeHidden,
+      // Day parts set the peak headway that decides frequent stops.
+      App.gtfsDayParts && App.gtfsDayParts.get ? App.gtfsDayParts.get() : null]);
+    var date = App.gtfsAnalysisDate ? (App.gtfsAnalysisDate.get() || "") : "";
+    var scope = typeof App.gtfsScopeRouteIds === "function" ? JSON.stringify(App.gtfsScopeRouteIds(_seIncludeHidden)) : "";
+    var geom = typeof App.featureGeomSignature === "function" ? App.featureGeomSignature().replace(/#epoch:\d+/, "") : "";
+    var parts = App.gtfsDayParts ? JSON.stringify(App.gtfsDayParts.get()) : "";
+    return hashStr(settings + "|" + seFeedId() + "|" + date + "|" + scope + "|" + parts + "|" + seHiddenSig() + "|" + geom);
+  }
+
+  // Derived, not latched: reverting an input un-stales the result. A restored result whose feed is not
+  // loaded yet reads as stale until the feed (and its date) are back.
+  function refreshSeStale() {
+    if (!_seResult || _seRunning) {
+      if (!_seResult) App.renderModuleState({ statusEl: "tviSeStaleWarning" });
+      return;
+    }
+    if (_seResult.signature !== seSignature()) {
+      App.renderModuleState({
+        statusEl: "tviSeStaleWarning",
+        stale: true,
+        onRerun: function () { if (_core) runServiceEquityTest(_core); }
+      });
+    } else {
+      App.renderModuleState({ statusEl: "tviSeStaleWarning" });
+    }
+  }
+
+  function refreshSeDateLine() {
+    var el = byId("tviSeDate");
+    if (!el) return;
+    var feed = typeof App.gtfsSchedule === "function" ? App.gtfsSchedule() : null;
+    if (!feed) { el.textContent = "No GTFS feed: drawn Services only."; return; }
+    var date = App.gtfsAnalysisDate ? App.gtfsAnalysisDate.get() : null;
+    if (!date) { el.textContent = "No analysis date set. Change it in GTFS Feed Attributes."; return; }
+    var dayType = _seResult && _seResult.date === date ? _seResult.dayType : window.GtfsSchedule.dayType(feed, date).dayType;
+    el.textContent = "Analysis date: " + isoDate(date) + " (" + dayType + "). Change it in GTFS Feed Attributes.";
+  }
+
+  function per1000(group) {
+    return group.pop > 0 ? (group.perCapita * 1000).toFixed(1) : "—";
+  }
+
+  function fillSeCard(prefix, g) {
+    var band = SE_BANDS[g.band] || SE_BANDS.insufficient;
+    var verdict = byId("tviSe" + prefix + "Verdict");
+    if (verdict) setPill(verdict, band.text, band.cls);
+    setText("tviSe" + prefix + "Protected", per1000(g.protected));
+    setText("tviSe" + prefix + "Other", per1000(g.other));
+    setText("tviSe" + prefix + "Ratio", g.ratio === null || !Number.isFinite(g.ratio) ? "—" : g.ratio.toFixed(2));
+    setText("tviSe" + prefix + "Geos", (g.protected.geoCount + g.other.geoCount) + " geographies, regional share " +
+      (g.avgShare * 100).toFixed(1) + "%");
+  }
+
+  function seNotes(r) {
+    var out = (r.notes || []).slice();
+    if (r.unallocatedStops > 0) {
+      out.push(r.unallocatedStops + (r.unallocatedStops === 1 ? " stop had" : " stops had") +
+        " no residents within their walk distance (" + Math.round(r.unallocatedTrips) + " trips not counted).");
+    }
+    (r.proposalsSkipped || []).forEach(function (p) {
+      out.push("Skipped: " + p.name + " (" + p.reason + ")");
+    });
+    if (r.settings && r.settings.frequentHalfMile) {
+      out.push("½ mile used at " + r.frequentStops + " frequent stops.");
+    }
+    out.push(lowIncomeLine(r.lowIncomeDefinition));
+    out.push("Residents counted by 2020 census-block population.");
+    return out;
+  }
+
+  function displayServiceEquity() {
+    var emptyEl = byId("tviSeEmpty");
+    var wrapEl = byId("tviSeResultsWrap");
+    var csvBtn = byId("tviSeExportCSV");
+    if (!_seResult) {
+      if (emptyEl) emptyEl.style.display = "";
+      if (wrapEl) wrapEl.style.display = "none";
+      if (csvBtn) csvBtn.disabled = true;
+      return;
+    }
+    var r = _seResult, ev = r.result;
+    if (emptyEl) emptyEl.style.display = "none";
+    if (wrapEl) wrapEl.style.display = "block";
+    if (csvBtn) csvBtn.disabled = false;
+    fillSeCard("Min", ev.minority);
+    fillSeCard("Low", ev.lowIncome);
+    var scored = ev.minority.protected.geoCount + ev.minority.other.geoCount;
+    setText("tviSeSummary", r.stopCount + " stops · " + r.gtfsTrips + " GTFS trips + " + r.proposalTrips +
+      " proposal trips · " + scored + " geographies · " + isoDate(r.date));
+    var list = byId("tviSeNotes");
+    if (list) {
+      list.innerHTML = "";
+      seNotes(r).forEach(function (t) {
+        var li = document.createElement("li");
+        li.textContent = t;
+        list.appendChild(li);
+      });
+    }
+  }
+
+  async function runServiceEquityTest(core) {
+    if (_seRunning) return;
+    readPolicyFromDOM();
+    // Taken before the first await: edits made while the run is in flight must read as stale afterwards.
+    var sig = seSignature();
+    var includeHidden = _seIncludeHidden;
+    var gen = _seGen;
+    var runBtn = byId("tviSeRun");
+    _seRunning = true;
+    if (runBtn) runBtn.disabled = true;
+    setSeStatus("Running service equity test…");
+    try {
+      var res = await TV.runServiceEquity(core, _policy, {
+        includeHidden: includeHidden,
+        onProgress: function (text) { if (gen === _seGen) setSeStatus(text); }
+      });
+      if (gen !== _seGen) return;   // Clear ran meanwhile: the run's output no longer belongs to anything
+      res.signature = sig;
+      res.includeHidden = includeHidden;
+      _seResult = res;
+      displayServiceEquity();
+      refreshSeDateLine();
+      setSeStatus("Service equity test complete.");
+      saveState();
+    } catch (e) {
+      if (gen === _seGen) setSeStatus(e.message);
+    } finally {
+      // After a Clear the run no longer owns the flag or the button: clearAll() already reset them and a
+      // newer run may be in flight.
+      if (gen === _seGen) {
+        _seRunning = false;
+        if (runBtn) runBtn.disabled = false;
+      }
+      refreshSeStale();
+    }
+  }
+
+  function exportServiceEquityCSV() {
+    if (!_seResult) return;
+    var r = _seResult, ev = r.result, se = r.settings || {};
+    var lines = [];
+    lines.push("# Service equity test, analysis date " + isoDate(r.date) + " (" + r.dayType + ")");
+    lines.push("# Settings: bus walk " + se.busBufferMiles + " mi, rail walk " + se.railBufferMiles + " mi, " +
+      (se.frequentHalfMile ? "1/2 mile at stops with peak headway <= " + se.frequentHeadwayMin + " min" : "no 1/2 mile rule") +
+      ", four-fifths threshold " + se.fourFifths + (r.includeHidden ? ", hidden routes and Services included" : ""));
+    [["Minority", ev.minority], ["Low-income", ev.lowIncome]].forEach(function (pair) {
+      var g = pair[1], band = SE_BANDS[g.band] || SE_BANDS.insufficient;
+      lines.push("# " + pair[0] + ": " + band.text + ", ratio " +
+        (g.ratio === null || !Number.isFinite(g.ratio) ? "n/a" : g.ratio.toFixed(2)) +
+        " (" + per1000(g.protected) + " vs " + per1000(g.other) + " trips per 1,000 residents)");
+    });
+    lines.push("# " + lowIncomeLine(r.lowIncomeDefinition));
+    lines.push("geoid,residents,trips,trips_per_1000,minority_share_pct,low_income_share_pct,minority_area,low_income_area");
+    (ev.geos || []).forEach(function (g) {
+      lines.push([
+        csvEscape(g.geoid), Math.round(g.pop), g.trips.toFixed(2), (g.perCapita * 1000).toFixed(2),
+        (g.minorityShare * 100).toFixed(1), (g.lowIncomeShare * 100).toFixed(1),
+        g.isMinority ? "yes" : "no", g.isLowIncome ? "yes" : "no"
+      ].join(","));
+    });
+    downloadFile(lines.join("\n"), "title-vi-service-equity-" + dateStamp() + ".csv", "text/csv");
+  }
+
+  function onSeInputChanged() {
+    readPolicyFromDOM();
+    syncFrequentHeadwayEnabled();
+    refreshSeStale();
   }
 
   // ---- Scenario management ----
@@ -1254,6 +1603,11 @@
     }
 
     var lines = [];
+    var mscRes = _results[scenario.id];
+    var mscDem = (mscRes && mscRes.demographics) || {};
+    lines.push("# " + apportionLine(mscDem.apportionMethodUsed, _policy.apportionMethod));
+    if (mscDem.apportionNote) lines.push("# " + mscDem.apportionNote);
+    lines.push("# " + lowIncomeLine(mscRes ? mscRes.lowIncomeDefinition : _policy.lowIncomeDefinition));
     lines.push([
       "adjustment_name", "change_type",
       "route_miles_change_pct", "route_miles_msc",
@@ -1312,6 +1666,15 @@
 
   function exportFindingsCSV() {
     var lines = [];
+    var apDem = null, apRes = null;
+    for (var ai0 = 0; ai0 < _scenarios.length && !apDem; ai0++) {
+      var r0 = _results[_scenarios[ai0].id];
+      if (r0 && r0.demographics) { apDem = r0.demographics; apRes = r0; }
+    }
+    apDem = apDem || {};
+    lines.push("# " + apportionLine(apDem.apportionMethodUsed, _policy.apportionMethod));
+    if (apDem.apportionNote) lines.push("# " + apDem.apportionNote);
+    lines.push("# " + lowIncomeLine(apRes ? apRes.lowIncomeDefinition : _policy.lowIncomeDefinition));
     lines.push("scenario_name,alteration_name,change_type,major_change_triggered," +
       "before_miles,after_miles,pct_change_miles,altered_pct,altered_miles," +
       "before_rev_hours,after_rev_hours,pct_change_rev_hours," +
@@ -1412,6 +1775,10 @@
 
     var comparison = TV.compareScenarios(analyzedResults);
     var lines = [];
+    var cmpDem = (analyzedResults[0] && analyzedResults[0].demographics) || {};
+    lines.push("# " + apportionLine(cmpDem.apportionMethodUsed, _policy.apportionMethod));
+    if (cmpDem.apportionNote) lines.push("# " + cmpDem.apportionNote);
+    lines.push("# " + lowIncomeLine(analyzedResults[0].lowIncomeDefinition));
     lines.push("metric," + comparison.map(function (c) { return csvEscape(c.scenarioName); }).join(","));
 
     var metrics = [
@@ -1452,6 +1819,9 @@
           switchScenario(_activeScenarioIdx);
           displayBaseline();
           updateComparisonTable();
+          displayServiceEquity();
+          refreshSeDateLine();
+          refreshSeStale();
         }
       } catch (err) {
         alert("Failed to import session: " + err.message);
@@ -1487,15 +1857,26 @@
       // v3: alteration before/after refs are { featureType, featureId, featureName }
       // and the baseline filter is { routeIds, lineIds, polygonIds } (stable IDs);
       // v1/v2 stored array indices (featureIndex / *Indices) — migrated on apply.
-      version: 3,
+      // v4: policy.lowIncomeDefinition / policy.serviceEquity, seIncludeHidden and the last Service
+      // Equity result (without the census geometries); v1-v3 load with the defaults.
+      version: 4,
       baselineFeatureFilter: _baselineFeatureFilter ? JSON.parse(JSON.stringify(_baselineFeatureFilter)) : null,
       policy: JSON.parse(JSON.stringify(_policy)),
       scenarios: scenariosCopy,
       activeScenarioIdx: _activeScenarioIdx,
       baseline: _baseline ? JSON.parse(JSON.stringify(_baseline)) : null,
       stale: _stale,
-      activeTab: _activeTab
+      activeTab: _activeTab,
+      seIncludeHidden: _seIncludeHidden,
+      serviceEquity: null
     };
+    if (_seResult) {
+      // result.geos (TIGERweb features) and result.region are large map geometry; the per-geography rows
+      // in result.result.geos are plain numbers and stay, so the CSV export still works after a restore.
+      var seCopy = {};
+      Object.keys(_seResult).forEach(function (k) { if (k !== "geos" && k !== "region") seCopy[k] = _seResult[k]; });
+      state.serviceEquity = JSON.parse(JSON.stringify(seCopy));
+    }
 
     // Store results (without geos in light mode)
     var results = {};
@@ -1543,8 +1924,14 @@
   }
 
   function applyState(data) {
-    if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return;
+    if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4)) return;
     if (data.policy) _policy = data.policy;
+    if (_policy.lowIncomeDefinition !== "poverty200") _policy.lowIncomeDefinition = "poverty100";
+    _policy.serviceEquity = Object.assign(TV.defaultServiceEquity(), _policy.serviceEquity || {});
+    _seIncludeHidden = data.version >= 4 ? !!data.seIncludeHidden : false;
+    _seResult = data.version >= 4 && data.serviceEquity ? data.serviceEquity : null;
+    // Sessions saved before the method choice were computed by land area.
+    if (!data.policy || !data.policy.apportionMethod) _policy.apportionMethod = "area";
     if (data.scenarios) {
       _scenarios = data.scenarios;
       // v1 migration: convert affectedRoutes → alterations
@@ -1593,6 +1980,39 @@
     // MSC export button
     var mscExpBtn = document.getElementById("tviExportMSCBtn");
     if (mscExpBtn) mscExpBtn.addEventListener("click", exportMSCResultsCSV);
+
+    var apSel = document.getElementById("tviApportionMethod");
+    if (apSel) apSel.addEventListener("change", function () {
+      readPolicyFromDOM();
+      if (Object.keys(_results).length > 0) markStale();
+    });
+
+    var liSel = document.getElementById("tviLowIncomeDef");
+    if (liSel) liSel.addEventListener("change", function () {
+      readPolicyFromDOM();
+      if (Object.keys(_results).length > 0) markStale();
+      refreshSeStale();
+    });
+
+    // Geography level and year feed the Service Equity run too.
+    ["tviGeoLevel", "tviYearSelect"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("change", onSeInputChanged);
+    });
+
+    // Service Equity tab
+    ["tviSeBusMi", "tviSeRailMi", "tviSeFrequent", "tviSeHeadway", "tviSeFourFifths", "tviSeIncludeHidden"]
+      .forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener("change", onSeInputChanged);
+      });
+    var seRunBtn = document.getElementById("tviSeRun");
+    if (seRunBtn) seRunBtn.addEventListener("click", function () { runServiceEquityTest(core); });
+    var seCsvBtn = document.getElementById("tviSeExportCSV");
+    if (seCsvBtn) seCsvBtn.addEventListener("click", exportServiceEquityCSV);
+    if (App.gtfsAnalysisDate && typeof App.gtfsAnalysisDate.onChange === "function") {
+      App.gtfsAnalysisDate.onChange(function () { refreshSeDateLine(); refreshSeStale(); });
+    }
 
     // Impact method radios (mark stale on change)
     var radios = document.querySelectorAll('input[name="tviImpactMethod"]');
@@ -1693,6 +2113,10 @@
     // Update comparison table
     updateComparisonTable();
 
+    displayServiceEquity();
+    refreshSeDateLine();
+    refreshSeStale();
+
     // Show stale warning if needed
     if (_stale) markStale();
   }
@@ -1706,6 +2130,8 @@
     if (Object.keys(_results).length > 0) {
       markStale();
     }
+    // notifyProject also fires on hide/show; the signature ignores the hidden flag, so only real edits stale it.
+    refreshSeStale();
 
     if (!isPopupVisible()) return;
 
@@ -1722,6 +2148,36 @@
       apply: function (data) { applyState(data); }
     });
   }
+
+  // ---- Hand-off from GTFS Service Analysis (Build vs No-Build) ----
+
+  // The major-change rules as the user set them (a copy), for pre-checking changed routes.
+  App.titleViMajorChangePolicy = function () {
+    return JSON.parse(JSON.stringify((_policy && _policy.majorChange) || {}));
+  };
+
+  // spec = { name, alterations: [{ name, changeType, after (feature ref or null), revenueHours: {before, after},
+  //          spanHours: {before, after} }] }. Adds a scenario, makes it active and returns its name. Route geometry
+  // (before / after Lines) is left for the user to pick: GTFS routes are not drawn features.
+  App.titleViAddScenario = function (spec) {
+    spec = spec || {};
+    var sc = TV.createScenario(spec.name || "Service change");
+    (spec.alterations || []).forEach(function (a) {
+      var alt = TV.createAlteration(a.name || "");
+      alt.changeType = a.changeType === "elimination" || a.changeType === "new_route" ? a.changeType : "adjustment";
+      alt.after = a.after || null;
+      ["revenueHours", "spanHours"].forEach(function (k) {
+        var v = a[k] || {};
+        alt.manual[k] = { before: Number.isFinite(v.before) ? v.before : null, after: Number.isFinite(v.after) ? v.after : null };
+      });
+      sc.alterations.push(alt);
+    });
+    _scenarios.push(sc);
+    _activeScenarioIdx = _scenarios.length - 1;
+    if (_initialized) { populateScenarioDropdown(); switchScenario(_activeScenarioIdx); }
+    saveState();
+    return sc.name;
+  };
 
   // ---- Feature usage (Split / Merge dialogs) ----
   // A before/after reference points at ONE feature: after a split it covers

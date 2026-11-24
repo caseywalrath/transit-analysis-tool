@@ -1,0 +1,2167 @@
+{
+  "a6-net-band-plain": [
+    {
+      "startMin": 420,
+      "endMin": 435
+    },
+    {
+      "startMin": 440,
+      "endMin": 455
+    },
+    {
+      "startMin": 460,
+      "endMin": 475
+    }
+  ],
+  "a6-net-band-wrap": [
+    {
+      "startMin": 1320,
+      "endMin": 1350
+    },
+    {
+      "startMin": 1440,
+      "endMin": 1470
+    }
+  ],
+  "a6-net-band-headway-0": [],
+  "a6-net-band-headway-half": [
+    {
+      "startMin": 420,
+      "endMin": 435
+    },
+    {
+      "startMin": 421,
+      "endMin": 436
+    },
+    {
+      "startMin": 422,
+      "endMin": 437
+    },
+    {
+      "startMin": 423,
+      "endMin": 438
+    },
+    {
+      "startMin": 424,
+      "endMin": 439
+    },
+    {
+      "startMin": 425,
+      "endMin": 440
+    },
+    {
+      "startMin": 426,
+      "endMin": 441
+    },
+    {
+      "startMin": 427,
+      "endMin": 442
+    },
+    {
+      "startMin": 428,
+      "endMin": 443
+    },
+    {
+      "startMin": 429,
+      "endMin": 444
+    },
+    {
+      "startMin": 430,
+      "endMin": 445
+    },
+    {
+      "startMin": 431,
+      "endMin": 446
+    },
+    {
+      "startMin": 432,
+      "endMin": 447
+    },
+    {
+      "startMin": 433,
+      "endMin": 448
+    },
+    {
+      "startMin": 434,
+      "endMin": 449
+    },
+    {
+      "startMin": 435,
+      "endMin": 450
+    },
+    {
+      "startMin": 436,
+      "endMin": 451
+    },
+    {
+      "startMin": 437,
+      "endMin": 452
+    },
+    {
+      "startMin": 438,
+      "endMin": 453
+    },
+    {
+      "startMin": 439,
+      "endMin": 454
+    },
+    {
+      "startMin": 440,
+      "endMin": 455
+    },
+    {
+      "startMin": 441,
+      "endMin": 456
+    },
+    {
+      "startMin": 442,
+      "endMin": 457
+    },
+    {
+      "startMin": 443,
+      "endMin": 458
+    },
+    {
+      "startMin": 444,
+      "endMin": 459
+    },
+    {
+      "startMin": 445,
+      "endMin": 460
+    },
+    {
+      "startMin": 446,
+      "endMin": 461
+    },
+    {
+      "startMin": 447,
+      "endMin": 462
+    },
+    {
+      "startMin": 448,
+      "endMin": 463
+    },
+    {
+      "startMin": 449,
+      "endMin": 464
+    },
+    {
+      "startMin": 450,
+      "endMin": 465
+    },
+    {
+      "startMin": 451,
+      "endMin": 466
+    },
+    {
+      "startMin": 452,
+      "endMin": 467
+    },
+    {
+      "startMin": 453,
+      "endMin": 468
+    },
+    {
+      "startMin": 454,
+      "endMin": 469
+    },
+    {
+      "startMin": 455,
+      "endMin": 470
+    },
+    {
+      "startMin": 456,
+      "endMin": 471
+    },
+    {
+      "startMin": 457,
+      "endMin": 472
+    },
+    {
+      "startMin": 458,
+      "endMin": 473
+    },
+    {
+      "startMin": 459,
+      "endMin": 474
+    },
+    {
+      "startMin": 460,
+      "endMin": 475
+    },
+    {
+      "startMin": 461,
+      "endMin": 476
+    },
+    {
+      "startMin": 462,
+      "endMin": 477
+    },
+    {
+      "startMin": 463,
+      "endMin": 478
+    },
+    {
+      "startMin": 464,
+      "endMin": 479
+    },
+    {
+      "startMin": 465,
+      "endMin": 480
+    },
+    {
+      "startMin": 466,
+      "endMin": 481
+    },
+    {
+      "startMin": 467,
+      "endMin": 482
+    },
+    {
+      "startMin": 468,
+      "endMin": 483
+    },
+    {
+      "startMin": 469,
+      "endMin": 484
+    },
+    {
+      "startMin": 470,
+      "endMin": 485
+    },
+    {
+      "startMin": 471,
+      "endMin": 486
+    },
+    {
+      "startMin": 472,
+      "endMin": 487
+    },
+    {
+      "startMin": 473,
+      "endMin": 488
+    },
+    {
+      "startMin": 474,
+      "endMin": 489
+    },
+    {
+      "startMin": 475,
+      "endMin": 490
+    },
+    {
+      "startMin": 476,
+      "endMin": 491
+    },
+    {
+      "startMin": 477,
+      "endMin": 492
+    },
+    {
+      "startMin": 478,
+      "endMin": 493
+    },
+    {
+      "startMin": 479,
+      "endMin": 494
+    }
+  ],
+  "a6-net-along-normal": [
+    25200,
+    25800,
+    26400
+  ],
+  "a6-net-along-length-0": [
+    25200,
+    25800,
+    26400
+  ],
+  "a6-net-along-one-stop": [
+    25200
+  ],
+  "a6-net-prop-weekday": [
+    {
+      "id": "P|pat1|0|420",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        25200,
+        25800,
+        26400
+      ],
+      "dep": [
+        25200,
+        25800,
+        26400
+      ]
+    },
+    {
+      "id": "P|pat1|0|450",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        27000,
+        27600,
+        28200
+      ],
+      "dep": [
+        27000,
+        27600,
+        28200
+      ]
+    },
+    {
+      "id": "P|pat1|0|480",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        28800,
+        29400,
+        30000
+      ],
+      "dep": [
+        28800,
+        29400,
+        30000
+      ]
+    },
+    {
+      "id": "P|pat1|0|510",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        30600,
+        31200,
+        31800
+      ],
+      "dep": [
+        30600,
+        31200,
+        31800
+      ]
+    }
+  ],
+  "a6-net-prop-both": [
+    {
+      "id": "P|pat1|0|420",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        25200,
+        25800,
+        26400
+      ],
+      "dep": [
+        25200,
+        25800,
+        26400
+      ]
+    },
+    {
+      "id": "P|pat1|1|420",
+      "directionId": "1",
+      "stops": [
+        "C",
+        "B",
+        "A"
+      ],
+      "arr": [
+        25200,
+        25800,
+        26400
+      ],
+      "dep": [
+        25200,
+        25800,
+        26400
+      ]
+    },
+    {
+      "id": "P|pat1|0|450",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        27000,
+        27600,
+        28200
+      ],
+      "dep": [
+        27000,
+        27600,
+        28200
+      ]
+    },
+    {
+      "id": "P|pat1|1|450",
+      "directionId": "1",
+      "stops": [
+        "C",
+        "B",
+        "A"
+      ],
+      "arr": [
+        27000,
+        27600,
+        28200
+      ],
+      "dep": [
+        27000,
+        27600,
+        28200
+      ]
+    },
+    {
+      "id": "P|pat1|0|480",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        28800,
+        29400,
+        30000
+      ],
+      "dep": [
+        28800,
+        29400,
+        30000
+      ]
+    },
+    {
+      "id": "P|pat1|1|480",
+      "directionId": "1",
+      "stops": [
+        "C",
+        "B",
+        "A"
+      ],
+      "arr": [
+        28800,
+        29400,
+        30000
+      ],
+      "dep": [
+        28800,
+        29400,
+        30000
+      ]
+    },
+    {
+      "id": "P|pat1|0|510",
+      "directionId": "0",
+      "stops": [
+        "A",
+        "B",
+        "C"
+      ],
+      "arr": [
+        30600,
+        31200,
+        31800
+      ],
+      "dep": [
+        30600,
+        31200,
+        31800
+      ]
+    },
+    {
+      "id": "P|pat1|1|510",
+      "directionId": "1",
+      "stops": [
+        "C",
+        "B",
+        "A"
+      ],
+      "arr": [
+        30600,
+        31200,
+        31800
+      ],
+      "dep": [
+        30600,
+        31200,
+        31800
+      ]
+    }
+  ],
+  "a6-net-prop-no-stops": [],
+  "a6-net-prop-sunday-no-bands": [],
+  "a6-net-mode-3": "bus",
+  "a6-net-mode-string-1": "rail",
+  "a6-net-mode-12": "rail",
+  "a6-net-mode-blank": "bus",
+  "a6-net-build-d1": {
+    "date": "20260112",
+    "dayType": "weekday",
+    "stops": [
+      {
+        "id": "g:F2",
+        "srcId": "F2",
+        "source": "gtfs",
+        "name": "Park Terminal",
+        "lat": 39.73,
+        "lon": -104.99
+      },
+      {
+        "id": "g:P1",
+        "srcId": "P1",
+        "source": "gtfs",
+        "name": "Union Station Track 1",
+        "lat": 39.7501,
+        "lon": -105.0001
+      },
+      {
+        "id": "g:R2",
+        "srcId": "R2",
+        "source": "gtfs",
+        "name": "Airport",
+        "lat": 39.85,
+        "lon": -104.67
+      },
+      {
+        "id": "g:S1",
+        "srcId": "S1",
+        "source": "gtfs",
+        "name": "Main St & 1st Ave, Shared",
+        "lat": 39.74,
+        "lon": -104.99
+      },
+      {
+        "id": "g:S2",
+        "srcId": "S2",
+        "source": "gtfs",
+        "name": "Main St & 5th Ave",
+        "lat": 39.74,
+        "lon": -104.98
+      },
+      {
+        "id": "g:S3",
+        "srcId": "S3",
+        "source": "gtfs",
+        "name": "Main St & 9th Ave",
+        "lat": 39.74,
+        "lon": -104.97
+      }
+    ],
+    "stopIndex": {
+      "g:F2": 0,
+      "g:P1": 1,
+      "g:R2": 2,
+      "g:S1": 3,
+      "g:S2": 4,
+      "g:S3": 5
+    },
+    "routes": {
+      "g:F1": {
+        "key": "g:F1",
+        "source": "gtfs",
+        "srcId": "F1",
+        "name": "F1",
+        "mode": "bus",
+        "color": "#228822"
+      },
+      "g:R1": {
+        "key": "g:R1",
+        "source": "gtfs",
+        "srcId": "R1",
+        "name": "R1",
+        "mode": "rail",
+        "color": "#AA3300"
+      },
+      "g:B1": {
+        "key": "g:B1",
+        "source": "gtfs",
+        "srcId": "B1",
+        "name": "B1",
+        "mode": "bus",
+        "color": "#0055AA"
+      }
+    },
+    "routeOrder": [
+      "g:B1",
+      "g:F1",
+      "g:R1"
+    ],
+    "trips": [
+      {
+        "id": "g:F1_W_FREQ@06:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          21600,
+          22500
+        ],
+        "dep": [
+          21600,
+          22500
+        ]
+      },
+      {
+        "id": "g:R1_W_0",
+        "routeKey": "g:R1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          1,
+          2
+        ],
+        "arr": [
+          21600,
+          23820
+        ],
+        "dep": [
+          21600,
+          23820
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@06:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          22800,
+          23700
+        ],
+        "dep": [
+          22800,
+          23700
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@06:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          24000,
+          24900
+        ],
+        "dep": [
+          24000,
+          24900
+        ]
+      },
+      {
+        "id": "g:R1_W_1",
+        "routeKey": "g:R1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          2,
+          1
+        ],
+        "arr": [
+          24300,
+          26520
+        ],
+        "dep": [
+          24300,
+          26520
+        ]
+      },
+      {
+        "id": "g:B1_W_0",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          4,
+          5
+        ],
+        "arr": [
+          25200,
+          25800,
+          26400
+        ],
+        "dep": [
+          25200,
+          25800,
+          26400
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          25200,
+          26100
+        ],
+        "dep": [
+          25200,
+          26100
+        ]
+      },
+      {
+        "id": "g:B1_W_3",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          5,
+          4,
+          3
+        ],
+        "arr": [
+          26100,
+          26700,
+          27300
+        ],
+        "dep": [
+          26100,
+          26700,
+          27300
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          26400,
+          27300
+        ],
+        "dep": [
+          26400,
+          27300
+        ]
+      },
+      {
+        "id": "g:B1_W_1",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          5,
+          4,
+          3
+        ],
+        "arr": [
+          27000,
+          27600,
+          28200
+        ],
+        "dep": [
+          27000,
+          27600,
+          28200
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          27600,
+          28500
+        ],
+        "dep": [
+          27600,
+          28500
+        ]
+      },
+      {
+        "id": "g:F1_W_X",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          27900,
+          28800
+        ],
+        "dep": [
+          27900,
+          28800
+        ]
+      },
+      {
+        "id": "g:B1_W_2",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          4,
+          5
+        ],
+        "arr": [
+          28800,
+          29400,
+          30000
+        ],
+        "dep": [
+          28800,
+          29400,
+          30000
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          28800,
+          29700
+        ],
+        "dep": [
+          28800,
+          29700
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          30000,
+          30900
+        ],
+        "dep": [
+          30000,
+          30900
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          31200,
+          32100
+        ],
+        "dep": [
+          31200,
+          32100
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          57600,
+          58500
+        ],
+        "dep": [
+          57600,
+          58500
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:15:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          58500,
+          59400
+        ],
+        "dep": [
+          58500,
+          59400
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:30:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          59400,
+          60300
+        ],
+        "dep": [
+          59400,
+          60300
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:45:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          60300,
+          61200
+        ],
+        "dep": [
+          60300,
+          61200
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          61200,
+          62100
+        ],
+        "dep": [
+          61200,
+          62100
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:15:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          62100,
+          63000
+        ],
+        "dep": [
+          62100,
+          63000
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:30:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          63000,
+          63900
+        ],
+        "dep": [
+          63000,
+          63900
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:45:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          0
+        ],
+        "arr": [
+          63900,
+          64800
+        ],
+        "dep": [
+          63900,
+          64800
+        ]
+      },
+      {
+        "id": "g:B1_W_OWL",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          3,
+          4,
+          5
+        ],
+        "arr": [
+          89400,
+          90000,
+          90600
+        ],
+        "dep": [
+          89400,
+          90000,
+          90600
+        ]
+      }
+    ],
+    "counts": {
+      "gtfsTrips": 25,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-b1": {
+    "date": "20260112",
+    "dayType": "weekday",
+    "stops": [
+      {
+        "id": "g:S1",
+        "srcId": "S1",
+        "source": "gtfs",
+        "name": "Main St & 1st Ave, Shared",
+        "lat": 39.74,
+        "lon": -104.99
+      },
+      {
+        "id": "g:S2",
+        "srcId": "S2",
+        "source": "gtfs",
+        "name": "Main St & 5th Ave",
+        "lat": 39.74,
+        "lon": -104.98
+      },
+      {
+        "id": "g:S3",
+        "srcId": "S3",
+        "source": "gtfs",
+        "name": "Main St & 9th Ave",
+        "lat": 39.74,
+        "lon": -104.97
+      }
+    ],
+    "stopIndex": {
+      "g:S1": 0,
+      "g:S2": 1,
+      "g:S3": 2
+    },
+    "routes": {
+      "g:B1": {
+        "key": "g:B1",
+        "source": "gtfs",
+        "srcId": "B1",
+        "name": "B1",
+        "mode": "bus",
+        "color": "#0055AA"
+      }
+    },
+    "routeOrder": [
+      "g:B1"
+    ],
+    "trips": [
+      {
+        "id": "g:B1_W_0",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          25200,
+          25800,
+          26400
+        ],
+        "dep": [
+          25200,
+          25800,
+          26400
+        ]
+      },
+      {
+        "id": "g:B1_W_3",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          2,
+          1,
+          0
+        ],
+        "arr": [
+          26100,
+          26700,
+          27300
+        ],
+        "dep": [
+          26100,
+          26700,
+          27300
+        ]
+      },
+      {
+        "id": "g:B1_W_1",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          2,
+          1,
+          0
+        ],
+        "arr": [
+          27000,
+          27600,
+          28200
+        ],
+        "dep": [
+          27000,
+          27600,
+          28200
+        ]
+      },
+      {
+        "id": "g:B1_W_2",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          28800,
+          29400,
+          30000
+        ],
+        "dep": [
+          28800,
+          29400,
+          30000
+        ]
+      },
+      {
+        "id": "g:B1_W_OWL",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          89400,
+          90000,
+          90600
+        ],
+        "dep": [
+          89400,
+          90000,
+          90600
+        ]
+      }
+    ],
+    "counts": {
+      "gtfsTrips": 5,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-d1-proposal": {
+    "date": "20260112",
+    "dayType": "weekday",
+    "stops": [
+      {
+        "id": "d:A",
+        "srcId": "A",
+        "source": "drawn",
+        "name": "Stop A",
+        "lat": 39.7,
+        "lon": -105
+      },
+      {
+        "id": "d:B",
+        "srcId": "B",
+        "source": "drawn",
+        "name": "Stop B",
+        "lat": 39.71,
+        "lon": -105
+      },
+      {
+        "id": "d:C",
+        "srcId": "C",
+        "source": "drawn",
+        "name": "Stop C",
+        "lat": 39.72,
+        "lon": -105
+      },
+      {
+        "id": "g:F2",
+        "srcId": "F2",
+        "source": "gtfs",
+        "name": "Park Terminal",
+        "lat": 39.73,
+        "lon": -104.99
+      },
+      {
+        "id": "g:P1",
+        "srcId": "P1",
+        "source": "gtfs",
+        "name": "Union Station Track 1",
+        "lat": 39.7501,
+        "lon": -105.0001
+      },
+      {
+        "id": "g:R2",
+        "srcId": "R2",
+        "source": "gtfs",
+        "name": "Airport",
+        "lat": 39.85,
+        "lon": -104.67
+      },
+      {
+        "id": "g:S1",
+        "srcId": "S1",
+        "source": "gtfs",
+        "name": "Main St & 1st Ave, Shared",
+        "lat": 39.74,
+        "lon": -104.99
+      },
+      {
+        "id": "g:S2",
+        "srcId": "S2",
+        "source": "gtfs",
+        "name": "Main St & 5th Ave",
+        "lat": 39.74,
+        "lon": -104.98
+      },
+      {
+        "id": "g:S3",
+        "srcId": "S3",
+        "source": "gtfs",
+        "name": "Main St & 9th Ave",
+        "lat": 39.74,
+        "lon": -104.97
+      }
+    ],
+    "stopIndex": {
+      "d:A": 0,
+      "d:B": 1,
+      "d:C": 2,
+      "g:F2": 3,
+      "g:P1": 4,
+      "g:R2": 5,
+      "g:S1": 6,
+      "g:S2": 7,
+      "g:S3": 8
+    },
+    "routes": {
+      "g:F1": {
+        "key": "g:F1",
+        "source": "gtfs",
+        "srcId": "F1",
+        "name": "F1",
+        "mode": "bus",
+        "color": "#228822"
+      },
+      "g:R1": {
+        "key": "g:R1",
+        "source": "gtfs",
+        "srcId": "R1",
+        "name": "R1",
+        "mode": "rail",
+        "color": "#AA3300"
+      },
+      "g:B1": {
+        "key": "g:B1",
+        "source": "gtfs",
+        "srcId": "B1",
+        "name": "B1",
+        "mode": "bus",
+        "color": "#0055AA"
+      },
+      "d:P": {
+        "key": "d:P",
+        "source": "drawn",
+        "srcId": "P",
+        "name": "Drawn Line",
+        "mode": "bus",
+        "color": "#112233"
+      }
+    },
+    "routeOrder": [
+      "d:P",
+      "g:B1",
+      "g:F1",
+      "g:R1"
+    ],
+    "trips": [
+      {
+        "id": "g:F1_W_FREQ@06:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          21600,
+          22500
+        ],
+        "dep": [
+          21600,
+          22500
+        ]
+      },
+      {
+        "id": "g:R1_W_0",
+        "routeKey": "g:R1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          4,
+          5
+        ],
+        "arr": [
+          21600,
+          23820
+        ],
+        "dep": [
+          21600,
+          23820
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@06:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          22800,
+          23700
+        ],
+        "dep": [
+          22800,
+          23700
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@06:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          24000,
+          24900
+        ],
+        "dep": [
+          24000,
+          24900
+        ]
+      },
+      {
+        "id": "g:R1_W_1",
+        "routeKey": "g:R1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          5,
+          4
+        ],
+        "arr": [
+          24300,
+          26520
+        ],
+        "dep": [
+          24300,
+          26520
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|420",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          25200,
+          25800,
+          26400
+        ],
+        "dep": [
+          25200,
+          25800,
+          26400
+        ]
+      },
+      {
+        "id": "g:B1_W_0",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          7,
+          8
+        ],
+        "arr": [
+          25200,
+          25800,
+          26400
+        ],
+        "dep": [
+          25200,
+          25800,
+          26400
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          25200,
+          26100
+        ],
+        "dep": [
+          25200,
+          26100
+        ]
+      },
+      {
+        "id": "g:B1_W_3",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          8,
+          7,
+          6
+        ],
+        "arr": [
+          26100,
+          26700,
+          27300
+        ],
+        "dep": [
+          26100,
+          26700,
+          27300
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          26400,
+          27300
+        ],
+        "dep": [
+          26400,
+          27300
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|450",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          27000,
+          27600,
+          28200
+        ],
+        "dep": [
+          27000,
+          27600,
+          28200
+        ]
+      },
+      {
+        "id": "g:B1_W_1",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "1",
+        "stops": [
+          8,
+          7,
+          6
+        ],
+        "arr": [
+          27000,
+          27600,
+          28200
+        ],
+        "dep": [
+          27000,
+          27600,
+          28200
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@07:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          27600,
+          28500
+        ],
+        "dep": [
+          27600,
+          28500
+        ]
+      },
+      {
+        "id": "g:F1_W_X",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          27900,
+          28800
+        ],
+        "dep": [
+          27900,
+          28800
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|480",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          28800,
+          29400,
+          30000
+        ],
+        "dep": [
+          28800,
+          29400,
+          30000
+        ]
+      },
+      {
+        "id": "g:B1_W_2",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          7,
+          8
+        ],
+        "arr": [
+          28800,
+          29400,
+          30000
+        ],
+        "dep": [
+          28800,
+          29400,
+          30000
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          28800,
+          29700
+        ],
+        "dep": [
+          28800,
+          29700
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:20:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          30000,
+          30900
+        ],
+        "dep": [
+          30000,
+          30900
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|510",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          30600,
+          31200,
+          31800
+        ],
+        "dep": [
+          30600,
+          31200,
+          31800
+        ]
+      },
+      {
+        "id": "g:F1_W_FREQ@08:40:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          31200,
+          32100
+        ],
+        "dep": [
+          31200,
+          32100
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          57600,
+          58500
+        ],
+        "dep": [
+          57600,
+          58500
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:15:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          58500,
+          59400
+        ],
+        "dep": [
+          58500,
+          59400
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:30:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          59400,
+          60300
+        ],
+        "dep": [
+          59400,
+          60300
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@16:45:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          60300,
+          61200
+        ],
+        "dep": [
+          60300,
+          61200
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:00:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          61200,
+          62100
+        ],
+        "dep": [
+          61200,
+          62100
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:15:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          62100,
+          63000
+        ],
+        "dep": [
+          62100,
+          63000
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:30:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          63000,
+          63900
+        ],
+        "dep": [
+          63000,
+          63900
+        ]
+      },
+      {
+        "id": "g:F1_W_PM@17:45:00",
+        "routeKey": "g:F1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          3
+        ],
+        "arr": [
+          63900,
+          64800
+        ],
+        "dep": [
+          63900,
+          64800
+        ]
+      },
+      {
+        "id": "g:B1_W_OWL",
+        "routeKey": "g:B1",
+        "source": "gtfs",
+        "directionId": "0",
+        "stops": [
+          6,
+          7,
+          8
+        ],
+        "arr": [
+          89400,
+          90000,
+          90600
+        ],
+        "dep": [
+          89400,
+          90000,
+          90600
+        ]
+      }
+    ],
+    "counts": {
+      "gtfsTrips": 25,
+      "proposalTrips": 4,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-proposals-only": {
+    "date": "20260112",
+    "dayType": "weekday",
+    "stops": [
+      {
+        "id": "d:A",
+        "srcId": "A",
+        "source": "drawn",
+        "name": "Stop A",
+        "lat": 39.7,
+        "lon": -105
+      },
+      {
+        "id": "d:B",
+        "srcId": "B",
+        "source": "drawn",
+        "name": "Stop B",
+        "lat": 39.71,
+        "lon": -105
+      },
+      {
+        "id": "d:C",
+        "srcId": "C",
+        "source": "drawn",
+        "name": "Stop C",
+        "lat": 39.72,
+        "lon": -105
+      }
+    ],
+    "stopIndex": {
+      "d:A": 0,
+      "d:B": 1,
+      "d:C": 2
+    },
+    "routes": {
+      "d:P": {
+        "key": "d:P",
+        "source": "drawn",
+        "srcId": "P",
+        "name": "Drawn Line",
+        "mode": "bus",
+        "color": "#112233"
+      }
+    },
+    "routeOrder": [
+      "d:P"
+    ],
+    "trips": [
+      {
+        "id": "d:P|pat1|0|420",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          25200,
+          25800,
+          26400
+        ],
+        "dep": [
+          25200,
+          25800,
+          26400
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|450",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          27000,
+          27600,
+          28200
+        ],
+        "dep": [
+          27000,
+          27600,
+          28200
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|480",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          28800,
+          29400,
+          30000
+        ],
+        "dep": [
+          28800,
+          29400,
+          30000
+        ]
+      },
+      {
+        "id": "d:P|pat1|0|510",
+        "routeKey": "d:P",
+        "source": "drawn",
+        "directionId": "0",
+        "stops": [
+          0,
+          1,
+          2
+        ],
+        "arr": [
+          30600,
+          31200,
+          31800
+        ],
+        "dep": [
+          30600,
+          31200,
+          31800
+        ]
+      }
+    ],
+    "counts": {
+      "gtfsTrips": 0,
+      "proposalTrips": 4,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-proposals-only-saturday": {
+    "date": "20260124",
+    "dayType": "saturday",
+    "stops": [],
+    "stopIndex": {},
+    "routes": {},
+    "routeOrder": [],
+    "trips": [],
+    "counts": {
+      "gtfsTrips": 0,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-unknown-date": {
+    "date": "20260301",
+    "dayType": "sunday",
+    "stops": [],
+    "stopIndex": {},
+    "routes": {},
+    "routeOrder": [],
+    "trips": [],
+    "counts": {
+      "gtfsTrips": 0,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-build-empty": {
+    "date": "",
+    "dayType": "weekday",
+    "stops": [],
+    "stopIndex": {},
+    "routes": {},
+    "routeOrder": [],
+    "trips": [],
+    "counts": {
+      "gtfsTrips": 0,
+      "proposalTrips": 0,
+      "droppedRows": 0
+    }
+  },
+  "a6-net-service-d1": [
+    {
+      "stopId": "g:P1",
+      "trips": 1,
+      "routes": 1,
+      "firstSec": 21600,
+      "lastSec": 21600,
+      "peakHeadwaySec": null,
+      "offPeakHeadwaySec": null
+    },
+    {
+      "stopId": "g:R2",
+      "trips": 1,
+      "routes": 1,
+      "firstSec": 24300,
+      "lastSec": 24300,
+      "peakHeadwaySec": null,
+      "offPeakHeadwaySec": null
+    },
+    {
+      "stopId": "g:S1",
+      "trips": 21,
+      "routes": 2,
+      "firstSec": 21600,
+      "lastSec": 89400,
+      "peakHeadwaySec": 900,
+      "offPeakHeadwaySec": null
+    },
+    {
+      "stopId": "g:S2",
+      "trips": 5,
+      "routes": 1,
+      "firstSec": 25800,
+      "lastSec": 90000,
+      "peakHeadwaySec": 900,
+      "offPeakHeadwaySec": null
+    },
+    {
+      "stopId": "g:S3",
+      "trips": 2,
+      "routes": 1,
+      "firstSec": 26100,
+      "lastSec": 27000,
+      "peakHeadwaySec": 900,
+      "offPeakHeadwaySec": null
+    }
+  ],
+  "a6-net-service-invariant-d1": {
+    "checked": 4,
+    "mismatches": []
+  },
+  "a6-net-service-invariant-d3": {
+    "checked": 2,
+    "mismatches": []
+  },
+  "a6-net-service-empty": []
+}

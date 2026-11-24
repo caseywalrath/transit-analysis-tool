@@ -4,6 +4,7 @@
 <div class="tvi-tabs">
   <button class="tvi-tab tvi-tab-active" data-tab="policies">Major Service Changes</button>
   <button class="tvi-tab" data-tab="analysis">Equity Analysis</button>
+  <button class="tvi-tab" data-tab="service">Service Equity</button>
   <button class="tvi-tab" data-tab="scenarios">Scenarios</button>
 </div>
 
@@ -111,6 +112,7 @@
           <div class="tiny"><strong>Minority share:</strong> <span id="tviBaselineMinority">&mdash;</span></div>
           <div class="tiny"><strong>Low-income share:</strong> <span id="tviBaselineLowIncome">&mdash;</span></div>
           <div class="tiny u-mt-1 u-muted"><span id="tviBaselineGeos">&mdash;</span> geographies &middot; Pop: <span id="tviBaselinePop">&mdash;</span></div>
+          <div class="tiny u-mt-1 u-muted" id="tviBaselineApportion"></div>
         </div>
         </div>
 
@@ -130,6 +132,18 @@
           <option value="2023">2023</option>
           <option value="2022">2022</option>
           <option value="2021">2021</option>
+        </select>
+
+        <label class="tiny u-mt-3">Count residents of partly covered areas</label>
+        <select id="tviApportionMethod" class="rf-select">
+          <option value="blockPop">by 2020 census-block population</option>
+          <option value="area">by land area</option>
+        </select>
+
+        <label class="tiny u-mt-3" for="tviLowIncomeDef">Low-income definition</label>
+        <select id="tviLowIncomeDef" class="rf-select">
+          <option value="poverty100">Below the poverty level (B17001)</option>
+          <option value="poverty200">Below 200% of the poverty level (C17002)</option>
         </select>
         </div>
 
@@ -229,6 +243,7 @@
             <span id="tviSummaryGeos">&mdash;</span> geographies scored &middot;
             Impacted pop: <span id="tviSummaryPop">&mdash;</span>
           </div>
+          <div class="tiny u-muted" id="tviSummaryApportion"></div>
 
           <!-- Export buttons -->
           <div class="btn-row tvi-export-row">
@@ -242,7 +257,109 @@
   </div>
 </div>
 
-<!-- ======== Tab 3: Scenarios ======== -->
+<!-- ======== Tab 3: Service Equity ======== -->
+<div class="tvi-tab-content" data-tab="service">
+  <div class="tvi-tab-body">
+    <div class="tiny tvi-description u-muted tvi-se-intro">
+      Scheduled trips per resident in minority and low-income areas, compared with the rest of the service area (four-fifths rule).
+    </div>
+    <div id="tviSeDate" class="tiny tvi-description u-muted"></div>
+
+    <div class="rf-section-row tvi-analysis-row">
+
+      <!-- Left: Inputs -->
+      <div class="rf-settings-col tvi-analysis-settings">
+
+        <div class="data-input-group" data-input-group="service-equity">
+          <div class="form-field">
+            <label class="tiny" for="tviSeBusMi">Bus stop walk distance (mi)</label>
+            <input type="number" id="tviSeBusMi" class="rf-number-input" value="0.25" min="0.05" max="5" step="0.05">
+          </div>
+          <div class="form-field">
+            <label class="tiny" for="tviSeRailMi">Rail stop walk distance (mi)</label>
+            <input type="number" id="tviSeRailMi" class="rf-number-input" value="0.5" min="0.05" max="5" step="0.05">
+          </div>
+          <div class="form-field">
+            <div class="tvi-rule-row">
+              <input type="checkbox" id="tviSeFrequent">
+              <label for="tviSeFrequent">Use &frac12; mile at frequent stops</label>
+            </div>
+            <div class="tvi-rule-row">
+              <label for="tviSeHeadway">peak headway &le;</label>
+              <input id="tviSeHeadway" type="number" min="1" max="120" value="15" class="tvi-threshold-input" disabled>
+              <span class="tiny">min</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="tiny" for="tviSeFourFifths">Four-fifths threshold</label>
+            <input type="number" id="tviSeFourFifths" class="rf-number-input" value="0.8" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="form-field">
+            <div class="tvi-rule-row">
+              <input type="checkbox" id="tviSeIncludeHidden">
+              <label for="tviSeIncludeHidden">Include hidden routes and Services</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="module-input-actions">
+          <button id="tviSeRun" type="button" class="rf-action-primary">Run service equity test</button>
+        </div>
+
+        <div id="tviSeStaleWarning" class="rf-status" style="display:none;"></div>
+        <div id="tviSeStatus" class="tiny u-mt-2 u-muted"></div>
+
+      </div>
+
+      <!-- Right: Results -->
+      <div class="rf-results-col">
+
+        <div id="tviSeEmpty" class="tiny tvi-comp-empty u-muted">
+          Run the service equity test to see results here.
+        </div>
+
+        <div id="tviSeResultsWrap" style="display:none;">
+
+          <div class="tvi-finding-card">
+            <div class="rf-section-title">Minority</div>
+            <div class="tvi-verdict-row">
+              <span id="tviSeMinVerdict" class="pill na">N/A</span>
+            </div>
+            <table class="tvi-finding-table">
+              <tr><td class="tiny">Minority areas, trips per 1,000 residents</td><td id="tviSeMinProtected" class="tiny tvi-value-right">&mdash;</td></tr>
+              <tr><td class="tiny">Other areas, trips per 1,000 residents</td><td id="tviSeMinOther" class="tiny tvi-value-right">&mdash;</td></tr>
+              <tr><td class="tiny">Ratio</td><td id="tviSeMinRatio" class="tiny tvi-value-right">&mdash;</td></tr>
+            </table>
+            <div id="tviSeMinGeos" class="tiny u-mt-1 u-muted"></div>
+          </div>
+
+          <div class="tvi-finding-card">
+            <div class="rf-section-title">Low-income</div>
+            <div class="tvi-verdict-row">
+              <span id="tviSeLowVerdict" class="pill na">N/A</span>
+            </div>
+            <table class="tvi-finding-table">
+              <tr><td class="tiny">Low-income areas, trips per 1,000 residents</td><td id="tviSeLowProtected" class="tiny tvi-value-right">&mdash;</td></tr>
+              <tr><td class="tiny">Other areas, trips per 1,000 residents</td><td id="tviSeLowOther" class="tiny tvi-value-right">&mdash;</td></tr>
+              <tr><td class="tiny">Ratio</td><td id="tviSeLowRatio" class="tiny tvi-value-right">&mdash;</td></tr>
+            </table>
+            <div id="tviSeLowGeos" class="tiny u-mt-1 u-muted"></div>
+          </div>
+
+          <div class="tiny tvi-summary u-muted" id="tviSeSummary"></div>
+          <ul class="tiny u-muted tvi-se-notes" id="tviSeNotes"></ul>
+
+          <div class="btn-row tvi-export-row">
+            <button id="tviSeExportCSV" type="button" class="rf-btn-sm" disabled>Export CSV</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== Tab 4: Scenarios ======== -->
 <div class="tvi-tab-content" data-tab="scenarios">
   <div class="tvi-tab-body">
 

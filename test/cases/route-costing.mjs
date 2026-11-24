@@ -123,5 +123,66 @@ export default {
           daysWeekday: 255, daysSaturday: 52, daysSunday: 58 },
       ],
     },
+
+    // --- Rate basis (revenue vs platform) and per-Service rate override ----
+    // Same Service as service/two-pattern-reference. Hand check, weekday:
+    //   6:00-9:00 at 15 min = 12 trips per pattern, 24 trips; one-way 6 mi / 12 mph = 0.5 h
+    //   running hrs = 24 x 0.5 = 12; cycles = 12; layover = 12 x 10 min = 2 h
+    //   revenue hrs = 12 + 2 = 14; deadhead = 12 x 10% = 1.2; platform hrs = 15.2
+    //   revenue basis cost = 14 x $120 = $1,680/day (annual 1,680 x 255 = $428,400)
+    //   platform basis cost = 15.2 x $120 = $1,824/day. Saturday/Sunday have no
+    //   service: revenue hrs 0, cost 0.
+    {
+      id: "service/two-pattern-revenue-basis",
+      call: "App._rcTest.computeService",
+      args: [
+        { key: "service-P", name: "P", isGroup: true, warnings: [], patterns: [
+          { name: "P N", direction: "NB", avgSpeed: 12, lengthMiles: 6, service: { weekday: [{ from: "6:00", to: "9:00", frequency: 15 }] } },
+          { name: "P S", direction: "SB", avgSpeed: 12, lengthMiles: 6, service: { weekday: [{ from: "6:00", to: "9:00", frequency: 15 }] } },
+        ] },
+        { runtimeMode: "speed", layoverMode: "minutes", layoverValue: 10, deadheadPct: 10, costPerHour: 120,
+          daysWeekday: 255, daysSaturday: 52, daysSunday: 58, rateBasis: "revenue" },
+      ],
+    },
+    // Explicit "platform" must reproduce service/two-pattern-reference's costs
+    // exactly (weekday cost 1824, annual 465,120); only rateBasis is added.
+    {
+      id: "service/two-pattern-platform-basis",
+      call: "App._rcTest.computeService",
+      args: [
+        { key: "service-P", name: "P", isGroup: true, warnings: [], patterns: [
+          { name: "P N", direction: "NB", avgSpeed: 12, lengthMiles: 6, service: { weekday: [{ from: "6:00", to: "9:00", frequency: 15 }] } },
+          { name: "P S", direction: "SB", avgSpeed: 12, lengthMiles: 6, service: { weekday: [{ from: "6:00", to: "9:00", frequency: 15 }] } },
+        ] },
+        { runtimeMode: "speed", layoverMode: "minutes", layoverValue: 10, deadheadPct: 10, costPerHour: 120,
+          daysWeekday: 255, daysSaturday: 52, daysSunday: 58, rateBasis: "platform" },
+      ],
+    },
+    // Percent layover on the revenue basis, same input as
+    // service/three-pattern-percent-layover (weekday revenue hrs 14.95 there,
+    // so cost = 14.95 x $100 = $1,495/day).
+    {
+      id: "service/three-pattern-percent-layover-revenue-basis",
+      call: "App._rcTest.computeService",
+      args: [
+        { key: "service-Loop", name: "Loop", isGroup: true, warnings: [], patterns: [
+          { name: "L1", direction: "CW", runTime: 30, lengthMiles: 5, service: { weekday: [{ from: "22:00", to: "2:00", frequency: 30 }] } },
+          { name: "L2", direction: "CCW", runTime: 30, lengthMiles: 5, service: { weekday: [{ from: "6:00", to: "10:00", frequency: 20 }] } },
+          { name: "L3", direction: "Loop", runTime: 45, lengthMiles: 7, service: { weekday: [{ from: "6:00", to: "10:00", frequency: 60 }] } },
+        ] },
+        { runtimeMode: "runTime", layoverMode: "percent", layoverValue: 15, deadheadPct: 0, costPerHour: 100,
+          daysWeekday: 255, daysSaturday: 0, daysSunday: 0, rateBasis: "revenue" },
+      ],
+    },
+    // Override edge cases: only a finite number above zero counts.
+    { id: "sanitizeRate/valid", call: "App._rcTest.sanitizeRate", args: ["175"] },
+    { id: "sanitizeRate/blank", call: "App._rcTest.sanitizeRate", args: [""] },
+    { id: "sanitizeRate/zero", call: "App._rcTest.sanitizeRate", args: ["0"] },
+    { id: "sanitizeRate/negative", call: "App._rcTest.sanitizeRate", args: ["-5"] },
+    { id: "sanitizeRate/text", call: "App._rcTest.sanitizeRate", args: ["abc"] },
+    { id: "effectiveRate/override", call: "App._rcTest.effectiveRate", args: [{ costPerHour: 150 }, 175] },
+    { id: "effectiveRate/default-when-blank", call: "App._rcTest.effectiveRate", args: [{ costPerHour: 150 }, ""] },
+    { id: "effectiveRate/default-when-negative", call: "App._rcTest.effectiveRate", args: [{ costPerHour: 150 }, -5] },
+    { id: "effectiveRate/default-when-undefined", call: "App._rcTest.effectiveRate", args: [{ costPerHour: 150 }, undefined] },
   ],
 };

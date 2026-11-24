@@ -27,8 +27,18 @@
       disproportionateBurdenThresholdPpt: 15,
       geoLevel: "bg",
       acsYear: "2024",
-      bufferDistanceMiles: 0.5
+      apportionMethod: (window.App && window.App.APPORTION_DEFAULT) || "blockPop",
+      bufferDistanceMiles: 0.5,
+      lowIncomeDefinition: "poverty100",
+      serviceEquity: TitleVI.defaultServiceEquity()
     };
+  };
+
+  // Service Equity settings: walk distance to a stop by mode, the optional half-mile rule for
+  // frequent stops, and the four-fifths threshold for the trips-per-resident ratio.
+  TitleVI.defaultServiceEquity = function () {
+    return { busBufferMiles: 0.25, railBufferMiles: 0.5, frequentHalfMile: false,
+      frequentHeadwayMin: 15, fourFifths: 0.8 };
   };
 
   // =========================================================================
@@ -501,13 +511,57 @@
   // Demographic computation (async — Census API calls)
   // =========================================================================
 
-  TitleVI.fetchDemographics = async function (core, unionGeom, geoLevel, year) {
+  // options.apportionMethod ("blockPop" | "area" | "whole", default "area" so
+  // direct callers keep their numbers) says how residents of partly covered
+  // geographies are counted.
+  // Persons in the policy's low-income group per geography: below poverty (B17001, the default) or
+  // below 200 % of poverty (C17002 ratio of income to poverty, rows 2–7 summed). B17001 is published
+  // for tracts only, so at block-group level a tract's low-income RATE is applied to each block group's
+  // population: giving every block group its whole tract's count multiplied low-income residents by the
+  // number of block groups in the tract.
+  //   popByGeo : Map<geoid, total population> at geoLevel (B01003)
+  TitleVI.fetchLowIncomeValues = async function (geoLevel, year, definition, geoids, popByGeo) {
+    var spec = window.ServiceEquity ? window.ServiceEquity.lowIncomeSpec(definition)
+      : { id: "poverty100", vars: ["B17001_002E"] };
+    spec.universe = spec.id === "poverty200" ? "C17002_001E" : "B17001_001E";
+    // One variable goes through the cached single-variable fetch, as before; a sum needs the multi fetch.
+    var fetchSum = function (level, ids) {
+      return spec.vars.length === 1 ? App.fetchACSValues(level, year, spec.vars[0], ids)
+        : App.fetchACSMultiValues(level, year, spec.vars, ids);
+    };
+    var vals;
+    try { vals = await fetchSum(geoLevel, geoids); } catch (e) {
+      if (geoLevel !== "bg") throw e;
+      vals = new Map();
+    }
+    if (geoLevel !== "bg") return vals;
+    var finite = 0;
+    vals.forEach(function (v) { if (Number.isFinite(v)) finite++; });
+    if (finite > 0 || !geoids.length) return vals;
+    var tractIds = [], seen = Object.create(null);
+    geoids.forEach(function (id) {
+      var t = id.substring(0, 11);
+      if (!seen[t]) { seen[t] = true; tractIds.push(t); }
+    });
+    var tLow = await fetchSum("tract", tractIds);
+    // The rate's denominator is the poverty universe (people whose poverty status is known), not total
+    // population: group-quarters residents are outside it and would dilute the rate.
+    var tPop = await App.fetchACSValues("tract", year, spec.universe || "B01003_001E", tractIds);
+    var out = new Map();
+    geoids.forEach(function (id) {
+      var t = id.substring(0, 11), lo = tLow.get(t), tp = tPop.get(t), bp = popByGeo ? popByGeo.get(id) : NaN;
+      if (Number.isFinite(lo) && Number.isFinite(tp) && tp > 0 && Number.isFinite(bp)) out.set(id, lo / tp * bp);
+    });
+    return out;
+  };
+
+  TitleVI.fetchDemographics = async function (core, unionGeom, geoLevel, year, options) {
     if (!unionGeom) throw new Error("No impacted area geometry provided.");
 
     // 1. Fetch intersecting census geographies
     var geos = await core.fetchTigerwebGeos(geoLevel, unionGeom);
     if (!geos || geos.length === 0) {
-      return { totalPop: 0, minorityPop: 0, minorityShare: 0, lowIncomePop: 0, lowIncomeShare: 0, geoCount: 0, geos: [] };
+      return { totalPop: 0, minorityPop: 0, minorityShare: 0, lowIncomePop: 0, lowIncomeShare: 0, geoCount: 0, geos: [], apportionMethodUsed: null, apportionNote: null };
     }
 
     var geoids = geos.map(function (g) {
@@ -518,41 +572,20 @@
     var b03002_001 = await App.fetchACSValues(geoLevel, year, "B03002_001E", geoids);
     var b03002_003 = await App.fetchACSValues(geoLevel, year, "B03002_003E", geoids);
 
-    // Poverty: try at requested geoLevel first
-    var b17001_002 = await App.fetchACSValues(geoLevel, year, "B17001_002E", geoids);
     var b01003_001 = await App.fetchACSValues(geoLevel, year, "B01003_001E", geoids);
-
-    // Tract-level fallback for poverty at block group level
-    if (geoLevel === "bg") {
-      var povertyFinite = 0;
-      b17001_002.forEach(function (v) { if (Number.isFinite(v)) povertyFinite++; });
-      if (povertyFinite === 0 && geos.length > 0) {
-        // Re-fetch at tract level and remap to block groups
-        var tractGeoids = [];
-        var tractMap = {};
-        geoids.forEach(function (bgId) {
-          var tractId = bgId.substring(0, 11);
-          if (!tractMap[tractId]) {
-            tractMap[tractId] = true;
-            tractGeoids.push(tractId);
-          }
-        });
-        var tractPoverty = await App.fetchACSValues("tract", year, "B17001_002E", tractGeoids);
-        // Map tract values back to block groups
-        b17001_002 = new Map();
-        geoids.forEach(function (bgId) {
-          var tractId = bgId.substring(0, 11);
-          var tv = tractPoverty.get(tractId);
-          if (Number.isFinite(tv)) b17001_002.set(bgId, tv);
-        });
-      }
-    }
+    var b17001_002 = await TitleVI.fetchLowIncomeValues(geoLevel, year, options && options.lowIncomeDefinition,
+      geoids, b01003_001);
 
     // 3. Aggregate within union
-    var aggTotal    = core.aggregateWithinUnion(unionGeom, geos, b03002_001, "sum");
-    var aggNhWhite  = core.aggregateWithinUnion(unionGeom, geos, b03002_003, "sum");
-    var aggPoverty  = core.aggregateWithinUnion(unionGeom, geos, b17001_002, "sum");
-    var aggTotalPop = core.aggregateWithinUnion(unionGeom, geos, b01003_001, "sum");
+    // Fractions are computed once and shared by all four sums so the shares stay consistent.
+    var apMethod = (options && options.apportionMethod) || "area";
+    var apFn = core.computeApportionFractions || App.computeApportionFractions;
+    var ap = await apFn(unionGeom, geos, apMethod);
+    var aggOpts = { fractions: ap.fractions };
+    var aggTotal    = core.aggregateWithinUnion(unionGeom, geos, b03002_001, "sum", aggOpts);
+    var aggNhWhite  = core.aggregateWithinUnion(unionGeom, geos, b03002_003, "sum", aggOpts);
+    var aggPoverty  = core.aggregateWithinUnion(unionGeom, geos, b17001_002, "sum", aggOpts);
+    var aggTotalPop = core.aggregateWithinUnion(unionGeom, geos, b01003_001, "sum", aggOpts);
 
     // 4. Compute shares
     var totalPopB03 = aggTotal.value || 0;
@@ -571,7 +604,9 @@
       lowIncomePop: Math.round(lowIncomePop),
       lowIncomeShare: lowIncomeShare,
       geoCount: geos.length,
-      geos: geos
+      geos: geos,
+      apportionMethodUsed: ap.methodUsed,
+      apportionNote: ap.note
     };
   };
 
@@ -641,6 +676,121 @@
         lowIncomeExceeds: f.lowIncome ? f.lowIncome.exceedsThreshold : false
       };
     });
+  };
+
+  // =========================================================================
+  // Service Equity (trips per resident from the analysis network)
+  // =========================================================================
+
+  // One row per stop with service: its walk buffer (rail where any rail route stops, else bus; the
+  // frequent-stop rule widens it to ½ mi at or under the peak headway cut) and its trips for the day.
+  TitleVI.serviceEquityStops = function (network, dayParts, settings) {
+    var se = Object.assign(TitleVI.defaultServiceEquity(), settings || {});
+    if (!network || !window.AnalysisNetwork) return [];
+    var rail = [];
+    network.trips.forEach(function (t) {
+      var r = network.routes[t.routeKey];
+      if (!r || r.mode !== "rail") return;
+      for (var j = 0; j < t.stops.length; j++) rail[t.stops[j]] = true;
+    });
+    var out = [];
+    window.AnalysisNetwork.stopService(network, dayParts).forEach(function (row) {
+      var k = network.stopIndex[row.stopId], st = network.stops[k];
+      if (!st || !Number.isFinite(st.lat) || !Number.isFinite(st.lon)) return;
+      var isRail = !!rail[k];
+      var r = isRail ? se.railBufferMiles : se.busBufferMiles;
+      var frequent = row.peakHeadwaySec != null && row.peakHeadwaySec > 0 &&
+        row.peakHeadwaySec <= se.frequentHeadwayMin * 60;
+      if (se.frequentHalfMile && frequent) r = Math.max(r, 0.5);
+      out.push({ id: row.stopId, name: st.name, source: st.source, lat: st.lat, lon: st.lon,
+        radiusMi: r, trips: row.trips, rail: isRail, frequent: frequent });
+    });
+    return out;
+  };
+
+  // The whole run. Region = census geographies touching the stops' convex hull widened by the largest
+  // stop buffer, so unserved neighbourhoods between routes count toward the regional averages.
+  //   opts : { includeHidden, date, onProgress(text) }
+  TitleVI.runServiceEquity = async function (core, policy, opts) {
+    opts = opts || {};
+    var progress = typeof opts.onProgress === "function" ? opts.onProgress : function () {};
+    var se = Object.assign(TitleVI.defaultServiceEquity(), (policy && policy.serviceEquity) || {});
+    var geoLevel = policy && policy.geoLevel === "tract" ? "tract" : "bg";
+    var year = (policy && policy.acsYear) || "2024";
+    if (!window.ServiceEquity) throw new Error("The Service Equity engine did not load.");
+    if (typeof App.buildAnalysisNetwork !== "function") throw new Error("The analysis network is not available.");
+
+    progress("Building the network\u2026");
+    var netOpts = { includeHidden: !!opts.includeHidden };
+    if (opts.date) netOpts.date = opts.date;
+    var network = App.buildAnalysisNetwork(netOpts);
+    if (!network || !network.trips.length) {
+      throw new Error("No service to test. Load a GTFS feed with service on the analysis date, or draw a Service with a schedule and run time.");
+    }
+    var dayParts = App.gtfsDayParts && App.gtfsDayParts.get ? App.gtfsDayParts.get() : null;
+    var stops = TitleVI.serviceEquityStops(network, dayParts, se);
+    if (!stops.length) throw new Error("No stops with service and a location.");
+
+    var pts = turf.featureCollection(stops.map(function (s) { return turf.point([s.lon, s.lat]); }));
+    var hull = null;
+    try { hull = stops.length >= 3 ? turf.convex(pts) : null; } catch (e) { hull = null; }
+    var maxR = 0;
+    stops.forEach(function (s) { if (s.radiusMi > maxR) maxR = s.radiusMi; });
+    // One stop, or stops in a straight line, have no hull; a zero-area bbox does not buffer reliably, so
+    // widen the bbox by the buffer distance instead.
+    var region;
+    if (hull) region = turf.buffer(hull, maxR, { units: "miles" });
+    else {
+      var bb = turf.bbox(pts), midLat = (bb[1] + bb[3]) / 2;
+      var dLat = maxR / 69, dLon = maxR / (69 * Math.max(0.01, Math.cos(midLat * Math.PI / 180)));
+      region = turf.bboxPolygon([bb[0] - dLon, bb[1] - dLat, bb[2] + dLon, bb[3] + dLat]);
+    }
+
+    progress("Fetching census geographies\u2026");
+    var geos = await core.fetchTigerwebGeos(geoLevel, region);
+    if (!geos || !geos.length) throw new Error("No census geographies found around the stops.");
+    var geoids = geos.map(function (g) { return String(g.properties.GEOID || ""); }).filter(Boolean);
+
+    progress("Fetching census blocks\u2026");
+    var blocks = await App.fetchBlockPopulations(geos, progress);
+    var alloc = window.ServiceEquity.allocateStopTrips(stops, blocks, { parentLength: geoLevel === "tract" ? 11 : 12 });
+
+    progress("Fetching ACS demographics\u2026");
+    var tot = await App.fetchACSValues(geoLevel, year, "B03002_001E", geoids);
+    var white = await App.fetchACSValues(geoLevel, year, "B03002_003E", geoids);
+    var pop = await App.fetchACSValues(geoLevel, year, "B01003_001E", geoids);
+    var low = await TitleVI.fetchLowIncomeValues(geoLevel, year, policy && policy.lowIncomeDefinition, geoids, pop);
+
+    var num = function (m, id) { var v = m.get(id); return Number.isFinite(v) && v > 0 ? v : 0; };
+    var rows = geoids.map(function (id) {
+      var t = num(tot, id), p = num(pop, id);
+      // Minority share comes from B03002, low-income share from B01003; both are applied to one
+      // population so the two tests weigh each geography the same.
+      var minorityShare = t > 0 ? Math.max(0, t - num(white, id)) / t : 0;
+      var lowShare = p > 0 ? Math.min(1, num(low, id) / p) : 0;
+      var base = p || t;
+      return { geoid: id, pop: base, minorityPop: minorityShare * base, lowIncomePop: lowShare * base,
+        trips: alloc.tripsByGeo[id] || 0 };
+    });
+    var result = window.ServiceEquity.evaluate(rows, { fourFifths: se.fourFifths });
+    var spec = window.ServiceEquity.lowIncomeSpec(policy && policy.lowIncomeDefinition);
+
+    return {
+      result: result,
+      geos: geos,
+      region: region,
+      date: network.date, dayType: network.dayType,
+      settings: se, geoLevel: geoLevel, year: year,
+      lowIncomeLabel: spec.label, lowIncomeDefinition: spec.id,
+      stopCount: stops.length,
+      frequentStops: stops.filter(function (s) { return s.frequent; }).length,
+      railStops: stops.filter(function (s) { return s.rail; }).length,
+      unallocatedStops: alloc.unallocated.length, unallocatedTrips: alloc.unallocatedTrips,
+      gtfsTrips: network.counts ? network.counts.gtfsTrips : 0,
+      proposalTrips: network.counts ? network.counts.proposalTrips : 0,
+      proposalsSkipped: network.proposalsSkipped || [],
+      notes: network.notes || []
+    };
   };
 
 })();

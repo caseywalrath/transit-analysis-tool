@@ -1913,6 +1913,17 @@ body.present-mode #attr-dock { display: none !important; }
 #attr-dock .fp-attr-row.ad-info-row { min-height: 18px; margin-bottom: 2px; }
 .ad-section-closed .ad-section-body { display: none; }
 .ad-empty { font-size: var(--text-sm); color: var(--muted); padding: 2px 0 4px; }
+/* Read-only views (GTFS stop/route details): tab bar + one pane. */
+.ad-swatch-static { cursor: default; }
+.ad-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 var(--space-2); }
+.ad-tab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 6px 10px; font: inherit; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;
+}
+.ad-tab:hover { color: var(--text-primary); }
+.ad-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.ad-tab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+.ad-tab-pane { font-size: var(--text-sm); color: var(--text-primary); }
 .ad-usage { list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--text-primary); }
 .ad-usage li { padding: 1px 0; }
 .ad-usage-warn strong { color: var(--warn-text); }
@@ -3270,6 +3281,19 @@ body.dark-mode .cs-feature-badge { background: #2d3748; color: #cbd5e0; }
   font-size: var(--text-sm);
 }
 .tc-results-table td:nth-child(n+2) { text-align: right; }
+.tc-buffer-pair {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tc-route-chip {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
 
 /* ---- Walkshed popup ---- */
 .ws-body {
@@ -3331,6 +3355,7 @@ body.dark-mode .ws-table .ws-warn { color: #fbbf24; }
 }
 .ts-budget-input { width: 64px; }
 .ts-advanced-summary { cursor: pointer; }
+.ts-check-row { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .ts-table {
   width: 100%;
   border-collapse: collapse;
@@ -4084,6 +4109,14 @@ select.fp-attr-input,
   cursor: pointer;
 }
 .rf-feature-check-row:hover { background: var(--surface-hover); }
+.bas-feature-group-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-sm);
+  color: var(--muted);
+  margin: var(--space-2) 0 var(--space-1);
+}
 .rf-feature-check-row input[type="checkbox"] {
   margin: 0;
   cursor: pointer;
@@ -4740,6 +4773,9 @@ select.fp-attr-input,
 .tvi-session-import { margin-top: var(--space-3); }
 .tvi-session-file { font-size: var(--text-sm); margin-top: var(--space-1); }
 .tvi-value-right { text-align: right; }
+.tvi-se-intro { margin-bottom: var(--space-1); }
+.tvi-se-notes { margin: var(--space-2) 0 0; padding-left: var(--space-4); }
+.tvi-se-notes li { margin-bottom: var(--space-1); }
 
 .tvi-tabs {
   display: flex;
@@ -5832,6 +5868,29 @@ body.dark-mode .result-error td { color: #fc8181; }
   margin-top: 6px;
 }
 
+.gtfs-date-controls { margin-bottom: var(--space-3, 12px); }
+.gtfs-date-controls input[type="date"] { width: 100%; }
+.gtfs-date-desc { font-size: var(--text-sm); color: var(--text-primary, inherit); margin-top: 4px; }
+.gtfs-date-range { font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+
+/* Reconciliation note shown after copying a GTFS route as a Service. */
+.gtfs-copy-note {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  z-index: 1200; max-width: min(560px, calc(100vw - 32px));
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 10px 36px 10px 14px; font-size: var(--text-sm); line-height: 1.45;
+}
+.gtfs-copy-note-title { font-weight: 600; margin-bottom: 4px; }
+.gtfs-copy-note-line { margin: 2px 0; }
+.gtfs-copy-note-close {
+  position: absolute; top: 6px; right: 6px; border: none; background: transparent;
+  color: var(--text-secondary); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.gtfs-copy-note-close:hover { background: var(--surface-hover); }
+
 .gtfs-table-truncated td {
   text-align: center;
   color: var(--muted);
@@ -5878,37 +5937,58 @@ body.dark-mode .result-error td { color: #fc8181; }
   display: none;
 }
 
-/* ---- Click detail popup ---- */
+/* ---- Stop / route details in the attributes dock ---- */
 
-.gtfs-detail {
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  max-width: 300px;
+.gtfs-fields { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+.gtfs-fields th, .gtfs-fields td {
+  text-align: left; vertical-align: top; padding: 3px 6px 3px 0;
+  border-bottom: 1px solid var(--border); overflow-wrap: anywhere;
 }
+.gtfs-fields th { width: 40%; font-weight: var(--weight-semibold); color: var(--text-secondary); font-family: var(--font-mono); }
+.gtfs-fields tr.gtfs-fields-friendly th { font-family: inherit; }
 
-.gtfs-detail-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+/* Stop / route detail tabs: trips, spacing, stops, schedule. */
+.gtfs-dt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.gtfs-dt-seg.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.gtfs-dt-hidden { font-size: var(--text-xs); color: var(--text-secondary); }
+.gtfs-dt-summary { line-height: var(--leading-snug); margin-bottom: var(--space-2); }
+.gtfs-dt-summary > div { margin-bottom: 2px; }
+.gtfs-dt-table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); margin: var(--space-1) 0 var(--space-2); }
+.gtfs-dt-table th, .gtfs-dt-table td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.gtfs-dt-table th { font-weight: var(--weight-semibold); color: var(--text-secondary); }
+.gtfs-dt-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gtfs-dt-trips td { font-variant-numeric: tabular-nums; }
+.gtfs-dt-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-1) 0; }
+.gtfs-dt-chip { display: inline-block; padding: 1px 8px; border-radius: var(--radius-lg); background: var(--surface-alt); border: 1px solid var(--border); font-size: var(--text-xs); }
+.gtfs-dt-head { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.gtfs-dt-stops { margin: 0 0 var(--space-2); padding-left: 22px; font-size: var(--text-sm); }
+.gtfs-dt-id { color: var(--text-faint); font-size: var(--text-xs); }
+.gtfs-dt-link { background: none; border: none; padding: 1px 0; font: inherit; color: var(--accent); text-align: left; cursor: pointer; }
+.gtfs-dt-link:hover { text-decoration: underline; }
+.gtfs-dt-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+
+/* GTFS Feed Attributes panel: Overview / Files tabs and the overview content. */
+.gtfs-ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 var(--space-3); }
+.gtfs-ptab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 6px 12px; font: inherit; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;
 }
-
-.gtfs-detail-row { padding: 1px 0; }
-.gtfs-detail-key { font-weight: var(--weight-semibold); color: var(--muted); }
-.gtfs-detail-val { color: var(--text-primary); }
-
-.gtfs-route-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  border: 1px solid rgba(0,0,0,0.15);
-}
+.gtfs-ptab:hover { color: var(--text-primary); }
+.gtfs-ptab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: var(--weight-semibold); }
+.gtfs-ptab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+.gtfs-overview { padding: 0 var(--space-1); }
+.gtfs-ov-agency { font-weight: var(--weight-semibold); font-size: var(--text-base); margin-bottom: var(--space-1); }
+.gtfs-ov-range { font-size: var(--text-sm); color: var(--text-secondary); }
+.gtfs-ov-warn { color: var(--warn-text); font-weight: var(--weight-semibold); }
+.gtfs-ov-bad { color: var(--danger); font-weight: var(--weight-semibold); }
+.gtfs-ov-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--space-2); margin: var(--space-3) 0; }
+.gtfs-ov-stat { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-alt); }
+.gtfs-ov-num { font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.gtfs-ov-label { font-size: var(--text-xs); color: var(--text-secondary); }
+.gtfs-dayparts { margin-bottom: var(--space-3); }
+.gtfs-dp-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.gtfs-dp-label { width: 90px; font-size: var(--text-sm); }
+.gtfs-dp-input { width: 140px; }
 
 /* ---- Dark mode ---- */
 
@@ -5923,8 +6003,6 @@ body.dark-mode .gtfs-table tr:hover td { background: rgba(255,255,255,0.03); }
 body.dark-mode .gtfs-table-truncated td { color: #718096; }
 body.dark-mode .gtfs-table-wrapper { border-color: #3a3a50; }
 body.dark-mode .gtfs-map-controls { border-color: #3a3a50; }
-body.dark-mode .gtfs-detail-val { color: #ccc; }
-body.dark-mode .gtfs-detail-title { border-color: #3a3a50; }
 
 /* ================================================================
    Route Costing module
@@ -5964,6 +6042,8 @@ body.dark-mode .gtfs-detail-title { border-color: #3a3a50; }
 }
 .rc-service-actions button { flex: 1; }
 .rc-summary-label { margin-top: var(--space-4); }
+/* Narrow so the Rate column does not widen the Total table. */
+.rc-rate-override { width: 72px; }
 
 .rc-settings-grid {
   display: grid;
@@ -7181,6 +7261,32 @@ body.present-mode .box-select-bar { display: none; }
   margin-top: 0;
 }
 
+/* Export drawn Services as GTFS (.gex-); reuses the .gp-dialog frame. */
+.gex-services {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.gex-svc { display: block; }
+.gex-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+}
+.gex-check { display: block; margin: var(--space-3) 0; }
+/* Labels stack above their inputs so the two columns line up; inputs follow the theme. */
+.gex-grid .form-field { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.gex-grid input {
+  width: 100%; box-sizing: border-box; padding: var(--space-1) var(--space-2);
+  background: var(--surface); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font: inherit; color-scheme: light;
+}
+body.dark-mode .gex-grid input { color-scheme: dark; }
+.gex-status { min-height: 1.2em; font-size: var(--text-sm); }
+.gex-status.is-error { color: var(--danger); }
+
 /* Attribute popup for a clicked GeoPackage feature (a MapLibre popup). Long
    values wrap and the body scrolls, since some layers carry dozens of fields
    or JSON blobs. */
@@ -7216,3 +7322,74 @@ body.present-mode .box-select-bar { display: none; }
 .gp-filter-cond .gp-filter-value { grid-column: 1 / span 2; grid-row: 2; }
 .gp-filter-cond .lp-style-clear { grid-column: 3; grid-row: 1; }
 .gp-filter-value { box-sizing: border-box; width: 100%; min-width: 0; font-size: var(--text-xs); min-height: var(--ctl-height-sm); padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-primary); }
+
+/* --- GTFS Service Analysis (.gsa-) --- */
+.gsa-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.gsa-scope { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.gsa-scope-date input { width: 160px; }
+.gsa-settings { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2); margin-bottom: var(--space-2); }
+.gsa-settings > summary { cursor: pointer; font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); }
+.gsa-settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+.gsa-days { display: flex; gap: var(--space-1); }
+.gsa-days input { width: 0; flex: 1 1 0; min-width: 56px; }
+.gsa-invalid { border-color: var(--danger) !important; }
+.gsa-cost-tab table { width: 100%; }
+.gsa-cost-mini td, .gsa-cost-mini th { text-align: right; }
+.gsa-cost-mini th[scope="row"] { text-align: left; }
+.gsa-cost-total { font-weight: 600; border-top: 1px solid var(--border); }
+.gsa-basis { display: flex; flex-direction: column; gap: 2px; line-height: var(--leading-snug); margin: var(--space-2) 0; }
+.gsa-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.gsa-tile { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-alt); padding: var(--space-2) var(--space-3); }
+.gsa-tile-val { font-size: var(--text-xl); font-weight: var(--weight-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.gsa-tile-lbl { color: var(--text-secondary); line-height: var(--leading-snug); }
+.gsa-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.gsa-search { width: 200px; max-width: 100%; }
+.gsa-controls .gsa-csv { margin-left: auto; }
+.gsa-table-wrap { max-width: 100%; max-height: 460px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.gsa-table-wrap .gtfs-dt-table { margin: 0; }
+.gsa-table-wrap thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-alt); padding-left: 6px; }
+.gsa-table-wrap td { padding-left: 6px; }
+.gsa-sort { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.gsa-sort:hover { color: var(--accent); }
+.gsa-sort:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--radius-sm); }
+th[aria-sort="ascending"] .gsa-sort::after { content: " \25B2"; font-size: 9px; }
+th[aria-sort="descending"] .gsa-sort::after { content: " \25BC"; font-size: 9px; }
+.gsa-caret { background: none; border: none; padding: 0 4px 0 0; font: inherit; color: var(--text-secondary); cursor: pointer; }
+.gsa-route-cell { white-space: nowrap; }
+.gsa-body input.gsa-rate-input { width: 72px; padding: 1px 6px; height: 24px; min-height: 0; line-height: 1.4; text-align: right; }
+.gsa-body .rf-btn-sm:disabled { background: var(--surface); color: var(--text-secondary); border-color: var(--border); }
+.gsa-rate-ov { font-weight: var(--weight-bold); }
+.gsa-detail > td { background: var(--surface-alt); padding: var(--space-1) var(--space-2); }
+.gsa-sub-table { margin: 0; }
+.gsa-sub-table th, .gsa-sub-table td { padding-left: 6px; }
+.gsa-total td { font-weight: var(--weight-semibold); border-top: 1px solid var(--border-strong); background: var(--surface-alt); }
+.gsa-note { margin: var(--space-2) 0; line-height: var(--leading-snug); color: var(--text-secondary); }
+.gsa-note-warn { color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
+.gsa-how { margin: var(--space-2) 0; font-size: var(--text-sm); }
+.gsa-how > summary { cursor: pointer; font-weight: var(--weight-semibold); color: var(--text-primary); }
+.gsa-how ul { margin: var(--space-1) 0 0; padding-left: 20px; line-height: var(--leading-snug); color: var(--text-secondary); }
+.gsa-section { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: var(--space-2); background: var(--surface); }
+.gsa-section > summary { cursor: pointer; padding: var(--space-2) var(--space-3); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.gsa-sec-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text-primary); }
+.gsa-sec-sum { color: var(--text-secondary); }
+.gsa-sec-body { padding: 0 var(--space-3) var(--space-3); min-width: 0; }
+.gsa-sec-body > .gsa-csv { float: right; }
+.gsa-bands { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-2) 0; clear: both; }
+.gsa-band-row { display: grid; grid-template-columns: 80px 110px minmax(80px, 1fr) 90px; gap: var(--space-2); align-items: center; }
+.gsa-bar { display: block; height: 12px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.gsa-bar-fill { display: block; height: 100%; }
+.gsa-band-n { text-align: right; font-variant-numeric: tabular-nums; }
+.gsa-stats { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin-bottom: var(--space-2); }
+.gsa-ramp-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-2) 0; clear: both; }
+.gsa-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--text-secondary); }
+.gsa-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.gsa-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-strong); }
+.gsa-health-pill { display: inline-block; font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-sm); margin-right: var(--space-1); border: 1px solid var(--border); }
+.gsa-health-ok { color: var(--text-secondary); }
+.gsa-health-warning { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-bd); }
+.gsa-health-error { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+.gsa-health-unknown { color: var(--text-secondary); }
+.gsa-cmp-mode { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
+.gsa-cmp-pos { color: var(--text-primary); }
+.gsa-cmp-neg { color: var(--danger); }
+.gsa-cmp-services select { max-width: 280px; }

@@ -25,6 +25,7 @@
   var _rescoreTimer = null;
   var _initialized = false;
   var _apportionByArea = false;
+  var _apportionMethod = App.APPORTION_DEFAULT;   // "blockPop" | "area"; read only while _apportionByArea is on
   var _bufferMiles = App.ANALYSIS_BUFFER_DEFAULT_MILES;
   var _useDisplayBuffers = false;
   var _includeHidden = false;     // analyze features hidden on the map (docs/archive/hidden-features-analysis-plan.md)
@@ -442,7 +443,9 @@
     var apportionEl = document.getElementById("tpiApportionNote");
     if (apportionEl) {
       if (result.apportionByArea) {
-        apportionEl.textContent = "Area apportionment active: values scaled by buffer overlap fraction.";
+        var usedLabel = window.Apportion ? window.Apportion.methodLabel(result.apportionMethodUsed || "area") : "land area";
+        apportionEl.textContent = "Apportionment active (" + usedLabel + "): values scaled by each geography's share inside the buffer." +
+          (result.apportionNote ? " " + result.apportionNote : "");
         apportionEl.style.display = "";
       } else {
         apportionEl.style.display = "none";
@@ -684,6 +687,7 @@
         weights:        _weights,
         lodesData:      App.lodesData,
         apportionByArea: _apportionByArea,
+        apportionMethod: _apportionMethod,
         unionPolygon:   unionPolygon,
         growthFactors:  App.projGrowthFactors ? App.projGrowthFactors() : null,
         onProgress: function (msg) {
@@ -982,6 +986,7 @@
       geoLevel:       _lastResult ? _lastResult.geoLevel : null,
       acsYear:        _lastResult ? _lastResult.year : null,
       apportionByArea: _apportionByArea,
+      apportionMethodUsed: _lastResult ? _lastResult.apportionMethodUsed : null,
       bufferMiles:    _lastResult ? _lastResult.bufferMiles : App.ANALYSIS_BUFFER_DEFAULT_MILES
     };
   }
@@ -993,6 +998,7 @@
     if (meta.geoLevel) lines.push("# Geography: " + meta.geoLevel);
     if (meta.acsYear)  lines.push("# ACS Year: "  + meta.acsYear);
     lines.push("# Apportion by Area: " + (meta.apportionByArea ? "yes" : "no"));
+    if (meta.apportionByArea && window.Apportion) lines.push("# Apportionment method: " + window.Apportion.methodLabel(meta.apportionMethodUsed || "area"));
     lines.push("# Buffer distance (mi): " + meta.bufferMiles);
     return lines.join("\n");
   }
@@ -1214,6 +1220,17 @@
       apportionCb.checked = _apportionByArea;
       apportionCb.addEventListener("change", function () {
         _apportionByArea = apportionCb.checked;
+        var methodSel0 = document.getElementById("tpiApportionMethod");
+        if (methodSel0) methodSel0.disabled = !_apportionByArea;
+        markStale();
+      });
+    }
+    var methodSel = document.getElementById("tpiApportionMethod");
+    if (methodSel) {
+      methodSel.value = _apportionMethod;
+      methodSel.disabled = !_apportionByArea;
+      methodSel.addEventListener("change", function () {
+        _apportionMethod = methodSel.value;
         markStale();
       });
     }
@@ -1245,6 +1262,8 @@
     // Sync checkbox
     var apportionCb = document.getElementById("tpiApportionByArea");
     if (apportionCb) apportionCb.checked = _apportionByArea;
+    var methodSelOpen = document.getElementById("tpiApportionMethod");
+    if (methodSelOpen) { methodSelOpen.value = _apportionMethod; methodSelOpen.disabled = !_apportionByArea; }
     var bufferMilesEl = document.getElementById("tpiBufferMiles");
     if (bufferMilesEl) bufferMilesEl.value = String(_bufferMiles);
     syncBufferControl();
@@ -1310,6 +1329,7 @@
       schemaVersion:    2,   // v2: corridor + checklist selection by stable feature ID (v1 = array indices)
       weights:          Object.assign({}, _weights),
       apportionByArea:  _apportionByArea,
+      apportionMethod:  _apportionMethod,
       bufferMiles:      _bufferMiles,
       useDisplayBuffers: _useDisplayBuffers,
       includeHidden:    _includeHidden,   // additive, no schema bump
@@ -1326,6 +1346,9 @@
       effectiveWeights:     tpi.effectiveWeights ? Object.assign({}, tpi.effectiveWeights) : {},
       tractFallbackFactors: tpi.tractFallbackFactors ? tpi.tractFallbackFactors.slice() : [],
       apportionByArea:      tpi.apportionByArea || false,
+      apportionMethod:      tpi.apportionMethod || "area",
+      apportionMethodUsed:  tpi.apportionMethodUsed || (tpi.apportionByArea ? "area" : null),
+      apportionNote:        tpi.apportionNote || null,
       hiddenIncluded:       tpi.hiddenIncluded || 0,
       scores:               App.mapToObj(tpi.scores),
       factorScores:         App.nestedMapToObj(tpi.factorScores),
@@ -1341,6 +1364,10 @@
     if (!data) return;
     if (data.weights)          _weights          = Object.assign({}, data.weights);
     if (data.apportionByArea != null) _apportionByArea = !!data.apportionByArea;
+    // Sessions saved before the method choice existed apportioned by land area.
+    _apportionMethod = data.apportionMethod === "blockPop" ? "blockPop" : "area";
+    var methodRestoreEl = document.getElementById("tpiApportionMethod");
+    if (methodRestoreEl) { methodRestoreEl.value = _apportionMethod; methodRestoreEl.disabled = !_apportionByArea; }
     if (data.bufferMiles != null) _bufferMiles = data.bufferMiles;
     if (data.useDisplayBuffers != null) _useDisplayBuffers = !!data.useDisplayBuffers;
     if (typeof data.includeHidden === "boolean") _includeHidden = data.includeHidden;
@@ -1382,6 +1409,9 @@
       effectiveWeights:     r.effectiveWeights     || {},
       tractFallbackFactors: r.tractFallbackFactors || [],
       apportionByArea:      r.apportionByArea      || false,
+      apportionMethod:      r.apportionMethod      || "area",
+      apportionMethodUsed:  r.apportionMethodUsed  || (r.apportionByArea ? "area" : null),
+      apportionNote:        r.apportionNote        || null,
       hiddenIncluded:       r.hiddenIncluded       || 0,
       scores:               App.objToMap(r.scores),
       factorScores:         App.nestedObjToMap(r.factorScores),

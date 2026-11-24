@@ -25,6 +25,55 @@
     return union;
   }
 
+  // Spatial sort key so neighbouring polygons are merged first (a Morton code of the first vertex).
+  function mortonKey(poly) {
+    var c = poly.geometry.coordinates;
+    var p = poly.geometry.type === "MultiPolygon" ? c[0][0][0] : c[0][0];
+    var x = Math.max(0, Math.floor((p[0] + 180) * 200)), y = Math.max(0, Math.floor((p[1] + 90) * 200)), r = 0;
+    for (var b = 0; b < 17; b++) r += (((x >> b) & 1) + 2 * ((y >> b) & 1)) * Math.pow(4, b);
+    return r;
+  }
+
+  // Parts of a polygon or multipolygon as a coordinate list, for the last-resort merge below.
+  function polygonParts(poly) {
+    var g = poly.geometry;
+    return g.type === "MultiPolygon" ? g.coordinates : [g.coordinates];
+  }
+
+  // Union of many polygons by pairwise merging of spatial neighbours (async). foldAnalysisUnion folds one
+  // polygon at a time into an ever larger shape, which for a few thousand stop circles takes minutes; this
+  // keeps every round's shapes small and yields between rounds so the page stays responsive.
+  // A pair whose union throws keeps BOTH inputs for the next round: dropping one would silently shrink the
+  // coverage. If a whole round makes no progress (every pair throws), the rest are returned as one
+  // MultiPolygon (parts may overlap) rather than looping or losing area.
+  // opts.yieldMin (default 200): yield between rounds only when the list is longer than this.
+  // Returns null for an empty list; falsy entries are ignored.
+  async function unionManyPolygons(list, opts) {
+    var a = (list || []).filter(Boolean);
+    if (a.length < 3) return foldAnalysisUnion(a);
+    var yieldMin = opts && opts.yieldMin != null ? opts.yieldMin : 200;
+    var keyed = a.map(function (p) { return { p: p, k: mortonKey(p) }; });
+    keyed.sort(function (x, y) { return x.k - y.k; });
+    a = keyed.map(function (e) { return e.p; });
+    var big = a.length > yieldMin;
+    while (a.length > 1) {
+      var next = [];
+      for (var i = 0; i < a.length; i += 2) {
+        if (i + 1 >= a.length) { next.push(a[i]); continue; }
+        try { next.push(turf.union(a[i], a[i + 1])); }
+        catch (e) { next.push(a[i]); next.push(a[i + 1]); }
+      }
+      if (next.length >= a.length) {
+        var coords = [];
+        next.forEach(function (p) { polygonParts(p).forEach(function (part) { coords.push(part); }); });
+        return { type: "Feature", properties: {}, geometry: { type: "MultiPolygon", coordinates: coords } };
+      }
+      a = next;
+      if (big) await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    }
+    return a[0];
+  }
+
   // Build a single feature's private buffer polygon at the given distance.
   function buildAnalysisBuffer(feature, miles) {
     try { return turf.buffer(feature, miles, { units: "miles", steps: 64 }); }
@@ -240,6 +289,56 @@
     };
   }
 
+  // Point features (App.points) associated with a route/line via
+  // attributes.associatedRoutes. Matches on the draw-time counter (routeIdx /
+  // lineIdx), resolved by scanning App.points: array indices shift on delete,
+  // the counter does not. A point is returned once however many refs match.
+  // opts.includeHidden (default false): when false, hidden points are skipped.
+  function associatedStopPoints(type, feature, opts) {
+    var includeHidden = !!(opts && opts.includeHidden);
+    var idProp = (type === "route") ? "routeIdx" : "lineIdx";
+    var featureId = feature && feature.properties ? feature.properties[idProp] : null;
+    if (featureId == null) return [];
+    var points = App.points || [];
+    var out = [];
+    for (var i = 0; i < points.length; i++) {
+      var pf = points[i];
+      if (!pf || !pf.properties) continue;
+      if (pf.properties.hidden && !includeHidden) continue;
+      var assoc = pf.properties.attributes && pf.properties.attributes.associatedRoutes;
+      if (!Array.isArray(assoc)) continue;
+      for (var a = 0; a < assoc.length; a++) {
+        var ref = assoc[a];
+        if (ref && ref.featureType === type && ref.featureId === featureId) {
+          out.push(pf);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Plain circles around each point (never walksheds); a bad point is skipped.
+  function buildStopCircles(points, miles) {
+    var circles = [];
+    for (var i = 0; i < (points || []).length; i++) {
+      try {
+        circles.push(turf.circle(turf.point(points[i].geometry.coordinates), miles, { units: "miles", steps: 32 }));
+      } catch (e) { /* skip a bad point */ }
+    }
+    return circles;
+  }
+
+  // Union of plain circles around each point (never walksheds). Null for none. Synchronous fold:
+  // fine for a handful of stops; use unionManyPolygons(buildStopCircles(...)) for a whole system.
+  function buildStopCircleUnion(points, miles) {
+    return foldAnalysisUnion(buildStopCircles(points, miles));
+  }
+
+  App.associatedStopPoints  = associatedStopPoints;
+  App.buildStopCircleUnion  = buildStopCircleUnion;
+  App.buildStopCircles      = buildStopCircles;
+  App.unionManyPolygons     = unionManyPolygons;
   App.foldAnalysisUnion     = foldAnalysisUnion;
   App.buildAnalysisBuffer   = buildAnalysisBuffer;
   App.buildDisplayBufferSet = buildDisplayBufferSet;

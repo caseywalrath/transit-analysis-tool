@@ -17,6 +17,10 @@ cdot-roads.js        pure, no deps; window.CdotRoads (before cdot-source.js)
 layer-palettes.js    pure window.LayerPalette + App cascade (App.* only at call time); before every consumer
 network-store.js     IndexedDB only; App.networkStore (before road-network.js, its only consumer)
 gtfs-store.js        IndexedDB only; App.gtfsStore (before gtfs.js, its only consumer, which guards every call so the golden sandbox, which has no IndexedDB, still loads gtfs.js)
+gtfs-schedule.js     Pure engine, window.GtfsSchedule; reads nothing at load time (golden-tested alone). Before gtfs.js, which calls it only at load-feed time
+analysis-network.js  Pure engine, window.AnalysisNetwork; reads window.GtfsSchedule at call time only. Before gtfs-export.js, which calls proposalTrips at call time
+raptor.js            Pure engine, window.Raptor; reads only the network passed in. After analysis-network.js
+service-compare.js   Pure engine, window.ServiceCompare (Build vs No-Build); no App, DOM or turf. After service-equity.js
 gpkg-store.js        needs App (assigns App.gpkgStore at load); IndexedDB only; before gpkg-layers.js, its only consumer, which guards every call
 walk-tiles-source.js reads WalkTiles at call time; App.walkTilesSource + FLM dialog wiring (before road-network.js)
 cdot-source.js       reads CdotRoads, App.walkTilesSource at call time; App.cdotSource + CDOT dialog wiring (before road-network.js)
@@ -57,6 +61,7 @@ undo.js              App.undo (snapshots via cache state)
 popup.js             App.popup
 service-assembly.js  App.buildTransitServices/getEffectiveServiceBands/migrateServiceKey/… (Route Costing, Trip Builder, Travelshed, Coverage)
 module-buffers.js    App.foldAnalysisUnion, App.buildAnalysisBufferSet, …; App.getPointWalkshed optional
+analysis-network-source.js  App.buildAnalysisNetwork; reads App.gtfsSchedule, buildTransitServices, associatedStopPoints and turf at call time
 analysis-checklist.js App.decorateHiddenRow/buildIncludeHiddenToggle/hiddenSelectionMessage
 choropleth.js        App.map/maplibregl only inside map functions (math loads in the golden sandbox); App.choropleth
 js/app.js            wires everything, toolbar menus, App.registerModule; calls App.cache.restore()
@@ -72,7 +77,7 @@ walkshed.js          needs road-network.js exports
 transit-travelshed.js needs window.Travelshed, road-network.js exports, App.getEffectiveServiceBands
 transit-coverage.js  needs census.js, lodes.js, App.getEffectiveServiceBands
 (mitigation-needs-data.js, mitigation-needs.js — commented out, dormant)
-route-costing.js / trip-builder.js   need service-assembly.js
+route-costing.js   needs service-assembly.js (trip-builder.js is retired: tag commented out)
 title-vi-engine.js   window.TitleVI
 title-vi.js          needs TitleVI
 gtfs.js              needs JSZip, PapaParse
@@ -82,6 +87,10 @@ js/core/present-overlays.js  after modules; listens for `mat:present-mode-change
 
 **Call-time cross-file names** (used inside functions, so only presence matters): feature arrays `App.points`/`App.lines`/`App.routes`/`App.polygons`; `App.setStatus`, `App.exitDrawMode`, `App.getSelectedFeatures`, `App.selectFeature`, `App.removePoint`, `App.rerenderForType`, `App.onFeatureDelete`, `App.nextFeatureId`, `App._nextColorSeq`, `App.featureRef`; appearance — `App.buildScrubber`, `App._openFpSlider`, `App.openColorPicker`, `App.updateFeatureColor`, `App.applyFeatureOpacity`, `App.applyLineWidth`, `App.applyBufferLineWidth`, `App._polyOpacityValues`, `App.sectionColors`, `App.featureSettings`, `App.layerStyles`, `App.closeAppearancePopup`, `App.isAppearancePopupOpen`; attributes — `App.closeAttrDock`, `App.isAttrDockOpen`, `App.getAttrDockFeature`; network/buffers — `App.roadNetworkLoaded`, `App.computeWalkshed`, `App.fetchRouteGeometry`, `App.ensurePointWalksheds`, `App.refreshBuffers`, `App.buildAnalysisBuffer`, `App.readAnalysisBufferMiles`, `App.ANALYSIS_BUFFER_DEFAULT_MILES`; `App.renderCensusOverlay` (TPI, RF).
 
-**Active modules:** Feature Area Analysis (`buffer-summary`), Transit Propensity, FTA Small Starts, Ridership Forecasting, Corridor Scoring, Walkshed, Transit Travelshed, Transit Coverage, Route Costing, Trip Builder, Title VI, GTFS Feed Viewer. Attribute Summary is a **system module** (`system: true`, hidden from the Analysis menu).
+**Active modules:** Feature Area Analysis (`buffer-summary`), Transit Propensity, FTA Small Starts, Ridership Forecasting, Corridor Scoring, Walkshed, Transit Travelshed, Transit Coverage, Route Costing, Title VI, GTFS Feed Viewer. Attribute Summary is a **system module** (`system: true`, hidden from the Analysis menu).
 
 **Dormant module:** Wetland & Channel Mitigation Needs (`js/projects/mitigation-needs.js` + `mitigation-needs-data.js`, `projects/mitigation-needs-popup.html` + `mitigation-needs-legend.html`) — illustration only; its two script tags are commented out in `index.html`. Re-enable by uncommenting both.
+
+
+gtfs-export.js       Pure engine, window.GtfsExport; reads window.AnalysisNetwork at call time only (after raptor.js)
+gtfs-export-ui.js    App.openGtfsExportDialog / App.gtfsExportBlob; needs App.gtfsExportInput (analysis-network-source.js) and JSZip at call time

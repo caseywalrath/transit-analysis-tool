@@ -777,6 +777,19 @@
 
       var all = featuresAt(e.point);
       var hit = all[0];
+      // Drawn features win; a GTFS stop or route under an otherwise empty click
+      // opens its read-only details in the dock (this handler is the one owner
+      // of map clicks, so the two can never both act on one click).
+      // Presentation mode hides the dock, so a GTFS click there would only change hidden state.
+      if (!hit && typeof App.gtfsPickAt === "function" && !document.body.classList.contains("present-mode")) {
+        var gtfsHit = App.gtfsPickAt(e.point);
+        if (gtfsHit) {
+          if (editState) exitEditMode();
+          else if (typeof App.clearSelection === "function") App.clearSelection();
+          App.gtfsOpenDetails(gtfsHit);
+          return;
+        }
+      }
       if (!hit) { emptyMapClick(); return; }
 
       var sel = typeof App.getSelectedFeatures === "function" ? App.getSelectedFeatures() : [];

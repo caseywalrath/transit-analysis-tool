@@ -1,0 +1,564 @@
+{
+  "freq-on": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,SA,R1-SA-0-0-28800,0,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,1200,1\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 4,
+      "tripsRepresented": 8,
+      "stopTimes": 12,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": []
+  },
+  "freq-off": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-0-22800,0,R1-0\nR1,WK,R1-WK-0-0-24000,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,WK,R1-WK-0-1-22800,1,R1-0-r\nR1,WK,R1-WK-0-1-24000,1,R1-0-r\nR1,SA,R1-SA-0-0-28800,0,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-0-22800,06:20:00,06:20:00,s1,1,1\nR1-WK-0-0-22800,06:30:00,06:30:00,s2,2,0\nR1-WK-0-0-22800,06:40:00,06:40:00,s3,3,1\nR1-WK-0-0-24000,06:40:00,06:40:00,s1,1,1\nR1-WK-0-0-24000,06:50:00,06:50:00,s2,2,0\nR1-WK-0-0-24000,07:00:00,07:00:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-WK-0-1-22800,06:20:00,06:20:00,s3,1,1\nR1-WK-0-1-22800,06:30:00,06:30:00,s2,2,0\nR1-WK-0-1-22800,06:40:00,06:40:00,s1,3,1\nR1-WK-0-1-24000,06:40:00,06:40:00,s3,1,1\nR1-WK-0-1-24000,06:50:00,06:50:00,s2,2,0\nR1-WK-0-1-24000,07:00:00,07:00:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 8,
+      "tripsRepresented": 8,
+      "stopTimes": 24,
+      "shapes": 2,
+      "frequencies": 0
+    },
+    "warnings": []
+  },
+  "wrap": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-84600,0,R1-0\nR1,WK,R1-WK-0-1-84600,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-84600,23:30:00,23:30:00,s1,1,1\nR1-WK-0-0-84600,23:40:00,23:40:00,s2,2,0\nR1-WK-0-0-84600,23:50:00,23:50:00,s3,3,1\nR1-WK-0-1-84600,23:30:00,23:30:00,s3,1,1\nR1-WK-0-1-84600,23:40:00,23:40:00,s2,2,0\nR1-WK-0-1-84600,23:50:00,23:50:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-84600,23:30:00,24:30:00,1800,1\nR1-WK-0-1-84600,23:30:00,24:30:00,1800,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 2,
+      "tripsRepresented": 4,
+      "stopTimes": 6,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": []
+  },
+  "dup-ids": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-0-22800,0,R1-0\nR1,WK,R1-WK-0-0-24000,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,WK,R1-WK-0-1-22800,1,R1-0-r\nR1,WK,R1-WK-0-1-24000,1,R1-0-r\nR1,WK,R1-WK-0-0-21600-2,0,R1-0\nR1,WK,R1-WK-0-1-21600-2,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-0-22800,06:20:00,06:20:00,s1,1,1\nR1-WK-0-0-22800,06:30:00,06:30:00,s2,2,0\nR1-WK-0-0-22800,06:40:00,06:40:00,s3,3,1\nR1-WK-0-0-24000,06:40:00,06:40:00,s1,1,1\nR1-WK-0-0-24000,06:50:00,06:50:00,s2,2,0\nR1-WK-0-0-24000,07:00:00,07:00:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-WK-0-1-22800,06:20:00,06:20:00,s3,1,1\nR1-WK-0-1-22800,06:30:00,06:30:00,s2,2,0\nR1-WK-0-1-22800,06:40:00,06:40:00,s1,3,1\nR1-WK-0-1-24000,06:40:00,06:40:00,s3,1,1\nR1-WK-0-1-24000,06:50:00,06:50:00,s2,2,0\nR1-WK-0-1-24000,07:00:00,07:00:00,s1,3,1\nR1-WK-0-0-21600-2,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600-2,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600-2,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600-2,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600-2,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600-2,06:20:00,06:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 8,
+      "tripsRepresented": 8,
+      "stopTimes": 24,
+      "shapes": 2,
+      "frequencies": 0
+    },
+    "warnings": []
+  },
+  "non-whole-headway": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-0-22027,0,R1-0\nR1,WK,R1-WK-0-0-22455,0,R1-0\nR1,WK,R1-WK-0-0-22882,0,R1-0\nR1,WK,R1-WK-0-0-23310,0,R1-0\nR1,WK,R1-WK-0-0-23737,0,R1-0\nR1,WK,R1-WK-0-0-24164,0,R1-0\nR1,WK,R1-WK-0-0-24592,0,R1-0\nR1,WK,R1-WK-0-0-25019,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,WK,R1-WK-0-1-22027,1,R1-0-r\nR1,WK,R1-WK-0-1-22455,1,R1-0-r\nR1,WK,R1-WK-0-1-22882,1,R1-0-r\nR1,WK,R1-WK-0-1-23310,1,R1-0-r\nR1,WK,R1-WK-0-1-23737,1,R1-0-r\nR1,WK,R1-WK-0-1-24164,1,R1-0-r\nR1,WK,R1-WK-0-1-24592,1,R1-0-r\nR1,WK,R1-WK-0-1-25019,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-0-22027,06:07:07,06:07:07,s1,1,1\nR1-WK-0-0-22027,06:17:07,06:17:07,s2,2,0\nR1-WK-0-0-22027,06:27:07,06:27:07,s3,3,1\nR1-WK-0-0-22455,06:14:15,06:14:15,s1,1,1\nR1-WK-0-0-22455,06:24:15,06:24:15,s2,2,0\nR1-WK-0-0-22455,06:34:15,06:34:15,s3,3,1\nR1-WK-0-0-22882,06:21:22,06:21:22,s1,1,1\nR1-WK-0-0-22882,06:31:22,06:31:22,s2,2,0\nR1-WK-0-0-22882,06:41:22,06:41:22,s3,3,1\nR1-WK-0-0-23310,06:28:30,06:28:30,s1,1,1\nR1-WK-0-0-23310,06:38:30,06:38:30,s2,2,0\nR1-WK-0-0-23310,06:48:30,06:48:30,s3,3,1\nR1-WK-0-0-23737,06:35:37,06:35:37,s1,1,1\nR1-WK-0-0-23737,06:45:37,06:45:37,s2,2,0\nR1-WK-0-0-23737,06:55:37,06:55:37,s3,3,1\nR1-WK-0-0-24164,06:42:44,06:42:44,s1,1,1\nR1-WK-0-0-24164,06:52:44,06:52:44,s2,2,0\nR1-WK-0-0-24164,07:02:44,07:02:44,s3,3,1\nR1-WK-0-0-24592,06:49:52,06:49:52,s1,1,1\nR1-WK-0-0-24592,06:59:52,06:59:52,s2,2,0\nR1-WK-0-0-24592,07:09:52,07:09:52,s3,3,1\nR1-WK-0-0-25019,06:56:59,06:56:59,s1,1,1\nR1-WK-0-0-25019,07:06:59,07:06:59,s2,2,0\nR1-WK-0-0-25019,07:16:59,07:16:59,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-WK-0-1-22027,06:07:07,06:07:07,s3,1,1\nR1-WK-0-1-22027,06:17:07,06:17:07,s2,2,0\nR1-WK-0-1-22027,06:27:07,06:27:07,s1,3,1\nR1-WK-0-1-22455,06:14:15,06:14:15,s3,1,1\nR1-WK-0-1-22455,06:24:15,06:24:15,s2,2,0\nR1-WK-0-1-22455,06:34:15,06:34:15,s1,3,1\nR1-WK-0-1-22882,06:21:22,06:21:22,s3,1,1\nR1-WK-0-1-22882,06:31:22,06:31:22,s2,2,0\nR1-WK-0-1-22882,06:41:22,06:41:22,s1,3,1\nR1-WK-0-1-23310,06:28:30,06:28:30,s3,1,1\nR1-WK-0-1-23310,06:38:30,06:38:30,s2,2,0\nR1-WK-0-1-23310,06:48:30,06:48:30,s1,3,1\nR1-WK-0-1-23737,06:35:37,06:35:37,s3,1,1\nR1-WK-0-1-23737,06:45:37,06:45:37,s2,2,0\nR1-WK-0-1-23737,06:55:37,06:55:37,s1,3,1\nR1-WK-0-1-24164,06:42:44,06:42:44,s3,1,1\nR1-WK-0-1-24164,06:52:44,06:52:44,s2,2,0\nR1-WK-0-1-24164,07:02:44,07:02:44,s1,3,1\nR1-WK-0-1-24592,06:49:52,06:49:52,s3,1,1\nR1-WK-0-1-24592,06:59:52,06:59:52,s2,2,0\nR1-WK-0-1-24592,07:09:52,07:09:52,s1,3,1\nR1-WK-0-1-25019,06:56:59,06:56:59,s3,1,1\nR1-WK-0-1-25019,07:06:59,07:06:59,s2,2,0\nR1-WK-0-1-25019,07:16:59,07:16:59,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 18,
+      "tripsRepresented": 18,
+      "stopTimes": 54,
+      "shapes": 2,
+      "frequencies": 0
+    },
+    "warnings": []
+  },
+  "half-minute": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,450,1\nR1-WK-0-1-21600,06:00:00,07:00:00,450,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 2,
+      "tripsRepresented": 16,
+      "stopTimes": 6,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": []
+  },
+  "no-shape": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,\nR1,WK,R1-WK-0-1-21600,1,\nR1,SA,R1-SA-0-0-28800,0,\nR1,SA,R1-SA-0-1-28800,1,\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,1200,1\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 4,
+      "tripsRepresented": 8,
+      "stopTimes": 12,
+      "shapes": 0,
+      "frequencies": 2
+    },
+    "warnings": [
+      "Service \"R1\" pattern 0 has no line shape."
+    ]
+  },
+  "one-way": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-1-21600,1,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-1-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s3,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 2,
+      "tripsRepresented": 4,
+      "stopTimes": 6,
+      "shapes": 1,
+      "frequencies": 1
+    },
+    "warnings": []
+  },
+  "empty-route": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,0055AA,FFFFFF\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,SA,R1-SA-0-0-28800,0,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,1200,1\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 4,
+      "tripsRepresented": 8,
+      "stopTimes": 12,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": [
+      "Service \"Ghost\" has no trips in its headway bands and was left out."
+    ]
+  },
+  "all-empty": {
+    "error": "No trips to export: the selected Services have no headway bands with service."
+  },
+  "err-name": {
+    "error": "Enter the agency name."
+  },
+  "err-url": {
+    "error": "Agency URL must start with http:// or https://."
+  },
+  "err-tz": {
+    "error": "Enter a time zone such as America/Denver."
+  },
+  "err-date": {
+    "error": "Enter start and end dates."
+  },
+  "err-order": {
+    "error": "The end date is before the start date."
+  },
+  "err-routes": {
+    "error": "Choose at least one Service."
+  },
+  "no-stop-location": {
+    "error": "Stop \"s2\" has no location."
+  },
+  "color-light": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,FFD700,000000\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,SA,R1-SA-0-0-28800,0,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,1200,1\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 4,
+      "tripsRepresented": 8,
+      "stopTimes": 12,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": []
+  },
+  "color-bad": {
+    "files": [
+      {
+        "name": "agency.txt",
+        "text": "agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone\nA1,Test Transit,https://example.org,America/Denver,,\n"
+      },
+      {
+        "name": "stops.txt",
+        "text": "stop_id,stop_name,stop_lat,stop_lon\ns1,First & Main,39.700000,-105.000000\ns2,Stop 1,39.720000,-105.000000\ns3,\"Elm, \"\"North\"\"\",39.740000,-105.000000\n"
+      },
+      {
+        "name": "routes.txt",
+        "text": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color\nR1,A1,1,Main St,3,,\n"
+      },
+      {
+        "name": "trips.txt",
+        "text": "route_id,service_id,trip_id,direction_id,shape_id\nR1,WK,R1-WK-0-0-21600,0,R1-0\nR1,WK,R1-WK-0-1-21600,1,R1-0-r\nR1,SA,R1-SA-0-0-28800,0,R1-0\nR1,SA,R1-SA-0-1-28800,1,R1-0-r\n"
+      },
+      {
+        "name": "stop_times.txt",
+        "text": "trip_id,arrival_time,departure_time,stop_id,stop_sequence,timepoint\nR1-WK-0-0-21600,06:00:00,06:00:00,s1,1,1\nR1-WK-0-0-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-0-21600,06:20:00,06:20:00,s3,3,1\nR1-WK-0-1-21600,06:00:00,06:00:00,s3,1,1\nR1-WK-0-1-21600,06:10:00,06:10:00,s2,2,0\nR1-WK-0-1-21600,06:20:00,06:20:00,s1,3,1\nR1-SA-0-0-28800,08:00:00,08:00:00,s1,1,1\nR1-SA-0-0-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-0-28800,08:20:00,08:20:00,s3,3,1\nR1-SA-0-1-28800,08:00:00,08:00:00,s3,1,1\nR1-SA-0-1-28800,08:10:00,08:10:00,s2,2,0\nR1-SA-0-1-28800,08:20:00,08:20:00,s1,3,1\n"
+      },
+      {
+        "name": "calendar.txt",
+        "text": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWK,1,1,1,1,1,0,0,20270101,20271231\nSA,0,0,0,0,0,1,0,20270101,20271231\n"
+      },
+      {
+        "name": "shapes.txt",
+        "text": "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nR1-0,39.700000,-105.000000,1\nR1-0,39.720000,-105.000000,2\nR1-0,39.740000,-105.000000,3\nR1-0-r,39.740000,-105.000000,1\nR1-0-r,39.720000,-105.000000,2\nR1-0-r,39.700000,-105.000000,3\n"
+      },
+      {
+        "name": "frequencies.txt",
+        "text": "trip_id,start_time,end_time,headway_secs,exact_times\nR1-WK-0-0-21600,06:00:00,07:00:00,1200,1\nR1-WK-0-1-21600,06:00:00,07:00:00,1200,1\n"
+      },
+      {
+        "name": "feed_info.txt",
+        "text": "feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\nTest Transit,https://example.org,en,20270101,20271231,\n"
+      }
+    ],
+    "counts": {
+      "routes": 1,
+      "stops": 3,
+      "trips": 4,
+      "tripsRepresented": 8,
+      "stopTimes": 12,
+      "shapes": 2,
+      "frequencies": 2
+    },
+    "warnings": []
+  }
+}

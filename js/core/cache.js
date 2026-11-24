@@ -1021,8 +1021,15 @@
       state.exportType = "full-state";
       state.lodesData = (typeof App.serializeLodesData === "function")
         ? App.serializeLodesData() : null;
-      state.gtfsData  = (typeof App.serializeGTFSData  === "function")
-        ? App.serializeGTFSData()  : null;
+      // The feed travels as its original ZIP; gtfsData (parsed tables) is
+      // only read, for session files saved before this.
+      state.gtfsZip = (typeof App.serializeGTFSZip === "function")
+        ? await App.serializeGTFSZip() : null;
+      // A feed opened from an old session file has no ZIP; keep it in the old shape.
+      if (!state.gtfsZip && typeof App.gtfsSchedule === "function" && App.gtfsSchedule() &&
+          typeof App.serializeGTFSData === "function") {
+        state.gtfsData = App.serializeGTFSData();
+      }
 
       var json = JSON.stringify(state);
       if (json.length > 50 * 1024 * 1024) {
@@ -1100,7 +1107,14 @@
             console.warn("LODES restore failed:", lodesErr);
           }
         }
-        if (state.gtfsData && typeof App.restoreGTFSFromData === "function") {
+        if (state.gtfsZip && typeof App.restoreGTFSFromZip === "function") {
+          App.restoreGTFSFromZip(state.gtfsZip).then(function () {
+            if (typeof App.notifyProject === "function") App.notifyProject();
+          }).catch(function (gtfsErr) {
+            console.warn("GTFS restore failed:", gtfsErr);
+            App.setStatus("GTFS restore failed: " + (gtfsErr && gtfsErr.message || gtfsErr));
+          });
+        } else if (state.gtfsData && typeof App.restoreGTFSFromData === "function") {
           try {
             App.restoreGTFSFromData(state.gtfsData);
           } catch (gtfsErr) {

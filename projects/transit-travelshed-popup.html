@@ -5,8 +5,16 @@
     <!-- Left: settings column -->
     <div class="rf-settings-col">
 
+      <div class="data-input-group" data-input-group="service-mode">
+      <div class="rf-section-title">Service</div>
+      <select id="tsServiceMode" class="rf-select">
+        <option value="headway" selected>Headways (drawn routes)</option>
+        <option value="schedule">Schedule (GTFS + proposals)</option>
+      </select>
+      </div>
+
       <div class="data-input-group" data-input-group="origin">
-      <div class="rf-section-title">Select origin</div>
+      <div class="rf-section-title form-section">Select origin</div>
       <div class="ts-origin-actions">
         <button id="tsPickOriginBtn" type="button" class="rf-btn-sm">Select Origin</button>
         <button id="tsClearOriginBtn" type="button" class="rf-btn-sm" style="display:none;" title="Clear origin">&times;</button>
@@ -14,7 +22,7 @@
       <p id="tsOriginLabel" class="tiny u-mt-1 u-muted">Not set</p>
       </div>
 
-      <div class="data-input-group" data-input-group="route-selection">
+      <div class="data-input-group ts-headway-only" data-input-group="route-selection">
       <div class="rf-section-title form-section">Routes/Lines</div>
       <div class="rf-feature-select-actions">
         <a href="#" id="tsRouteSelectAll">Select all</a>&nbsp;<span class="u-muted">|</span>&nbsp;<a href="#" id="tsRouteSelectNone">Clear</a>
@@ -34,6 +42,8 @@
       <label class="tiny u-mt-3">Walk speed (mph)</label>
       <input type="number" id="tsWalkSpeed" class="rf-number-input" min="0.5" max="7.5" step="0.1" value="3.1">
 
+
+      <div class="ts-headway-only">
       <div class="rf-section-title form-section">Analysis day &amp; time</div>
       <select id="tsDayType" class="rf-select">
         <option value="weekday" selected>Weekday</option>
@@ -42,11 +52,32 @@
       </select>
       <input type="time" id="tsTimeOfDay" class="rf-text-input u-mt-2" value="08:00">
       </div>
+      </div>
+
+      <div class="data-input-group ts-schedule-only" data-input-group="schedule-window" style="display:none;">
+      <div class="rf-section-title form-section">Departure window</div>
+      <div class="ts-budget-row">
+        <label class="tiny">From <input type="time" id="tsWindowFrom" class="rf-text-input" value="07:00"></label>
+        <label class="tiny">To <input type="time" id="tsWindowTo" class="rf-text-input" value="08:00"></label>
+      </div>
+      <label class="tiny u-mt-2">Every (min)</label>
+      <input type="number" id="tsStepMin" class="rf-number-input" min="1" max="30" step="1" value="2">
+      <label class="tiny u-mt-2">Statistic</label>
+      <select id="tsStatistic" class="rf-select">
+        <option value="typical" selected>Typical (median)</option>
+        <option value="best">Best case</option>
+        <option value="worst">Worst case (90th percentile)</option>
+      </select>
+      <label class="tiny u-mt-2 ts-check-row">
+        <input type="checkbox" id="tsIncludeHidden"> Include hidden routes and Services
+      </label>
+      <p id="tsDateLine" class="tiny u-mt-2 u-muted"></p>
+      </div>
 
       <details class="u-mt-3 data-input-group" data-input-group="advanced">
       <summary class="tiny u-muted ts-advanced-summary">Advanced Settings</summary>
 
-      <div class="data-input-group" data-input-group="wait-model">
+      <div class="data-input-group ts-headway-only" data-input-group="wait-model">
       <div class="rf-section-title form-section">
         Wait model
         <button id="tsWaitInfoBtn" class="rf-info-btn" type="button"
@@ -74,6 +105,7 @@
           aria-label="Explain walk limits"
           title="Transit-served shed caps how far you walk to, between, and from transit. Door-to-door lets walking use the whole time budget.">&#9432;</button>
       </div>
+      <div class="ts-headway-only">
       <select id="tsShedMode" class="rf-select">
         <option value="transit" selected>Transit-served shed (recommended)</option>
         <option value="door">Door-to-door isochrone</option>
@@ -88,6 +120,7 @@
           physically reachable.
         </p>
       </div>
+      </div>
 
       <label class="tiny u-mt-3">Max access walk (mi)</label>
       <input type="number" id="tsAccessWalk" class="rf-number-input" min="0.05" max="5" step="0.05" value="0.5">
@@ -96,11 +129,13 @@
       <label class="tiny u-mt-2">Max transfer walk (mi)</label>
       <input type="number" id="tsTransferWalk" class="rf-number-input" min="0.05" max="5" step="0.05" value="0.25">
 
+      <div class="ts-headway-only">
       <label class="tiny u-mt-3">Assumed stop spacing (mi)</label>
       <input type="number" id="tsStopSpacing" class="rf-number-input" min="0.05" max="2" step="0.05" value="0.25">
       <p class="tiny u-mt-1 u-muted">
         Used for routes/lines with no associated stop Points.
       </p>
+      </div>
       </div>
 
       <div class="data-input-group" data-input-group="walk-shape">
@@ -172,8 +207,9 @@
         </div>
 
         <p class="tiny u-mt-2 u-muted">
-          Travelshed = walk → wait → ride drawn transit → walk, with at most one transfer. Wait and boarding
-          assumptions are disclosed above and per-route in the detail below.
+          <span id="tsFootHeadway">Travelshed = walk → wait → ride drawn transit → walk, with at most one transfer. Wait and boarding
+          assumptions are disclosed above and per-route in the detail below.</span>
+          <span id="tsFootSchedule" style="display:none;">Travelshed = walk → ride scheduled trips → walk, with up to two transfers, over the departure window.</span>
         </p>
       </div>
 

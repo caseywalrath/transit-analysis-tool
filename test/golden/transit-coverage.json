@@ -14,5 +14,87 @@
   "statSentence/zero-population": "No population found in the selected service area.",
   "csv/plain": "plain",
   "csv/has-comma": "\"a,b\"",
-  "csv/has-quote": "\"quote\"\"here\""
+  "csv/has-quote": "\"quote\"\"here\"",
+  "gtfsMode/bus": "bus",
+  "gtfsMode/tram-number": "rail",
+  "gtfsMode/subway": "rail",
+  "gtfsMode/rail": "rail",
+  "gtfsMode/funicular": "rail",
+  "gtfsMode/extended-rail": "rail",
+  "gtfsMode/trolleybus-is-bus": "bus",
+  "gtfsMode/blank-is-bus": "bus",
+  "gtfsMode/null-is-bus": "bus",
+  "gtfsPlan/shared-stop-takes-rail": {
+    "stops": [
+      {
+        "stopId": "R2",
+        "lat": 39.85,
+        "lon": -104.67,
+        "mode": "rail",
+        "miles": 0.5
+      },
+      {
+        "stopId": "S1",
+        "lat": 39.74,
+        "lon": -104.99,
+        "mode": "rail",
+        "miles": 0.5
+      },
+      {
+        "stopId": "S2",
+        "lat": 39.75,
+        "lon": -104.98,
+        "mode": "bus",
+        "miles": 0.25
+      },
+      {
+        "stopId": "S3",
+        "lat": 39.76,
+        "lon": -104.97,
+        "mode": "bus",
+        "miles": 0.25
+      }
+    ],
+    "routes": [
+      {
+        "routeId": "B",
+        "name": "Bus",
+        "mode": "bus",
+        "stopCount": 3,
+        "peakHeadwayMin": 15
+      },
+      {
+        "routeId": "R",
+        "name": "Rail",
+        "mode": "rail",
+        "stopCount": 2,
+        "peakHeadwayMin": 15
+      }
+    ]
+  },
+  "gtfsPlan/empty": {
+    "stops": [],
+    "routes": []
+  },
+  "gtfsPlan/route-with-no-rows": {
+    "stops": [],
+    "routes": [
+      {
+        "routeId": "Z",
+        "name": "Z",
+        "mode": "bus",
+        "stopCount": 0,
+        "peakHeadwayMin": null
+      }
+    ]
+  },
+  "gtfsQualify/threshold-15": [
+    "a",
+    "b"
+  ],
+  "gtfsQualify/no-threshold": [],
+  "bufferLabel/drawn-only": "0.5 mi",
+  "bufferLabel/gtfs-only": "bus 0.25 mi / rail 0.5 mi",
+  "bufferLabel/both": "0.5 mi (drawn), bus 0.25 mi / rail 0.75 mi",
+  "statSentence/with-buffer-label": "60.0% of residents are within bus 0.25 mi / rail 0.5 mi of selected transit; 30.0% within bus 0.25 mi / rail 0.5 mi of 15-min-or-better service."
 }

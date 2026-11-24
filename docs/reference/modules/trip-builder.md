@@ -1,5 +1,7 @@
 # Trip builder
 
+**Status: retired (2026-11-21, gate G8a).** The script tag in `index.html` is commented out and the panel is gone from the Analysis menu; saved Trip Builder state in old sessions is ignored. Its trip generator lives on as `AnalysisNetwork.bandTrips` / `proposalTrips`, used by the GTFS export and the travel-time analyses. The file stays for its golden cases.
+
 Read the code when this and the code disagree.
 
 ## trip-builder.js (module `"trip-builder"`, no public API)
@@ -25,6 +27,8 @@ Generates a high-level trip schedule (Start/End per direction per day type) from
 **CSV:** `Service, Day, Direction, Trip #, Start, End, Runtime (min)`; filename `trip-builder_<service-name>_<timestamp>.csv`.
 
 **Persistence:** `App.cache.registerModule("trip-builder", …)` — `selectedKey`, `tripsByService`. Schema **v2** (ID-based solo keys); v1 keys migrate via `App.migrateServiceKey`, unresolvable ones dropped. `getFeatureFromPattern` resolves by `featureId` at use time. `update()` marks state stale when features change.
+
+**Copied GTFS Services:** a schedule copy (see `gtfs.md`) is ready for Trip Builder: directions from `direction_id`, bands per day part. Generated trips follow the bands (even headways), not the timetable's exact departure times.
 
 **Not built:** add-trip, layovers between trips, per-pattern offsets (enter them in bands), blocking, Route Costing integration.
 
