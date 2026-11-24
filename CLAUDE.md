@@ -106,6 +106,7 @@ js/core/
   measure.js                Temporary distance/area measure tool
   osm.js / osm-pois.js      Overpass reference layers (stops, routes, POIs)
   editing.js                Vertex editing, drag, map right-click feature menu   [drawing-and-features]
+  coord-pin.js              App.coordPin — click empty map to pin lat/lon beside the scale bar; right-click "Copy coordinates" (not saved)
   selection.js              Selection state and highlighting   [drawing-and-features]
   box-select.js             Box select tool + App.bulkFeatures group actions   [drawing-and-features]
   features.js               Features panel list, sorting, context menu, color picker   [drawing-and-features]
@@ -162,7 +163,7 @@ Plain `<script>` tags in `index.html`; a file may only use what loads before it 
 ```
 config → utils → sidebar → map → search → walk-cost → walk-tiles → cdot-roads → layer-palettes → network-store → gtfs-store → gtfs-schedule → analysis-network → raptor → gtfs-export → gpkg-store → walk-tiles-source → cdot-source → road-network
 → network-connectors → walk-audit → travelshed → connector-graph → walk-shape → gpkg-reader → gpkg-filter → point-icons → points → lines → routes → polygons
-→ labels → textboxes → measure → osm → osm-pois → editing → selection → box-select → features
+→ labels → textboxes → measure → osm → osm-pois → editing → coord-pin → selection → box-select → features
 → feature-appearance → attr-bulk → feature-attributes → merge → split → layers-panel → gpkg-layers → gpkg-table → gpkg-filter-ui → apportion → service-equity → service-compare → census → lodes → projections
 → cache → undo → popup → service-assembly → module-buffers → analysis-network-source → gtfs-export-ui → analysis-checklist → choropleth → app.js
 → modules (buffer-summary, fta-small-starts, tpi-scoring, transit-propensity, ridership-scoring,
